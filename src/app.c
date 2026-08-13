@@ -51,6 +51,10 @@ bool app_reload_config(char *err, size_t errcap) {
   return true;
 }
 
+#define WEIGHT_UNIT 1000
+#define WEIGHT_MIN 150  /* a pane can be squeezed, not squeezed out */
+#define WEIGHT_STEP 120 /* one keyboard nudge */
+
 #define MIN_PANE_COLS (CFG.min_pane_cols)
 #define MIN_PANE_ROWS (CFG.min_pane_rows)
 #define FRAME_FOCUS (CFG.frame_focus)
@@ -68,6 +72,10 @@ struct node {
   enum { NODE_LEAF, NODE_SPLIT } kind;
   node_t *parent;
   rect_t rect; /* recomputed every layout pass; never trusted between them */
+
+  /* Share of the parent split, in arbitrary units. Even splits are simply
+   * equal weights, so resizing is not a special case of anything. */
+  int weight;
 
   /* leaf */
   pane_t *pane;
@@ -107,6 +115,18 @@ struct app {
   bool prefix;
   bool quit;
   bool detach;
+  /* One drag machine, two verbs: a title drags a pane onto another to swap
+   * them, a gap between panes drags the boundary. Both are started by a press
+   * on something the hit list says is draggable, so neither can disagree with
+   * what is on screen. */
+  struct {
+    enum { DRAG_NONE, DRAG_TITLE, DRAG_EDGE } kind;
+    uint32_t src;      /* pane being dragged, or the split being resized */
+    uint32_t target;   /* pane under the pointer, for the drop highlight */
+    size_t edge;       /* which boundary of that split */
+    uint16_t x, y;     /* where the pointer was at the last event */
+  } drag;
+
   /* the pane finder overlay: tabs stop being navigation past about six */
   bool finder;
   char query[64];
@@ -149,6 +169,7 @@ static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
   if (!p) return NULL;
   node_t *n = calloc(1, sizeof *n);
   n->kind = NODE_LEAF;
+  n->weight = WEIGHT_UNIT;
   n->pane = p;
   n->id = ++a->next_id;
   pane_set_osc_handler(p, on_pane_osc, a);
@@ -160,6 +181,7 @@ static node_t *leaf_new(app_t *a) {
   if (!p) return NULL;
   node_t *n = calloc(1, sizeof *n);
   n->kind = NODE_LEAF;
+  n->weight = WEIGHT_UNIT;
   n->pane = p;
   n->id = ++a->next_id;
   pane_set_osc_handler(p, on_pane_osc, a);
@@ -415,16 +437,39 @@ static void layout_node(node_t *n, rect_t r, node_t *focus) {
 
   uint16_t gaps = (uint16_t)(gap * (k - 1));
   uint16_t avail = total > gaps ? (uint16_t)(total - gaps) : (uint16_t)k;
-  uint16_t each = (uint16_t)(avail / k);
-  if (each == 0) { /* below one cell each, nothing sensible is left */
+  if (avail / k == 0) { /* below one cell each, nothing sensible is left */
     layout_solo(n, r, focus);
     return;
   }
-  uint16_t extra = (uint16_t)(avail % k); /* spread the remainder, no drift */
+
+  /* Sizes are proportional to weights; the remainder goes to the widest
+   * children, largest first, so nothing drifts and nothing rounds to zero. */
+  long total_weight = 0;
+  for (size_t i = 0; i < k; i++) total_weight += n->kids[i]->weight;
+  if (total_weight <= 0) total_weight = 1;
+
+  uint16_t sizes[64];
+  uint16_t used = 0;
+  for (size_t i = 0; i < k && i < 64; i++) {
+    long want = (long)avail * n->kids[i]->weight / total_weight;
+    if (want < 1) want = 1;
+    sizes[i] = (uint16_t)want;
+    used = (uint16_t)(used + sizes[i]);
+  }
+  for (size_t i = 0; used < avail && i < k; i = (i + 1) % k) {
+    sizes[i]++;
+    used++;
+  }
+  for (size_t i = 0; used > avail && i < k; i = (i + 1) % k) {
+    if (sizes[i] > 1) {
+      sizes[i]--;
+      used--;
+    }
+  }
 
   uint16_t pos = n->dir == SPLIT_COLS ? r.x : r.y;
   for (size_t i = 0; i < k; i++) {
-    uint16_t size = (uint16_t)(each + (i < extra ? 1 : 0));
+    uint16_t size = sizes[i];
     rect_t cr = n->dir == SPLIT_COLS
                     ? (rect_t){.x = pos, .y = r.y, .w = size, .h = r.h}
                     : (rect_t){.x = r.x, .y = pos, .w = r.w, .h = size};
@@ -488,6 +533,9 @@ static void split_focus(app_t *a, split_dir_t dir) {
   } else {
     node_t *sp = calloc(1, sizeof *sp);
     sp->kind = NODE_SPLIT;
+    sp->id = ++a->next_id;
+    sp->weight = leaf->weight; /* the new split inherits the pane's share */
+    leaf->weight = WEIGHT_UNIT;
     sp->dir = dir;
     sp->nkids = 2;
     sp->kids = malloc(2 * sizeof *sp->kids);
@@ -719,6 +767,8 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
   if (kids) {
     node_t *sp = calloc(1, sizeof *sp);
     sp->kind = NODE_SPLIT;
+    sp->id = ++a->next_id;
+    sp->weight = WEIGHT_UNIT;
     sp->dir = strcmp(kdl_prop(node, "split", "cols"), "rows") == 0 ? SPLIT_ROWS
                                                                    : SPLIT_COLS;
     for (size_t i = 0; i < node->nkids; i++) {
@@ -835,6 +885,68 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
   return ok;
 }
 
+/* ---- resizing and reordering -------------------------------------------- */
+
+static size_t index_in_parent(node_t *n) {
+  for (size_t i = 0; i < n->parent->nkids; i++)
+    if (n->parent->kids[i] == n) return i;
+  return 0;
+}
+
+/* Move weight between two adjacent siblings, refusing to squeeze either out. */
+static void transfer_weight(node_t *from, node_t *to, int amount) {
+  if (from->weight - amount < WEIGHT_MIN) amount = from->weight - WEIGHT_MIN;
+  if (amount <= 0) return;
+  from->weight -= amount;
+  to->weight += amount;
+}
+
+/* Move the boundary next to the focused pane in the given direction. The pane
+ * left of a boundary grows when it moves right — which is what a person means
+ * by "wider", whichever side of it they are on. */
+static void resize_focus(app_t *a, int dx, int dy) {
+  node_t *n = cur(a)->focus;
+  if (!n) return;
+  split_dir_t want = dx ? SPLIT_COLS : SPLIT_ROWS;
+  while (n->parent && !(n->parent->dir == want && n->parent->nkids >= 2))
+    n = n->parent;
+  if (!n->parent) return; /* nothing to resize against, in that direction */
+
+  node_t *p = n->parent;
+  size_t i = index_in_parent(n);
+  int dir = dx ? dx : dy;
+
+  if (i + 1 < p->nkids) {
+    if (dir > 0) transfer_weight(p->kids[i + 1], n, WEIGHT_STEP);
+    else transfer_weight(n, p->kids[i + 1], WEIGHT_STEP);
+  } else if (i > 0) {
+    if (dir > 0) transfer_weight(n, p->kids[i - 1], WEIGHT_STEP);
+    else transfer_weight(p->kids[i - 1], n, WEIGHT_STEP);
+  }
+  layout(a);
+}
+
+/* Reordering is a swap of two leaves, in place: their positions, weights and
+ * parents trade, and everything else about them is untouched. */
+static bool swap_panes(app_t *a, uint32_t id_a, uint32_t id_b) {
+  if (id_a == id_b) return false;
+  node_t *x = pane_by_id(a, id_a), *y = pane_by_id(a, id_b);
+  if (!x || !y || !x->parent || !y->parent) return false;
+
+  node_t *px = x->parent, *py = y->parent;
+  size_t ix = index_in_parent(x), iy = index_in_parent(y);
+  int wx = x->weight, wy = y->weight;
+
+  px->kids[ix] = y;
+  py->kids[iy] = x;
+  y->parent = px;
+  x->parent = py;
+  y->weight = wx;
+  x->weight = wy;
+  layout(a);
+  return true;
+}
+
 /* ---- focus -------------------------------------------------------------- */
 
 struct dirsearch {
@@ -935,8 +1047,10 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
   if (r.w < 3 || r.h < 3) return;
   bool focused = leaf == cur(a)->focus;
-  color_t fg = focused ? FRAME_FOCUS : FRAME_IDLE;
-  uint16_t attrs = 0;
+  bool drop_target = a->drag.kind == DRAG_TITLE && a->drag.target == leaf->id &&
+                     a->drag.src != leaf->id;
+  color_t fg = drop_target ? BTN_BG : (focused ? FRAME_FOCUS : FRAME_IDLE);
+  uint16_t attrs = drop_target ? ATTR_BOLD : 0;
 
   const char *tl = CFG.rounded ? "╭" : "┌", *tr = CFG.rounded ? "╮" : "┐";
   const char *bl = CFG.rounded ? "╰" : "└", *br = CFG.rounded ? "╯" : "┘";
@@ -953,6 +1067,14 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
     screen_text(s, r.x, y, "│", fg, NO_COLOR, attrs);
     screen_text(s, x1, y, "│", fg, NO_COLOR, attrs);
+  }
+
+  /* The frame's top row is the drag handle. Registered before the split
+   * button, which is painted after and therefore wins its own cell. */
+  {
+    char action[48];
+    snprintf(action, sizeof action, "title:%u", leaf->id);
+    hit_add(&s->hits, r.x, r.y, r.w, 1, action);
   }
 
   /* The split button is budgeted BEFORE the title, and hit-tested from the
@@ -1119,6 +1241,28 @@ static void draw_node(app_t *a, screen_t *s, node_t *n) {
     draw_cb(n, &d);
     return;
   }
+
+  /* The gap between two children is the boundary you can drag. It is drawn as
+   * nothing, but it is a real target, derived from the rects the children were
+   * just given rather than recomputed from the config. */
+  for (size_t i = 0; i + 1 < n->nkids; i++) {
+    rect_t a_r = n->kids[i]->rect, b_r = n->kids[i + 1]->rect;
+    if (!a_r.w || !b_r.w) continue;
+    rect_t gapr;
+    if (n->dir == SPLIT_COLS) {
+      uint16_t x0 = (uint16_t)(a_r.x + a_r.w);
+      if (b_r.x <= x0) continue;
+      gapr = (rect_t){x0, a_r.y, (uint16_t)(b_r.x - x0), a_r.h};
+    } else {
+      uint16_t y0 = (uint16_t)(a_r.y + a_r.h);
+      if (b_r.y <= y0) continue;
+      gapr = (rect_t){a_r.x, y0, a_r.w, (uint16_t)(b_r.y - y0)};
+    }
+    char action[48];
+    snprintf(action, sizeof action, "edge:%u:%zu", n->id, i);
+    hit_add(&s->hits, gapr.x, gapr.y, gapr.w, gapr.h, action);
+  }
+
   for (size_t i = 0; i < n->nkids; i++) draw_node(a, s, n->kids[i]);
 }
 
@@ -1272,7 +1416,63 @@ static node_t *by_id(app_t *a, uint32_t id) {
   return b.found;
 }
 
+static node_t *split_by_id(app_t *a, uint32_t id) {
+  /* splits are not leaves, so walk the trees rather than the leaf walker */
+  for (size_t t = 0; t < a->ntabs; t++) {
+    node_t *stack[64];
+    size_t n = 0;
+    if (a->tabs[t].root) stack[n++] = a->tabs[t].root;
+    while (n) {
+      node_t *cur_ = stack[--n];
+      if (cur_->kind == NODE_SPLIT) {
+        if (cur_->id == id) return cur_;
+        for (size_t i = 0; i < cur_->nkids && n < 64; i++)
+          stack[n++] = cur_->kids[i];
+      }
+    }
+  }
+  return NULL;
+}
+
+/* Drag a boundary by `cells`, in the split's own direction. */
+static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
+  if (!sp || i + 1 >= sp->nkids || cells == 0) return;
+  uint16_t span = sp->dir == SPLIT_COLS ? sp->rect.w : sp->rect.h;
+  if (!span) return;
+
+  long total = 0;
+  for (size_t k = 0; k < sp->nkids; k++) total += sp->kids[k]->weight;
+  int amount = (int)((long)labs(cells) * total / (span ? span : 1));
+  if (amount <= 0) amount = 1;
+
+  if (cells > 0) transfer_weight(sp->kids[i + 1], sp->kids[i], amount);
+  else transfer_weight(sp->kids[i], sp->kids[i + 1], amount);
+  layout(a);
+}
+
 static void do_action(app_t *a, const char *action, const input_event_t *ev) {
+  if (strncmp(action, "title:", 6) == 0) {
+    uint32_t id = (uint32_t)strtoul(action + 6, NULL, 10);
+    if (ev->maction == MOUSE_PRESS) {
+      a->drag.kind = DRAG_TITLE;
+      a->drag.src = id;
+      a->drag.target = id;
+      a->drag.x = ev->mx;
+      a->drag.y = ev->my;
+      app_focus_pane(a, id);
+    }
+    return;
+  }
+  if (strncmp(action, "edge:", 5) == 0) {
+    if (ev->maction != MOUSE_PRESS) return;
+    a->drag.kind = DRAG_EDGE;
+    a->drag.src = (uint32_t)strtoul(action + 5, NULL, 10);
+    const char *colon = strchr(action + 5, ':');
+    a->drag.edge = colon ? strtoul(colon + 1, NULL, 10) : 0;
+    a->drag.x = ev->mx;
+    a->drag.y = ev->my;
+    return;
+  }
   if (strncmp(action, "btn:", 4) == 0) {
     if (ev->maction != MOUSE_PRESS) return;
     uint32_t id = (uint32_t)strtoul(action + 4, NULL, 10);
@@ -1348,6 +1548,10 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
     case ACT_NEW_TAB: app_new_tab(a, ""); return true;
     case ACT_NEXT_TAB: app_cycle_tab(a, 1); return true;
     case ACT_PREV_TAB: app_cycle_tab(a, -1); return true;
+    case ACT_RESIZE_LEFT: resize_focus(a, -1, 0); return true;
+    case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
+    case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
+    case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
     case ACT_FINDER:
       a->finder = true;
       a->query[0] = 0;
@@ -1367,6 +1571,14 @@ void app_event(app_t *a, const input_event_t *ev) {
   if (a->finder && ev->kind == EV_KEY) {
     finder_key(a, ev);
     return;
+  }
+
+  /* A release can go missing (the pointer leaves the terminal, the client
+   * detaches mid-drag). Any keystroke ends a drag, so the mouse can never be
+   * left wedged in a state the user cannot see. */
+  if (ev->kind == EV_KEY && a->drag.kind != DRAG_NONE) {
+    a->drag.kind = DRAG_NONE;
+    a->drag.src = a->drag.target = 0;
   }
 
   if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
@@ -1405,6 +1617,31 @@ void app_event(app_t *a, const input_event_t *ev) {
        * the list was filled by the pass that painted what the user clicked. */
       if (!a->painted) break;
       const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
+
+      if (a->drag.kind != DRAG_NONE) {
+        if (ev->maction == MOUSE_MOTION) {
+          if (a->drag.kind == DRAG_EDGE) {
+            node_t *sp = split_by_id(a, a->drag.src);
+            int cells = sp && sp->dir == SPLIT_COLS
+                            ? (int)ev->mx - (int)a->drag.x
+                            : (int)ev->my - (int)a->drag.y;
+            drag_edge(a, sp, a->drag.edge, cells);
+          } else if (action && strncmp(action, "title:", 6) == 0) {
+            a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
+          } else if (action && strncmp(action, "pane:", 5) == 0) {
+            a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
+          }
+          a->drag.x = ev->mx;
+          a->drag.y = ev->my;
+        } else if (ev->maction == MOUSE_RELEASE) {
+          if (a->drag.kind == DRAG_TITLE && a->drag.target != a->drag.src)
+            swap_panes(a, a->drag.src, a->drag.target);
+          a->drag.kind = DRAG_NONE;
+          a->drag.src = a->drag.target = 0;
+        }
+        break; /* a drag owns the mouse until the button comes up */
+      }
+
       if (action) do_action(a, action, ev);
       break;
     }

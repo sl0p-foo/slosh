@@ -247,6 +247,28 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M6** — config file: geometry, theme, keybindings, live reload ✅
 - **M7** — layout files, suspended panes, `apply-layout` ✅ (what `sl0ppi up`
   is ported onto)
+- **M8** — pane sizes as weights: keyboard resize, drag the gap to move a
+  boundary, drag a title to swap two panes ✅
+
+### One drag machine, two verbs (M8)
+
+Pane sizes are **weights**, so an even split is simply equal weights and
+resizing is not a special case of anything: the layout pass stays the same
+pure function of the tree and the rect, and a resized layout survives a
+collapse/expand cycle for free.
+
+Both mouse verbs start from the hit list, so neither can disagree with what is
+on screen:
+
+| target | painted by | drag does |
+|---|---|---|
+| a frame's top row | `draw_frame` | swap this pane with the one you drop it on |
+| the gap between two children | `draw_node`, from the rects they were just given | move that boundary |
+
+The drop target is highlighted while dragging, and **any keystroke ends a
+drag** — a release can go missing (the pointer leaves the terminal, the client
+detaches mid-drag) and a mouse wedged in an invisible state is the worst
+possible outcome.
 
 M4 landed: the pi extensions' exact byte patterns are an acceptance test
 (`tests/test_osc5577.py::test_pi_extension_compat`), including `buttons` with

@@ -162,8 +162,9 @@ def test_hit_list():
             x, y = pos
             check("the click target is exactly where the glyph is",
                   snap.hit_at(x, y) == f"split:{pane['id']}", str(snap.hit_at(x, y)))
+            # the rest of the top row is the drag handle, not the button
             check("beside the button is not the button",
-                  snap.hit_at(x - 1, y) == f"focus:{pane['id']}",
+                  snap.hit_at(x - 1, y) == f"title:{pane['id']}",
                   str(snap.hit_at(x - 1, y)))
 
             s.click(x, y)

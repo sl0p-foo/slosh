@@ -47,12 +47,15 @@ sl0ptty cmd '{"cmd":"panes"}'
 | `C-a h j k l` or arrows | move focus |
 | `C-a c` / `C-a n` `C-a p` / `C-a 1..9` | new tab / cycle / select |
 | `C-a f` | find a pane by title, purpose or tab |
+| `C-a H J K L` or shift+arrows | move the boundary (the pane grows or shrinks accordingly) |
 | `C-a x` / `C-a d` / `C-a q` | close pane / detach / quit |
 | `C-a C-a` | send a literal `C-a` |
 
 The mouse works throughout: click a pane to focus it, a tab to switch, `+` on a
 frame to split, `+tab` to open one, a collapsed header to expand it, and a
-pane's own buttons to talk to the program inside it.
+pane's own buttons to talk to the program inside it. **Drag a pane's title bar
+onto another pane to swap them, or drag the gap between two panes to move the
+boundary.**
 
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ptty/config.kdl`.

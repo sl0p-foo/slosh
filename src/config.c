@@ -17,6 +17,8 @@ static const struct {
     {"close-pane", ACT_CLOSE_PANE},   {"focus-left", ACT_FOCUS_LEFT},
     {"focus-right", ACT_FOCUS_RIGHT}, {"focus-up", ACT_FOCUS_UP},
     {"focus-down", ACT_FOCUS_DOWN},   {"focus-next", ACT_FOCUS_NEXT},
+    {"resize-left", ACT_RESIZE_LEFT}, {"resize-right", ACT_RESIZE_RIGHT},
+    {"resize-up", ACT_RESIZE_UP},     {"resize-down", ACT_RESIZE_DOWN},
     {"new-tab", ACT_NEW_TAB},         {"next-tab", ACT_NEXT_TAB},
     {"prev-tab", ACT_PREV_TAB},       {"finder", ACT_FINDER},
     {"detach", ACT_DETACH},           {"quit", ACT_QUIT},
@@ -143,6 +145,14 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_ARROW_UP, 0, ACT_FOCUS_UP);
   bind_add(c, GHOSTTY_KEY_ARROW_DOWN, 0, ACT_FOCUS_DOWN);
   bind_add(c, GHOSTTY_KEY_O, 0, ACT_FOCUS_NEXT);
+  bind_add(c, GHOSTTY_KEY_H, MOD_SHIFT, ACT_RESIZE_LEFT);
+  bind_add(c, GHOSTTY_KEY_L, MOD_SHIFT, ACT_RESIZE_RIGHT);
+  bind_add(c, GHOSTTY_KEY_K, MOD_SHIFT, ACT_RESIZE_UP);
+  bind_add(c, GHOSTTY_KEY_J, MOD_SHIFT, ACT_RESIZE_DOWN);
+  bind_add(c, GHOSTTY_KEY_ARROW_LEFT, MOD_SHIFT, ACT_RESIZE_LEFT);
+  bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, MOD_SHIFT, ACT_RESIZE_RIGHT);
+  bind_add(c, GHOSTTY_KEY_ARROW_UP, MOD_SHIFT, ACT_RESIZE_UP);
+  bind_add(c, GHOSTTY_KEY_ARROW_DOWN, MOD_SHIFT, ACT_RESIZE_DOWN);
   bind_add(c, GHOSTTY_KEY_C, 0, ACT_NEW_TAB);
   bind_add(c, GHOSTTY_KEY_N, 0, ACT_NEXT_TAB);
   bind_add(c, GHOSTTY_KEY_P, 0, ACT_PREV_TAB);

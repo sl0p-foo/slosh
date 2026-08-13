@@ -55,8 +55,9 @@ theme {
 // pageup/pagedown/delete/insert/backslash/minus/slash/comma/period.
 //
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
-// focus-down focus-next new-tab next-tab prev-tab select-tab-1..9 finder
-// detach quit literal-prefix none
+// focus-down focus-next resize-left resize-right resize-up resize-down
+// new-tab next-tab prev-tab select-tab-1..9 finder detach quit
+// literal-prefix none
 
 keys {
     prefix "ctrl+a"
@@ -74,6 +75,13 @@ keys {
     bind "up" "focus-up"
     bind "down" "focus-down"
     bind "o" "focus-next"
+
+    // The boundary moves in the direction you press, whichever side of it the
+    // focused pane is on.
+    bind "shift+h" "resize-left"
+    bind "shift+l" "resize-right"
+    bind "shift+k" "resize-up"
+    bind "shift+j" "resize-down"
 
     bind "c" "new-tab"
     bind "n" "next-tab"
