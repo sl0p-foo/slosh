@@ -88,7 +88,17 @@ now have regression tests.
    stream for the real terminal.
 3. **pty spawn, event loop, layout tree, sockets, config.**
 4. **Kitty graphics re-emission** (id remapping across panes and scroll).
-   Possible because lib-vt tracks placements. Not MVP.
+   **Done.** lib-vt tracks the images and placements; we walk them each frame,
+   transmit an image once (`a=t`), place it every frame (`a=p,C=1`) after the
+   cell diff, and delete placements that vanish. Ids are remapped into a high
+   range so two panes using image `7` stay two images, and so nothing collides
+   with images the client's terminal already had.
+
+   The cropping rule is the part worth remembering: **a placement is N pixels
+   drawn across M cells, so the placement itself tells you the pixels per
+   cell** — no need to know the client's font metrics. Clipping at a pane edge
+   or at the top of the viewport moves the *source rectangle*; reducing `c`/`r`
+   alone scales the image into fewer cells instead of cropping it.
 
 Budget: **under 10k LOC**, zero deps beyond libc and lib-vt, static musl
 binary, sub-second full rebuild.

@@ -20,6 +20,12 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows);
 void app_free(app_t *a);
 
 void app_event(app_t *a, const input_event_t *ev);
+/* Kitty graphics for this frame: the bytes the client's terminal needs, and
+ * the same thing as JSON for tests. Bytes are borrowed until the next call. */
+const char *app_graphics(app_t *a, size_t *len);
+void app_graphics_reset(app_t *a);
+char *app_graphics_json(app_t *a);
+
 /* Transient announcements, drawn bottom-right and expiring on their own. */
 void app_toast(app_t *a, const char *text);
 size_t app_toast_count(app_t *a);

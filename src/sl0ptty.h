@@ -163,6 +163,26 @@ void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud);
 void pane_set_clipboard_handler(pane_t *p, pane_clip_fn fn, void *ud);
 void pane_set_notify_handler(pane_t *p, pane_notify_fn fn, void *ud);
 
+/* One visible kitty graphics placement, in the pane's viewport coordinates. */
+typedef struct {
+  uint32_t image_id, place_id;
+  uint16_t col, row, cols, rows;
+  uint32_t px_w, px_h;    /* rendered size */
+  uint32_t src_w, src_h;  /* the image's own size */
+  /* The part of the image to draw, in pixels. Clipping has to move this:
+   * asking for fewer columns alone *scales* the image into them, it does not
+   * crop it. */
+  uint32_t sx, sy, sw, sh;
+  uint32_t cell_px_w, cell_px_h; /* derived: rendered pixels per cell */
+  int format, compression;
+  uint64_t generation;
+  const uint8_t *data; /* borrowed for the callback only */
+  size_t data_len;
+} pane_gfx_t;
+
+typedef void (*pane_gfx_fn)(pane_t *p, const pane_gfx_t *g, void *ud);
+size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud);
+
 /* Selection, in the pane's viewport coordinates. */
 void pane_select_start(pane_t *p, uint16_t x, uint16_t y);
 void pane_select_extend(pane_t *p, uint16_t x, uint16_t y);

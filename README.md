@@ -86,6 +86,19 @@ its own `purpose` (`\033]5577;1;purpose;agent:main\033\\`) — but a purpose
 declared by a layout outranks it and cannot be overridden, so a pane cannot
 relabel itself into something tooling trusts.
 
+## Images
+
+Kitty graphics pass through. A program in a pane transmits an image and it
+appears, because libghostty-vt tracks the images and placements and sl0ptty
+re-emits them to your terminal with ids remapped so two panes using image `7`
+stay two images. Placements follow the layout, are cropped at the pane's edges
+by moving the source rectangle (asking for fewer cells would scale instead),
+and are deleted when their pane closes or scrolls away.
+
+This is the thing tmux and zellij drop, and the reason tools fall back to
+sixel under them. Sixel itself is *not* supported: libghostty-vt has no sixel
+decoder, so those sequences are swallowed.
+
 ## Sessions as files
 
 ```kdl

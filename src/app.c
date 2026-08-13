@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "json.h"
+#include "graphics.h"
 #include "kdl.h"
 
 /* ---- config ------------------------------------------------------------- */
@@ -129,6 +130,8 @@ struct app {
     bool moved;        /* a press that never moves is a click */
     char side;         /* border press: 'l' 'r' 't' 'b' */
   } drag;
+
+  graphics_t *gfx; /* kitty images, and what the client has been told */
 
   /* Where the pointer is. Which border that *means* is derived during the
    * paint, from the rects painted in that same pass — remembering the answer
@@ -374,6 +377,7 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows) {
   a->argv = argv;
   a->cols = cols;
   a->rows = rows;
+  a->gfx = gfx_new();
   tab_add(a, "");
   a->cur = 0;
   node_t *leaf = leaf_new(a);
@@ -389,6 +393,7 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows) {
 
 void app_free(app_t *a) {
   if (!a) return;
+  gfx_free(a->gfx);
   free(a->clipboard);
   free(a->clipboard_pending);
   for (size_t i = 0; i < a->ntabs; i++) node_free(a->tabs[i].root);
@@ -1632,6 +1637,84 @@ void app_compose(app_t *a, screen_t *s) {
   draw_node(a, s, cur(a)->root);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
   draw_toasts(a, s);                /* and above even that: it is transient */
+}
+
+/* ---- kitty graphics ------------------------------------------------------ */
+
+struct gfx_ctx {
+  app_t *a;
+  node_t *leaf;
+};
+
+static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
+  struct gfx_ctx *c = ud;
+  node_t *leaf = c->leaf;
+
+  /* Pane-local viewport cells become screen cells, and anything hanging over
+   * the pane's edge is cropped by asking for fewer columns and rows — the
+   * only clipping the protocol lets us do without knowing the client's cell
+   * size in pixels. */
+  if (g->col >= leaf->content.w || g->row >= leaf->content.h) return;
+  uint16_t cols = g->cols, rows = g->rows;
+  uint32_t sw = g->sw, sh = g->sh;
+  if (g->col + cols > leaf->content.w) {
+    uint16_t over = (uint16_t)(g->col + cols - leaf->content.w);
+    cols = (uint16_t)(cols - over);
+    uint32_t px = over * g->cell_px_w;
+    sw = sw > px ? sw - px : 0;
+  }
+  if (g->row + rows > leaf->content.h) {
+    uint16_t over = (uint16_t)(g->row + rows - leaf->content.h);
+    rows = (uint16_t)(rows - over);
+    uint32_t px = over * g->cell_px_h;
+    sh = sh > px ? sh - px : 0;
+  }
+  if (!cols || !rows) return;
+
+  gfx_place(c->a->gfx, leaf->id, g->image_id, g->generation, g->place_id,
+            (uint16_t)(leaf->content.x + g->col),
+            (uint16_t)(leaf->content.y + g->row), cols, rows, g->sx, g->sy, sw,
+            sh, g->src_w, g->src_h, g->format, g->compression, g->data,
+            g->data_len);
+}
+
+static void gfx_leaf_cb(node_t *n, void *ud) {
+  app_t *a = ud;
+  if (n->hidden) return; /* a collapsed pane draws nothing, images included */
+  struct gfx_ctx ctx = {a, n};
+  pane_graphics(n->pane, gfx_from_pane, &ctx);
+}
+
+/* Walk the visible tab's panes and produce the bytes the client's terminal
+ * needs this frame. Borrowed until the next call. */
+const char *app_graphics(app_t *a, size_t *len) {
+  gfx_begin(a->gfx);
+  if (a->ntabs && cur(a)->root) walk(cur(a)->root, gfx_leaf_cb, a);
+  return gfx_flush(a->gfx, len);
+}
+
+void app_graphics_reset(app_t *a) { gfx_reset(a->gfx); }
+
+char *app_graphics_json(app_t *a) {
+  size_t len = 0;
+  app_graphics(a, &len); /* refresh the model; the bytes are the caller's job */
+  const gfx_place_t *places = NULL;
+  size_t n = gfx_placements(a->gfx, &places);
+  json_t j;
+  json_init(&j);
+  json_arr_open(&j, NULL);
+  for (size_t i = 0; i < n; i++) {
+    json_obj_open(&j, NULL);
+    json_int(&j, "image", places[i].out_id);
+    json_int(&j, "placement", places[i].place_id);
+    json_int(&j, "x", places[i].col);
+    json_int(&j, "y", places[i].row);
+    json_int(&j, "cols", places[i].cols);
+    json_int(&j, "rows", places[i].rows);
+    json_obj_close(&j);
+  }
+  json_arr_close(&j);
+  return j.buf;
 }
 
 /* ---- input -------------------------------------------------------------- */

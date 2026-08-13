@@ -119,6 +119,16 @@ static char *b64(const char *in, size_t len, size_t *out_len) {
   return out;
 }
 
+/* Images go out after the cell diff, so a repainted cell cannot land on top
+ * of a placement we just made. */
+static void push_graphics(server_t *s) {
+  conn_t *c = display_conn(s);
+  if (!c) return;
+  size_t len = 0;
+  const char *bytes = app_graphics(s->app, &len);
+  if (len) msg_send(c->fd, MSG_OUTPUT, bytes, len);
+}
+
 /* The clipboard lives on the client's machine, not ours, so a copy travels as
  * OSC 52 for the outer terminal to honour. */
 static void push_clipboard(server_t *s) {
@@ -280,6 +290,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
               }
             }
             s.screen.force_full = true; /* a fresh client knows nothing */
+            app_graphics_reset(s.app);  /* including any image we had sent */
             pending_paint = true;
             next_frame = now_ms();
             break;
@@ -337,6 +348,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     if (pending_paint && now_ms() >= next_frame) {
       app_compose(s.app, &s.screen);
       push_frame(&s);
+      push_graphics(&s);
       push_clipboard(&s);
       pending_paint = false;
       next_frame = now_ms();

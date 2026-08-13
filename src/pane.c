@@ -424,6 +424,128 @@ void pane_send_paste(pane_t *p, const char *text, size_t len) {
   free(buf);
 }
 
+/* ---- kitty graphics ------------------------------------------------------
+ *
+ * lib-vt owns the images and the placements; we walk them once per frame and
+ * hand each visible one to the graphics layer, which decides what the client
+ * still needs to be told.
+ */
+size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
+  GhosttyKittyGraphics gfx = NULL;
+  if (ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS,
+                           &gfx) != GHOSTTY_SUCCESS ||
+      !gfx)
+    return 0;
+
+  GhosttyKittyGraphicsPlacementIterator it = NULL;
+  if (ghostty_kitty_graphics_placement_iterator_new(NULL, &it) !=
+      GHOSTTY_SUCCESS)
+    return 0;
+  if (ghostty_kitty_graphics_get(gfx, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
+                                 &it) != GHOSTTY_SUCCESS) {
+    ghostty_kitty_graphics_placement_iterator_free(it);
+    return 0;
+  }
+
+  size_t n = 0;
+  while (ghostty_kitty_graphics_placement_next(it)) {
+    uint32_t image_id = 0, place_id = 0;
+    ghostty_kitty_graphics_placement_get(
+        it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID, &image_id);
+    ghostty_kitty_graphics_placement_get(
+        it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_PLACEMENT_ID, &place_id);
+    GhosttyKittyGraphicsImage img = ghostty_kitty_graphics_image(gfx, image_id);
+
+    GhosttyKittyGraphicsPlacementRenderInfo info =
+        GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo);
+    if (ghostty_kitty_graphics_placement_render_info(it, img, p->term, &info) !=
+        GHOSTTY_SUCCESS)
+      continue;
+    if (!info.viewport_visible) continue;
+
+    /* Rendered pixels per cell, which the placement itself tells us: a
+     * placement is N pixels drawn across M cells. That is the conversion the
+     * protocol needs for any cropping, and it means we never have to know the
+     * client's font metrics. */
+    uint32_t cw = info.grid_cols ? info.pixel_width / info.grid_cols : 0;
+    uint32_t ch = info.grid_rows ? info.pixel_height / info.grid_rows : 0;
+
+    /* Scrolled partly above or left of the viewport: keep the visible part by
+     * moving the source rectangle, not by squashing the image into fewer
+     * cells. */
+    uint32_t sx = info.source_x, sy = info.source_y;
+    uint32_t sw = info.source_width, sh = info.source_height;
+    int32_t vc = info.viewport_col, vr = info.viewport_row;
+    uint32_t cols = info.grid_cols, rows = info.grid_rows;
+    if (vc < 0) {
+      uint32_t off = (uint32_t)(-vc);
+      if (off >= cols) continue;
+      sx += off * cw;
+      sw = sw > off * cw ? sw - off * cw : 0;
+      cols -= off;
+      vc = 0;
+    }
+    if (vr < 0) {
+      uint32_t off = (uint32_t)(-vr);
+      if (off >= rows) continue;
+      sy += off * ch;
+      sh = sh > off * ch ? sh - off * ch : 0;
+      rows -= off;
+      vr = 0;
+    }
+    if (!cols || !rows) continue;
+
+    pane_gfx_t out = {
+        .image_id = image_id,
+        .place_id = place_id,
+        .col = (uint16_t)vc,
+        .row = (uint16_t)vr,
+        .cols = (uint16_t)cols,
+        .rows = (uint16_t)rows,
+        .px_w = info.pixel_width,
+        .px_h = info.pixel_height,
+        .sx = sx,
+        .sy = sy,
+        .sw = sw,
+        .sh = sh,
+        .cell_px_w = cw,
+        .cell_px_h = ch,
+    };
+
+    if (img) {
+      uint32_t w = 0, h = 0;
+      int fmt = 0, comp = 0;
+      uint64_t generation = 0;
+      const uint8_t *data = NULL;
+      size_t data_len = 0;
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH, &w);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, &h);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_FORMAT, &fmt);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION,
+                                       &comp);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_GENERATION,
+                                       &generation);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR,
+                                       &data);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
+                                       &data_len);
+      out.src_w = w;
+      out.src_h = h;
+      out.format = fmt;
+      out.compression = comp;
+      out.generation = generation;
+      out.data = data;
+      out.data_len = data_len;
+    }
+
+    cb(p, &out, ud);
+    n++;
+  }
+
+  ghostty_kitty_graphics_placement_iterator_free(it);
+  return n;
+}
+
 /* ---- selection ---------------------------------------------------------- *
  *
  * A selection is two grid references and a flag, so it can be built directly

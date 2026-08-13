@@ -200,6 +200,10 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     app_toast(a, text);
     return jok_int(NULL, 0);
   }
+  if (strcmp(cmd, "graphics") == 0) {
+    app_compose(a, s);
+    return jok_raw("placements", app_graphics_json(a));
+  }
   if (strcmp(cmd, "clipboard") == 0) {
     const char *text = app_clipboard(a);
     json_t j;
