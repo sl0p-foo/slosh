@@ -38,7 +38,31 @@ bool app_detach_requested(const app_t *a);
 void app_clear_detach(app_t *a);
 size_t app_pane_count(const app_t *a);
 
-/* Layout as JSON, for the harness: id, rect, focus, title. Caller frees. */
+/* Tabs. A tab is a layout tree; panes in every tab keep running. */
+uint32_t app_new_tab(app_t *a, const char *name);
+bool app_select_tab(app_t *a, size_t index);
+bool app_select_tab_id(app_t *a, uint32_t id);
+void app_cycle_tab(app_t *a, int delta);
+size_t app_tab_count(const app_t *a);
+bool app_set_tab_name(app_t *a, uint32_t id, const char *name);
+
+/* Purposes (D8). `declared` means "from a layout/control API": it outranks an
+ * in-band purpose and locks it, so a pane cannot relabel itself afterwards.
+ * Returns false when a locked purpose refuses an in-band change. */
+bool app_set_pane_purpose(app_t *a, uint32_t id, const char *purpose,
+                          bool declared);
+bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
+                         bool declared);
+
+/* Address panes by id (the control API), not "the focused one". */
+bool app_focus_pane(app_t *a, uint32_t id);
+bool app_split_pane(app_t *a, uint32_t id, bool rows);
+bool app_close_pane(app_t *a, uint32_t id);
+uint32_t app_focused_pane_id(app_t *a);
+uint32_t app_current_tab_id(app_t *a);
+
+/* State as JSON, for the control API and the harness. Caller frees. */
 char *app_panes_json(app_t *a);
+char *app_tabs_json(app_t *a);
 
 #endif /* SL0PTTY_APP_H */

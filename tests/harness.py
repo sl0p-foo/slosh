@@ -113,6 +113,19 @@ class Session:
             raise RuntimeError("sl0ptty exited before answering snapshot")
         return Snapshot(json.loads(line))
 
+    def api(self, cmd, **kw):
+        """One JSON control request; returns the parsed reply."""
+        kw["cmd"] = cmd
+        self._cmd(json.dumps(kw))
+        line = self.proc.stdout.readline()
+        if not line:
+            raise RuntimeError("sl0ptty exited before answering " + cmd)
+        return json.loads(line)
+
+    def tabs(self):
+        self._cmd("tabs")
+        return json.loads(self.proc.stdout.readline())
+
     def panes(self):
         self._cmd("panes")
         line = self.proc.stdout.readline()

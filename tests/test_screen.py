@@ -93,9 +93,10 @@ def test_resize():
         check("resize changes the composited size",
               snap.cols == 50 and snap.rows == 12 and len(snap.line(0)) == 50,
               f"{snap.cols}x{snap.rows}")
-        # chrome budget: gap 1 (x2 aspect => 2 cols) each side, plus a border
+        # chrome budget: gap 1 (x2 aspect => 2 cols) each side, a border, and the
+        # one-row tab strip along the top
         check("the pane grows with the screen, minus its chrome",
-              p["content_w"] == snap.cols - 6 and p["content_h"] == snap.rows - 4,
+              p["content_w"] == snap.cols - 6 and p["content_h"] == snap.rows - 5,
               str(p))
         check("pane still responds after resize", s.alive())
 

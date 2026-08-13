@@ -135,12 +135,12 @@ unreadable.
 |---|---|
 | **D1** | **OSC 5577 stays byte-compatible** with the sl0ppi fork, so the five existing pi extensions work unmodified. Delivered by a side-channel scanner on the pty stream (see the correction above), with a versioned `hello` handshake added on top — the fork's protocol is unversioned, which is a known risk — and an APC-based v2 once anything new is written against it. |
 | **D2** | **Config is a hand-rolled KDL subset.** Layouts are trees; KDL reads well as a tree and keeps continuity with sl0ppi muscle memory. ~400 LOC of parser, no dependency. Single-line nodes need `;` terminators — same rule as upstream. |
-| **D3** | **Clean JSON control API** (newline-delimited JSON on a unix socket). We do *not* mimic `zellij action`'s surface. The `sl0ppi` CLI is ported on top of it later; `up`'s idempotency and D9's fail-open property carry over. |
+| **D3** | **Clean JSON control API** (one JSON object per line on a unix socket): `{"cmd":"new-tab","purpose":"project:x.deadbeef"}` -> `{"ok":true,"id":2}`. We do *not* mimic `zellij action`'s surface. A bare-verb form (`panes`, `snapshot text`) is kept as a human/harness alias and runs the same code, so a script cannot drift from what the API does. The `sl0ppi` CLI is ported on top later; `up`'s idempotency and D9's fail-open property carry over. |
 | **D4** | **Scrollback yes** (free from lib-vt), **copy-mode UI later.** |
 | **D5** | Binary, session dir, socket and config are all named **`sl0ptty`**. |
 | **D6** | **Responsive layout is a pure function** — see below. |
 | **D7** | **Server renders, client is dumb.** The client forwards raw bytes and paints what it is sent — it does not even decode, so the decoder can change without redeploying clients, and a bug there costs a frame rather than a session. The same socket is the scripting API. Detach/reattach is table stakes because agents keep running. |
-| **D8** | **Panes and tabs carry `purpose=`**, sl0ppi's semantics kept verbatim, including the trust model: *layout-declared purposes outrank in-band ones and cannot be overridden*, so `cat hostile.txt` cannot relabel a project tab. |
+| **D8** | **Panes and tabs carry `purpose=`**, sl0ppi's semantics kept verbatim, including the trust model: *declared purposes outrank in-band ones and cannot be overridden*, so `cat hostile.txt` cannot relabel a project tab. Declared means "from a layout or an operator", i.e. the control path; the in-band path (OSC, M4) always passes `declared:false` and is refused against a locked slot. Sanitised on ingest to `[A-Za-z0-9_.:/-]`. |
 | **D9** | **No wasm plugins.** Status bar and pane finder are built in. A "plugin" is a subprocess speaking the control protocol. |
 | **D10** | **One attached client** in the MVP. The protocol allows N (read-only observers are what sl0p.foo actually wants); the multi-user *rendering* path is not built, because it is where the fork's phantom-client and `MY FOCUS AND:` bugs live. |
 | **D11** | **No terminfo/ncurses.** We are opinionated about the outer terminal: emit a known-good modern subset, probe with DA/XTGETTCAP where we must. |
@@ -212,7 +212,7 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M0.5** — headless driver + screen-assert harness ✅
 - **M1** — layout tree, splits, focus, frames (gap/padding/title alignment) ✅
 - **M2** — server/client split, detach/reattach, control socket ✅
-- **M3** — tabs, `purpose=`, JSON control API
+- **M3** — tabs, `purpose=`, JSON control API ✅
 - **M4** — chrome: OSC 5577, buttons, hit-list mouse, drag-to-reorder
 - **M5** — built-in status bar, pane finder overlay, responsive (D6)
 

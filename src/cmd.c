@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "json.h"
+#include "jsonval.h"
+
 /* \e \n \r \t \\ \0 \xHH -> bytes */
 size_t cmd_unescape(const char *in, uint8_t *out, size_t cap) {
   size_t n = 0;
@@ -42,8 +45,166 @@ static void feed_event(const input_event_t *ev, void *ud) {
   app_event((app_t *)ud, ev);
 }
 
+/* ---- the JSON control API (D3) ------------------------------------------
+ *
+ * Requests are one JSON object per line, `{"cmd": ...}`; replies are one JSON
+ * object. The bare-verb form below is kept as a human/harness alias, and both
+ * run the same code, so a script cannot drift from what the API does.
+ */
+
+static char *jerr(const char *msg) {
+  json_t j;
+  json_init(&j);
+  json_obj_open(&j, NULL);
+  json_bool(&j, "ok", false);
+  json_str(&j, "error", msg, strlen(msg));
+  json_obj_close(&j);
+  return j.buf;
+}
+
+static char *jok_int(const char *key, long long val) {
+  json_t j;
+  json_init(&j);
+  json_obj_open(&j, NULL);
+  json_bool(&j, "ok", true);
+  if (key) json_int(&j, key, val);
+  json_obj_close(&j);
+  return j.buf;
+}
+
+/* {"ok":true,"<key>":<already-serialised JSON>} */
+static char *jok_raw(const char *key, char *raw) {
+  size_t n = strlen(raw) + strlen(key) + 32;
+  char *out = malloc(n);
+  snprintf(out, n, "{\"ok\":true,\"%s\":%s}", key, raw);
+  free(raw);
+  return out;
+}
+
+static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
+                      const jv_t *req, bool *quit) {
+  const char *cmd = jv_gets(req, "cmd", NULL);
+  if (!cmd) return jerr("missing cmd");
+
+  if (strcmp(cmd, "panes") == 0) {
+    app_compose(a, s);
+    return jok_raw("panes", app_panes_json(a));
+  }
+  if (strcmp(cmd, "tabs") == 0) {
+    app_compose(a, s);
+    return jok_raw("tabs", app_tabs_json(a));
+  }
+  if (strcmp(cmd, "snapshot") == 0) {
+    app_compose(a, s);
+    const char *fmt = jv_gets(req, "format", "json");
+    if (strcmp(fmt, "text") == 0) {
+      char *txt = screen_dump(s);
+      json_t j;
+      json_init(&j);
+      json_obj_open(&j, NULL);
+      json_bool(&j, "ok", true);
+      json_str(&j, "text", txt, strlen(txt));
+      json_obj_close(&j);
+      free(txt);
+      return j.buf;
+    }
+    return jok_raw("screen", screen_dump_json(s));
+  }
+  if (strcmp(cmd, "send") == 0) {
+    const char *data = jv_gets(req, "data", "");
+    input_feed(in, (const uint8_t *)data, strlen(data), feed_event, a);
+    if (input_pending(in)) input_timeout(in, feed_event, a);
+    return jok_int(NULL, 0);
+  }
+  if (strcmp(cmd, "raw") == 0) {
+    const char *data = jv_gets(req, "data", "");
+    app_write_focused(a, data, strlen(data));
+    return jok_int(NULL, 0);
+  }
+  if (strcmp(cmd, "resize") == 0) {
+    uint16_t c = (uint16_t)jv_geti(req, "cols", s->cols);
+    uint16_t r = (uint16_t)jv_geti(req, "rows", s->rows);
+    if (!c || !r) return jerr("bad size");
+    screen_resize(s, c, r);
+    app_resize(a, c, r);
+    return jok_int(NULL, 0);
+  }
+  if (strcmp(cmd, "split") == 0) {
+    bool rows = strcmp(jv_gets(req, "dir", "cols"), "rows") == 0;
+    if (!app_split_pane(a, (uint32_t)jv_geti(req, "id", 0), rows))
+      return jerr("no such pane");
+    return jok_int("id", app_focused_pane_id(a));
+  }
+  if (strcmp(cmd, "focus") == 0) {
+    if (!app_focus_pane(a, (uint32_t)jv_geti(req, "id", 0)))
+      return jerr("no such pane");
+    return jok_int("id", app_focused_pane_id(a));
+  }
+  if (strcmp(cmd, "close") == 0) {
+    if (!app_close_pane(a, (uint32_t)jv_geti(req, "id", 0)))
+      return jerr("no such pane");
+    return jok_int(NULL, 0);
+  }
+  if (strcmp(cmd, "new-tab") == 0) {
+    uint32_t id = app_new_tab(a, jv_gets(req, "name", ""));
+    if (!id) return jerr("cannot create tab");
+    const char *purpose = jv_gets(req, "purpose", NULL);
+    if (purpose) app_set_tab_purpose(a, id, purpose, true);
+    return jok_int("id", id);
+  }
+  if (strcmp(cmd, "select-tab") == 0) {
+    long id = jv_geti(req, "id", 0);
+    bool ok = id ? app_select_tab_id(a, (uint32_t)id)
+                 : app_select_tab(a, (size_t)(jv_geti(req, "index", 1) - 1));
+    return ok ? jok_int("id", app_current_tab_id(a)) : jerr("no such tab");
+  }
+  if (strcmp(cmd, "set-name") == 0) {
+    return app_set_tab_name(a, (uint32_t)jv_geti(req, "id", 0),
+                            jv_gets(req, "name", ""))
+               ? jok_int(NULL, 0)
+               : jerr("no such tab");
+  }
+  if (strcmp(cmd, "set-purpose") == 0) {
+    const char *target = jv_gets(req, "target", "pane");
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    const char *purpose = jv_gets(req, "purpose", "");
+    /* Declared purposes come from a layout or an operator, never from a
+     * pane's own output; the in-band path (M4) always passes false. */
+    bool declared = jv_getb(req, "declared", true);
+    bool ok = strcmp(target, "tab") == 0
+                  ? app_set_tab_purpose(a, id, purpose, declared)
+                  : app_set_pane_purpose(a, id, purpose, declared);
+    return ok ? jok_int(NULL, 0) : jerr("refused");
+  }
+  if (strcmp(cmd, "alive") == 0) {
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_bool(&j, "alive", !app_should_quit(a));
+    json_int(&j, "panes", (long long)app_pane_count(a));
+    json_int(&j, "tabs", (long long)app_tab_count(a));
+    json_obj_close(&j);
+    return j.buf;
+  }
+  if (strcmp(cmd, "quit") == 0) {
+    if (quit) *quit = true;
+    return jok_int(NULL, 0);
+  }
+  return jerr("unknown cmd");
+}
+
 char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
                bool *quit) {
+  while (*line == ' ') line++;
+  if (*line == '{') {
+    jv_t *req = jv_parse(line);
+    if (!req) return jerr("malformed json");
+    char *reply = cmd_json(a, s, in, req, quit);
+    jv_free(req);
+    return reply;
+  }
+
   char verb[32] = {0};
   const char *arg = "";
   const char *sp = strchr(line, ' ');
@@ -79,6 +240,10 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
   if (strcmp(verb, "panes") == 0) {
     app_compose(a, s); /* layout is a function of the frame: compose first */
     return app_panes_json(a);
+  }
+  if (strcmp(verb, "tabs") == 0) {
+    app_compose(a, s);
+    return app_tabs_json(a);
   }
   if (strcmp(verb, "alive") == 0) {
     return strdup(app_should_quit(a) ? "false" : "true");

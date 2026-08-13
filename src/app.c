@@ -40,6 +40,8 @@ struct node {
   pane_t *pane;
   uint32_t id;
   rect_t content; /* where the pane's cells go */
+  char purpose[64];
+  bool purpose_locked; /* declared by a layout: in-band cannot override */
 
   /* split */
   split_dir_t dir;
@@ -47,9 +49,21 @@ struct node {
   size_t nkids;
 };
 
-struct app {
+/* A tab is a layout tree and its focus. Panes in every tab keep running; only
+ * the current tab is composed. */
+typedef struct {
   node_t *root;
   node_t *focus;
+  uint32_t id;
+  char name[64];
+  char purpose[64];
+  bool purpose_locked;
+} tab_t;
+
+struct app {
+  tab_t *tabs;
+  size_t ntabs, tabcap, cur;
+  uint32_t next_tab_id;
   uint32_t next_id;
   uint16_t cols, rows;
   bool prefix;
@@ -60,6 +74,8 @@ struct app {
    * against, so routing can never consult geometry the user never saw */
   const screen_t *painted;
 };
+
+static tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
 
 static node_t *leaf_new(app_t *a) {
   pane_t *p = pane_new(a->argv, 1, 1, NULL);
@@ -82,27 +98,58 @@ static void node_free(node_t *n) {
   free(n);
 }
 
+/* Purposes are how tooling finds "the agent pane" (D8). Sanitised on ingest to
+ * the charset sl0ppi settled on, so the format survives verbatim. */
+static void sanitise_purpose(const char *in, char *out, size_t cap) {
+  size_t n = 0;
+  for (const char *p = in; *p && n + 1 < cap; p++) {
+    char c = *p;
+    bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '.' || c == ':' ||
+              c == '/' || c == '-';
+    if (ok) out[n++] = c;
+  }
+  out[n] = 0;
+}
+
+static tab_t *tab_add(app_t *a, const char *name) {
+  if (a->ntabs == a->tabcap) {
+    a->tabcap = a->tabcap ? a->tabcap * 2 : 4;
+    a->tabs = realloc(a->tabs, a->tabcap * sizeof *a->tabs);
+  }
+  tab_t *t = &a->tabs[a->ntabs++];
+  memset(t, 0, sizeof *t);
+  t->id = ++a->next_tab_id;
+  snprintf(t->name, sizeof t->name, "%s", name && *name ? name : "");
+  return t;
+}
+
 app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows) {
   app_t *a = calloc(1, sizeof *a);
   a->argv = argv;
   a->cols = cols;
   a->rows = rows;
-  a->root = leaf_new(a);
-  if (!a->root) {
+  tab_add(a, "");
+  a->cur = 0;
+  node_t *leaf = leaf_new(a);
+  if (!leaf) {
+    free(a->tabs);
     free(a);
     return NULL;
   }
-  a->focus = a->root;
+  cur(a)->root = leaf;
+  cur(a)->focus = leaf;
   return a;
 }
 
 void app_free(app_t *a) {
   if (!a) return;
-  node_free(a->root);
+  for (size_t i = 0; i < a->ntabs; i++) node_free(a->tabs[i].root);
+  free(a->tabs);
   free(a);
 }
 
-bool app_should_quit(const app_t *a) { return a->quit || a->root == NULL; }
+bool app_should_quit(const app_t *a) { return a->quit || a->ntabs == 0; }
 bool app_detach_requested(const app_t *a) { return a->detach; }
 void app_clear_detach(app_t *a) { a->detach = false; }
 
@@ -119,11 +166,32 @@ static void walk(node_t *n, leaf_fn fn, void *ud) {
   for (size_t i = 0; i < n->nkids; i++) walk(n->kids[i], fn, ud);
 }
 
+static void walk_all(app_t *a, leaf_fn fn, void *ud) {
+  for (size_t i = 0; i < a->ntabs; i++) walk(a->tabs[i].root, fn, ud);
+}
+
+/* Which tab a node lives in: climb to its root and match. */
+static size_t tab_of(app_t *a, node_t *n) {
+  while (n->parent) n = n->parent;
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].root == n) return i;
+  return (size_t)-1;
+}
+
+struct byid {
+  uint32_t id;
+  node_t *found;
+};
+static void byid_cb(node_t *n, void *ud) {
+  struct byid *b = ud;
+  if (n->id == b->id) b->found = n;
+}
+
 static void count_cb(node_t *n, void *ud) { (*(size_t *)ud)++; }
 
 size_t app_pane_count(const app_t *a) {
   size_t n = 0;
-  walk(a->root, count_cb, &n);
+  walk_all((app_t *)a, count_cb, &n);
   return n;
 }
 
@@ -147,13 +215,13 @@ static void collect_cb(node_t *n, void *ud) {
 
 size_t app_fds(app_t *a, int *out, size_t max) {
   struct collect c = {out, 0, max};
-  walk(a->root, collect_cb, &c);
+  walk_all(a, collect_cb, &c); /* background tabs keep running */
   return c.n;
 }
 
 bool app_pump_fd(app_t *a, int fd) {
   struct find_fd f = {fd, NULL};
-  walk(a->root, find_fd_cb, &f);
+  walk_all(a, find_fd_cb, &f);
   if (!f.found) return false;
   pane_pump(f.found->pane);
   return true;
@@ -198,17 +266,21 @@ static void layout_node(node_t *n, rect_t r) {
   }
 }
 
+#define STRIP_ROWS 1 /* M5 turns this into the real status bar */
+
 static void layout(app_t *a) {
+  if (!a->ntabs) return;
   uint16_t gx = (uint16_t)(CFG.gap * CFG.gap_aspect), gy = CFG.gap;
+  uint16_t top = (uint16_t)(gy + STRIP_ROWS);
   rect_t r = {.x = gx,
-              .y = gy,
+              .y = top,
               .w = (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
-              .h = (uint16_t)(a->rows > 2 * gy ? a->rows - 2 * gy : a->rows)};
-  if (a->root) layout_node(a->root, r);
+              .h = (uint16_t)(a->rows > top + gy ? a->rows - top - gy : 1)};
+  if (cur(a)->root) layout_node(cur(a)->root, r);
 }
 
 void app_write_focused(app_t *a, const void *buf, size_t len) {
-  if (a->focus) pane_write(a->focus->pane, buf, len);
+  if (cur(a)->focus) pane_write(cur(a)->focus->pane, buf, len);
 }
 
 void app_resize(app_t *a, uint16_t cols, uint16_t rows) {
@@ -229,7 +301,7 @@ static void replace_child(node_t *parent, node_t *old, node_t *new_) {
 }
 
 static void split_focus(app_t *a, split_dir_t dir) {
-  node_t *leaf = a->focus;
+  node_t *leaf = cur(a)->focus;
   if (!leaf) return;
   node_t *fresh = leaf_new(a);
   if (!fresh) return;
@@ -256,12 +328,12 @@ static void split_focus(app_t *a, split_dir_t dir) {
     sp->kids[1] = fresh;
     sp->parent = leaf->parent;
     if (leaf->parent) replace_child(leaf->parent, leaf, sp);
-    else a->root = sp;
+    else cur(a)->root = sp;
     leaf->parent = sp;
     fresh->parent = sp;
   }
 
-  a->focus = fresh;
+  cur(a)->focus = fresh;
   layout(a);
 }
 
@@ -270,13 +342,25 @@ static node_t *first_leaf(node_t *n) {
   return n;
 }
 
+static void tab_remove(app_t *a, size_t ti) {
+  node_free(a->tabs[ti].root);
+  memmove(&a->tabs[ti], &a->tabs[ti + 1],
+          (a->ntabs - ti - 1) * sizeof *a->tabs);
+  a->ntabs--;
+  if (a->cur >= a->ntabs && a->ntabs) a->cur = a->ntabs - 1;
+}
+
 static void close_leaf(app_t *a, node_t *leaf) {
+  size_t ti = tab_of(a, leaf);
+  if (ti == (size_t)-1) return;
+  tab_t *t = &a->tabs[ti];
   node_t *p = leaf->parent;
-  if (!p) { /* last pane */
+
+  if (!p) { /* the tab's last pane: the tab goes with it */
+    t->root = NULL;
     node_free(leaf);
-    a->root = NULL;
-    a->focus = NULL;
-    a->quit = true;
+    tab_remove(a, ti);
+    if (a->ntabs == 0) a->quit = true;
     return;
   }
 
@@ -291,12 +375,12 @@ static void close_leaf(app_t *a, node_t *leaf) {
   if (p->nkids == 1) { /* a split with one child is just that child */
     survivor->parent = p->parent;
     if (p->parent) replace_child(p->parent, p, survivor);
-    else a->root = survivor;
+    else t->root = survivor;
     free(p->kids);
     free(p);
   }
 
-  if (a->focus == leaf || a->focus == p) a->focus = first_leaf(survivor);
+  if (t->focus == leaf || t->focus == p) t->focus = first_leaf(survivor);
   layout(a);
 }
 
@@ -312,12 +396,122 @@ static void reap_cb(node_t *n, void *ud) {
 void app_reap(app_t *a) {
   for (;;) {
     struct reap r = {a, NULL};
-    walk(a->root, reap_cb, &r);
+    walk_all(a, reap_cb, &r);
     if (!r.dead) break;
     close_leaf(a, r.dead);
-    if (!a->root) break;
+    if (a->ntabs == 0) break;
   }
 }
+
+uint32_t app_new_tab(app_t *a, const char *name) {
+  tab_t *t = tab_add(a, name);
+  node_t *leaf = leaf_new(a);
+  if (!leaf) {
+    a->ntabs--;
+    return 0;
+  }
+  t->root = leaf;
+  t->focus = leaf;
+  a->cur = a->ntabs - 1;
+  layout(a);
+  return t->id;
+}
+
+bool app_select_tab(app_t *a, size_t index) {
+  if (index >= a->ntabs) return false;
+  a->cur = index;
+  layout(a);
+  return true;
+}
+
+bool app_select_tab_id(app_t *a, uint32_t id) {
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == id) return app_select_tab(a, i);
+  return false;
+}
+
+void app_cycle_tab(app_t *a, int delta) {
+  if (a->ntabs < 2) return;
+  long n = (long)a->ntabs;
+  a->cur = (size_t)(((long)a->cur + delta % n + n) % n);
+  layout(a);
+}
+
+size_t app_tab_count(const app_t *a) { return a->ntabs; }
+
+/* D8's trust model: a purpose declared by a layout outranks an in-band one and
+ * cannot be overridden, so `cat hostile.txt` in a pane cannot relabel a
+ * project tab. `declared` is only ever true on the control path. */
+bool app_set_pane_purpose(app_t *a, uint32_t id, const char *purpose,
+                          bool declared) {
+  struct byid b = {id, NULL};
+  walk_all(a, byid_cb, &b);
+  if (!b.found) return false;
+  if (b.found->purpose_locked && !declared) return false;
+  sanitise_purpose(purpose, b.found->purpose, sizeof b.found->purpose);
+  if (declared) b.found->purpose_locked = true;
+  return true;
+}
+
+bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
+                         bool declared) {
+  for (size_t i = 0; i < a->ntabs; i++) {
+    tab_t *t = &a->tabs[i];
+    if (t->id != id) continue;
+    if (t->purpose_locked && !declared) return false;
+    sanitise_purpose(purpose, t->purpose, sizeof t->purpose);
+    if (declared) t->purpose_locked = true;
+    return true;
+  }
+  return false;
+}
+
+bool app_set_tab_name(app_t *a, uint32_t id, const char *name) {
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == id) {
+      snprintf(a->tabs[i].name, sizeof a->tabs[i].name, "%s", name);
+      return true;
+    }
+  return false;
+}
+
+/* Control-API verbs that address a pane by id, rather than "the focused one".
+ * They select the pane's tab first, so scripting a background tab works. */
+static node_t *pane_by_id(app_t *a, uint32_t id) {
+  struct byid b = {id, NULL};
+  walk_all(a, byid_cb, &b);
+  return b.found;
+}
+
+bool app_focus_pane(app_t *a, uint32_t id) {
+  node_t *n = pane_by_id(a, id);
+  if (!n) return false;
+  size_t ti = tab_of(a, n);
+  if (ti == (size_t)-1) return false;
+  a->cur = ti;
+  a->tabs[ti].focus = n;
+  layout(a);
+  return true;
+}
+
+bool app_split_pane(app_t *a, uint32_t id, bool rows) {
+  if (id && !app_focus_pane(a, id)) return false;
+  split_focus(a, rows ? SPLIT_ROWS : SPLIT_COLS);
+  return true;
+}
+
+bool app_close_pane(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
+  if (!n) return false;
+  close_leaf(a, n);
+  return true;
+}
+
+uint32_t app_focused_pane_id(app_t *a) {
+  return a->ntabs && cur(a)->focus ? cur(a)->focus->id : 0;
+}
+
+uint32_t app_current_tab_id(app_t *a) { return a->ntabs ? cur(a)->id : 0; }
 
 /* ---- focus -------------------------------------------------------------- */
 
@@ -346,10 +540,10 @@ static void dir_cb(node_t *n, void *ud) {
 }
 
 static void focus_dir(app_t *a, int dx, int dy) {
-  if (!a->focus) return;
-  struct dirsearch d = {a->focus, dx, dy, NULL, 0};
-  walk(a->root, dir_cb, &d);
-  if (d.best) a->focus = d.best;
+  if (!cur(a)->focus) return;
+  struct dirsearch d = {cur(a)->focus, dx, dy, NULL, 0};
+  walk(cur(a)->root, dir_cb, &d);
+  if (d.best) cur(a)->focus = d.best;
 }
 
 struct nextsearch {
@@ -365,9 +559,9 @@ static void next_cb(node_t *n, void *ud) {
 }
 
 static void focus_next(app_t *a) {
-  struct nextsearch s = {a->focus, NULL, NULL, NULL, false};
-  walk(a->root, next_cb, &s);
-  a->focus = s.next ? s.next : s.first;
+  struct nextsearch s = {cur(a)->focus, NULL, NULL, NULL, false};
+  walk(cur(a)->root, next_cb, &s);
+  cur(a)->focus = s.next ? s.next : s.first;
 }
 
 /* ---- drawing ------------------------------------------------------------ */
@@ -375,7 +569,7 @@ static void focus_next(app_t *a) {
 static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
   if (r.w < 3 || r.h < 3) return;
-  bool focused = leaf == a->focus;
+  bool focused = leaf == cur(a)->focus;
   color_t fg = focused ? FRAME_FOCUS : FRAME_IDLE;
   uint16_t attrs = 0;
 
@@ -449,7 +643,27 @@ static void draw_cb(node_t *n, void *ud) {
           action);
 
   draw_frame(d->a, d->s, n);
-  pane_compose(n->pane, d->s, n->content.x, n->content.y, n == d->a->focus);
+  pane_compose(n->pane, d->s, n->content.x, n->content.y, n == cur(d->a)->focus);
+}
+
+static void draw_tab_strip(app_t *a, screen_t *s) {
+  uint16_t x = (uint16_t)(CFG.gap * CFG.gap_aspect);
+  for (size_t i = 0; i < a->ntabs && x < s->cols; i++) {
+    tab_t *t = &a->tabs[i];
+    char label[80];
+    const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
+    if (nm[0]) snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+    else snprintf(label, sizeof label, " %zu ", i + 1);
+
+    bool active = i == a->cur;
+    uint16_t w = screen_text(s, x, CFG.gap, label,
+                             active ? TITLE_FOCUS : FRAME_IDLE, NO_COLOR,
+                             active ? ATTR_BOLD : 0);
+    char action[48];
+    snprintf(action, sizeof action, "tab:%u", t->id);
+    hit_add(&s->hits, x, CFG.gap, w, 1, action);
+    x = (uint16_t)(x + w);
+  }
 }
 
 void app_compose(app_t *a, screen_t *s) {
@@ -457,30 +671,27 @@ void app_compose(app_t *a, screen_t *s) {
   hit_reset(&s->hits);
   s->cursor_visible = false;
   a->painted = s;
-  if (!a->root) return;
+  if (!a->ntabs || !cur(a)->root) return;
   layout(a);
+  draw_tab_strip(a, s);
   struct draw d = {a, s};
-  walk(a->root, draw_cb, &d);
+  walk(cur(a)->root, draw_cb, &d);
 }
 
 /* ---- input -------------------------------------------------------------- */
 
-struct byid {
-  uint32_t id;
-  node_t *found;
-};
-static void byid_cb(node_t *n, void *ud) {
-  struct byid *b = ud;
-  if (n->id == b->id) b->found = n;
-}
-
 static node_t *by_id(app_t *a, uint32_t id) {
   struct byid b = {id, NULL};
-  walk(a->root, byid_cb, &b);
+  walk(cur(a)->root, byid_cb, &b);
   return b.found;
 }
 
 static void do_action(app_t *a, const char *action, const input_event_t *ev) {
+  if (strncmp(action, "tab:", 4) == 0) {
+    if (ev->maction == MOUSE_PRESS)
+      app_select_tab_id(a, (uint32_t)strtoul(action + 4, NULL, 10));
+    return;
+  }
   /* Chrome activates on press. Forwarding to a pane does not: an app wants the
    * release and the motion too. Without this, one click of the split button
    * splits twice — press and release both landing on the same target. */
@@ -494,19 +705,19 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   if (!n) return;
 
   if (strncmp(action, "split:", 6) == 0) {
-    a->focus = n;
+    cur(a)->focus = n;
     split_focus(a, SPLIT_COLS);
   } else if (strncmp(action, "close:", 6) == 0) {
     close_leaf(a, n);
   } else if (strncmp(action, "pane:", 5) == 0) {
-    a->focus = n;
+    cur(a)->focus = n;
     /* translate to pane-local coordinates before forwarding */
     input_event_t local = *ev;
     local.mx = (uint16_t)(ev->mx - n->content.x);
     local.my = (uint16_t)(ev->my - n->content.y);
     pane_send_mouse(n->pane, &local);
   } else if (strncmp(action, "focus:", 6) == 0) {
-    a->focus = n;
+    cur(a)->focus = n;
   }
 }
 
@@ -521,25 +732,33 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
       split_focus(a, SPLIT_ROWS);
       return true;
     case GHOSTTY_KEY_X:
-      if (a->focus) close_leaf(a, a->focus);
+      if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;
     case GHOSTTY_KEY_O: focus_next(a); return true;
+    case GHOSTTY_KEY_C: app_new_tab(a, ""); return true;
+    case GHOSTTY_KEY_N: app_cycle_tab(a, 1); return true;
+    case GHOSTTY_KEY_P: app_cycle_tab(a, -1); return true;
     case GHOSTTY_KEY_H: case GHOSTTY_KEY_ARROW_LEFT: focus_dir(a, -1, 0); return true;
     case GHOSTTY_KEY_L: case GHOSTTY_KEY_ARROW_RIGHT: focus_dir(a, 1, 0); return true;
     case GHOSTTY_KEY_K: case GHOSTTY_KEY_ARROW_UP: focus_dir(a, 0, -1); return true;
     case GHOSTTY_KEY_J: case GHOSTTY_KEY_ARROW_DOWN: focus_dir(a, 0, 1); return true;
-    default: return false;
+    default:
+      if (ev->key >= GHOSTTY_KEY_DIGIT_1 && ev->key <= GHOSTTY_KEY_DIGIT_9) {
+        app_select_tab(a, (size_t)(ev->key - GHOSTTY_KEY_DIGIT_1));
+        return true;
+      }
+      return false;
   }
 }
 
 void app_event(app_t *a, const input_event_t *ev) {
-  if (!a->focus) return;
+  if (!cur(a)->focus) return;
 
   if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
     bool ctrl_a = (ev->mods & MOD_CTRL) && ev->unshifted == 'a';
     if (a->prefix) {
       a->prefix = false;
-      if (ctrl_a) { pane_send_key(a->focus->pane, ev); return; }
+      if (ctrl_a) { pane_send_key(cur(a)->focus->pane, ev); return; }
       prefix_command(a, ev); /* unbound: swallowed */
       return;
     }
@@ -551,7 +770,7 @@ void app_event(app_t *a, const input_event_t *ev) {
 
   switch (ev->kind) {
     case EV_KEY:
-      pane_send_key(a->focus->pane, ev);
+      pane_send_key(cur(a)->focus->pane, ev);
       break;
     case EV_MOUSE: {
       /* Mouse routing is a hit-list lookup, never a re-derivation of geometry:
@@ -562,7 +781,7 @@ void app_event(app_t *a, const input_event_t *ev) {
       break;
     }
     case EV_PASTE:
-      pane_send_paste(a->focus->pane, ev->paste, ev->paste_len);
+      pane_send_paste(cur(a)->focus->pane, ev->paste, ev->paste_len);
       break;
     default:
       break;
@@ -588,7 +807,10 @@ static void panes_cb(node_t *n, void *ud) {
   json_int(j, "content_y", n->content.y);
   json_int(j, "content_w", n->content.w);
   json_int(j, "content_h", n->content.h);
-  json_bool(j, "focused", n == pj->a->focus);
+  json_bool(j, "focused", n == cur(pj->a)->focus);
+  json_str(j, "purpose", n->purpose, strlen(n->purpose));
+  json_bool(j, "purpose_declared", n->purpose_locked);
+  json_int(j, "tab", (long long)tab_of(pj->a, n) + 1);
   const char *t = pane_title(n->pane);
   json_str(j, "title", t ? t : "", t ? strlen(t) : 0);
   json_obj_close(j);
@@ -598,7 +820,30 @@ char *app_panes_json(app_t *a) {
   json_t j;
   json_init(&j);
   json_arr_open(&j, NULL);
-  walk(a->root, panes_cb, &(struct panes_json){a, &j});
+  struct panes_json pj = {a, &j};
+  walk_all(a, panes_cb, &pj); /* every tab, so tooling can find any pane */
+  json_arr_close(&j);
+  return j.buf;
+}
+
+char *app_tabs_json(app_t *a) {
+  json_t j;
+  json_init(&j);
+  json_arr_open(&j, NULL);
+  for (size_t i = 0; i < a->ntabs; i++) {
+    tab_t *t = &a->tabs[i];
+    size_t panes = 0;
+    walk(t->root, count_cb, &panes);
+    json_obj_open(&j, NULL);
+    json_int(&j, "id", t->id);
+    json_int(&j, "index", (long long)i + 1);
+    json_str(&j, "name", t->name, strlen(t->name));
+    json_str(&j, "purpose", t->purpose, strlen(t->purpose));
+    json_bool(&j, "purpose_declared", t->purpose_locked);
+    json_bool(&j, "active", i == a->cur);
+    json_int(&j, "panes", (long long)panes);
+    json_obj_close(&j);
+  }
   json_arr_close(&j);
   return j.buf;
 }

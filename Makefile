@@ -49,7 +49,7 @@ $(TEST_BIN): tests/input_test.c src/input.c $(VT_LIB) | build
 test: $(BIN) $(TEST_BIN) ## unit + headless checks (fast)
 	./$(TEST_BIN)
 	@echo
-	cd tests && python3 test_screen.py && python3 test_layout.py
+	cd tests && python3 test_screen.py && python3 test_layout.py && python3 test_tabs.py
 
 test-live: $(BIN) ## the checks that need a real tty (slow)
 	python3 tests/live_m0.py
