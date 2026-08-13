@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "input.h"
+
 /* ---- screen: our composited cell buffer + diff emitter ---------------- */
 
 enum {
@@ -88,6 +90,10 @@ bool pane_alive(const pane_t *p);
  * -1 on error (EAGAIN is reported as 0 bytes with alive still true). */
 ssize_t pane_pump(pane_t *p);
 void pane_write(pane_t *p, const void *buf, size_t len);
+/* Re-encode a decoded event against this pane's own negotiated modes. */
+void pane_send_key(pane_t *p, const input_event_t *ev);
+void pane_send_mouse(pane_t *p, const input_event_t *ev);
+void pane_send_paste(pane_t *p, const char *text, size_t len);
 void pane_resize(pane_t *p, uint16_t cols, uint16_t rows);
 bool pane_dirty(pane_t *p);
 const char *pane_title(const pane_t *p);

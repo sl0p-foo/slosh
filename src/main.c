@@ -4,6 +4,8 @@
 #define _GNU_SOURCE
 #include "sl0ptty.h"
 
+#include <ghostty/vt.h>
+
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -16,7 +18,22 @@
 #include <time.h>
 #include <unistd.h>
 
-#define FRAME_MS 8 /* ~120Hz cap; pty reads are coalesced into one paint */
+#define FRAME_MS 8   /* ~120Hz cap; pty reads are coalesced into one paint */
+#define ESC_MS 40    /* how long a bare ESC waits to become a sequence */
+
+/* What we ask the outer terminal for. Kitty keyboard flag 1 (disambiguate)
+ * costs nothing on terminals that ignore it, and everything a pane receives is
+ * re-encoded for that pane anyway, so an inner app that has never heard of
+ * kitty still gets legacy bytes. */
+#define TERM_ENTER \
+  "\x1b[?1049h\x1b[0m\x1b[2J" /* alt screen */ \
+  "\x1b[?1002h\x1b[?1006h"    /* mouse: button+drag, SGR encoding */ \
+  "\x1b[?1004h"               /* focus in/out */ \
+  "\x1b[?2004h"               /* bracketed paste */ \
+  "\x1b[>1u"                  /* kitty keyboard, pushed */
+#define TERM_LEAVE \
+  "\x1b[<u\x1b[?2004l\x1b[?1004l\x1b[?1006l\x1b[?1002l" \
+  "\x1b[?25h\x1b[0m\x1b[?1049l"
 
 static volatile sig_atomic_t g_winch = 0, g_quit = 0;
 static struct termios g_saved_tio;
@@ -29,8 +46,7 @@ static void on_signal(int sig) {
 
 static void restore_tty(void) {
   if (g_tio_saved) tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_saved_tio);
-  const char *leave = "\x1b[?25h\x1b[0m\x1b[?1049l";
-  ssize_t r = write(STDOUT_FILENO, leave, strlen(leave));
+  ssize_t r = write(STDOUT_FILENO, TERM_LEAVE, strlen(TERM_LEAVE));
   (void)r;
 }
 
@@ -43,8 +59,7 @@ static int raw_mode(void) {
   t.c_cc[VTIME] = 0;
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t) != 0) return -1;
   atexit(restore_tty);
-  const char *enter = "\x1b[?1049h\x1b[0m\x1b[2J";
-  ssize_t r = write(STDOUT_FILENO, enter, strlen(enter));
+  ssize_t r = write(STDOUT_FILENO, TERM_ENTER, strlen(TERM_ENTER));
   (void)r;
   return 0;
 }
@@ -102,6 +117,41 @@ static int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
 
 /* ---- interactive -------------------------------------------------------- */
 
+/* Where decoded events go. The prefix (C-a) is handled here, on semantic
+ * events, so it cannot be confused by a byte that merely looks like C-a in the
+ * middle of a UTF-8 sequence or an escape. */
+typedef struct {
+  pane_t *pane;
+  bool prefix;
+  volatile sig_atomic_t *quit;
+} dispatch_t;
+
+static void on_event(const input_event_t *ev, void *ud) {
+  dispatch_t *d = ud;
+
+  if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
+    bool ctrl_a = (ev->mods & MOD_CTRL) && ev->unshifted == 'a';
+    if (d->prefix) {
+      d->prefix = false;
+      if (ev->key == GHOSTTY_KEY_Q) { *d->quit = 1; return; }
+      if (ctrl_a) { pane_send_key(d->pane, ev); return; } /* C-a C-a = literal */
+      return;                                             /* unbound: swallow */
+    }
+    if (ctrl_a) {
+      d->prefix = true;
+      return;
+    }
+  }
+
+  switch (ev->kind) {
+    case EV_KEY: pane_send_key(d->pane, ev); break;
+    case EV_MOUSE: pane_send_mouse(d->pane, ev); break;
+    case EV_PASTE: pane_send_paste(d->pane, ev->paste, ev->paste_len); break;
+    case EV_FOCUS: break; /* M1: focus follows the layout, not the client */
+    default: break;
+  }
+}
+
 static int run_interactive(const char *const argv[]) {
   uint16_t cols, rows;
   term_size(&cols, &rows);
@@ -120,15 +170,23 @@ static int run_interactive(const char *const argv[]) {
   screen_t s;
   screen_init(&s, cols, rows);
 
+  input_parser_t *in = input_new();
+  dispatch_t d = {.pane = p, .quit = &g_quit};
+
   bool pending_paint = true;
   int64_t next_frame = 0;
-  bool prefix = false; /* M0 scaffolding: C-a q quits, C-a C-a sends C-a */
+  int64_t esc_due = 0;
 
   while (!g_quit && pane_alive(p)) {
     int timeout = -1;
     if (pending_paint) {
       int64_t due = next_frame - now_ms();
       timeout = due <= 0 ? 0 : (int)due;
+    }
+    if (input_pending(in)) {
+      int64_t due = esc_due - now_ms();
+      int t = due <= 0 ? 0 : (int)due;
+      if (timeout < 0 || t < timeout) timeout = t;
     }
 
     struct pollfd pfds[2] = {
@@ -149,21 +207,16 @@ static int run_interactive(const char *const argv[]) {
     if (n < 0 && errno != EINTR) break;
 
     if (n > 0 && (pfds[0].revents & POLLIN)) {
-      char buf[8192];
+      uint8_t buf[8192];
       ssize_t r = read(STDIN_FILENO, buf, sizeof buf);
       if (r > 0) {
-        for (ssize_t i = 0; i < r; i++) {
-          if (prefix) {
-            prefix = false;
-            if (buf[i] == 'q') { g_quit = 1; break; }
-            if (buf[i] == 0x01) { pane_write(p, "\x01", 1); continue; }
-            continue; /* unknown prefix command: swallow */
-          }
-          if (buf[i] == 0x01) { prefix = true; continue; }
-          pane_write(p, &buf[i], 1);
-        }
+        input_feed(in, buf, (size_t)r, on_event, &d);
+        esc_due = now_ms() + ESC_MS;
       }
     }
+
+    /* A lone ESC is only the Escape key once nothing follows it. */
+    if (input_pending(in) && now_ms() >= esc_due) input_timeout(in, on_event, &d);
 
     if (n > 0 && (pfds[1].revents & (POLLIN | POLLHUP))) {
       pane_pump(p);
@@ -180,6 +233,7 @@ static int run_interactive(const char *const argv[]) {
     }
   }
 
+  input_free(in);
   screen_free(&s);
   pane_free(p);
   restore_tty();

@@ -49,6 +49,9 @@ it is *not* a free OSC 5577 hook. Three consequences, all cheap:
    CSI-u, SGR mouse, bracketed paste, focus events. Because we decode to a
    semantic event and re-encode per pane against *that pane's* modes, kitty
    keyboard passthrough works properly — which tmux and zellij both fumble.
+   **Done** (`src/input.c`, ~500 LOC): 40 table-driven cases plus a live check
+   that drives one client into two panes with different negotiated modes and
+   asserts each receives the encoding *it* asked for.
 2. **Compositor + diff → ANSI.** Turning N panes of cells into a minimal byte
    stream for the real terminal.
 3. **pty spawn, event loop, layout tree, sockets, config.**
@@ -149,8 +152,11 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 
 ## Milestones
 
-- **M0** — pty + one fullscreen pane + input passthrough + resize
-- **M0.5** — headless mode + screen-assert harness
+- **M0** — pty + one fullscreen pane + input passthrough + resize ✅
+- **M0.25** — input decoder + per-pane re-encode ✅ (pulled forward: retrofitting
+  it under a layout tree would have been worse, and it is the load-bearing
+  half of the mouse work in M4)
+- **M0.5** — headless mode + screen-assert harness (seeded: `--headless`)
 - **M1** — layout tree, splits, focus, frames (gap/padding/title alignment)
 - **M2** — server/client split, detach/reattach, control socket
 - **M3** — tabs, `purpose=`, JSON control API

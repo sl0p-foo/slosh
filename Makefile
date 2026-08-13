@@ -41,8 +41,17 @@ $(VT_LIB):
 vendor: ## build the vendored libghostty-vt (needs zig 0.16)
 	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build -Demit-lib-vt -Doptimize=ReleaseFast
 
-test: $(BIN) ## run the live pty checks
+TEST_BIN := build/input_test
+
+$(TEST_BIN): tests/input_test.c src/input.c $(VT_LIB) | build
+	$(CC) $(CFLAGS) tests/input_test.c src/input.c $(VT_LIB) -o $@
+
+test: $(BIN) $(TEST_BIN) ## run unit + live checks
+	./$(TEST_BIN)
+	@echo
 	python3 tests/live_m0.py
+	@echo
+	python3 tests/live_input.py
 
 smoke: $(BIN) ## compose a screen headlessly and print it
 	./$(BIN) --headless --cols 40 --rows 6 -- /bin/sh -c 'printf "hello \033[1;32msl0ptty\033[0m\n"; echo "wide: 日本語"'

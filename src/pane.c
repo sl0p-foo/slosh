@@ -9,12 +9,18 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "input.h"
+
 struct pane {
   pty_t pty;
   GhosttyTerminal term;
   GhosttyRenderState rstate;
   GhosttyRenderStateRowIterator rows;
   GhosttyRenderStateRowCells cells;
+  GhosttyKeyEncoder kenc;
+  GhosttyKeyEvent kev;
+  GhosttyMouseEncoder menc;
+  GhosttyMouseEvent mev;
   uint16_t cols, rows_n;
   bool alive;
   bool dirty;
@@ -60,6 +66,10 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
     goto fail;
   if (ghostty_render_state_row_cells_new(NULL, &p->cells) != GHOSTTY_SUCCESS)
     goto fail;
+  if (ghostty_key_encoder_new(NULL, &p->kenc) != GHOSTTY_SUCCESS) goto fail;
+  if (ghostty_key_event_new(NULL, &p->kev) != GHOSTTY_SUCCESS) goto fail;
+  if (ghostty_mouse_encoder_new(NULL, &p->menc) != GHOSTTY_SUCCESS) goto fail;
+  if (ghostty_mouse_event_new(NULL, &p->mev) != GHOSTTY_SUCCESS) goto fail;
 
   void *self = p;
   GhosttyTerminalWritePtyFn wfn = on_write_pty;
@@ -81,6 +91,10 @@ fail:
 void pane_free(pane_t *p) {
   if (!p) return;
   if (p->pty.fd >= 0) pty_close(&p->pty);
+  if (p->mev) ghostty_mouse_event_free(p->mev);
+  if (p->menc) ghostty_mouse_encoder_free(p->menc);
+  if (p->kev) ghostty_key_event_free(p->kev);
+  if (p->kenc) ghostty_key_encoder_free(p->kenc);
   if (p->cells) ghostty_render_state_row_cells_free(p->cells);
   if (p->rows) ghostty_render_state_row_iterator_free(p->rows);
   if (p->rstate) ghostty_render_state_free(p->rstate);
@@ -130,6 +144,69 @@ void pane_write(pane_t *p, const void *buf, size_t len) {
     }
     off += (size_t)n;
   }
+}
+
+/* Re-encode a decoded event for *this* pane, against the modes this pane has
+ * actually negotiated (kitty flags, cursor-key application mode, alt-esc
+ * prefix, modifyOtherKeys). This is the reason we decode at all. */
+void pane_send_key(pane_t *p, const input_event_t *ev) {
+  ghostty_key_encoder_setopt_from_terminal(p->kenc, p->term);
+  ghostty_key_event_set_key(p->kev, (GhosttyKey)ev->key);
+  ghostty_key_event_set_mods(p->kev, (GhosttyMods)ev->mods);
+  ghostty_key_event_set_action(p->kev, (GhosttyKeyAction)ev->action);
+  ghostty_key_event_set_utf8(p->kev, ev->text_len ? ev->text : NULL,
+                             ev->text_len);
+  ghostty_key_event_set_unshifted_codepoint(p->kev, ev->unshifted);
+
+  char out[128];
+  size_t n = 0;
+  if (ghostty_key_encoder_encode(p->kenc, p->kev, out, sizeof out, &n) ==
+          GHOSTTY_SUCCESS &&
+      n > 0)
+    pane_write(p, out, n);
+}
+
+void pane_send_mouse(pane_t *p, const input_event_t *ev) {
+  ghostty_mouse_encoder_setopt_from_terminal(p->menc, p->term);
+
+  /* The encoder works in surface pixels. We have no pixels, so we declare a
+   * 1x1-pixel cell: cell coordinates and "pixels" become the same number, and
+   * SGR-pixel mode degrades to cell precision instead of lying. */
+  GhosttyMouseEncoderSize size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+  size.screen_width = p->cols;
+  size.screen_height = p->rows_n;
+  size.cell_width = 1;
+  size.cell_height = 1;
+  ghostty_mouse_encoder_setopt(p->menc, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+
+  GhosttyMousePosition pos = {.x = (float)ev->mx, .y = (float)ev->my};
+  ghostty_mouse_event_set_position(p->mev, pos);
+  ghostty_mouse_event_set_button(p->mev, (GhosttyMouseButton)ev->button);
+  ghostty_mouse_event_set_action(p->mev, (GhosttyMouseAction)ev->maction);
+  ghostty_mouse_event_set_mods(p->mev, (GhosttyMods)ev->mods);
+
+  char out[128];
+  size_t n = 0;
+  if (ghostty_mouse_encoder_encode(p->menc, p->mev, out, sizeof out, &n) ==
+          GHOSTTY_SUCCESS &&
+      n > 0)
+    pane_write(p, out, n);
+}
+
+/* Bracketed-paste aware, and lib-vt decides whether the payload is safe. */
+void pane_send_paste(pane_t *p, const char *text, size_t len) {
+  GhosttyTerminalModeConfig mc = {.mode = ghostty_mode_new(2004, false)};
+  ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_MODE, &mc);
+  bool bracketed = mc.value;
+
+  size_t need = 0;
+  ghostty_paste_encode((char *)text, len, bracketed, NULL, 0, &need);
+  char *buf = malloc(need ? need : len + 16);
+  size_t n = 0;
+  if (ghostty_paste_encode((char *)text, len, bracketed, buf,
+                           need ? need : len + 16, &n) == GHOSTTY_SUCCESS)
+    pane_write(p, buf, n);
+  free(buf);
 }
 
 void pane_resize(pane_t *p, uint16_t cols, uint16_t rows) {
