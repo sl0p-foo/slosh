@@ -6,6 +6,7 @@ taxed every frame three columns forever. A border encodes the direction by
 being on that side, costs nothing when idle, and shows a preview on hover.
 """
 import sys
+import time
 
 from harness import Session, check, report
 
@@ -14,6 +15,12 @@ SH = ["/bin/sh", "-c", 'printf "\\033]2;shell\\007"; stty raw -echo; cat']
 
 def hover(s, x, y):
     s.send(rf"\e[<35;{x + 1};{y + 1}M")
+
+
+def rest(s, x, y):
+    """Hover and stay there: the guide arms on dwell, not on contact."""
+    hover(s, x, y)
+    time.sleep(0.35)
 
 
 def click(s, x, y):
@@ -82,24 +89,21 @@ def test_the_guide():
               "┃" not in snap.screen() and "╎" not in snap.screen(),
               repr(snap.screen()[:120]))
 
-        hover(s, p["x"], p["y"] + 2)  # left border
-        s.settle(60)
+        rest(s, p["x"], p["y"] + 2)  # left border
         snap = s.snapshot()
         check("hovering a side border arms it", "┃" in snap.screen(),
               repr(snap.screen()[:200]))
         check("and previews where the split would land", "╎" in snap.screen(),
               repr(snap.screen()[:200]))
 
-        hover(s, p["x"] + 4, p["y"] + p["h"] - 1)  # bottom border
-        s.settle(60)
+        rest(s, p["x"] + 4, p["y"] + p["h"] - 1)  # bottom border
         snap = s.snapshot()
         check("hovering the bottom border arms that instead",
               "━" in snap.screen() and "╌" in snap.screen(), repr(snap.screen()[:200]))
         check("and the side guide is gone", "┃" not in snap.screen(),
               repr(snap.screen()[:200]))
 
-        hover(s, p["content_x"] + 3, p["content_y"] + 2)  # into the content
-        s.settle(60)
+        rest(s, p["content_x"] + 3, p["content_y"] + 2)  # into the content
         snap = s.snapshot()
         check("moving off a border puts the guide away",
               "━" not in snap.screen() and "┃" not in snap.screen(),
@@ -119,8 +123,7 @@ def test_guide_follows_the_new_layout():
         p = s.pane()
         edge_x, edge_y = p["x"] + p["w"] - 1, p["y"] + 3
 
-        hover(s, edge_x, edge_y)
-        s.settle(60)
+        rest(s, edge_x, edge_y)
         click(s, edge_x, edge_y)
         s.settle(100)  # and deliberately no further mouse movement
 
@@ -141,14 +144,74 @@ def test_guide_follows_the_new_layout():
               str(snap.hit_at(edge_x, edge_y)))
 
 
+def test_the_guide_waits_for_a_rest():
+    """A pointer crossing a border on its way elsewhere must not flash it."""
+    with Session(SH, cols=54, rows=12) as s:
+        s.settle()
+        p = s.pane()
+        left, right = p["x"], p["x"] + p["w"] - 1
+        row = p["y"] + 3
+
+        hover(s, left, row)
+        snap = s.snapshot()  # no dwell: this is the moment of contact
+        check("touching a border does not arm it immediately",
+              "┃" not in snap.screen(), repr(snap.screen()[:160]))
+
+        # keep moving: across the pane and onto the other border
+        hover(s, left + 6, row)
+        hover(s, right, row)
+        snap = s.snapshot()
+        check("passing over borders arms nothing", "┃" not in snap.screen(),
+              repr(snap.screen()[:160]))
+
+        time.sleep(0.4)  # now rest
+        snap = s.snapshot()
+        check("resting on one arms it", "┃" in snap.screen(),
+              repr(snap.screen()[:200]))
+        check("and it is the border being rested on",
+              snap.hit_at(right, row) == f"border:{p['id']}:r",
+              str(snap.hit_at(right, row)))
+
+        hover(s, p["content_x"] + 2, row)
+        snap = s.snapshot()
+        check("moving away disarms it at once", "┃" not in snap.screen(),
+              repr(snap.screen()[:160]))
+
+
+def test_press_skips_the_wait():
+    with Session(SH, cols=54, rows=12) as s:
+        s.settle()
+        p = s.pane()
+        x, y = p["x"] + p["w"] - 1, p["y"] + 3
+        s.send(rf"\e[<0;{x + 1};{y + 1}M")  # press and hold: that is intent
+        snap = s.snapshot()
+        check("holding the button on a border arms it immediately",
+              "┃" in snap.screen(), repr(snap.screen()[:200]))
+        s.send(rf"\e[<0;{x + 1};{y + 1}m")
+
+
+def test_delay_is_configurable():
+    import os, tempfile
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write("hover_delay_ms 0\n")
+    f.close()
+    with Session(SH, cols=54, rows=12, config=f.name) as s:
+        s.settle()
+        p = s.pane()
+        hover(s, p["x"], p["y"] + 3)
+        snap = s.snapshot()
+        check("with no delay configured it arms on contact",
+              "┃" in snap.screen(), repr(snap.screen()[:160]))
+    os.unlink(f.name)
+
+
 def test_guide_is_per_pane():
     with Session(SH, cols=90, rows=14) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
         left, right = s.panes()
-        hover(s, left["x"], left["y"] + 2)
-        s.settle(60)
+        rest(s, left["x"], left["y"] + 2)
         snap = s.snapshot()
         row = snap.line(left["y"] + 2)
         check("the hovered pane is armed", "┃" in row[left["x"]:left["x"] + left["w"]],
@@ -204,6 +267,9 @@ if __name__ == "__main__":
     test_each_border_splits_toward_itself()
     test_the_guide()
     test_guide_follows_the_new_layout()
+    test_the_guide_waits_for_a_rest()
+    test_press_skips_the_wait()
+    test_delay_is_configurable()
     test_guide_is_per_pane()
     test_drag_still_moves()
     test_tiny_panes_have_no_targets()

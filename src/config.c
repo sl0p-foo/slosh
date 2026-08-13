@@ -127,6 +127,7 @@ void config_defaults(config_t *c) {
   c->min_pane_rows = 6;
   c->scroll_lines = 3;
   c->toast_ms = 2500;
+  c->hover_delay_ms = 250;
   c->status_bar = true;
   c->focus_follows_mouse = true;
 
@@ -245,6 +246,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   c->scroll_lines =
       (uint16_t)kdl_arg_int(kdl_child(root, "scroll_lines"), 0, c->scroll_lines);
   c->toast_ms = (uint16_t)kdl_arg_int(kdl_child(root, "toast_ms"), 0, c->toast_ms);
+  c->hover_delay_ms = (uint16_t)kdl_arg_int(kdl_child(root, "hover_delay_ms"), 0,
+                                            c->hover_delay_ms);
 
   const char *sh = kdl_arg(kdl_child(root, "shell"), 0, NULL);
   if (sh) {

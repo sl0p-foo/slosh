@@ -58,7 +58,8 @@ typedef struct {
   align_t title_align;
   uint16_t min_pane_cols, min_pane_rows;
   uint16_t scroll_lines;
-  uint16_t toast_ms; /* how long an announcement stays up */ /* rows per wheel notch */
+  uint16_t toast_ms;
+  uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
   bool status_bar;
   bool focus_follows_mouse;
 

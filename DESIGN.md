@@ -267,6 +267,16 @@ The top border keeps its other job: **click splits upward, drag moves the
 pane**. A press that never moves is a click — the same distinction the drag
 machine already had to make.
 
+**The guide arms on dwell, not on contact** (`hover_delay_ms`, 250ms). A
+pointer crossing a border on its way somewhere else should not make the screen
+flash, and the timer is on *pointer stillness* rather than on the target, so
+sweeping across three borders arms none of them. Holding the button on a
+border is intent, and skips the wait.
+
+That needs the event loop to wake when nothing has happened — the same
+mechanism toasts already needed, since a pointer that is deliberately not
+moving generates no events to repaint on.
+
 **The guide is derived, not remembered.** Which border the pointer is over is
 worked out *during the paint*, by asking the hit list that same paint just
 filled. The first version remembered the answer from the last motion event,

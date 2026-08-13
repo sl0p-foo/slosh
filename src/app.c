@@ -136,6 +136,7 @@ struct app {
    * the mouse moved and corrected it. */
   uint16_t ptr_x, ptr_y;
   bool ptr_valid;
+  int64_t ptr_still_since; /* when the pointer last stopped moving */
 
   /* Transient announcements: "copied 13 chars", a notification from a pane,
    * a config reload. They stack upward from the bottom right and expire on
@@ -213,11 +214,25 @@ static void toasts_expire(app_t *a) {
   a->ntoasts = keep;
 }
 
-/* When the next toast expires, so a caller's poll can wake for it. */
+/* When something needs repainting on its own: a toast expiring, or a hover
+ * guide arming. Without the second one the guide would appear on the next
+ * event rather than when the dwell is up, which for a resting pointer means
+ * "never". */
 int app_next_deadline_ms(app_t *a) {
   int64_t soonest = -1;
   for (size_t i = 0; i < a->ntoasts; i++)
     if (soonest < 0 || a->toasts[i].until < soonest) soonest = a->toasts[i].until;
+
+  if (a->ptr_valid && a->painted) {
+    int64_t due = a->ptr_still_since + CFG.hover_delay_ms;
+    if (due > now_ms_()) {
+      const char *action = hit_test(&a->painted->hits, a->ptr_x, a->ptr_y);
+      bool on_border = action && (strncmp(action, "border:", 7) == 0 ||
+                                  strncmp(action, "title:", 6) == 0);
+      if (on_border && (soonest < 0 || due < soonest)) soonest = due;
+    }
+  }
+
   if (soonest < 0) return -1;
   int64_t in = soonest - now_ms_();
   return in <= 0 ? 0 : (int)in;
@@ -1187,6 +1202,13 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
       a->drag.kind == DRAG_EDGE)
     return; /* a drag in progress means the pointer is busy */
 
+  /* Arm on dwell, not on contact: a pointer merely crossing a border on its
+   * way somewhere else should not make the screen flash. Holding the button
+   * on a border is intent, so that skips the wait. */
+  if (a->drag.kind != DRAG_BORDER &&
+      now_ms_() - a->ptr_still_since < CFG.hover_delay_ms)
+    return;
+
   /* Ask the hit list where the pointer is, using the entries this very pass
    * registered for this pane. Drawing and hit-testing cannot disagree, and
    * neither can drawing and *the layout*. */
@@ -1916,6 +1938,8 @@ void app_event(app_t *a, const input_event_t *ev) {
       if (!a->painted) break;
       const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
 
+      if (!a->ptr_valid || ev->mx != a->ptr_x || ev->my != a->ptr_y)
+        a->ptr_still_since = now_ms_();
       a->ptr_x = ev->mx;
       a->ptr_y = ev->my;
       a->ptr_valid = true;

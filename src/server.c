@@ -217,10 +217,11 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       int t = due <= 0 ? 0 : (int)due;
       if (timeout < 0 || t < timeout) timeout = t;
     }
-    /* a toast expires on its own, so the loop has to wake for it */
-    int toast_due = app_next_deadline_ms(s.app);
-    if (toast_due >= 0 && (timeout < 0 || toast_due < timeout)) {
-      timeout = toast_due;
+    /* some things happen without an event: a toast expiring, a hover guide
+     * arming under a pointer that is deliberately not moving */
+    int self_due = app_next_deadline_ms(s.app);
+    if (self_due >= 0 && (timeout < 0 || self_due < timeout)) {
+      timeout = self_due;
       pending_paint = true;
     }
 
