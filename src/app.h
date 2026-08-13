@@ -33,6 +33,9 @@ void app_compose(app_t *a, screen_t *s);
 /* Bytes straight into the focused pane's pty (the harness's `raw`). */
 void app_write_focused(app_t *a, const void *buf, size_t len);
 bool app_should_quit(const app_t *a);
+/* C-a d asks the client to leave while the session keeps running. */
+bool app_detach_requested(const app_t *a);
+void app_clear_detach(app_t *a);
 size_t app_pane_count(const app_t *a);
 
 /* Layout as JSON, for the harness: id, rect, focus, title. Caller frees. */

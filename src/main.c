@@ -1,70 +1,28 @@
-/* M0: one pty, one fullscreen pane, input passthrough, resize.
- * Plus a seed of the headless harness (M0.5) so this is testable without a tty.
+/* Entry point and argument parsing.
+ *
+ *   sl0ptty                  attach to session "main", creating it if needed
+ *   sl0ptty -s NAME          ... a named session
+ *   sl0ptty ls               live sessions
+ *   sl0ptty cmd LINE         one control command against a session
+ *   sl0ptty --server NAME    run a session in the foreground (internal)
+ *   sl0ptty --script         the headless driver (no server, no tty)
+ *   sl0ptty --headless       run once, print the screen
  */
 #define _GNU_SOURCE
 #include "sl0ptty.h"
-#include "app.h"
 
-#include <ghostty/vt.h>
-
-#include <errno.h>
-#include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/wait.h>
 #include <termios.h>
-#include <time.h>
 #include <unistd.h>
 
-#define MAX_PANES 64 /* a screen cannot usefully hold more */
-#define FRAME_MS 8   /* ~120Hz cap; pty reads are coalesced into one paint */
-#define ESC_MS 40    /* how long a bare ESC waits to become a sequence */
+#include "proto.h"
+#include "server.h"
 
-/* What we ask the outer terminal for. Kitty keyboard flag 1 (disambiguate)
- * costs nothing on terminals that ignore it, and everything a pane receives is
- * re-encoded for that pane anyway, so an inner app that has never heard of
- * kitty still gets legacy bytes. */
-#define TERM_ENTER \
-  "\x1b[?1049h\x1b[0m\x1b[2J" /* alt screen */ \
-  "\x1b[?1002h\x1b[?1006h"    /* mouse: button+drag, SGR encoding */ \
-  "\x1b[?1004h"               /* focus in/out */ \
-  "\x1b[?2004h"               /* bracketed paste */ \
-  "\x1b[>1u"                  /* kitty keyboard, pushed */
-#define TERM_LEAVE \
-  "\x1b[<u\x1b[?2004l\x1b[?1004l\x1b[?1006l\x1b[?1002l" \
-  "\x1b[?25h\x1b[0m\x1b[?1049l"
-
-static volatile sig_atomic_t g_winch = 0, g_quit = 0;
-static struct termios g_saved_tio;
-static bool g_tio_saved = false;
-
-static void on_signal(int sig) {
-  if (sig == SIGWINCH) g_winch = 1;
-  else g_quit = 1;
-}
-
-static void restore_tty(void) {
-  if (g_tio_saved) tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_saved_tio);
-  ssize_t r = write(STDOUT_FILENO, TERM_LEAVE, strlen(TERM_LEAVE));
-  (void)r;
-}
-
-static int raw_mode(void) {
-  if (tcgetattr(STDIN_FILENO, &g_saved_tio) != 0) return -1;
-  g_tio_saved = true;
-  struct termios t = g_saved_tio;
-  cfmakeraw(&t);
-  t.c_cc[VMIN] = 1;
-  t.c_cc[VTIME] = 0;
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t) != 0) return -1;
-  atexit(restore_tty);
-  ssize_t r = write(STDOUT_FILENO, TERM_ENTER, strlen(TERM_ENTER));
-  (void)r;
-  return 0;
-}
+int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
+                 int idle_ms, bool script);
 
 static void term_size(uint16_t *cols, uint16_t *rows) {
   struct winsize ws;
@@ -77,138 +35,40 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
   }
 }
 
-static int64_t now_ms(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
-/* headless lives in headless.c */
-int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
-                 int idle_ms, bool script);
-
-/* ---- interactive -------------------------------------------------------- */
-
-/* Every decoded event goes to the app, which owns the prefix, the layout and
- * what a key means. The client is only a decoder and a screen. */
-static void on_event(const input_event_t *ev, void *ud) {
-  app_event((app_t *)ud, ev);
-}
-
-static int run_interactive(const char *const argv[]) {
-  uint16_t cols, rows;
-  term_size(&cols, &rows);
-
-  if (raw_mode() != 0) {
-    fprintf(stderr, "sl0ptty: stdin is not a terminal (try --headless)\n");
-    return 1;
-  }
-
-  app_t *a = app_new(argv, cols, rows);
-  if (!a) {
-    fprintf(stderr, "sl0ptty: cannot spawn pane\n");
-    return 1;
-  }
-  app_resize(a, cols, rows);
-
-  screen_t s;
-  screen_init(&s, cols, rows);
-
-  input_parser_t *in = input_new();
-
-  bool pending_paint = true;
-  int64_t next_frame = 0;
-  int64_t esc_due = 0;
-
-  while (!g_quit && !app_should_quit(a)) {
-    int timeout = -1;
-    if (pending_paint) {
-      int64_t due = next_frame - now_ms();
-      timeout = due <= 0 ? 0 : (int)due;
-    }
-    if (input_pending(in)) {
-      int64_t due = esc_due - now_ms();
-      int t = due <= 0 ? 0 : (int)due;
-      if (timeout < 0 || t < timeout) timeout = t;
-    }
-
-    int fds[MAX_PANES];
-    size_t npanes = app_fds(a, fds, MAX_PANES);
-    struct pollfd pfds[MAX_PANES + 1];
-    pfds[0] = (struct pollfd){.fd = STDIN_FILENO, .events = POLLIN};
-    for (size_t i = 0; i < npanes; i++)
-      pfds[i + 1] = (struct pollfd){.fd = fds[i], .events = POLLIN};
-    int n = poll(pfds, (nfds_t)(npanes + 1), timeout);
-
-    if (g_winch) {
-      g_winch = 0;
-      term_size(&cols, &rows);
-      screen_resize(&s, cols, rows);
-      app_resize(a, cols, rows);
-      pending_paint = true;
-      next_frame = now_ms();
-    }
-
-    if (n < 0 && errno != EINTR) break;
-
-    if (n > 0 && (pfds[0].revents & POLLIN)) {
-      uint8_t buf[8192];
-      ssize_t r = read(STDIN_FILENO, buf, sizeof buf);
-      if (r > 0) {
-        input_feed(in, buf, (size_t)r, on_event, a);
-        esc_due = now_ms() + ESC_MS;
-        pending_paint = true; /* focus, splits and closes are visible changes */
-        if (!next_frame) next_frame = now_ms();
-      }
-    }
-
-    /* A lone ESC is only the Escape key once nothing follows it. */
-    if (input_pending(in) && now_ms() >= esc_due) input_timeout(in, on_event, a);
-
-    for (size_t i = 0; i < npanes; i++) {
-      if (n > 0 && (pfds[i + 1].revents & (POLLIN | POLLHUP))) {
-        app_pump_fd(a, pfds[i + 1].fd);
-        if (!pending_paint) {
-          pending_paint = true;
-          next_frame = now_ms() + FRAME_MS;
-        }
-      }
-    }
-    app_reap(a);
-
-    if (pending_paint && now_ms() >= next_frame) {
-      app_compose(a, &s);
-      screen_flush(&s, STDOUT_FILENO);
-      pending_paint = false;
-      next_frame = 0;
-    }
-  }
-
-  input_free(in);
-  screen_free(&s);
-  app_free(a);
-  restore_tty();
-  return 0;
+static void usage(void) {
+  fputs("usage: sl0ptty [-s NAME] [ls | cmd LINE | -- CMD...]\n", stderr);
 }
 
 int main(int argc, char **argv) {
-  bool headless = false, script = false;
+  bool headless = false, script = false, server = false;
   uint16_t cols = 80, rows = 24;
   int idle_ms = 300;
+  const char *name = "main";
+  const char *cmd_line = NULL;
+  bool list = false;
   const char *cmd_argv[64];
   int cmd_n = 0;
 
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--headless") == 0) headless = true;
-    else if (strcmp(argv[i], "--script") == 0) headless = script = true;
-    else if (strcmp(argv[i], "--cols") == 0 && i + 1 < argc) cols = (uint16_t)atoi(argv[++i]);
-    else if (strcmp(argv[i], "--rows") == 0 && i + 1 < argc) rows = (uint16_t)atoi(argv[++i]);
-    else if (strcmp(argv[i], "--idle-ms") == 0 && i + 1 < argc) idle_ms = atoi(argv[++i]);
-    else if (strcmp(argv[i], "--") == 0) {
+    const char *a = argv[i];
+    if (strcmp(a, "--headless") == 0) headless = true;
+    else if (strcmp(a, "--script") == 0) headless = script = true;
+    else if (strcmp(a, "--server") == 0) server = true;
+    else if (strcmp(a, "-s") == 0 && i + 1 < argc) name = argv[++i];
+    else if (strcmp(a, "ls") == 0) list = true;
+    else if (strcmp(a, "cmd") == 0 && i + 1 < argc) cmd_line = argv[++i];
+    else if (strcmp(a, "--cols") == 0 && i + 1 < argc) cols = (uint16_t)atoi(argv[++i]);
+    else if (strcmp(a, "--rows") == 0 && i + 1 < argc) rows = (uint16_t)atoi(argv[++i]);
+    else if (strcmp(a, "--idle-ms") == 0 && i + 1 < argc) idle_ms = atoi(argv[++i]);
+    else if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0) {
+      usage();
+      return 0;
+    } else if (strcmp(a, "--") == 0) {
       for (int j = i + 1; j < argc && cmd_n < 63; j++) cmd_argv[cmd_n++] = argv[j];
       break;
     } else {
-      fprintf(stderr, "sl0ptty: unknown argument: %s\n", argv[i]);
+      fprintf(stderr, "sl0ptty: unknown argument: %s\n", a);
+      usage();
       return 2;
     }
   }
@@ -219,13 +79,39 @@ int main(int argc, char **argv) {
   }
   cmd_argv[cmd_n] = NULL;
 
-  struct sigaction sa = {.sa_handler = on_signal};
-  sigaction(SIGWINCH, &sa, NULL);
-  sigaction(SIGTERM, &sa, NULL);
-  sigaction(SIGHUP, &sa, NULL);
-  signal(SIGPIPE, SIG_IGN);
-  signal(SIGCHLD, SIG_IGN); /* no zombies; EOF on the pty is our signal */
+  if (list) {
+    char **names = NULL;
+    size_t n = session_list(&names);
+    for (size_t i = 0; i < n; i++) {
+      int fd = server_connect(names[i]);
+      printf("%-20s %s\n", names[i], fd >= 0 ? "running" : "stale");
+      if (fd >= 0) close(fd);
+      free(names[i]);
+    }
+    free(names);
+    return 0;
+  }
 
-  return headless ? run_headless(cmd_argv, cols, rows, idle_ms, script)
-                  : run_interactive(cmd_argv);
+  if (cmd_line) {
+    int fd = server_connect(name);
+    if (fd < 0) {
+      fprintf(stderr, "sl0ptty: no session named %s\n", name);
+      return 1;
+    }
+    return client_control(fd, cmd_line);
+  }
+
+  if (headless) return run_headless(cmd_argv, cols, rows, idle_ms, script);
+
+  if (isatty(STDOUT_FILENO)) term_size(&cols, &rows);
+  if (server) return server_run(name, cmd_argv, cols, rows);
+
+  /* attach, creating the session if nobody is home */
+  int fd = server_connect(name);
+  if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows);
+  if (fd < 0) {
+    fprintf(stderr, "sl0ptty: cannot start session %s\n", name);
+    return 1;
+  }
+  return client_run(fd);
 }

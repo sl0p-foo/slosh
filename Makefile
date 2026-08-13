@@ -55,6 +55,8 @@ test-live: $(BIN) ## the checks that need a real tty (slow)
 	python3 tests/live_m0.py
 	@echo
 	python3 tests/live_input.py
+	@echo
+	python3 tests/test_session.py
 
 test-all: test test-live ## everything
 

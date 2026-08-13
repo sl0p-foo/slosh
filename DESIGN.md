@@ -139,7 +139,7 @@ unreadable.
 | **D4** | **Scrollback yes** (free from lib-vt), **copy-mode UI later.** |
 | **D5** | Binary, session dir, socket and config are all named **`sl0ptty`**. |
 | **D6** | **Responsive layout is a pure function** — see below. |
-| **D7** | **Server renders, client is dumb.** The client decodes input and writes bytes; the same socket is the scripting API. Detach/reattach is table stakes because agents keep running. |
+| **D7** | **Server renders, client is dumb.** The client forwards raw bytes and paints what it is sent — it does not even decode, so the decoder can change without redeploying clients, and a bug there costs a frame rather than a session. The same socket is the scripting API. Detach/reattach is table stakes because agents keep running. |
 | **D8** | **Panes and tabs carry `purpose=`**, sl0ppi's semantics kept verbatim, including the trust model: *layout-declared purposes outrank in-band ones and cannot be overridden*, so `cat hostile.txt` cannot relabel a project tab. |
 | **D9** | **No wasm plugins.** Status bar and pane finder are built in. A "plugin" is a subprocess speaking the control protocol. |
 | **D10** | **One attached client** in the MVP. The protocol allows N (read-only observers are what sl0p.foo actually wants); the multi-user *rendering* path is not built, because it is where the fork's phantom-client and `MY FOCUS AND:` bugs live. |
@@ -172,6 +172,21 @@ unrepresentable because there is no state to go stale, and `rail` is the thing
 the fork kept almost-reinventing: with agents you want *one big pane you are
 reading* plus *a strip of small ones you are watching*.
 
+### Connections are not clients
+
+The server holds a set of connections. A connection becomes *the* display client
+only by sending `MSG_HELLO`; anything else — a control command, `ls` probing
+whether a socket answers — is just a connection, and never displaces anybody.
+Only the display client's `MSG_INPUT` is honoured.
+
+This is not fussiness, it is the fork's worst bug rebuilt correctly. From the
+sl0ppi roadmap: `zellij action` failed 20-25%% of the time because every action
+probed liveness by connecting, *that probe counted as a client*, and its
+teardown removed the real one. We reproduced it exactly — `sl0ptty ls` kicked
+the attached client off — within an hour of the server existing. The regression
+test runs 20 x (`ls` + control command) against a live client and requires 0
+failures and a client that can still type.
+
 ## Shape
 
 ```
@@ -196,7 +211,7 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
   half of the mouse work in M4)
 - **M0.5** — headless driver + screen-assert harness ✅
 - **M1** — layout tree, splits, focus, frames (gap/padding/title alignment) ✅
-- **M2** — server/client split, detach/reattach, control socket
+- **M2** — server/client split, detach/reattach, control socket ✅
 - **M3** — tabs, `purpose=`, JSON control API
 - **M4** — chrome: OSC 5577, buttons, hit-list mouse, drag-to-reorder
 - **M5** — built-in status bar, pane finder overlay, responsive (D6)

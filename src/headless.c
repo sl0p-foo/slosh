@@ -1,20 +1,10 @@
 /* The headless driver (DESIGN.md, "headless from day one").
  *
- * The whole compositor with no tty: commands in on stdin, screen snapshots out
- * on stdout. Tests drive this instead of screen-scraping a pty, so they are
- * deterministic and take milliseconds.
+ * The whole compositor with no tty: commands in on stdin, replies out on
+ * stdout. The vocabulary lives in cmd.c and is shared with the control socket,
+ * so a script written against one works against the other.
  *
- * The command set is deliberately the vocabulary the M2 control socket will
- * speak, so the harness moves over unchanged.
- *
- *   send <escaped>    bytes as if typed at the outer terminal (decoded first)
- *   raw <escaped>     bytes straight to the pane's pty, decoder bypassed
- *   settle [ms]       pump the pane until it has been quiet for ms
- *   resize <c> <r>
- *   snapshot [json|text]
- *   quit
- *
- * <escaped> understands \e \n \r \t \\ \xHH, so a test can write \e[1;5A.
+ * `settle` is implemented here because it needs an event loop.
  */
 #define _GNU_SOURCE
 #include "sl0ptty.h"
@@ -27,10 +17,9 @@
 #include <unistd.h>
 
 #include "app.h"
+#include "cmd.h"
 
-static void hl_event(const input_event_t *ev, void *ud) {
-  app_event((app_t *)ud, ev);
-}
+#define MAX_PANES 64
 
 static int64_t ms_now(void) {
   struct timespec ts;
@@ -38,52 +27,18 @@ static int64_t ms_now(void) {
   return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-/* \e \n \r \t \\ \xHH -> bytes */
-static size_t unescape(const char *in, uint8_t *out, size_t cap) {
-  size_t n = 0;
-  for (const char *p = in; *p && n < cap; p++) {
-    if (*p != '\\') {
-      out[n++] = (uint8_t)*p;
-      continue;
-    }
-    p++;
-    switch (*p) {
-      case 'e': out[n++] = 0x1b; break;
-      case 'n': out[n++] = '\n'; break;
-      case 'r': out[n++] = '\r'; break;
-      case 't': out[n++] = '\t'; break;
-      case '0': out[n++] = 0; break;
-      case '\\': out[n++] = '\\'; break;
-      case 'x': {
-        int hi = 0, lo = 0;
-        sscanf(p + 1, "%1x%1x", &hi, &lo);
-        out[n++] = (uint8_t)(hi * 16 + lo);
-        p += 2;
-        break;
-      }
-      case 0: return n;
-      default: out[n++] = (uint8_t)*p; break;
-    }
-  }
-  return n;
-}
-
 /* Pump every pane until none has produced anything for `quiet` ms. */
 static void settle(app_t *a, int quiet) {
   int64_t last = ms_now();
   int64_t deadline = last + 3000;
   while (!app_should_quit(a) && ms_now() < deadline) {
-    int fds[64];
-    size_t n = app_fds(a, fds, 64);
+    int fds[MAX_PANES];
+    size_t n = app_fds(a, fds, MAX_PANES);
     if (n == 0) break;
-    struct pollfd pfds[64];
-    for (size_t i = 0; i < n; i++) {
-      pfds[i].fd = fds[i];
-      pfds[i].events = POLLIN;
-      pfds[i].revents = 0;
-    }
-    int r = poll(pfds, (nfds_t)n, 10);
-    if (r > 0) {
+    struct pollfd pfds[MAX_PANES];
+    for (size_t i = 0; i < n; i++)
+      pfds[i] = (struct pollfd){.fd = fds[i], .events = POLLIN};
+    if (poll(pfds, (nfds_t)n, 10) > 0) {
       for (size_t i = 0; i < n; i++)
         if (pfds[i].revents) {
           app_pump_fd(a, pfds[i].fd);
@@ -107,8 +62,7 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
   screen_init(&s, cols, rows);
   input_parser_t *in = input_new();
 
-  /* one-shot: run it, let it settle, print the screen */
-  if (!script) {
+  if (!script) { /* one-shot: run it, let it settle, print the screen */
     settle(a, idle_ms);
     app_compose(a, &s);
     char *dump = screen_dump(&s);
@@ -118,53 +72,28 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
   }
 
   char line[4096];
-  while (fgets(line, sizeof line, stdin)) {
+  bool quit = false;
+  while (!quit && fgets(line, sizeof line, stdin)) {
     line[strcspn(line, "\r\n")] = 0;
-    char *sp = strchr(line, ' ');
-    const char *arg = sp ? sp + 1 : "";
-    if (sp) *sp = 0;
+    if (!line[0]) continue;
 
-    if (strcmp(line, "send") == 0) {
-      uint8_t buf[4096];
-      size_t n = unescape(arg, buf, sizeof buf);
-      input_feed(in, buf, n, hl_event, a);
-      if (input_pending(in)) input_timeout(in, hl_event, a);
-    } else if (strcmp(line, "raw") == 0) {
-      uint8_t buf[4096];
-      size_t n = unescape(arg, buf, sizeof buf);
-      app_write_focused(a, buf, n);
-    } else if (strcmp(line, "settle") == 0) {
-      settle(a, *arg ? atoi(arg) : idle_ms);
-    } else if (strcmp(line, "resize") == 0) {
-      int c = cols, r = rows;
-      sscanf(arg, "%d %d", &c, &r);
-      cols = (uint16_t)c;
-      rows = (uint16_t)r;
-      screen_resize(&s, cols, rows);
-      app_resize(a, cols, rows);
-    } else if (strcmp(line, "snapshot") == 0) {
-      app_compose(a, &s);
-      char *dump = strcmp(arg, "text") == 0 ? screen_dump(&s)
-                                            : screen_dump_json(&s);
-      fputs(dump, stdout);
-      fputs("\n", stdout);
-      free(dump);
-      fflush(stdout);
-    } else if (strcmp(line, "panes") == 0) {
-      app_compose(a, &s); /* layout is a function of the frame; compose first */
-      char *dump = app_panes_json(a);
-      fputs(dump, stdout);
-      fputs("\n", stdout);
-      free(dump);
-      fflush(stdout);
-    } else if (strcmp(line, "alive") == 0) {
-      printf("%s\n", app_should_quit(a) ? "false" : "true");
-      fflush(stdout);
-    } else if (strcmp(line, "quit") == 0) {
-      break;
-    } else if (line[0]) {
-      fprintf(stderr, "sl0ptty: unknown command: %s\n", line);
+    if (strncmp(line, "settle", 6) == 0) {
+      settle(a, line[6] == ' ' ? atoi(line + 7) : idle_ms);
+      continue;
     }
+
+    char *reply = cmd_exec(a, &s, in, line, &quit);
+    if (!reply) {
+      fprintf(stderr, "sl0ptty: unknown command: %s\n", line);
+      continue;
+    }
+    /* Only commands that answer print a line, so the harness stays in step. */
+    if (*reply) {
+      fputs(reply, stdout);
+      fputc('\n', stdout);
+      fflush(stdout);
+    }
+    free(reply);
   }
 
 done:

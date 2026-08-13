@@ -86,7 +86,9 @@ void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
 /* Write a UTF-8 string one cell per codepoint; returns cells written. */
 uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      color_t fg, color_t bg, uint16_t attrs);
-/* Diff cur against prev and write the minimal byte stream to fd. */
+/* Diff cur against prev into s->out (the minimal byte stream for a terminal). */
+void screen_render(screen_t *s);
+/* screen_render, then write it to fd. */
 void screen_flush(screen_t *s, int fd);
 /* Plain-text dump of the composited screen; caller frees. (headless tests) */
 char *screen_dump(screen_t *s);

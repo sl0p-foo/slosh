@@ -54,6 +54,7 @@ struct app {
   uint16_t cols, rows;
   bool prefix;
   bool quit;
+  bool detach;
   const char *const *argv;
   /* the screen we last composed into: its hit list is what a click resolves
    * against, so routing can never consult geometry the user never saw */
@@ -102,6 +103,8 @@ void app_free(app_t *a) {
 }
 
 bool app_should_quit(const app_t *a) { return a->quit || a->root == NULL; }
+bool app_detach_requested(const app_t *a) { return a->detach; }
+void app_clear_detach(app_t *a) { a->detach = false; }
 
 /* ---- walking ------------------------------------------------------------ */
 
@@ -510,6 +513,7 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
 static bool prefix_command(app_t *a, const input_event_t *ev) {
   switch (ev->key) {
     case GHOSTTY_KEY_Q: a->quit = true; return true;
+    case GHOSTTY_KEY_D: a->detach = true; return true;
     case GHOSTTY_KEY_BACKSLASH: /* C-a \ or C-a | */
       split_focus(a, SPLIT_COLS);
       return true;

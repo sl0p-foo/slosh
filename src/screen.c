@@ -182,7 +182,7 @@ static bool style_eq(const cell_t *a, const cell_t *b) {
   return a->attrs == b->attrs && color_eq(a->fg, b->fg) && color_eq(a->bg, b->bg);
 }
 
-void screen_flush(screen_t *s, int fd) {
+void screen_render(screen_t *s) {
   s->out_len = 0;
 
   /* The cursor is hidden lazily, on the first cell we actually repaint, so a
@@ -247,13 +247,15 @@ void screen_flush(screen_t *s, int fd) {
   }
 
   s->force_full = false;
-  if (s->out_len) {
-    size_t off = 0;
-    while (off < s->out_len) {
-      ssize_t n = write(fd, s->out + off, s->out_len - off);
-      if (n <= 0) break;
-      off += (size_t)n;
-    }
+}
+
+void screen_flush(screen_t *s, int fd) {
+  screen_render(s);
+  size_t off = 0;
+  while (off < s->out_len) {
+    ssize_t n = write(fd, s->out + off, s->out_len - off);
+    if (n <= 0) break;
+    off += (size_t)n;
   }
 }
 
