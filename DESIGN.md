@@ -213,11 +213,24 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M1** — layout tree, splits, focus, frames (gap/padding/title alignment) ✅
 - **M2** — server/client split, detach/reattach, control socket ✅
 - **M3** — tabs, `purpose=`, JSON control API ✅
-- **M4** — chrome: OSC 5577, buttons, hit-list mouse, drag-to-reorder
+- **M4** — chrome: OSC 5577, buttons, hit-list mouse ✅ (drag-to-reorder deferred to M5)
 - **M5** — built-in status bar, pane finder overlay, responsive (D6)
 
-M4 is the payoff: the day it lands, the existing pi-ext extensions light up
-unmodified.
+M4 landed: the pi extensions' exact byte patterns are an acceptance test
+(`tests/test_osc5577.py::test_pi_extension_compat`), including `buttons` with
+no payload — answer-picker's way of dropping buttons while keeping the status
+text — and a click report that satisfies the extension's own `CLICK_RE`.
+
+Two protocol details worth keeping in mind, both found by testing:
+
+- **An over-long button id must be rejected, not truncated.** Unescaping a
+  40-character id into a 33-byte buffer produced a *valid* 32-character id, so
+  a hostile pane could mint one that collides with an id its program already
+  trusts. The id is now unescaped into a large buffer and validated at full
+  length.
+- **BEL terminates an OSC just as ST does**, which matters more than it looks:
+  a trailing `ESC \` inside a double-quoted shell string escapes the quote, so
+  anything scripting this from a shell will reach for BEL.
 
 ## Non-goals
 

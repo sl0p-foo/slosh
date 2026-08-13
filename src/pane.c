@@ -4,12 +4,14 @@
 #include "sl0ptty.h"
 
 #include <errno.h>
+#include <stdio.h>
 #include <ghostty/vt.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "input.h"
+#include "osc5577.h"
 
 struct pane {
   pty_t pty;
@@ -25,7 +27,85 @@ struct pane {
   bool alive;
   bool dirty;
   char title[256];
+
+  /* OSC 5577 state: what this pane asked us to draw in its frame */
+  osc_scan_t scan;
+  char status[256];
+  pane_button_t buttons[8];
+  size_t nbuttons;
+  pane_osc_fn osc_cb;
+  void *osc_ud;
 };
+
+void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud) {
+  p->osc_cb = fn;
+  p->osc_ud = ud;
+}
+
+const char *pane_status(const pane_t *p) { return p->status; }
+size_t pane_buttons(const pane_t *p, const pane_button_t **out) {
+  *out = p->buttons;
+  return p->nbuttons;
+}
+
+void pane_click_button(pane_t *p, const char *id) {
+  if (!osc5577_valid_id(id)) return;
+  char msg[64];
+  int n = snprintf(msg, sizeof msg, "\033]5577;1;click;%s\033\\", id);
+  pane_write(p, msg, (size_t)n);
+}
+
+/* Buttons are `id:label` fields, each %-escaped because the payload itself is
+ * ;-separated. An invalid id or an empty label drops that button and only
+ * that button. */
+static void parse_buttons(pane_t *p, const char *payload) {
+  p->nbuttons = 0;
+  const char *cur = payload;
+  while (*cur && p->nbuttons < sizeof p->buttons / sizeof *p->buttons) {
+    const char *semi = strchr(cur, ';');
+    size_t flen = semi ? (size_t)(semi - cur) : strlen(cur);
+    const char *colon = memchr(cur, ':', flen);
+    if (colon) {
+      pane_button_t b = {0};
+      /* Unescape the id into a buffer far larger than the limit, so an
+       * over-long id is *rejected* rather than truncated into a valid one.
+       * Truncating here would let `aaa...a<33 chars>` collide with a
+       * legitimate 32-char id that the program already trusts. */
+      char id[256];
+      osc5577_unescape(cur, (size_t)(colon - cur), id, sizeof id);
+      osc5577_unescape(colon + 1, flen - (size_t)(colon - cur) - 1, b.label,
+                       sizeof b.label);
+      if (osc5577_valid_id(id) && b.label[0]) {
+        snprintf(b.id, sizeof b.id, "%s", id);
+        p->buttons[p->nbuttons++] = b;
+      }
+    }
+    if (!semi) break;
+    cur = semi + 1;
+  }
+  p->dirty = true;
+}
+
+static void on_osc5577(const char *verb, const char *payload, void *ud) {
+  pane_t *p = ud;
+  if (strcmp(verb, "status") == 0) {
+    snprintf(p->status, sizeof p->status, "%s", payload);
+    p->dirty = true;
+  } else if (strcmp(verb, "buttons") == 0) {
+    parse_buttons(p, payload);
+  } else if (strcmp(verb, "clear") == 0) {
+    p->status[0] = 0;
+    p->nbuttons = 0;
+    p->dirty = true;
+  } else if (strcmp(verb, "hello") == 0) {
+    /* Our addition to the fork's protocol, which is unversioned in practice:
+     * a program can ask what it is talking to before using anything new. */
+    const char *reply = "\033]5577;1;hello;sl0ptty;1\033\\";
+    pane_write(p, reply, strlen(reply));
+  } else if (p->osc_cb) {
+    p->osc_cb(p, verb, payload, p->osc_ud); /* purpose, and anything later */
+  }
+}
 
 /* Terminal replies (DA, cursor position, XTVERSION...) go back to the app. */
 static void on_write_pty(GhosttyTerminal t, void *ud, const uint8_t *data,
@@ -133,8 +213,9 @@ ssize_t pane_pump(pane_t *p) {
   for (;;) {
     ssize_t n = read(p->pty.fd, buf, sizeof buf);
     if (n > 0) {
-      /* M4: a side-channel scanner for OSC 5577 hooks in here, before the
-       * bytes reach the terminal. */
+      /* The scanner sees the same bytes the terminal does. lib-vt discards an
+       * OSC it does not know, so nothing is drawn and nothing is buffered. */
+      osc_scan_feed(&p->scan, buf, (size_t)n, on_osc5577, p);
       ghostty_terminal_vt_write(p->term, buf, (size_t)n);
       p->dirty = true;
       total += n;

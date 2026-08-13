@@ -77,6 +77,30 @@ struct app {
 
 static tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
 
+typedef void (*leaf_fn_fwd)(node_t *, void *);
+static void walk_all(app_t *a, leaf_fn_fwd fn, void *ud);
+
+struct bypane {
+  const pane_t *pane;
+  node_t *found;
+};
+static void bypane_cb(node_t *n, void *ud) {
+  struct bypane *b = ud;
+  if (n->pane == b->pane) b->found = n;
+}
+
+/* OSC 5577 verbs pane.c does not own. `purpose` arrives from a pane's own
+ * output, so it is in-band by definition and can never be declared: a pane
+ * that prints one is asking, not telling (D8). */
+static void on_pane_osc(pane_t *p, const char *verb, const char *payload,
+                        void *ud) {
+  app_t *a = ud;
+  if (strcmp(verb, "purpose") != 0) return;
+  struct bypane b = {p, NULL};
+  walk_all(a, bypane_cb, &b);
+  if (b.found) app_set_pane_purpose(a, b.found->id, payload, false);
+}
+
 static node_t *leaf_new(app_t *a) {
   pane_t *p = pane_new(a->argv, 1, 1, NULL);
   if (!p) return NULL;
@@ -84,6 +108,7 @@ static node_t *leaf_new(app_t *a) {
   n->kind = NODE_LEAF;
   n->pane = p;
   n->id = ++a->next_id;
+  pane_set_osc_handler(p, on_pane_osc, a);
   return n;
 }
 
@@ -566,6 +591,53 @@ static void focus_next(app_t *a) {
 
 /* ---- drawing ------------------------------------------------------------ */
 
+static const color_t BTN_FG = {true, 0x14, 0x14, 0x18};
+static const color_t BTN_BG = {true, 0xff, 0x5f, 0xd7};
+static const color_t BTN_BG_IDLE = {true, 0x55, 0x55, 0x5c};
+
+/* OSC 5577: a pane's own status line and buttons, drawn in its bottom frame
+ * row. Buttons are budgeted from the right *before* the status text gets any
+ * columns, and each registers its hit as it is painted — the same rule the
+ * split button follows, for the same reason. */
+static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
+                             bool focused) {
+  const pane_button_t *btns = NULL;
+  size_t nbtn = pane_buttons(leaf->pane, &btns);
+  const char *status = pane_status(leaf->pane);
+  if (!nbtn && !*status) return;
+
+  rect_t r = leaf->rect;
+  if (r.w < 6 || r.h < 3) return;
+  uint16_t y = (uint16_t)(r.y + r.h - 1);
+  uint16_t left = (uint16_t)(r.x + 1), right = (uint16_t)(r.x + r.w - 1);
+
+  /* right to left, so a button that does not fit is simply not drawn */
+  uint16_t x = right;
+  for (size_t i = nbtn; i-- > 0;) {
+    uint16_t w = (uint16_t)(strlen(btns[i].label) + 2); /* [label] */
+    if (x < left + w + 1) break;
+    x = (uint16_t)(x - w - 1);
+    char label[80];
+    snprintf(label, sizeof label, "[%s]", btns[i].label);
+    uint16_t drawn = screen_text(s, x, y, label, focused ? BTN_FG : fg,
+                                 focused ? BTN_BG : BTN_BG_IDLE, 0);
+    char action[48];
+    snprintf(action, sizeof action, "btn:%u:%s", leaf->id, btns[i].id);
+    hit_add(&s->hits, x, y, drawn, 1, action);
+  }
+
+  if (*status && x > left + 1) {
+    char buf[256];
+    int len = snprintf(buf, sizeof buf, " %s ", status);
+    uint16_t room = (uint16_t)(x - left);
+    if (len > (int)room) {
+      len = room;
+      buf[len] = 0;
+    }
+    screen_text(s, left, y, buf, focused ? TITLE_FOCUS : fg, NO_COLOR, 0);
+  }
+}
+
 static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
   if (r.w < 3 || r.h < 3) return;
@@ -605,6 +677,8 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     hit_add(&s->hits, btn_x, r.y, 1, 1, action);
     avail = (uint16_t)(avail - 3);
   }
+
+  draw_pane_status(s, leaf, fg, focused);
 
   const char *title = pane_title(leaf->pane);
   if (title && *title && avail >= 3) {
@@ -687,6 +761,17 @@ static node_t *by_id(app_t *a, uint32_t id) {
 }
 
 static void do_action(app_t *a, const char *action, const input_event_t *ev) {
+  if (strncmp(action, "btn:", 4) == 0) {
+    if (ev->maction != MOUSE_PRESS) return;
+    uint32_t id = (uint32_t)strtoul(action + 4, NULL, 10);
+    const char *bid = strchr(action + 4, ':');
+    node_t *n = pane_by_id(a, id);
+    if (n && bid) {
+      app_focus_pane(a, id);
+      pane_click_button(n->pane, bid + 1);
+    }
+    return;
+  }
   if (strncmp(action, "tab:", 4) == 0) {
     if (ev->maction == MOUSE_PRESS)
       app_select_tab_id(a, (uint32_t)strtoul(action + 4, NULL, 10));

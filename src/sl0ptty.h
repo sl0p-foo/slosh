@@ -111,6 +111,16 @@ void pty_close(pty_t *p);
 
 typedef struct pane pane_t;
 
+/* An OSC 5577 action button drawn in a pane's frame. */
+typedef struct {
+  char id[33];
+  char label[33];
+} pane_button_t;
+
+/* Verbs pane.c does not handle itself (purpose, and whatever comes later). */
+typedef void (*pane_osc_fn)(pane_t *p, const char *verb, const char *payload,
+                            void *ud);
+
 pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
                  const char *cwd);
 void pane_free(pane_t *p);
@@ -127,6 +137,10 @@ void pane_send_paste(pane_t *p, const char *text, size_t len);
 void pane_resize(pane_t *p, uint16_t cols, uint16_t rows);
 bool pane_dirty(pane_t *p);
 const char *pane_title(const pane_t *p);
+const char *pane_status(const pane_t *p);
+size_t pane_buttons(const pane_t *p, const pane_button_t **out);
+void pane_click_button(pane_t *p, const char *id);
+void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud);
 /* Compose this pane's viewport into the screen at (x0,y0). Clears dirty. */
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused);
