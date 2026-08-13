@@ -122,6 +122,7 @@ void config_defaults(config_t *c) {
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
   c->status_bar = true;
+  c->focus_follows_mouse = true;
 
   c->frame_focus = rgb(0xff, 0x5f, 0xd7);
   c->frame_idle = rgb(0x45, 0x45, 0x4a);
@@ -216,6 +217,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   c->pad = (uint16_t)kdl_arg_int(kdl_child(root, "padding"), 0, c->pad);
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
+  c->focus_follows_mouse = kdl_arg_bool(kdl_child(root, "focus_follows_mouse"), 0,
+                                        c->focus_follows_mouse);
 
   const char *align = kdl_arg(kdl_child(root, "title_align"), 0, NULL);
   if (align) {

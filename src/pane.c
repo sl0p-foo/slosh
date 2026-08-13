@@ -339,7 +339,10 @@ void pane_send_mouse(pane_t *p, const input_event_t *ev) {
 
   GhosttyMousePosition pos = {.x = (float)ev->mx, .y = (float)ev->my};
   ghostty_mouse_event_set_position(p->mev, pos);
-  ghostty_mouse_event_set_button(p->mev, (GhosttyMouseButton)ev->button);
+  /* "no button held" is its own thing, not button zero: bare motion (hover)
+   * must be encoded as none, or a pane in any-event tracking sees nothing. */
+  if (ev->button == MBTN_UNKNOWN) ghostty_mouse_event_clear_button(p->mev);
+  else ghostty_mouse_event_set_button(p->mev, (GhosttyMouseButton)ev->button);
   ghostty_mouse_event_set_action(p->mev, (GhosttyMouseAction)ev->maction);
   ghostty_mouse_event_set_mods(p->mev, (GhosttyMods)ev->mods);
 

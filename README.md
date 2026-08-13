@@ -55,7 +55,8 @@ The mouse works throughout: click a pane to focus it, a tab to switch, `+` on a
 frame to split, `+tab` to open one, a collapsed header to expand it, and a
 pane's own buttons to talk to the program inside it. **Drag a pane's title bar
 onto another pane to swap them, or drag the gap between two panes to move the
-boundary.**
+boundary.** Focus follows the pointer (`focus_follows_mouse`, on by default,
+and it knows when not to).
 
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ptty/config.kdl`.

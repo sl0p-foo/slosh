@@ -1450,9 +1450,24 @@ static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
   layout(a);
 }
 
+/* Focus follows the mouse, but never at the cost of what you were doing.
+ *
+ * Hovering may not: steal focus mid-chord (the prefix is held), reach past an
+ * open finder, interrupt a drag, or expand a collapsed pane just because the
+ * pointer crossed its header — which is why only `pane:` and `title:` targets
+ * count, and the frame rect's `focus:` does not. */
+static bool hover_focus_allowed(const app_t *a) {
+  return CFG.focus_follows_mouse && !a->prefix && !a->finder &&
+         a->drag.kind == DRAG_NONE;
+}
+
 static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   if (strncmp(action, "title:", 6) == 0) {
     uint32_t id = (uint32_t)strtoul(action + 6, NULL, 10);
+    if (ev->maction == MOUSE_MOTION && hover_focus_allowed(a)) {
+      app_focus_pane(a, id);
+      return;
+    }
     if (ev->maction == MOUSE_PRESS) {
       a->drag.kind = DRAG_TITLE;
       a->drag.src = id;
@@ -1517,7 +1532,10 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   } else if (strncmp(action, "close:", 6) == 0) {
     close_leaf(a, n);
   } else if (strncmp(action, "pane:", 5) == 0) {
-    cur(a)->focus = n;
+    /* A press always focuses; a hover only when it is allowed to. The event
+     * is forwarded either way, so a pane that tracks the mouse still sees the
+     * pointer cross it whether or not focus moved. */
+    if (ev->maction != MOUSE_MOTION || hover_focus_allowed(a)) cur(a)->focus = n;
     /* translate to pane-local coordinates before forwarding */
     input_event_t local = *ev;
     local.mx = (uint16_t)(ev->mx - n->content.x);

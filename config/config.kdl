@@ -27,6 +27,11 @@ title_align "center"
 // The one-row bar with tabs, the +tab button and the pane count.
 status_bar true
 
+// Focus follows the pointer. It never steals focus mid-chord (while the prefix
+// is held), never reaches past the finder, never interrupts a drag, and never
+// expands a collapsed pane just because the pointer crossed its header.
+focus_follows_mouse true
+
 // The floor below which a pane is not small but useless. A split that cannot
 // give every child this much collapses into a stack instead, with one pane
 // expanded and its siblings as one-row headers. Recomputed every frame, so

@@ -52,6 +52,7 @@ typedef struct {
   align_t title_align;
   uint16_t min_pane_cols, min_pane_rows;
   bool status_bar;
+  bool focus_follows_mouse;
 
   /* theme */
   color_t frame_focus, frame_idle, title_focus;
