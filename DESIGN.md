@@ -42,6 +42,21 @@ it is *not* a free OSC 5577 hook. Three consequences, all cheap:
 3. Worth an upstream issue: a generic "unhandled OSC" callback. Mitchell's
    library, our use case, small patch.
 
+### lib-vt assumes nothing a host terminal would
+
+It is a VT *library*, not a terminal, so host policy is ours to set. Found by
+the cursor never appearing:
+
+- **DECTCEM (mode 25) starts off.** The cursor is invisible until the host says
+  otherwise. We set it via `MODE_DEFAULT`, which updates the current value *and*
+  the one restored by RIS, so a program that resets the terminal does not lose
+  its cursor.
+- **Grapheme clustering (mode 2027) starts off**, so flags and ZWJ emoji occupy
+  several cells. We default it on, matching the outer terminal we assume (D11).
+
+Both are set in `pane_new()`. Expect more of these; the rule is that anything a
+terminal emulator would decide is not decided for us.
+
 ### What we own
 
 1. **Input decoding.** lib-vt encodes events *out* to a pane; nothing decodes
@@ -83,13 +98,19 @@ Drawing and hit-testing cannot disagree, because there is only one of them.
 From the sl0ppi roadmap, four separate times: *unit tests were necessary and
 insufficient.* Every real bug was found by reading the screen.
 
-> **`sl0ptty --headless` runs the entire compositor with no tty, and dumps the
-> composited screen — text, styles, cursor, hit-list — as JSON on the control
-> socket.**
+> **`sl0ptty --script` runs the entire compositor with no tty: commands in
+> (`send`, `raw`, `settle`, `resize`, `snapshot`), and the composited screen out
+> as JSON — rows of text, style runs, cursor, hit-list.**
 
-Tests are "drive these events, assert this screen", deterministic and
-sub-second. This lands before splits do, because everything after it rests on
-it.
+Tests are "drive these events, assert this screen". `make test` is **2.4s for
+59 checks**; `make test-live` keeps the handful that genuinely need a tty (raw
+mode, the diff emitter, SIGWINCH, the prefix key). The command vocabulary is
+deliberately the one M2's control socket will speak, so the harness moves over
+unchanged.
+
+Styles are emitted as **runs**, not per-cell objects: a test wants to say
+"columns 0..5 of row 0 are bold red", and 1920 cell objects per snapshot is
+unreadable.
 
 ## Decisions
 
@@ -156,7 +177,7 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M0.25** — input decoder + per-pane re-encode ✅ (pulled forward: retrofitting
   it under a layout tree would have been worse, and it is the load-bearing
   half of the mouse work in M4)
-- **M0.5** — headless mode + screen-assert harness (seeded: `--headless`)
+- **M0.5** — headless driver + screen-assert harness ✅
 - **M1** — layout tree, splits, focus, frames (gap/padding/title alignment)
 - **M2** — server/client split, detach/reattach, control socket
 - **M3** — tabs, `purpose=`, JSON control API

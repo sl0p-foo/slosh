@@ -9,6 +9,35 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "json.h"
+
+/* ---- hit list ----------------------------------------------------------- */
+
+void hit_reset(hitlist_t *hl) { hl->len = 0; }
+
+void hit_add(hitlist_t *hl, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+             const char *action) {
+  if (hl->len == hl->cap) {
+    hl->cap = hl->cap ? hl->cap * 2 : 16;
+    hl->items = realloc(hl->items, hl->cap * sizeof *hl->items);
+  }
+  hit_t *e = &hl->items[hl->len++];
+  e->x = x;
+  e->y = y;
+  e->w = w;
+  e->h = h;
+  snprintf(e->action, sizeof e->action, "%s", action);
+}
+
+const char *hit_test(const hitlist_t *hl, uint16_t x, uint16_t y) {
+  for (size_t i = hl->len; i-- > 0;) {
+    const hit_t *e = &hl->items[i];
+    if (x >= e->x && x < e->x + e->w && y >= e->y && y < e->y + e->h)
+      return e->action;
+  }
+  return NULL;
+}
+
 static void out_reserve(screen_t *s, size_t n) {
   if (s->out_len + n <= s->out_cap) return;
   size_t cap = s->out_cap ? s->out_cap : 8192;
@@ -57,6 +86,7 @@ void screen_free(screen_t *s) {
   free(s->cur);
   free(s->prev);
   free(s->out);
+  free(s->hits.items);
   memset(s, 0, sizeof *s);
 }
 
@@ -183,6 +213,115 @@ void screen_flush(screen_t *s, int fd) {
       off += (size_t)n;
     }
   }
+}
+
+/* Style runs rather than per-cell objects: a test wants to say "columns 0..5 of
+ * row 0 are bold red", and 1920 cell objects per snapshot is unreadable. */
+static void dump_style_runs(screen_t *s, json_t *j) {
+  json_arr_open(j, "styles");
+  for (uint16_t y = 0; y < s->rows; y++) {
+    uint16_t x = 0;
+    while (x < s->cols) {
+      cell_t *c = &s->cur[(size_t)y * s->cols + x];
+      bool plain = !c->attrs && !c->fg.set && !c->bg.set;
+      if (plain) {
+        x++;
+        continue;
+      }
+      uint16_t start = x;
+      while (x < s->cols) {
+        cell_t *n = &s->cur[(size_t)y * s->cols + x];
+        if (n->attrs != c->attrs || !color_eq(n->fg, c->fg) ||
+            !color_eq(n->bg, c->bg))
+          break;
+        x++;
+      }
+      json_obj_open(j, NULL);
+      json_int(j, "x", start);
+      json_int(j, "y", y);
+      json_int(j, "w", x - start);
+      char col[8];
+      if (c->fg.set) {
+        snprintf(col, sizeof col, "#%02x%02x%02x", c->fg.r, c->fg.g, c->fg.b);
+        json_str(j, "fg", col, strlen(col));
+      } else {
+        json_null(j, "fg");
+      }
+      if (c->bg.set) {
+        snprintf(col, sizeof col, "#%02x%02x%02x", c->bg.r, c->bg.g, c->bg.b);
+        json_str(j, "bg", col, strlen(col));
+      } else {
+        json_null(j, "bg");
+      }
+      json_arr_open(j, "attrs");
+      static const struct {
+        uint16_t bit;
+        const char *name;
+      } names[] = {
+          {ATTR_BOLD, "bold"},       {ATTR_DIM, "dim"},
+          {ATTR_ITALIC, "italic"},   {ATTR_UNDERLINE, "underline"},
+          {ATTR_BLINK, "blink"},     {ATTR_INVERSE, "inverse"},
+          {ATTR_INVISIBLE, "invisible"}, {ATTR_STRIKE, "strike"},
+      };
+      for (size_t i = 0; i < sizeof names / sizeof *names; i++)
+        if (c->attrs & names[i].bit)
+          json_str(j, NULL, names[i].name, strlen(names[i].name));
+      json_arr_close(j);
+      json_obj_close(j);
+    }
+  }
+  json_arr_close(j);
+}
+
+char *screen_dump_json(screen_t *s) {
+  json_t j;
+  json_init(&j);
+  json_obj_open(&j, NULL);
+  json_int(&j, "cols", s->cols);
+  json_int(&j, "rows", s->rows);
+
+  json_arr_open(&j, "text");
+  char *line = malloc((size_t)s->cols * 4 + 1);
+  for (uint16_t y = 0; y < s->rows; y++) {
+    size_t o = 0;
+    for (uint16_t x = 0; x < s->cols; x++) {
+      cell_t *c = &s->cur[(size_t)y * s->cols + x];
+      if (c->width == 0) continue;
+      if (c->len) {
+        memcpy(line + o, c->text, c->len);
+        o += c->len;
+      } else {
+        line[o++] = ' ';
+      }
+    }
+    json_str(&j, NULL, line, o);
+  }
+  free(line);
+  json_arr_close(&j);
+
+  dump_style_runs(s, &j);
+
+  json_obj_open(&j, "cursor");
+  json_bool(&j, "visible", s->cursor_visible);
+  json_int(&j, "x", s->cursor_x);
+  json_int(&j, "y", s->cursor_y);
+  json_obj_close(&j);
+
+  json_arr_open(&j, "hits");
+  for (size_t i = 0; i < s->hits.len; i++) {
+    hit_t *e = &s->hits.items[i];
+    json_obj_open(&j, NULL);
+    json_int(&j, "x", e->x);
+    json_int(&j, "y", e->y);
+    json_int(&j, "w", e->w);
+    json_int(&j, "h", e->h);
+    json_str(&j, "action", e->action, strlen(e->action));
+    json_obj_close(&j);
+  }
+  json_arr_close(&j);
+
+  json_obj_close(&j);
+  return j.buf; /* caller frees */
 }
 
 char *screen_dump(screen_t *s) {

@@ -81,39 +81,9 @@ static int64_t now_ms(void) {
   return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-/* ---- headless: run a command, settle, dump the composited screen -------- */
-
-static int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
-                        int idle_ms) {
-  pane_t *p = pane_new(argv, cols, rows, NULL);
-  if (!p) {
-    fprintf(stderr, "sl0ptty: cannot spawn pane\n");
-    return 1;
-  }
-  screen_t s;
-  screen_init(&s, cols, rows);
-
-  int64_t last_activity = now_ms();
-  while (pane_alive(p)) {
-    struct pollfd pfd = {.fd = pane_fd(p), .events = POLLIN};
-    int n = poll(&pfd, 1, 20);
-    if (n > 0) {
-      if (pane_pump(p) > 0) last_activity = now_ms();
-      if (!pane_alive(p)) break;
-    }
-    if (now_ms() - last_activity > idle_ms) break;
-  }
-  pane_pump(p);
-
-  pane_compose(p, &s, 0, 0, true);
-  char *dump = screen_dump(&s);
-  fputs(dump, stdout);
-  free(dump);
-
-  screen_free(&s);
-  pane_free(p);
-  return 0;
-}
+/* headless lives in headless.c */
+int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
+                 int idle_ms, bool script);
 
 /* ---- interactive -------------------------------------------------------- */
 
@@ -241,7 +211,7 @@ static int run_interactive(const char *const argv[]) {
 }
 
 int main(int argc, char **argv) {
-  bool headless = false;
+  bool headless = false, script = false;
   uint16_t cols = 80, rows = 24;
   int idle_ms = 300;
   const char *cmd_argv[64];
@@ -249,6 +219,7 @@ int main(int argc, char **argv) {
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--headless") == 0) headless = true;
+    else if (strcmp(argv[i], "--script") == 0) headless = script = true;
     else if (strcmp(argv[i], "--cols") == 0 && i + 1 < argc) cols = (uint16_t)atoi(argv[++i]);
     else if (strcmp(argv[i], "--rows") == 0 && i + 1 < argc) rows = (uint16_t)atoi(argv[++i]);
     else if (strcmp(argv[i], "--idle-ms") == 0 && i + 1 < argc) idle_ms = atoi(argv[++i]);
@@ -274,6 +245,6 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   signal(SIGCHLD, SIG_IGN); /* no zombies; EOF on the pty is our signal */
 
-  return headless ? run_headless(cmd_argv, cols, rows, idle_ms)
+  return headless ? run_headless(cmd_argv, cols, rows, idle_ms, script)
                   : run_interactive(cmd_argv);
 }

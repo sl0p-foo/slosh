@@ -38,11 +38,31 @@ typedef struct {
   color_t fg, bg;
 } cell_t;
 
+/* One geometry (DESIGN.md): every painted interactive element records its rect
+ * here as it is painted, and a click is a lookup. Drawing and hit-testing
+ * cannot disagree because there is only one of them. */
+typedef struct {
+  uint16_t x, y, w, h;
+  char action[48];
+} hit_t;
+
+typedef struct {
+  hit_t *items;
+  size_t len, cap;
+} hitlist_t;
+
+void hit_reset(hitlist_t *hl);
+void hit_add(hitlist_t *hl, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+             const char *action);
+/* The action at a point, or NULL. Later entries win: painted last is on top. */
+const char *hit_test(const hitlist_t *hl, uint16_t x, uint16_t y);
+
 typedef struct {
   uint16_t cols, rows;
   cell_t *cur;  /* what we want on screen */
   cell_t *prev; /* what the terminal last received */
   bool force_full;
+  hitlist_t hits;
 
   /* where the real cursor goes after a flush */
   bool cursor_visible;
@@ -64,6 +84,8 @@ void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
 void screen_flush(screen_t *s, int fd);
 /* Plain-text dump of the composited screen; caller frees. (headless tests) */
 char *screen_dump(screen_t *s);
+/* The same screen as JSON: rows of text, style runs, cursor, hit-list. */
+char *screen_dump_json(screen_t *s);
 
 /* ---- pty --------------------------------------------------------------- */
 

@@ -78,6 +78,21 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY, &wfn);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, &tfn);
 
+  /* lib-vt makes no assumptions a host terminal would: it starts with DECTCEM
+   * (mode 25) off, so the cursor is invisible until someone says otherwise.
+   * MODE_DEFAULT sets the current value *and* the one restored by RIS, so a
+   * program that resets the terminal does not lose its cursor.
+   *
+   * 2027 is grapheme clustering: one cell per cluster, so flags and ZWJ emoji
+   * stay whole. We are opinionated about the outer terminal (D11) and it
+   * clusters too; under a terminal that does not, wide emoji may misalign. */
+  static const uint16_t default_on[] = {25, 2027};
+  for (size_t i = 0; i < sizeof default_on / sizeof *default_on; i++) {
+    GhosttyTerminalModeConfig mc = {.mode = ghostty_mode_new(default_on[i], false),
+                                    .value = true};
+    ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &mc);
+  }
+
   if (pty_spawn(&p->pty, argv, cols, rows, cwd) != 0) goto fail;
   p->alive = true;
   p->dirty = true;

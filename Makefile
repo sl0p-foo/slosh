@@ -18,7 +18,7 @@ SRC      := $(wildcard src/*.c)
 OBJ      := $(SRC:src/%.c=build/%.o)
 BIN      := build/sl0ptty
 
-.PHONY: all clean vendor run test smoke help
+.PHONY: all clean vendor run test test-live test-all smoke help
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -46,12 +46,17 @@ TEST_BIN := build/input_test
 $(TEST_BIN): tests/input_test.c src/input.c $(VT_LIB) | build
 	$(CC) $(CFLAGS) tests/input_test.c src/input.c $(VT_LIB) -o $@
 
-test: $(BIN) $(TEST_BIN) ## run unit + live checks
+test: $(BIN) $(TEST_BIN) ## unit + headless checks (fast)
 	./$(TEST_BIN)
 	@echo
+	cd tests && python3 test_screen.py
+
+test-live: $(BIN) ## the checks that need a real tty (slow)
 	python3 tests/live_m0.py
 	@echo
 	python3 tests/live_input.py
+
+test-all: test test-live ## everything
 
 smoke: $(BIN) ## compose a screen headlessly and print it
 	./$(BIN) --headless --cols 40 --rows 6 -- /bin/sh -c 'printf "hello \033[1;32msl0ptty\033[0m\n"; echo "wide: 日本語"'
