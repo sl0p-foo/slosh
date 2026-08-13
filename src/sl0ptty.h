@@ -143,6 +143,13 @@ void pane_send_mouse(pane_t *p, const input_event_t *ev);
 void pane_send_paste(pane_t *p, const char *text, size_t len);
 void pane_resize(pane_t *p, uint16_t cols, uint16_t rows);
 bool pane_dirty(pane_t *p);
+/* Scrollback. Negative delta scrolls up (towards older output). */
+void pane_scroll(pane_t *p, int delta);
+void pane_scroll_edge(pane_t *p, bool top);
+bool pane_scrolled(const pane_t *p);
+void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total);
+bool pane_alt_screen(const pane_t *p);
+bool pane_wants_mouse(const pane_t *p);
 const char *pane_title(const pane_t *p);
 const char *pane_status(const pane_t *p);
 size_t pane_buttons(const pane_t *p, const pane_button_t **out);

@@ -308,6 +308,9 @@ void pane_write(pane_t *p, const void *buf, size_t len) {
  * actually negotiated (kitty flags, cursor-key application mode, alt-esc
  * prefix, modifyOtherKeys). This is the reason we decode at all. */
 void pane_send_key(pane_t *p, const input_event_t *ev) {
+  /* Typing snaps back to the live view: reading scrollback and then typing
+   * into a screen that is not the one you are looking at is a trap. */
+  if (pane_scrolled(p)) pane_scroll_edge(p, false);
   ghostty_key_encoder_setopt_from_terminal(p->kenc, p->term);
   ghostty_key_event_set_key(p->kev, (GhosttyKey)ev->key);
   ghostty_key_event_set_mods(p->kev, (GhosttyMods)ev->mods);
@@ -368,6 +371,51 @@ void pane_send_paste(pane_t *p, const char *text, size_t len) {
                            need ? need : len + 16, &n) == GHOSTTY_SUCCESS)
     pane_write(p, buf, n);
   free(buf);
+}
+
+/* ---- scrollback --------------------------------------------------------- */
+
+void pane_scroll(pane_t *p, int delta) {
+  GhosttyTerminalScrollViewport b = {.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA};
+  b.value.delta = delta;
+  ghostty_terminal_scroll_viewport(p->term, b);
+  p->dirty = true;
+}
+
+void pane_scroll_edge(pane_t *p, bool top) {
+  GhosttyTerminalScrollViewport b = {
+      .tag = top ? GHOSTTY_SCROLL_VIEWPORT_TOP : GHOSTTY_SCROLL_VIEWPORT_BOTTOM};
+  ghostty_terminal_scroll_viewport(p->term, b);
+  p->dirty = true;
+}
+
+bool pane_scrolled(const pane_t *p) {
+  bool active = true; /* "the viewport is on the active area", i.e. the bottom */
+  ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE, &active);
+  return !active;
+}
+
+/* Rows hidden above the viewport, and how many exist in total. */
+void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total) {
+  GhosttyTerminalScrollbar sb = {0};
+  *above = *total = 0;
+  if (ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb) !=
+      GHOSTTY_SUCCESS)
+    return;
+  *above = (uint32_t)sb.offset;
+  *total = (uint32_t)(sb.total > sb.len ? sb.total - sb.len : 0);
+}
+
+bool pane_alt_screen(const pane_t *p) {
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  return screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE;
+}
+
+bool pane_wants_mouse(const pane_t *p) {
+  GhosttyMouseTrackingMode mode = GHOSTTY_MOUSE_TRACKING_NONE;
+  ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mode);
+  return mode != GHOSTTY_MOUSE_TRACKING_NONE;
 }
 
 void pane_resize(pane_t *p, uint16_t cols, uint16_t rows) {

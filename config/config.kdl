@@ -38,6 +38,9 @@ focus_follows_mouse true
 // widening the terminal always restores exactly the layout you had.
 min_pane cols=24 rows=6
 
+// Rows per wheel notch, and per scroll-up/scroll-down.
+scroll_lines 3
+
 // What a new pane runs. Unset means $SHELL.
 // shell "/bin/bash"
 
@@ -61,7 +64,8 @@ theme {
 //
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down
-// new-tab next-tab prev-tab select-tab-1..9 finder detach quit
+// scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
+// scroll-bottom new-tab next-tab prev-tab select-tab-1..9 finder detach quit
 // literal-prefix none
 
 keys {
@@ -96,6 +100,14 @@ keys {
     bind "3" "select-tab-3"
 
     bind "f" "finder"
+
+    // Scrollback. The wheel does this too, unless the program in the pane
+    // wants the mouse itself, or is a full-screen program with no scrollback
+    // of ours to show — then the wheel means arrow keys to it.
+    bind "pageup" "scroll-page-up"
+    bind "pagedown" "scroll-page-down"
+    bind "home" "scroll-top"
+    bind "end" "scroll-bottom"
     bind "d" "detach"
     bind "q" "quit"
 }

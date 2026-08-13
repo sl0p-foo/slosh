@@ -1095,6 +1095,25 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
 
   draw_pane_status(s, leaf, fg, focused);
 
+  /* Scroll position, when there is one: compact, right-aligned, and clickable
+   * to get back to the bottom. Budgeted after the button and before the title,
+   * because a title is the thing you can most afford to lose. */
+  if (pane_scrolled(leaf->pane) && avail >= 8) {
+    uint32_t above = 0, total = 0;
+    pane_scroll_pos(leaf->pane, &above, &total);
+    char ind[24];
+    int n = snprintf(ind, sizeof ind, " \u25b2%u ", total > above ? total - above : 0);
+    uint16_t iw = (uint16_t)(n > 0 ? n : 0);
+    if (iw + 2 < avail) {
+      uint16_t ix = (uint16_t)((has_btn ? btn_x : x1) - iw);
+      screen_text(s, ix, r.y, ind, BTN_FG, BTN_BG, ATTR_BOLD);
+      char action[48];
+      snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
+      hit_add(&s->hits, ix, r.y, iw, 1, action);
+      avail = (uint16_t)(avail - iw);
+    }
+  }
+
   const char *title = pane_title(leaf->pane);
   if (title && *title && avail >= 3) {
     char buf[256];
@@ -1531,6 +1550,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     split_focus(a, SPLIT_COLS);
   } else if (strncmp(action, "close:", 6) == 0) {
     close_leaf(a, n);
+  } else if (strncmp(action, "scrollbottom:", 13) == 0) {
+    if (ev->maction == MOUSE_PRESS) pane_scroll_edge(n->pane, false);
   } else if (strncmp(action, "pane:", 5) == 0) {
     /* A press always focuses; a hover only when it is allowed to. The event
      * is forwarded either way, so a pane that tracks the mouse still sees the
@@ -1540,6 +1561,27 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     input_event_t local = *ev;
     local.mx = (uint16_t)(ev->mx - n->content.x);
     local.my = (uint16_t)(ev->my - n->content.y);
+
+    /* The wheel belongs to whoever can use it:
+     *   - a program tracking the mouse gets the wheel events;
+     *   - a full-screen program without mouse tracking (vim, less) has no
+     *     scrollback of ours to show, so the wheel becomes arrow keys, which
+     *     is what it means to that program;
+     *   - anything else scrolls our scrollback. */
+    bool wheel = ev->maction == MOUSE_PRESS &&
+                 (ev->button == MBTN_FOUR || ev->button == MBTN_FIVE);
+    if (wheel && !pane_wants_mouse(n->pane)) {
+      int lines = CFG.scroll_lines;
+      bool up = ev->button == MBTN_FOUR;
+      if (pane_alt_screen(n->pane)) {
+        input_event_t key = {.kind = EV_KEY, .action = KEY_PRESS};
+        key.key = up ? GHOSTTY_KEY_ARROW_UP : GHOSTTY_KEY_ARROW_DOWN;
+        for (int i = 0; i < lines; i++) pane_send_key(n->pane, &key);
+      } else {
+        pane_scroll(n->pane, up ? -lines : lines);
+      }
+      return;
+    }
     pane_send_mouse(n->pane, &local);
   } else if (strncmp(action, "focus:", 6) == 0) {
     cur(a)->focus = n;
@@ -1570,6 +1612,16 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
     case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
     case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
     case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
+    case ACT_SCROLL_UP: pane_scroll(cur(a)->focus->pane, -CFG.scroll_lines); return true;
+    case ACT_SCROLL_DOWN: pane_scroll(cur(a)->focus->pane, CFG.scroll_lines); return true;
+    case ACT_SCROLL_PAGE_UP:
+      pane_scroll(cur(a)->focus->pane, -(int)cur(a)->focus->content.h);
+      return true;
+    case ACT_SCROLL_PAGE_DOWN:
+      pane_scroll(cur(a)->focus->pane, (int)cur(a)->focus->content.h);
+      return true;
+    case ACT_SCROLL_TOP: pane_scroll_edge(cur(a)->focus->pane, true); return true;
+    case ACT_SCROLL_BOTTOM: pane_scroll_edge(cur(a)->focus->pane, false); return true;
     case ACT_FINDER:
       a->finder = true;
       a->query[0] = 0;

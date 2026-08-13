@@ -27,6 +27,12 @@ typedef enum {
   ACT_NEXT_TAB,
   ACT_PREV_TAB,
   ACT_FINDER,
+  ACT_SCROLL_UP,
+  ACT_SCROLL_DOWN,
+  ACT_SCROLL_PAGE_UP,
+  ACT_SCROLL_PAGE_DOWN,
+  ACT_SCROLL_TOP,
+  ACT_SCROLL_BOTTOM,
   ACT_RESIZE_LEFT,
   ACT_RESIZE_RIGHT,
   ACT_RESIZE_UP,
@@ -51,6 +57,7 @@ typedef struct {
   bool rounded;
   align_t title_align;
   uint16_t min_pane_cols, min_pane_rows;
+  uint16_t scroll_lines; /* rows per wheel notch */
   bool status_bar;
   bool focus_follows_mouse;
 

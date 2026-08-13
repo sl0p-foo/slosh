@@ -19,6 +19,10 @@ static const struct {
     {"focus-down", ACT_FOCUS_DOWN},   {"focus-next", ACT_FOCUS_NEXT},
     {"resize-left", ACT_RESIZE_LEFT}, {"resize-right", ACT_RESIZE_RIGHT},
     {"resize-up", ACT_RESIZE_UP},     {"resize-down", ACT_RESIZE_DOWN},
+    {"scroll-up", ACT_SCROLL_UP},     {"scroll-down", ACT_SCROLL_DOWN},
+    {"scroll-page-up", ACT_SCROLL_PAGE_UP},
+    {"scroll-page-down", ACT_SCROLL_PAGE_DOWN},
+    {"scroll-top", ACT_SCROLL_TOP},   {"scroll-bottom", ACT_SCROLL_BOTTOM},
     {"new-tab", ACT_NEW_TAB},         {"next-tab", ACT_NEXT_TAB},
     {"prev-tab", ACT_PREV_TAB},       {"finder", ACT_FINDER},
     {"detach", ACT_DETACH},           {"quit", ACT_QUIT},
@@ -121,6 +125,7 @@ void config_defaults(config_t *c) {
   c->title_align = ALIGN_CENTER;
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
+  c->scroll_lines = 3;
   c->status_bar = true;
   c->focus_follows_mouse = true;
 
@@ -158,6 +163,10 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_N, 0, ACT_NEXT_TAB);
   bind_add(c, GHOSTTY_KEY_P, 0, ACT_PREV_TAB);
   bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER);
+  bind_add(c, GHOSTTY_KEY_PAGE_UP, 0, ACT_SCROLL_PAGE_UP);
+  bind_add(c, GHOSTTY_KEY_PAGE_DOWN, 0, ACT_SCROLL_PAGE_DOWN);
+  bind_add(c, GHOSTTY_KEY_HOME, 0, ACT_SCROLL_TOP);
+  bind_add(c, GHOSTTY_KEY_END, 0, ACT_SCROLL_BOTTOM);
   bind_add(c, GHOSTTY_KEY_D, 0, ACT_DETACH);
   bind_add(c, GHOSTTY_KEY_Q, 0, ACT_QUIT);
   for (int i = 0; i < 9; i++)
@@ -232,6 +241,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
     c->min_pane_cols = (uint16_t)kdl_prop_int(minp, "cols", c->min_pane_cols);
     c->min_pane_rows = (uint16_t)kdl_prop_int(minp, "rows", c->min_pane_rows);
   }
+  c->scroll_lines =
+      (uint16_t)kdl_arg_int(kdl_child(root, "scroll_lines"), 0, c->scroll_lines);
 
   const char *sh = kdl_arg(kdl_child(root, "shell"), 0, NULL);
   if (sh) {

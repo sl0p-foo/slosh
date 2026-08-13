@@ -48,6 +48,7 @@ sl0ptty cmd '{"cmd":"panes"}'
 | `C-a c` / `C-a n` `C-a p` / `C-a 1..9` | new tab / cycle / select |
 | `C-a f` | find a pane by title, purpose or tab |
 | `C-a H J K L` or shift+arrows | move the boundary (the pane grows or shrinks accordingly) |
+| `C-a PgUp` `C-a PgDn` `C-a Home` `C-a End` | scrollback (the wheel does it too) |
 | `C-a x` / `C-a d` / `C-a q` | close pane / detach / quit |
 | `C-a C-a` | send a literal `C-a` |
 
