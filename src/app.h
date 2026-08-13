@@ -20,6 +20,8 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows);
 void app_free(app_t *a);
 
 void app_event(app_t *a, const input_event_t *ev);
+/* Re-read the config file. Keeps the working one if the new file is broken. */
+bool app_reload_config(char *err, size_t errcap);
 void app_resize(app_t *a, uint16_t cols, uint16_t rows);
 
 /* Pump every pane that has data. Returns true if anything changed. */

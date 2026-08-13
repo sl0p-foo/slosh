@@ -134,7 +134,7 @@ unreadable.
 | # | decision |
 |---|---|
 | **D1** | **OSC 5577 stays byte-compatible** with the sl0ppi fork, so the five existing pi extensions work unmodified. Delivered by a side-channel scanner on the pty stream (see the correction above), with a versioned `hello` handshake added on top — the fork's protocol is unversioned, which is a known risk — and an APC-based v2 once anything new is written against it. |
-| **D2** | **Config is a hand-rolled KDL subset.** Layouts are trees; KDL reads well as a tree and keeps continuity with sl0ppi muscle memory. ~400 LOC of parser, no dependency. Single-line nodes need `;` terminators — same rule as upstream. |
+| **D2** | **Config is a hand-rolled KDL subset** (`kdl.c`, 300 lines, no dependency): nodes with arguments, `key=value` properties, children, `//` and `/* */` comments, `;` terminators for single-line nodes. `config/config.kdl` documents every setting by *being* the defaults. A broken file costs a warning on stderr and nothing else; `{"cmd":"reload"}` re-reads it live and refuses a file it cannot parse rather than half-applying it. |
 | **D3** | **Clean JSON control API** (one JSON object per line on a unix socket): `{"cmd":"new-tab","purpose":"project:x.deadbeef"}` -> `{"ok":true,"id":2}`. We do *not* mimic `zellij action`'s surface. A bare-verb form (`panes`, `snapshot text`) is kept as a human/harness alias and runs the same code, so a script cannot drift from what the API does. The `sl0ppi` CLI is ported on top later; `up`'s idempotency and D9's fail-open property carry over. |
 | **D4** | **Scrollback yes** (free from lib-vt), **copy-mode UI later.** |
 | **D5** | Binary, session dir, socket and config are all named **`sl0ptty`**. |
@@ -244,6 +244,7 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M3** — tabs, `purpose=`, JSON control API ✅
 - **M4** — chrome: OSC 5577, buttons, hit-list mouse ✅ (drag-to-reorder deferred to M5)
 - **M5** — built-in status bar, pane finder overlay, responsive (D6) ✅
+- **M6** — config file: geometry, theme, keybindings, live reload ✅
 
 M4 landed: the pi extensions' exact byte patterns are an acceptance test
 (`tests/test_osc5577.py::test_pi_extension_compat`), including `buttons` with

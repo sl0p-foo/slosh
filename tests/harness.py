@@ -68,14 +68,23 @@ class Snapshot:
 
 
 class Session:
-    def __init__(self, argv, cols=80, rows=24):
+    def __init__(self, argv, cols=80, rows=24, config=None, env=None):
         self.cols, self.rows = cols, rows
+        environ = dict(os.environ)
+        if config:
+            environ["SL0PTTY_CONFIG"] = str(config)
+        else:
+            environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
+        if env:
+            environ.update(env)
         self.proc = subprocess.Popen(
             [BIN, "--script", "--cols", str(cols), "--rows", str(rows), "--"] + argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             bufsize=1,
+            env=environ,
         )
 
     # -- commands ---------------------------------------------------------

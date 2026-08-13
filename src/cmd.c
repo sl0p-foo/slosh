@@ -176,6 +176,13 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                   : app_set_pane_purpose(a, id, purpose, declared);
     return ok ? jok_int(NULL, 0) : jerr("refused");
   }
+  if (strcmp(cmd, "reload") == 0) {
+    char err[256] = {0};
+    if (!app_reload_config(err, sizeof err)) return jerr(err[0] ? err : "reload failed");
+    app_resize(a, s->cols, s->rows); /* geometry may have moved */
+    s->force_full = true;
+    return jok_int(NULL, 0);
+  }
   if (strcmp(cmd, "alive") == 0) {
     json_t j;
     json_init(&j);
@@ -244,6 +251,13 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
   if (strcmp(verb, "tabs") == 0) {
     app_compose(a, s);
     return app_tabs_json(a);
+  }
+  if (strcmp(verb, "reload") == 0) {
+    char err[256] = {0};
+    bool ok = app_reload_config(err, sizeof err);
+    app_resize(a, s->cols, s->rows);
+    s->force_full = true;
+    return strdup(ok ? "ok" : err);
   }
   if (strcmp(verb, "alive") == 0) {
     return strdup(app_should_quit(a) ? "false" : "true");

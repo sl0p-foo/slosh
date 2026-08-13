@@ -4,35 +4,61 @@
 
 #include <ghostty/vt.h>
 #include <ctype.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "json.h"
 
-/* ---- config (compiled defaults for now; D2's parser lands in M3) -------- */
+/* ---- config ------------------------------------------------------------- */
 
-typedef struct {
-  uint16_t gap;        /* blank rows between panes and at the screen edge */
-  uint16_t gap_aspect; /* columns per row: cells are ~2x taller than wide */
-  uint16_t pad;        /* rows/cols between a frame and its content */
-  bool rounded;
-  enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } title_align;
-} config_t;
+#include "config.h"
 
-/* Below these, a pane is not small: it is useless. A split that cannot give
- * every child this much collapses instead (D6). */
-#define MIN_PANE_COLS 24
-#define MIN_PANE_ROWS 6
+/* One config per process. The server owns the session, and a session has one
+ * look; `reload` re-reads it in place, which is why nothing caches a colour. */
+static config_t CFG;
+static bool CFG_LOADED = false;
 
-static const config_t CFG = {
-    .gap = 1, .gap_aspect = 2, .pad = 0, .rounded = true,
-    .title_align = ALIGN_CENTER,
-};
+static void ensure_config(void) {
+  if (CFG_LOADED) return;
+  config_defaults(&CFG);
+  char err[256] = {0};
+  const char *path = config_default_path();
+  if (!config_load(&CFG, path, err, sizeof err)) {
+    /* A missing file is the normal case; a broken one is worth a line in the
+     * log, and in both the compiled-in defaults stand (fail open). */
+    if (access(path, R_OK) == 0)
+      fprintf(stderr, "sl0ptty: %s: %s\n", path, err[0] ? err : "parse error");
+  } else if (err[0]) {
+    fprintf(stderr, "sl0ptty: %s: %s\n", path, err);
+  }
+  CFG_LOADED = true;
+}
 
-static const color_t FRAME_FOCUS = {true, 0xff, 0x5f, 0xd7};
-static const color_t FRAME_IDLE = {true, 0x45, 0x45, 0x4a};
-static const color_t TITLE_FOCUS = {true, 0xff, 0xff, 0xff};
+bool app_reload_config(char *err, size_t errcap) {
+  config_t fresh;
+  config_defaults(&fresh);
+  bool ok = config_load(&fresh, config_default_path(), err, errcap);
+  if (!ok) {
+    config_free(&fresh);
+    return false; /* keep what works */
+  }
+  config_free(&CFG);
+  CFG = fresh;
+  CFG_LOADED = true;
+  return true;
+}
+
+#define MIN_PANE_COLS (CFG.min_pane_cols)
+#define MIN_PANE_ROWS (CFG.min_pane_rows)
+#define FRAME_FOCUS (CFG.frame_focus)
+#define FRAME_IDLE (CFG.frame_idle)
+#define TITLE_FOCUS (CFG.title_focus)
+#define BTN_FG (CFG.button_fg)
+#define BTN_BG (CFG.button_bg)
+#define BTN_BG_IDLE (CFG.button_bg_idle)
+
 static const color_t NO_COLOR = {0};
 
 /* ---- tree --------------------------------------------------------------- */
@@ -165,6 +191,7 @@ static tab_t *tab_add(app_t *a, const char *name) {
 }
 
 app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows) {
+  ensure_config();
   app_t *a = calloc(1, sizeof *a);
   a->argv = argv;
   a->cols = cols;
@@ -393,7 +420,7 @@ static void layout_node(node_t *n, rect_t r, node_t *focus) {
   }
 }
 
-#define STRIP_ROWS 1 /* M5 turns this into the real status bar */
+#define STRIP_ROWS (CFG.status_bar ? 1 : 0)
 
 static void layout(app_t *a) {
   if (!a->ntabs) return;
@@ -692,10 +719,6 @@ static void focus_next(app_t *a) {
 }
 
 /* ---- drawing ------------------------------------------------------------ */
-
-static const color_t BTN_FG = {true, 0x14, 0x14, 0x18};
-static const color_t BTN_BG = {true, 0xff, 0x5f, 0xd7};
-static const color_t BTN_BG_IDLE = {true, 0x55, 0x55, 0x5c};
 
 /* OSC 5577: a pane's own status line and buttons, drawn in its bottom frame
  * row. Buttons are budgeted from the right *before* the status text gets any
@@ -1043,7 +1066,7 @@ void app_compose(app_t *a, screen_t *s) {
   a->painted = s;
   if (!a->ntabs || !cur(a)->root) return;
   layout(a);
-  draw_tab_strip(a, s);
+  if (CFG.status_bar) draw_tab_strip(a, s);
   draw_node(a, s, cur(a)->root);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
 }
@@ -1113,37 +1136,33 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
 }
 
 static bool prefix_command(app_t *a, const input_event_t *ev) {
-  switch (ev->key) {
-    case GHOSTTY_KEY_Q: a->quit = true; return true;
-    case GHOSTTY_KEY_D: a->detach = true; return true;
-    case GHOSTTY_KEY_BACKSLASH: /* C-a \ or C-a | */
-      split_focus(a, SPLIT_COLS);
-      return true;
-    case GHOSTTY_KEY_MINUS:
-      split_focus(a, SPLIT_ROWS);
-      return true;
-    case GHOSTTY_KEY_X:
+  action_t act = config_lookup(&CFG, ev->key, ev->mods);
+  if (act >= ACT_SELECT_TAB_1) {
+    app_select_tab(a, (size_t)(act - ACT_SELECT_TAB_1));
+    return true;
+  }
+  switch (act) {
+    case ACT_SPLIT_COLS: split_focus(a, SPLIT_COLS); return true;
+    case ACT_SPLIT_ROWS: split_focus(a, SPLIT_ROWS); return true;
+    case ACT_CLOSE_PANE:
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;
-    case GHOSTTY_KEY_O: focus_next(a); return true;
-    case GHOSTTY_KEY_F:
+    case ACT_FOCUS_LEFT: focus_dir(a, -1, 0); return true;
+    case ACT_FOCUS_RIGHT: focus_dir(a, 1, 0); return true;
+    case ACT_FOCUS_UP: focus_dir(a, 0, -1); return true;
+    case ACT_FOCUS_DOWN: focus_dir(a, 0, 1); return true;
+    case ACT_FOCUS_NEXT: focus_next(a); return true;
+    case ACT_NEW_TAB: app_new_tab(a, ""); return true;
+    case ACT_NEXT_TAB: app_cycle_tab(a, 1); return true;
+    case ACT_PREV_TAB: app_cycle_tab(a, -1); return true;
+    case ACT_FINDER:
       a->finder = true;
       a->query[0] = 0;
       a->sel = 0;
       return true;
-    case GHOSTTY_KEY_C: app_new_tab(a, ""); return true;
-    case GHOSTTY_KEY_N: app_cycle_tab(a, 1); return true;
-    case GHOSTTY_KEY_P: app_cycle_tab(a, -1); return true;
-    case GHOSTTY_KEY_H: case GHOSTTY_KEY_ARROW_LEFT: focus_dir(a, -1, 0); return true;
-    case GHOSTTY_KEY_L: case GHOSTTY_KEY_ARROW_RIGHT: focus_dir(a, 1, 0); return true;
-    case GHOSTTY_KEY_K: case GHOSTTY_KEY_ARROW_UP: focus_dir(a, 0, -1); return true;
-    case GHOSTTY_KEY_J: case GHOSTTY_KEY_ARROW_DOWN: focus_dir(a, 0, 1); return true;
-    default:
-      if (ev->key >= GHOSTTY_KEY_DIGIT_1 && ev->key <= GHOSTTY_KEY_DIGIT_9) {
-        app_select_tab(a, (size_t)(ev->key - GHOSTTY_KEY_DIGIT_1));
-        return true;
-      }
-      return false;
+    case ACT_DETACH: a->detach = true; return true;
+    case ACT_QUIT: a->quit = true; return true;
+    default: return false;
   }
 }
 
@@ -1158,14 +1177,22 @@ void app_event(app_t *a, const input_event_t *ev) {
   }
 
   if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
-    bool ctrl_a = (ev->mods & MOD_CTRL) && ev->unshifted == 'a';
+    uint16_t mods = ev->mods & (MOD_SHIFT | MOD_CTRL | MOD_ALT | MOD_SUPER);
+    bool is_prefix = ev->key == CFG.prefix_key && mods == CFG.prefix_mods;
     if (a->prefix) {
       a->prefix = false;
-      if (ctrl_a) { pane_send_key(cur(a)->focus->pane, ev); return; }
+      /* prefix twice sends the prefix itself, whatever it is bound to */
+      if (is_prefix || config_lookup(&CFG, ev->key, mods) == ACT_LITERAL_PREFIX) {
+        input_event_t literal = *ev;
+        literal.key = CFG.prefix_key;
+        literal.mods = CFG.prefix_mods;
+        pane_send_key(cur(a)->focus->pane, &literal);
+        return;
+      }
       prefix_command(a, ev); /* unbound: swallowed */
       return;
     }
-    if (ctrl_a) {
+    if (is_prefix) {
       a->prefix = true;
       return;
     }

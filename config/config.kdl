@@ -1,0 +1,88 @@
+// sl0ptty — every value here is also the compiled-in default, so this file is
+// documentation as much as configuration. Copy it to
+// ~/.config/sl0ptty/config.kdl (or point $SL0PTTY_CONFIG at it) and edit.
+//
+// A broken file costs a warning on stderr and nothing else: the defaults
+// stand. `sl0ptty cmd '{"cmd":"reload"}'` re-reads it into a live session, and
+// refuses a file it cannot parse rather than half-applying it.
+
+// ── geometry ────────────────────────────────────────────────────────────────
+
+// Blank cells between panes and around the screen edge, in ROWS.
+gap 1
+
+// Columns per row. Terminal cells are about twice as tall as they are wide, so
+// a gap of 1 row and 2 columns looks square.
+gap_aspect 2
+
+// Cells between a pane's frame and its content.
+padding 0
+
+// ╭╮╰╯ versus ┌┐└┘
+rounded true
+
+// "left" | "center" | "right"
+title_align "center"
+
+// The one-row bar with tabs, the +tab button and the pane count.
+status_bar true
+
+// The floor below which a pane is not small but useless. A split that cannot
+// give every child this much collapses into a stack instead, with one pane
+// expanded and its siblings as one-row headers. Recomputed every frame, so
+// widening the terminal always restores exactly the layout you had.
+min_pane cols=24 rows=6
+
+// What a new pane runs. Unset means $SHELL.
+// shell "/bin/bash"
+
+// ── theme ───────────────────────────────────────────────────────────────────
+
+theme {
+    frame_focus "#ff5fd7"
+    frame_idle "#45454a"
+    title "#ffffff"
+    button_fg "#141418"
+    button_bg "#ff5fd7"
+    button_bg_idle "#55555c"
+}
+
+// ── keys ────────────────────────────────────────────────────────────────────
+//
+// Everything is `prefix` then a key. Pressing the prefix twice sends the
+// prefix itself to the pane. Modifiers are ctrl+ alt+ shift+ super+, and named
+// keys are left/right/up/down/enter/tab/escape/space/backspace/home/end/
+// pageup/pagedown/delete/insert/backslash/minus/slash/comma/period.
+//
+// Actions: split-cols split-rows close-pane focus-left focus-right focus-up
+// focus-down focus-next new-tab next-tab prev-tab select-tab-1..9 finder
+// detach quit literal-prefix none
+
+keys {
+    prefix "ctrl+a"
+
+    bind "\\" "split-cols"
+    bind "-" "split-rows"
+    bind "x" "close-pane"
+
+    bind "h" "focus-left"
+    bind "l" "focus-right"
+    bind "k" "focus-up"
+    bind "j" "focus-down"
+    bind "left" "focus-left"
+    bind "right" "focus-right"
+    bind "up" "focus-up"
+    bind "down" "focus-down"
+    bind "o" "focus-next"
+
+    bind "c" "new-tab"
+    bind "n" "next-tab"
+    bind "p" "prev-tab"
+    bind "1" "select-tab-1"
+    bind "2" "select-tab-2"
+    bind "3" "select-tab-3"
+
+    bind "f" "finder"
+    bind "d" "detach"
+    bind "q" "quit"
+}
