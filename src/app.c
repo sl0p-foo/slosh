@@ -130,11 +130,12 @@ struct app {
     char side;         /* border press: 'l' 'r' 't' 'b' */
   } drag;
 
-  /* Which pane border the pointer is over, for the split guide. Recomputed
-   * from the hit list on every motion, so it cannot describe a border that is
-   * not there any more. */
-  uint32_t hover_pane;
-  char hover_side;
+  /* Where the pointer is. Which border that *means* is derived during the
+   * paint, from the rects painted in that same pass — remembering the answer
+   * instead left the guide describing the layout from before a split, until
+   * the mouse moved and corrected it. */
+  uint16_t ptr_x, ptr_y;
+  bool ptr_valid;
 
   /* Transient announcements: "copied 13 chars", a notification from a pane,
    * a config reload. They stack upward from the bottom right and expire on
@@ -1181,12 +1182,31 @@ static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
  * dashed line crosses it — the first version was painted under the terminal
  * and was invisible. Hover only, so an idle frame stays quiet. */
 static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
-  if (a->hover_pane != leaf->id || !a->hover_side) return;
+  if (!a->ptr_valid) return;
+  if (a->drag.kind == DRAG_TITLE || a->drag.kind == DRAG_SELECT ||
+      a->drag.kind == DRAG_EDGE)
+    return; /* a drag in progress means the pointer is busy */
+
+  /* Ask the hit list where the pointer is, using the entries this very pass
+   * registered for this pane. Drawing and hit-testing cannot disagree, and
+   * neither can drawing and *the layout*. */
+  const char *action = hit_test(&s->hits, a->ptr_x, a->ptr_y);
+  if (!action) return;
+  char side = 0;
+  char want[48];
+  snprintf(want, sizeof want, "border:%u:", leaf->id);
+  if (strncmp(action, want, strlen(want)) == 0) {
+    side = action[strlen(want)];
+  } else {
+    snprintf(want, sizeof want, "title:%u", leaf->id);
+    if (strcmp(action, want) == 0) side = 't';
+  }
+  if (!side) return;
+
   rect_t r = leaf->rect;
   if (r.w < 4 || r.h < 4) return;
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
   color_t hi = FRAME_FOCUS;
-  char side = a->hover_side;
 
   if (side == 'l' || side == 'r') {
     uint16_t bx = side == 'l' ? r.x : x1;
@@ -1896,21 +1916,9 @@ void app_event(app_t *a, const input_event_t *ev) {
       if (!a->painted) break;
       const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
 
-      /* Which border the pointer is over, for the guide. */
-      if (ev->maction == MOUSE_MOTION && a->drag.kind == DRAG_NONE) {
-        uint32_t hp = 0;
-        char hs = 0;
-        if (action && strncmp(action, "border:", 7) == 0) {
-          hp = (uint32_t)strtoul(action + 7, NULL, 10);
-          const char *colon = strchr(action + 7, ':');
-          hs = colon && colon[1] ? colon[1] : 0;
-        } else if (action && strncmp(action, "title:", 6) == 0) {
-          hp = (uint32_t)strtoul(action + 6, NULL, 10);
-          hs = 't';
-        }
-        a->hover_pane = hp;
-        a->hover_side = hs;
-      }
+      a->ptr_x = ev->mx;
+      a->ptr_y = ev->my;
+      a->ptr_valid = true;
 
       if (a->drag.kind != DRAG_NONE) {
         if (ev->maction == MOUSE_MOTION) {

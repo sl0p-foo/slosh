@@ -106,6 +106,41 @@ def test_the_guide():
               repr(snap.screen()[:200]))
 
 
+def test_guide_follows_the_new_layout():
+    """Regression: the guide described the layout from *before* the split.
+
+    Hover state used to be remembered from the last motion event, so after a
+    click split the guide stayed attached to the old pane and the old edge
+    until the mouse moved and corrected it. It is derived during the paint
+    now, from the rects that paint registered.
+    """
+    with Session(SH, cols=54, rows=12) as s:
+        s.settle()
+        p = s.pane()
+        edge_x, edge_y = p["x"] + p["w"] - 1, p["y"] + 3
+
+        hover(s, edge_x, edge_y)
+        s.settle(60)
+        click(s, edge_x, edge_y)
+        s.settle(100)  # and deliberately no further mouse movement
+
+        snap = s.snapshot()
+        panes = s.panes()
+        check("the split happened", len(panes) == 2, str(len(panes)))
+
+        armed = [q for q in panes
+                 if "┃" in "".join(row[q["x"]:q["x"] + q["w"]] for row in snap.text)]
+        check("exactly one pane shows a guide", len(armed) == 1, str(armed))
+        if len(armed) != 1:
+            return
+        check("and it is the one the pointer is actually over",
+              armed[0]["x"] <= edge_x < armed[0]["x"] + armed[0]["w"],
+              f"pointer at {edge_x}, guide on {armed[0]['x']}..{armed[0]['x'] + armed[0]['w']}")
+        check("on the edge the pointer is on",
+              snap.hit_at(edge_x, edge_y) == f"border:{armed[0]['id']}:r",
+              str(snap.hit_at(edge_x, edge_y)))
+
+
 def test_guide_is_per_pane():
     with Session(SH, cols=90, rows=14) as s:
         s.settle()
@@ -168,6 +203,7 @@ if __name__ == "__main__":
     test_no_more_plus()
     test_each_border_splits_toward_itself()
     test_the_guide()
+    test_guide_follows_the_new_layout()
     test_guide_is_per_pane()
     test_drag_still_moves()
     test_tiny_panes_have_no_targets()

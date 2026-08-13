@@ -267,6 +267,14 @@ The top border keeps its other job: **click splits upward, drag moves the
 pane**. A press that never moves is a click — the same distinction the drag
 machine already had to make.
 
+**The guide is derived, not remembered.** Which border the pointer is over is
+worked out *during the paint*, by asking the hit list that same paint just
+filled. The first version remembered the answer from the last motion event,
+which meant that immediately after a split the guide still described the
+layout from before it, until the mouse moved and corrected itself. Same lesson
+as the hit list, one level up: do not remember what you can derive from the
+frame you are drawing.
+
 ### One drag machine, two verbs (M8)
 
 Pane sizes are **weights**, so an even split is simply equal weights and
