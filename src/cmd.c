@@ -158,6 +158,11 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                  : app_select_tab(a, (size_t)(jv_geti(req, "index", 1) - 1));
     return ok ? jok_int("id", app_current_tab_id(a)) : jerr("no such tab");
   }
+  if (strcmp(cmd, "close-tab") == 0) {
+    return app_close_tab(a, (uint32_t)jv_geti(req, "id", 0))
+               ? jok_int(NULL, 0)
+               : jerr("no such tab");
+  }
   if (strcmp(cmd, "set-name") == 0) {
     return app_set_tab_name(a, (uint32_t)jv_geti(req, "id", 0),
                             jv_gets(req, "name", ""))
@@ -175,6 +180,19 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                   ? app_set_tab_purpose(a, id, purpose, declared)
                   : app_set_pane_purpose(a, id, purpose, declared);
     return ok ? jok_int(NULL, 0) : jerr("refused");
+  }
+  if (strcmp(cmd, "apply-layout") == 0) {
+    const char *path = jv_gets(req, "path", NULL);
+    const char *text = jv_gets(req, "kdl", NULL);
+    bool replace = jv_getb(req, "replace", false);
+    char err[256] = {0};
+    bool ok = text ? app_apply_layout_text(a, text, replace, err, sizeof err)
+                   : path ? app_apply_layout_file(a, path, replace, err, sizeof err)
+                          : false;
+    if (!ok) return jerr(err[0] ? err : "need a path or kdl");
+    app_resize(a, s->cols, s->rows);
+    s->force_full = true;
+    return jok_raw("tabs", app_tabs_json(a));
   }
   if (strcmp(cmd, "reload") == 0) {
     char err[256] = {0};

@@ -46,6 +46,7 @@ bool app_select_tab(app_t *a, size_t index);
 bool app_select_tab_id(app_t *a, uint32_t id);
 void app_cycle_tab(app_t *a, int delta);
 size_t app_tab_count(const app_t *a);
+bool app_close_tab(app_t *a, uint32_t id);
 bool app_set_tab_name(app_t *a, uint32_t id, const char *name);
 
 /* Purposes (D8). `declared` means "from a layout/control API": it outranks an
@@ -55,6 +56,13 @@ bool app_set_pane_purpose(app_t *a, uint32_t id, const char *purpose,
                           bool declared);
 bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
                          bool declared);
+
+/* Build tabs and panes from a KDL layout. `replace` drops what was there.
+ * Purposes a layout declares are locked (D8). */
+bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
+                           size_t errcap);
+bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
+                           size_t errcap);
 
 /* Address panes by id (the control API), not "the focused one". */
 bool app_focus_pane(app_t *a, uint32_t id);

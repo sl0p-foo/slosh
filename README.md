@@ -72,6 +72,31 @@ its own `purpose` (`\033]5577;1;purpose;agent:main\033\\`) — but a purpose
 declared by a layout outranks it and cannot be overridden, so a pane cannot
 relabel itself into something tooling trusts.
 
+## Sessions as files
+
+```kdl
+layout {
+    tab name="api" purpose="project:api.a1b2c3" cwd="~/dev/api" {
+        pane purpose="agent:main" command="pi"
+        pane split="rows" {
+            pane purpose="service:web" command="npm run dev" suspended=true
+            pane purpose="shell:scratch"
+        }
+    }
+}
+```
+
+```bash
+sl0ptty --layout session.kdl                       # build it
+sl0ptty cmd '{"cmd":"apply-layout","path":"..."}'  # add it to a live session
+```
+
+`suspended` panes exist, are laid out, and have run nothing — they start on
+their first keystroke, because twelve projects should not be twelve running
+dev servers. Purposes a layout declares are locked, so identity comes from the
+file rather than from whatever the program inside prints. Full example with
+commentary: [`config/layout.example.kdl`](config/layout.example.kdl).
+
 ## Control API
 
 One JSON object per line, on the session's unix socket. It is the same
@@ -85,8 +110,8 @@ $ sl0ptty -s work cmd '{"cmd":"panes"}'
 {"ok":true,"panes":[{"id":1,"x":2,"y":2,...,"purpose":"agent:main"}]}
 ```
 
-`panes tabs snapshot send raw resize split focus close new-tab select-tab
-set-name set-purpose reload alive quit`. Panes are addressed by id, so a
+`panes tabs snapshot send raw resize split focus close new-tab close-tab
+select-tab set-name set-purpose apply-layout reload alive quit`. Panes are addressed by id, so a
 background tab is scriptable, and a detached session answers exactly as a live
 one does.
 

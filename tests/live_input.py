@@ -6,7 +6,7 @@ tests/test_screen.py, where it runs deterministically through the headless
 driver. What is left here is the part that only exists with a real tty: raw
 mode, reading stdin, and the prefix key.
 """
-import os, pty, select, struct, sys, termios, time, fcntl, signal
+import os, pty, uuid, select, struct, sys, termios, time, fcntl, signal
 
 BIN = os.path.join(os.path.dirname(__file__), "..", "build", "sl0ptty")
 INNER = ["--", "/bin/sh", "-c", "stty raw -echo; cat -v"]
@@ -40,10 +40,12 @@ def drain(fd, idle=0.25, limit=2.0):
 
 
 def main():
+    session = "test-" + uuid.uuid4().hex[:8]
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.execv(BIN, [BIN] + INNER)
+        os.environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
+        os.execv(BIN, [BIN, "-s", session] + INNER)
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 10, 80, 0, 0))
     drain(fd)

@@ -1,0 +1,33 @@
+// A session described as a file:  sl0ptty --layout this.kdl
+//
+// The same shape can be sent to a running session over the control socket:
+//   sl0ptty cmd '{"cmd":"apply-layout","path":"/path/to/this.kdl"}'
+//   sl0ptty cmd '{"cmd":"apply-layout","kdl":"layout { tab name=\"x\" { pane } }"}'
+// which is how an orchestrator adds one project tab at a time.
+
+layout {
+    // A tab is a project. `purpose` is its identity — declared here, it is
+    // locked: no program running inside can relabel itself into it.
+    tab name="api" purpose="project:api.a1b2c3" cwd="/home/user/dev/api" {
+
+        // The tab's panes split into columns by default.
+        pane purpose="agent:main" command="pi"
+
+        pane split="rows" {
+            // `suspended` means the pane exists, is laid out, and has run
+            // nothing. It starts on its first keystroke. Twelve projects
+            // should not be twelve running dev servers.
+            pane purpose="service:web" command="npm run dev" suspended=true
+
+            // No command: the configured shell, in the tab's cwd.
+            pane purpose="shell:scratch"
+        }
+    }
+
+    tab name="notes" cwd="/home/user/notes" {
+        pane command="nvim ." suspended=true
+    }
+}
+
+// Note on escapes: strings understand \n \t \r \e \\ \" — \e is an ESC, and
+// there is no \033. A command that needs an escape should use \e.

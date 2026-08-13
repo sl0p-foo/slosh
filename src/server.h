@@ -9,10 +9,10 @@
 
 /* Run the session in this process (the daemonised half). */
 int server_run(const char *name, const char *const argv[], uint16_t cols,
-               uint16_t rows);
+               uint16_t rows, const char *layout);
 /* Fork a server, then wait for its socket to answer. Returns a connected fd. */
 int server_spawn(const char *name, const char *const argv[], uint16_t cols,
-                 uint16_t rows);
+                 uint16_t rows, const char *layout);
 /* Connect to an existing session, or -1. */
 int server_connect(const char *name);
 

@@ -121,7 +121,7 @@ static void drop_display(server_t *s, uint8_t reason) {
 }
 
 int server_run(const char *name, const char *const argv[], uint16_t cols,
-               uint16_t rows) {
+               uint16_t rows, const char *layout) {
   char path[512];
   if (session_socket_path(name, path, sizeof path) != 0) return 1;
   int lfd = listen_socket(path);
@@ -139,6 +139,11 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   server_t s = {0};
   s.app = app_new(argv, cols, rows);
   if (!s.app) return 1;
+  if (layout) {
+    char err[256] = {0};
+    if (!app_apply_layout_file(s.app, layout, true, err, sizeof err))
+      fprintf(stderr, "sl0ptty: %s: %s\n", layout, err[0] ? err : "bad layout");
+  }
   app_resize(s.app, cols, rows);
   screen_init(&s.screen, cols, rows);
   s.in = input_new();
@@ -299,7 +304,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
 /* Fork a server into the background and wait for its socket to answer. */
 int server_spawn(const char *name, const char *const argv[], uint16_t cols,
-                 uint16_t rows) {
+                 uint16_t rows, const char *layout) {
   char path[512], logp[512];
   if (session_socket_path(name, path, sizeof path) != 0) return -1;
   session_log_path(name, logp, sizeof logp);
@@ -316,7 +321,7 @@ int server_spawn(const char *name, const char *const argv[], uint16_t cols,
     dup2(log >= 0 ? log : null, STDERR_FILENO);
     if (null > 2) close(null);
     if (log > 2) close(log);
-    _exit(server_run(name, argv, cols, rows));
+    _exit(server_run(name, argv, cols, rows, layout));
   }
   waitpid(pid, NULL, 0); /* the intermediate exits immediately */
 

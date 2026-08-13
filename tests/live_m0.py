@@ -4,16 +4,22 @@
 The headless dump proves composition; this proves the parts headless cannot:
 raw mode, the diff emitter, SIGWINCH, and the quit path.
 """
-import os, pty, re, select, signal, struct, subprocess, sys, termios, time, fcntl
+import os, pty, uuid, re, select, signal, struct, subprocess, sys, termios, time, fcntl
 
 BIN = os.path.join(os.path.dirname(__file__), "..", "build", "sl0ptty")
+
+
+# A unique session per run. Without this the tests attach to whatever "main"
+# happens to exist on the box, which is somebody else's terminal.
+SESSION = "test-" + uuid.uuid4().hex[:8]
 
 
 def spawn(cols=60, rows=12, argv=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.execv(BIN, [BIN] + (argv or ["--", "/bin/sh", "-i"]))
+        os.environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
+        os.execv(BIN, [BIN, "-s", SESSION] + (argv or ["--", "/bin/sh", "-i"]))
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     return pid, fd

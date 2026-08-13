@@ -245,6 +245,8 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M4** — chrome: OSC 5577, buttons, hit-list mouse ✅ (drag-to-reorder deferred to M5)
 - **M5** — built-in status bar, pane finder overlay, responsive (D6) ✅
 - **M6** — config file: geometry, theme, keybindings, live reload ✅
+- **M7** — layout files, suspended panes, `apply-layout` ✅ (what `sl0ppi up`
+  is ported onto)
 
 M4 landed: the pi extensions' exact byte patterns are an acceptance test
 (`tests/test_osc5577.py::test_pi_extension_compat`), including `buttons` with

@@ -51,11 +51,16 @@ static void settle(app_t *a, int quiet) {
 }
 
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
-                 int idle_ms, bool script) {
+                 int idle_ms, bool script, const char *layout) {
   app_t *a = app_new(argv, cols, rows);
   if (!a) {
     fprintf(stderr, "sl0ptty: cannot spawn pane\n");
     return 1;
+  }
+  if (layout) {
+    char err[256] = {0};
+    if (!app_apply_layout_file(a, layout, true, err, sizeof err))
+      fprintf(stderr, "sl0ptty: %s: %s\n", layout, err[0] ? err : "bad layout");
   }
   app_resize(a, cols, rows);
   screen_t s;

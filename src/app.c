@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "json.h"
+#include "kdl.h"
 
 /* ---- config ------------------------------------------------------------- */
 
@@ -140,6 +141,18 @@ static void on_pane_osc(pane_t *p, const char *verb, const char *payload,
   struct bypane b = {p, NULL};
   walk_all(a, bypane_cb, &b);
   if (b.found) app_set_pane_purpose(a, b.found->id, payload, false);
+}
+
+static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
+                           bool suspended, const char *label) {
+  pane_t *p = pane_new_ex(argv, 1, 1, cwd, suspended, label);
+  if (!p) return NULL;
+  node_t *n = calloc(1, sizeof *n);
+  n->kind = NODE_LEAF;
+  n->pane = p;
+  n->id = ++a->next_id;
+  pane_set_osc_handler(p, on_pane_osc, a);
+  return n;
 }
 
 static node_t *leaf_new(app_t *a) {
@@ -593,6 +606,17 @@ void app_cycle_tab(app_t *a, int delta) {
 
 size_t app_tab_count(const app_t *a) { return a->ntabs; }
 
+bool app_close_tab(app_t *a, uint32_t id) {
+  for (size_t i = 0; i < a->ntabs; i++) {
+    if (a->tabs[i].id != id) continue;
+    tab_remove(a, i);
+    if (a->ntabs == 0) a->quit = true;
+    else layout(a);
+    return true;
+  }
+  return false;
+}
+
 /* D8's trust model: a purpose declared by a layout outranks an in-band one and
  * cannot be overridden, so `cat hostile.txt` in a pane cannot relabel a
  * project tab. `declared` is only ever true on the control path. */
@@ -666,6 +690,150 @@ uint32_t app_focused_pane_id(app_t *a) {
 }
 
 uint32_t app_current_tab_id(app_t *a) { return a->ntabs ? cur(a)->id : 0; }
+
+/* ---- layouts ------------------------------------------------------------ *
+ *
+ *   layout {
+ *       tab name="api" purpose="project:api.a1b2" cwd="/home/user/dev/api" {
+ *           pane purpose="agent:main" command="pi" suspended=true
+ *           pane split="rows" {
+ *               pane command="npm run dev" suspended=true
+ *               pane
+ *           }
+ *       }
+ *   }
+ *
+ * A `pane` with children is a split; `split` on it picks the direction. Every
+ * purpose a layout declares is locked, which is the point: identity comes from
+ * the layout, not from whatever the program inside decides to print (D8).
+ */
+
+static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
+  const char *node_cwd = kdl_prop(node, "cwd", cwd);
+
+  /* a split: children, in order, in one direction */
+  size_t kids = 0;
+  for (size_t i = 0; i < node->nkids; i++)
+    if (strcmp(node->kids[i]->name, "pane") == 0) kids++;
+
+  if (kids) {
+    node_t *sp = calloc(1, sizeof *sp);
+    sp->kind = NODE_SPLIT;
+    sp->dir = strcmp(kdl_prop(node, "split", "cols"), "rows") == 0 ? SPLIT_ROWS
+                                                                   : SPLIT_COLS;
+    for (size_t i = 0; i < node->nkids; i++) {
+      if (strcmp(node->kids[i]->name, "pane") != 0) continue;
+      node_t *kid = build_pane(a, node->kids[i], node_cwd);
+      if (!kid) continue;
+      sp->kids = realloc(sp->kids, (sp->nkids + 1) * sizeof *sp->kids);
+      sp->kids[sp->nkids++] = kid;
+      kid->parent = sp;
+    }
+    if (sp->nkids == 0) {
+      free(sp);
+      return NULL;
+    }
+    if (sp->nkids == 1) { /* a split of one is just the pane */
+      node_t *only = sp->kids[0];
+      only->parent = NULL;
+      free(sp->kids);
+      free(sp);
+      return only;
+    }
+    return sp;
+  }
+
+  const char *command = kdl_prop(node, "command", NULL);
+  bool suspended = kdl_prop_bool(node, "suspended", false);
+  const char *argv[4];
+  if (command) {
+    argv[0] = "/bin/sh";
+    argv[1] = "-c";
+    argv[2] = command;
+    argv[3] = NULL;
+  } else {
+    argv[0] = a->argv[0];
+    argv[1] = NULL;
+    for (size_t i = 1; a->argv[i] && i < 3; i++) argv[i] = a->argv[i];
+  }
+
+  node_t *leaf = leaf_new_ex(a, command ? argv : a->argv, node_cwd, suspended,
+                             command ? command : "");
+  if (!leaf) return NULL;
+  const char *purpose = kdl_prop(node, "purpose", NULL);
+  if (purpose) {
+    sanitise_purpose(purpose, leaf->purpose, sizeof leaf->purpose);
+    leaf->purpose_locked = true; /* declared by a layout: in-band cannot win */
+  }
+  return leaf;
+}
+
+bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
+                      size_t errcap) {
+  const kdl_node_t *lay = kdl_child(root, "layout");
+  if (!lay) lay = root; /* allow a bare list of tabs */
+
+  size_t before = a->ntabs;
+  size_t made = 0;
+  for (size_t i = 0; i < lay->nkids; i++) {
+    const kdl_node_t *t = lay->kids[i];
+    if (strcmp(t->name, "tab") != 0) continue;
+
+    tab_t *tab = tab_add(a, kdl_prop(t, "name", ""));
+    const char *purpose = kdl_prop(t, "purpose", NULL);
+    if (purpose) {
+      sanitise_purpose(purpose, tab->purpose, sizeof tab->purpose);
+      tab->purpose_locked = true;
+    }
+
+    /* the tab body is a split of its pane children */
+    kdl_node_t body = {.name = (char *)"pane", .kids = t->kids,
+                       .nkids = t->nkids, .props = t->props,
+                       .nprops = t->nprops};
+    node_t *tree = build_pane(a, &body, kdl_prop(t, "cwd", NULL));
+    if (!tree) tree = leaf_new(a);
+    if (!tree) {
+      a->ntabs--;
+      if (err) snprintf(err, errcap, "cannot create panes for tab %zu", i + 1);
+      return false;
+    }
+    tab->root = tree;
+    tab->focus = first_leaf_of(tree);
+    made++;
+  }
+
+  if (!made) {
+    if (err) snprintf(err, errcap, "layout declares no tabs");
+    return false;
+  }
+
+  if (replace) { /* drop the tabs that existed before this layout */
+    for (size_t i = 0; i < before; i++) node_free(a->tabs[i].root);
+    memmove(&a->tabs[0], &a->tabs[before], made * sizeof *a->tabs);
+    a->ntabs = made;
+  }
+  a->cur = replace ? 0 : before;
+  layout(a);
+  return true;
+}
+
+bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
+                           size_t errcap) {
+  kdl_node_t *root = kdl_parse(text, err, errcap);
+  if (!root) return false;
+  bool ok = app_apply_layout(a, root, replace, err, errcap);
+  kdl_free(root);
+  return ok;
+}
+
+bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
+                           size_t errcap) {
+  kdl_node_t *root = kdl_parse_file(path, err, errcap);
+  if (!root) return false;
+  bool ok = app_apply_layout(a, root, replace, err, errcap);
+  kdl_free(root);
+  return ok;
+}
 
 /* ---- focus -------------------------------------------------------------- */
 
@@ -869,6 +1037,31 @@ static void draw_cb(node_t *n, void *ud) {
           action);
 
   draw_frame(d->a, d->s, n);
+  if (pane_suspended(n->pane)) {
+    /* The pane exists, is laid out, and has run nothing. Say what it would. */
+    const char *label = pane_label(n->pane);
+    char line[256];
+    snprintf(line, sizeof line, "press a key to run: %s",
+             label && *label ? label : "shell");
+    /* Truncate rather than vanish: a hint that only appears on wide panes is
+     * worse than a clipped one, and the pane may be narrow precisely because
+     * there are twelve of them. */
+    size_t w = strlen(line);
+    if (w > n->content.w) {
+      w = n->content.w;
+      if (w > 1) {
+        line[w - 1] = 0;
+        line[w - 2] = 0xe2; /* fall back to a plain dot rather than a cut UTF-8 */
+        line[w - 2] = '.';
+      } else {
+        line[w] = 0;
+      }
+    }
+    screen_text(d->s, (uint16_t)(n->content.x + (n->content.w - w) / 2),
+                (uint16_t)(n->content.y + n->content.h / 2), line, FRAME_IDLE,
+                NO_COLOR, 0);
+    return;
+  }
   pane_compose(n->pane, d->s, n->content.x, n->content.y, n == cur(d->a)->focus);
 }
 
@@ -1200,6 +1393,11 @@ void app_event(app_t *a, const input_event_t *ev) {
 
   switch (ev->kind) {
     case EV_KEY:
+      /* the first keystroke starts a suspended pane, and is not forwarded */
+      if (pane_suspended(cur(a)->focus->pane)) {
+        pane_start(cur(a)->focus->pane);
+        break;
+      }
       pane_send_key(cur(a)->focus->pane, ev);
       break;
     case EV_MOUSE: {
@@ -1239,6 +1437,7 @@ static void panes_cb(node_t *n, void *ud) {
   json_int(j, "content_h", n->content.h);
   json_bool(j, "focused", n == cur(pj->a)->focus);
   json_bool(j, "hidden", n->hidden);
+  json_bool(j, "suspended", pane_suspended(n->pane));
   json_str(j, "purpose", n->purpose, strlen(n->purpose));
   json_bool(j, "purpose_declared", n->purpose_locked);
   json_int(j, "tab", (long long)tab_of(pj->a, n) + 1);

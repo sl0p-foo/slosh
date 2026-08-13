@@ -68,7 +68,8 @@ class Snapshot:
 
 
 class Session:
-    def __init__(self, argv, cols=80, rows=24, config=None, env=None):
+    def __init__(self, argv, cols=80, rows=24, config=None, env=None,
+                 layout=None):
         self.cols, self.rows = cols, rows
         environ = dict(os.environ)
         if config:
@@ -77,8 +78,11 @@ class Session:
             environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
         if env:
             environ.update(env)
+        cmd = [BIN, "--script", "--cols", str(cols), "--rows", str(rows)]
+        if layout:
+            cmd += ["--layout", str(layout)]
         self.proc = subprocess.Popen(
-            [BIN, "--script", "--cols", str(cols), "--rows", str(rows), "--"] + argv,
+            cmd + ["--"] + argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

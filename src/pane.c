@@ -29,6 +29,14 @@ struct pane {
   char title[256];
 
   /* OSC 5577 state: what this pane asked us to draw in its frame */
+  /* A suspended pane is real, sized and laid out, but has not run anything:
+   * a root with twelve projects must not become twelve running servers. It
+   * starts on the first keystroke it is given. */
+  bool suspended;
+  char **argv;
+  char *cwd;
+  char label[128];
+
   osc_scan_t scan;
   char status[256];
   pane_button_t buttons[8];
@@ -132,6 +140,49 @@ static void on_title_changed(GhosttyTerminal t, void *ud) {
   p->dirty = true;
 }
 
+bool pane_suspended(const pane_t *p) { return p->suspended; }
+const char *pane_label(const pane_t *p) { return p->label; }
+
+/* Spawn what a suspended pane was created to run. */
+bool pane_start(pane_t *p) {
+  if (!p->suspended) return false;
+  p->suspended = false;
+  if (pty_spawn(&p->pty, (const char *const *)p->argv, p->cols, p->rows_n,
+                p->cwd) != 0) {
+    p->alive = false;
+    return false;
+  }
+  p->alive = true;
+  p->dirty = true;
+  return true;
+}
+
+static char **argv_dup(const char *const argv[]) {
+  size_t n = 0;
+  while (argv[n]) n++;
+  char **out = calloc(n + 1, sizeof *out);
+  for (size_t i = 0; i < n; i++) out[i] = strdup(argv[i]);
+  return out;
+}
+
+pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
+                    const char *cwd, bool suspended, const char *label) {
+  pane_t *p = pane_new(argv, cols, rows, cwd);
+  if (!p) return NULL;
+  snprintf(p->label, sizeof p->label, "%s", label ? label : "");
+  if (suspended) {
+    /* pane_new already spawned; a suspended pane must not have. Close it and
+     * keep the arguments for later, rather than duplicating the constructor. */
+    pty_close(&p->pty);
+    p->pty.fd = -1;
+    p->suspended = true;
+    p->alive = true;
+    p->argv = argv_dup(argv);
+    p->cwd = cwd ? strdup(cwd) : NULL;
+  }
+  return p;
+}
+
 pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
                  const char *cwd) {
   pane_t *p = calloc(1, sizeof *p);
@@ -190,6 +241,11 @@ fail:
 
 void pane_free(pane_t *p) {
   if (!p) return;
+  if (p->argv) {
+    for (size_t i = 0; p->argv[i]; i++) free(p->argv[i]);
+    free(p->argv);
+  }
+  free(p->cwd);
   if (p->pty.fd >= 0) pty_close(&p->pty);
   if (p->mev) ghostty_mouse_event_free(p->mev);
   if (p->menc) ghostty_mouse_encoder_free(p->menc);
@@ -208,6 +264,7 @@ bool pane_dirty(pane_t *p) { return p->dirty; }
 const char *pane_title(const pane_t *p) { return p->title; }
 
 ssize_t pane_pump(pane_t *p) {
+  if (p->pty.fd < 0) return 0;
   uint8_t buf[65536];
   ssize_t total = 0;
   for (;;) {
@@ -315,7 +372,7 @@ void pane_resize(pane_t *p, uint16_t cols, uint16_t rows) {
   p->cols = cols;
   p->rows_n = rows;
   ghostty_terminal_resize(p->term, cols, rows, 0, 0);
-  pty_resize(&p->pty, cols, rows);
+  if (p->pty.fd >= 0) pty_resize(&p->pty, cols, rows);
   p->dirty = true;
 }
 

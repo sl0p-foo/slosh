@@ -123,6 +123,13 @@ typedef void (*pane_osc_fn)(pane_t *p, const char *verb, const char *payload,
 
 pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
                  const char *cwd);
+/* `suspended`: create the pane but run nothing until pane_start(). `label` is
+ * what to show in the meantime (usually the command line). */
+pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
+                    const char *cwd, bool suspended, const char *label);
+bool pane_suspended(const pane_t *p);
+const char *pane_label(const pane_t *p);
+bool pane_start(pane_t *p);
 void pane_free(pane_t *p);
 int pane_fd(const pane_t *p);
 bool pane_alive(const pane_t *p);

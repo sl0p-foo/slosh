@@ -33,6 +33,7 @@ def attach(name, cols=60, rows=12, inner=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
+        os.environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
         args = [BIN, "-s", name]
         if inner:
             args += ["--"] + inner
