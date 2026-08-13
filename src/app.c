@@ -3,6 +3,7 @@
 #include "app.h"
 
 #include <ghostty/vt.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,11 @@ typedef struct {
   bool rounded;
   enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } title_align;
 } config_t;
+
+/* Below these, a pane is not small: it is useless. A split that cannot give
+ * every child this much collapses instead (D6). */
+#define MIN_PANE_COLS 24
+#define MIN_PANE_ROWS 6
 
 static const config_t CFG = {
     .gap = 1, .gap_aspect = 2, .pad = 0, .rounded = true,
@@ -47,6 +53,11 @@ struct node {
   split_dir_t dir;
   node_t **kids;
   size_t nkids;
+
+  /* recomputed every layout pass, like the rect: this subtree did not fit and
+   * is drawn as a one-row header (D6). Never remembered between passes. */
+  bool collapsed;
+  bool hidden; /* a leaf inside a collapsed subtree: running, not drawn */
 };
 
 /* A tab is a layout tree and its focus. Panes in every tab keep running; only
@@ -69,6 +80,10 @@ struct app {
   bool prefix;
   bool quit;
   bool detach;
+  /* the pane finder overlay: tabs stop being navigation past about six */
+  bool finder;
+  char query[64];
+  size_t sel;
   const char *const *argv;
   /* the screen we last composed into: its hit list is what a click resolves
    * against, so routing can never consult geometry the user never saw */
@@ -254,8 +269,79 @@ bool app_pump_fd(app_t *a, int fd) {
 
 /* ---- layout: a pure function of the tree and the rect ------------------- */
 
-static void layout_node(node_t *n, rect_t r) {
+static bool subtree_has(node_t *n, node_t *needle) {
+  if (n == needle) return true;
+  if (n->kind == NODE_LEAF) return false;
+  for (size_t i = 0; i < n->nkids; i++)
+    if (subtree_has(n->kids[i], needle)) return true;
+  return false;
+}
+
+/* A collapsed subtree keeps running and keeps its size; it is simply not
+ * drawn. Its leaves take the header's rect so that focusing "down" onto a
+ * header still works, and focusing a hidden pane expands it on the next pass. */
+static void mark_collapsed(node_t *n, rect_t r) {
   n->rect = r;
+  if (n->kind == NODE_LEAF) {
+    n->hidden = true;
+    return;
+  }
+  for (size_t i = 0; i < n->nkids; i++) mark_collapsed(n->kids[i], r);
+}
+
+static node_t *first_leaf_of(node_t *n) {
+  while (n && n->kind == NODE_SPLIT) n = n->kids[0];
+  return n;
+}
+
+static void layout_node(node_t *n, rect_t r, node_t *focus);
+
+/* The collapse: one expanded child, every other child a single header row.
+ * Recomputed from the rect every frame, so there is no state to go stale —
+ * which is the whole argument for D6 over swap layouts. */
+static void layout_stack(node_t *n, rect_t r, node_t *focus) {
+  size_t expanded = 0;
+  for (size_t i = 0; i < n->nkids; i++)
+    if (focus && subtree_has(n->kids[i], focus)) expanded = i;
+
+  uint16_t headers = (uint16_t)(n->nkids - 1);
+  uint16_t body = (uint16_t)(r.h - headers);
+
+  uint16_t y = r.y;
+  for (size_t i = 0; i < n->nkids; i++) {
+    if (i == expanded) {
+      layout_node(n->kids[i], (rect_t){r.x, y, r.w, body}, focus);
+      y = (uint16_t)(y + body);
+    } else {
+      node_t *k = n->kids[i];
+      k->collapsed = true;
+      mark_collapsed(k, (rect_t){r.x, y, r.w, 1});
+      y = (uint16_t)(y + 1);
+    }
+  }
+}
+
+/* Not even room for one header row per sibling: show the focused subtree and
+ * nothing else. The alternative is rects that do not fit on the screen, and a
+ * pane one cell tall helps no one. */
+static void layout_solo(node_t *n, rect_t r, node_t *focus) {
+  size_t expanded = 0;
+  for (size_t i = 0; i < n->nkids; i++)
+    if (focus && subtree_has(n->kids[i], focus)) expanded = i;
+  for (size_t i = 0; i < n->nkids; i++) {
+    if (i == expanded) {
+      layout_node(n->kids[i], r, focus);
+    } else {
+      n->kids[i]->collapsed = true;
+      mark_collapsed(n->kids[i], (rect_t){r.x, r.y, 0, 0});
+    }
+  }
+}
+
+static void layout_node(node_t *n, rect_t r, node_t *focus) {
+  n->rect = r;
+  n->collapsed = false;
+  if (n->kind == NODE_LEAF) n->hidden = false;
   if (n->kind == NODE_LEAF) {
     /* content is the frame deflated by its border and padding; a rect too
      * small for a frame gets none, and the pane takes the whole thing. */
@@ -267,7 +353,7 @@ static void layout_node(node_t *n, rect_t r) {
         .w = (uint16_t)(r.w > 2 * bx ? r.w - 2 * bx : 1),
         .h = (uint16_t)(r.h > 2 * by ? r.h - 2 * by : 1),
     };
-    pane_resize(n->pane, n->content.w, n->content.h);
+    if (!n->hidden) pane_resize(n->pane, n->content.w, n->content.h);
     return;
   }
 
@@ -275,9 +361,25 @@ static void layout_node(node_t *n, rect_t r) {
   uint16_t gap = n->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect)
                                       : CFG.gap;
   uint16_t total = n->dir == SPLIT_COLS ? r.w : r.h;
+
+  /* Does every child clear the floor? If not, this node collapses — a local
+   * decision, made from this rect, affecting nothing above or below it. */
+  uint16_t floor_ = n->dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
+  uint16_t need = (uint16_t)(k * floor_ + gap * (k - 1));
+  if (total < need) {
+    /* a stack needs one row per collapsed sibling plus a usable body */
+    if (r.h >= (uint16_t)(k + 2)) layout_stack(n, r, focus);
+    else layout_solo(n, r, focus);
+    return;
+  }
+
   uint16_t gaps = (uint16_t)(gap * (k - 1));
   uint16_t avail = total > gaps ? (uint16_t)(total - gaps) : (uint16_t)k;
   uint16_t each = (uint16_t)(avail / k);
+  if (each == 0) { /* below one cell each, nothing sensible is left */
+    layout_solo(n, r, focus);
+    return;
+  }
   uint16_t extra = (uint16_t)(avail % k); /* spread the remainder, no drift */
 
   uint16_t pos = n->dir == SPLIT_COLS ? r.x : r.y;
@@ -286,7 +388,7 @@ static void layout_node(node_t *n, rect_t r) {
     rect_t cr = n->dir == SPLIT_COLS
                     ? (rect_t){.x = pos, .y = r.y, .w = size, .h = r.h}
                     : (rect_t){.x = r.x, .y = pos, .w = r.w, .h = size};
-    layout_node(n->kids[i], cr);
+    layout_node(n->kids[i], cr, focus);
     pos = (uint16_t)(pos + size + gap);
   }
 }
@@ -301,7 +403,7 @@ static void layout(app_t *a) {
               .y = top,
               .w = (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
               .h = (uint16_t)(a->rows > top + gy ? a->rows - top - gy : 1)};
-  if (cur(a)->root) layout_node(cur(a)->root, r);
+  if (cur(a)->root) layout_node(cur(a)->root, r, cur(a)->focus);
 }
 
 void app_write_focused(app_t *a, const void *buf, size_t len) {
@@ -703,6 +805,33 @@ struct draw {
   screen_t *s;
 };
 
+/* A collapsed subtree: one row, the title of the pane it stands for, and a hit
+ * that focuses it — which expands it on the next layout pass, because the
+ * expanded child is simply the one holding focus. */
+static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
+  node_t *leaf = first_leaf_of(n);
+  if (!leaf) return;
+  rect_t r = n->rect;
+  if (r.w < 4) return;
+
+  const char *title = pane_title(leaf->pane);
+  const char *status = pane_status(leaf->pane);
+  char line[256];
+  snprintf(line, sizeof line, " %s%s%s", title && *title ? title : "pane",
+           status && *status ? " · " : "", status && *status ? status : "");
+  line[r.w < sizeof line ? r.w : sizeof line - 1] = 0;
+
+  for (uint16_t x = r.x; x < r.x + r.w; x++)
+    screen_text(s, x, r.y, "─", FRAME_IDLE, NO_COLOR, 0);
+  screen_text(s, r.x, r.y, line, FRAME_IDLE, NO_COLOR, 0);
+
+  char action[48];
+  snprintf(action, sizeof action, "focus:%u", leaf->id);
+  hit_add(&s->hits, r.x, r.y, r.w, 1, action);
+}
+
+static void draw_node(app_t *a, screen_t *s, node_t *n);
+
 static void draw_cb(node_t *n, void *ud) {
   struct draw *d = ud;
   char action[48];
@@ -722,7 +851,24 @@ static void draw_cb(node_t *n, void *ud) {
 
 static void draw_tab_strip(app_t *a, screen_t *s) {
   uint16_t x = (uint16_t)(CFG.gap * CFG.gap_aspect);
-  for (size_t i = 0; i < a->ntabs && x < s->cols; i++) {
+  uint16_t y = CFG.gap;
+
+  /* Right side first, so a long tab list can never eat the indicators — the
+   * same budgeting rule as the split button and the OSC buttons. */
+  uint16_t right = (uint16_t)(s->cols - CFG.gap * CFG.gap_aspect);
+  char info[64];
+  snprintf(info, sizeof info, "%zu panes", app_pane_count(a));
+  uint16_t iw = (uint16_t)strlen(info);
+  if (right > iw + 4) {
+    screen_text(s, (uint16_t)(right - iw), y, info, FRAME_IDLE, NO_COLOR, 0);
+    right = (uint16_t)(right - iw - 1);
+  }
+  if (a->prefix && right > 5) { /* the prefix is a mode: say so */
+    screen_text(s, (uint16_t)(right - 3), y, "C-a", BTN_FG, BTN_BG, ATTR_BOLD);
+    right = (uint16_t)(right - 4);
+  }
+
+  for (size_t i = 0; i < a->ntabs && x < right; i++) {
     tab_t *t = &a->tabs[i];
     char label[80];
     const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
@@ -735,9 +881,159 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
                              active ? ATTR_BOLD : 0);
     char action[48];
     snprintf(action, sizeof action, "tab:%u", t->id);
-    hit_add(&s->hits, x, CFG.gap, w, 1, action);
+    hit_add(&s->hits, x, y, w, 1, action);
     x = (uint16_t)(x + w);
   }
+
+  /* Not a bare "+": the frame already has one, for splitting a pane. Two
+   * verbs that look identical is a UI bug the fork shipped and noticed. */
+  if (x + 6 < right) {
+    uint16_t w = screen_text(s, x, y, " +tab ", FRAME_IDLE, NO_COLOR, 0);
+    hit_add(&s->hits, x, y, w, 1, "newtab");
+  }
+}
+
+static void draw_node(app_t *a, screen_t *s, node_t *n) {
+  if (n->collapsed) {
+    draw_collapsed(a, s, n);
+    return;
+  }
+  if (n->kind == NODE_LEAF) {
+    struct draw d = {a, s};
+    draw_cb(n, &d);
+    return;
+  }
+  for (size_t i = 0; i < n->nkids; i++) draw_node(a, s, n->kids[i]);
+}
+
+/* ---- the pane finder ---------------------------------------------------- */
+
+typedef struct {
+  node_t *node;
+  size_t tab;
+} find_entry_t;
+
+struct find_collect {
+  app_t *a;
+  const char *query;
+  find_entry_t *out;
+  size_t n, max;
+};
+
+static bool ci_contains(const char *hay, const char *needle) {
+  if (!*needle) return true;
+  size_t nl = strlen(needle);
+  for (const char *p = hay; *p; p++) {
+    size_t i = 0;
+    while (i < nl && p[i] && tolower((unsigned char)p[i]) ==
+                                 tolower((unsigned char)needle[i]))
+      i++;
+    if (i == nl) return true;
+  }
+  return false;
+}
+
+static void find_cb(node_t *n, void *ud) {
+  struct find_collect *c = ud;
+  if (c->n >= c->max) return;
+  char hay[512];
+  size_t ti = tab_of(c->a, n);
+  snprintf(hay, sizeof hay, "%s %s %s", pane_title(n->pane), n->purpose,
+           ti == (size_t)-1 ? "" : c->a->tabs[ti].name);
+  if (!ci_contains(hay, c->query)) return;
+  c->out[c->n].node = n;
+  c->out[c->n].tab = ti;
+  c->n++;
+}
+
+static size_t finder_entries(app_t *a, find_entry_t *out, size_t max) {
+  struct find_collect c = {a, a->query, out, 0, max};
+  walk_all(a, find_cb, &c);
+  return c.n;
+}
+
+static void draw_finder(app_t *a, screen_t *s) {
+  find_entry_t entries[64];
+  size_t n = finder_entries(a, entries, 64);
+  if (a->sel >= n) a->sel = n ? n - 1 : 0;
+
+  uint16_t w = (uint16_t)(s->cols > 60 ? 56 : (s->cols > 20 ? s->cols - 8 : 12));
+  uint16_t rows = (uint16_t)(n > 10 ? 10 : (n ? n : 1));
+  uint16_t h = (uint16_t)(rows + 4);
+  if (h > s->rows) h = s->rows;
+  uint16_t x = (uint16_t)((s->cols - w) / 2), y = (uint16_t)((s->rows - h) / 2);
+
+  for (uint16_t yy = y; yy < y + h; yy++)
+    for (uint16_t xx = x; xx < x + w; xx++)
+      screen_text(s, xx, yy, " ", NO_COLOR, FRAME_IDLE, 0);
+
+  char head[128];
+  snprintf(head, sizeof head, " find: %s\u2588", a->query);
+  screen_text(s, (uint16_t)(x + 1), (uint16_t)(y + 1), head, TITLE_FOCUS,
+              FRAME_IDLE, ATTR_BOLD);
+
+  for (size_t i = 0; i < rows && i < n; i++) {
+    size_t idx = i + (a->sel >= rows ? a->sel - rows + 1 : 0);
+    if (idx >= n) break;
+    find_entry_t *e = &entries[idx];
+    char line[256];
+    const char *title = pane_title(e->node->pane);
+    snprintf(line, sizeof line, " %zu:%-12.12s %-16.16s %s",
+             e->tab + 1,
+             e->tab == (size_t)-1 ? "" : a->tabs[e->tab].name,
+             title && *title ? title : "pane", e->node->purpose);
+    line[w - 2 < sizeof line ? w - 2 : sizeof line - 1] = 0;
+    bool on = idx == a->sel;
+    uint16_t yy = (uint16_t)(y + 3 + i);
+    uint16_t drawn = screen_text(s, (uint16_t)(x + 1), yy, line,
+                                 on ? BTN_FG : TITLE_FOCUS,
+                                 on ? BTN_BG : FRAME_IDLE, 0);
+    char action[48];
+    snprintf(action, sizeof action, "find:%u", e->node->id);
+    hit_add(&s->hits, (uint16_t)(x + 1), yy, drawn, 1, action);
+  }
+}
+
+/* Returns true when the finder consumed the event. */
+static bool finder_key(app_t *a, const input_event_t *ev) {
+  if (!a->finder) return false;
+  if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
+
+  switch (ev->key) {
+    case GHOSTTY_KEY_ESCAPE:
+      a->finder = false;
+      return true;
+    case GHOSTTY_KEY_ENTER: {
+      find_entry_t entries[64];
+      size_t n = finder_entries(a, entries, 64);
+      if (a->sel < n) app_focus_pane(a, entries[a->sel].node->id);
+      a->finder = false;
+      return true;
+    }
+    case GHOSTTY_KEY_ARROW_DOWN:
+      a->sel++;
+      return true;
+    case GHOSTTY_KEY_ARROW_UP:
+      if (a->sel) a->sel--;
+      return true;
+    case GHOSTTY_KEY_BACKSPACE: {
+      size_t l = strlen(a->query);
+      if (l) a->query[l - 1] = 0;
+      a->sel = 0;
+      return true;
+    }
+    default:
+      break;
+  }
+  if (ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
+    size_t l = strlen(a->query);
+    if (l + ev->text_len < sizeof a->query) {
+      memcpy(a->query + l, ev->text, ev->text_len);
+      a->query[l + ev->text_len] = 0;
+      a->sel = 0;
+    }
+  }
+  return true;
 }
 
 void app_compose(app_t *a, screen_t *s) {
@@ -748,8 +1044,8 @@ void app_compose(app_t *a, screen_t *s) {
   if (!a->ntabs || !cur(a)->root) return;
   layout(a);
   draw_tab_strip(a, s);
-  struct draw d = {a, s};
-  walk(cur(a)->root, draw_cb, &d);
+  draw_node(a, s, cur(a)->root);
+  if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
 }
 
 /* ---- input -------------------------------------------------------------- */
@@ -770,6 +1066,16 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
       app_focus_pane(a, id);
       pane_click_button(n->pane, bid + 1);
     }
+    return;
+  }
+  if (strcmp(action, "newtab") == 0) {
+    if (ev->maction == MOUSE_PRESS) app_new_tab(a, "");
+    return;
+  }
+  if (strncmp(action, "find:", 5) == 0) {
+    if (ev->maction != MOUSE_PRESS) return;
+    app_focus_pane(a, (uint32_t)strtoul(action + 5, NULL, 10));
+    a->finder = false;
     return;
   }
   if (strncmp(action, "tab:", 4) == 0) {
@@ -820,6 +1126,11 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;
     case GHOSTTY_KEY_O: focus_next(a); return true;
+    case GHOSTTY_KEY_F:
+      a->finder = true;
+      a->query[0] = 0;
+      a->sel = 0;
+      return true;
     case GHOSTTY_KEY_C: app_new_tab(a, ""); return true;
     case GHOSTTY_KEY_N: app_cycle_tab(a, 1); return true;
     case GHOSTTY_KEY_P: app_cycle_tab(a, -1); return true;
@@ -837,7 +1148,14 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
 }
 
 void app_event(app_t *a, const input_event_t *ev) {
-  if (!cur(a)->focus) return;
+  if (!a->ntabs || !cur(a)->focus) return;
+
+  /* The finder owns the keyboard while it is open; the mouse still routes
+   * through the hit list, whose topmost entries are the finder's own rows. */
+  if (a->finder && ev->kind == EV_KEY) {
+    finder_key(a, ev);
+    return;
+  }
 
   if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
     bool ctrl_a = (ev->mods & MOD_CTRL) && ev->unshifted == 'a';
@@ -893,6 +1211,7 @@ static void panes_cb(node_t *n, void *ud) {
   json_int(j, "content_w", n->content.w);
   json_int(j, "content_h", n->content.h);
   json_bool(j, "focused", n == cur(pj->a)->focus);
+  json_bool(j, "hidden", n->hidden);
   json_str(j, "purpose", n->purpose, strlen(n->purpose));
   json_bool(j, "purpose_declared", n->purpose_locked);
   json_int(j, "tab", (long long)tab_of(pj->a, n) + 1);

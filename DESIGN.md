@@ -172,6 +172,35 @@ unrepresentable because there is no state to go stale, and `rail` is the thing
 the fork kept almost-reinventing: with agents you want *one big pane you are
 reading* plus *a strip of small ones you are watching*.
 
+**As built (M5).** `split` and `stack` are in; `rail` is not needed yet,
+because a stack of headers *is* the monitored strip:
+
+```
+   1  2  +tab                                    5 panes
+   pi · ready───────────────────────────────────────────
+   pi · ready───────────────────────────────────────────
+   pi · ready───────────────────────────────────────────
+  ╭────────────────────── pi ────────────────────────+─╮
+  │                                                    │
+  ╰ ready ──────────────────────────────────[continue]─╯
+```
+
+A header row carries the pane's title *and its OSC 5577 status*, so a
+collapsed agent is still legible. Three properties that fall out of the design
+rather than being coded:
+
+- the expanded child is simply the one holding focus, so **focusing a
+  collapsed pane expands it** — including from the finder, and by clicking its
+  header;
+- **a hidden pane is never resized**, so its program does not reflow while you
+  are not looking at it;
+- a narrow/wide cycle returns the *exact* rects it started with, and a pane
+  added afterwards is not stacked. That is the fork's bug, asserted directly.
+
+When not even one header row per sibling fits, the node degrades to showing
+only the focused subtree. A pane one cell tall helps nobody, and rects that do
+not fit on the screen help less.
+
 ### Connections are not clients
 
 The server holds a set of connections. A connection becomes *the* display client
@@ -214,7 +243,7 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M2** — server/client split, detach/reattach, control socket ✅
 - **M3** — tabs, `purpose=`, JSON control API ✅
 - **M4** — chrome: OSC 5577, buttons, hit-list mouse ✅ (drag-to-reorder deferred to M5)
-- **M5** — built-in status bar, pane finder overlay, responsive (D6)
+- **M5** — built-in status bar, pane finder overlay, responsive (D6) ✅
 
 M4 landed: the pi extensions' exact byte patterns are an acceptance test
 (`tests/test_osc5577.py::test_pi_extension_compat`), including `buttons` with

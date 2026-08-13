@@ -153,8 +153,10 @@ def test_hit_list():
               snap.hit_at(pane["content_x"], pane["content_y"]) == f"pane:{pane['id']}",
               str(snap.hit_at(pane["content_x"], pane["content_y"])))
 
-        # the + button: find it on screen, then assert the hit is at that cell
-        pos = snap.find("+")
+        # the split button, on the pane's own frame row — not the status bar's
+        # "+tab", which is a different verb and deliberately looks different
+        row = snap.line(pane["y"])
+        pos = (row.index("+"), pane["y"]) if "+" in row else None
         check("split button is drawn", pos is not None, str(snap.line(pane["y"])))
         if pos:
             x, y = pos
