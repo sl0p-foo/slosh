@@ -121,12 +121,20 @@ struct app {
    * on something the hit list says is draggable, so neither can disagree with
    * what is on screen. */
   struct {
-    enum { DRAG_NONE, DRAG_TITLE, DRAG_EDGE, DRAG_SELECT } kind;
+    enum { DRAG_NONE, DRAG_TITLE, DRAG_EDGE, DRAG_SELECT, DRAG_BORDER } kind;
     uint32_t src;      /* pane being dragged, or the split being resized */
     uint32_t target;   /* pane under the pointer, for the drop highlight */
     size_t edge;       /* which boundary of that split */
     uint16_t x, y;     /* where the pointer was at the last event */
+    bool moved;        /* a press that never moves is a click */
+    char side;         /* border press: 'l' 'r' 't' 'b' */
   } drag;
+
+  /* Which pane border the pointer is over, for the split guide. Recomputed
+   * from the hit list on every motion, so it cannot describe a border that is
+   * not there any more. */
+  uint32_t hover_pane;
+  char hover_side;
 
   /* Transient announcements: "copied 13 chars", a notification from a pane,
    * a config reload. They stack upward from the bottom right and expire on
@@ -633,8 +641,7 @@ static void replace_child(node_t *parent, node_t *old, node_t *new_) {
     }
 }
 
-static void split_focus(app_t *a, split_dir_t dir) {
-  node_t *leaf = cur(a)->focus;
+static void split_node(app_t *a, node_t *leaf, split_dir_t dir, bool before) {
   if (!leaf) return;
   node_t *fresh = leaf_new(a);
   if (!fresh) return;
@@ -646,9 +653,10 @@ static void split_focus(app_t *a, split_dir_t dir) {
     p->kids = realloc(p->kids, (p->nkids + 1) * sizeof *p->kids);
     size_t at = 0;
     while (at < p->nkids && p->kids[at] != leaf) at++;
-    memmove(&p->kids[at + 2], &p->kids[at + 1],
-            (p->nkids - at - 1) * sizeof *p->kids);
-    p->kids[at + 1] = fresh;
+    size_t slot = before ? at : at + 1;
+    memmove(&p->kids[slot + 1], &p->kids[slot],
+            (p->nkids - slot) * sizeof *p->kids);
+    p->kids[slot] = fresh;
     fresh->parent = p;
     p->nkids++;
   } else {
@@ -660,8 +668,8 @@ static void split_focus(app_t *a, split_dir_t dir) {
     sp->dir = dir;
     sp->nkids = 2;
     sp->kids = malloc(2 * sizeof *sp->kids);
-    sp->kids[0] = leaf;
-    sp->kids[1] = fresh;
+    sp->kids[before ? 1 : 0] = leaf;
+    sp->kids[before ? 0 : 1] = fresh;
     sp->parent = leaf->parent;
     if (leaf->parent) replace_child(leaf->parent, leaf, sp);
     else cur(a)->root = sp;
@@ -671,6 +679,10 @@ static void split_focus(app_t *a, split_dir_t dir) {
 
   cur(a)->focus = fresh;
   layout(a);
+}
+
+static void split_focus(app_t *a, split_dir_t dir) {
+  split_node(a, cur(a)->focus, dir, false);
 }
 
 static node_t *first_leaf(node_t *n) {
@@ -1164,6 +1176,35 @@ static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
   }
 }
 
+/* The split guide: the armed edge goes heavy, and a dashed line shows where
+ * the new boundary would land. Drawn *after* the pane's content, because the
+ * dashed line crosses it — the first version was painted under the terminal
+ * and was invisible. Hover only, so an idle frame stays quiet. */
+static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
+  if (a->hover_pane != leaf->id || !a->hover_side) return;
+  rect_t r = leaf->rect;
+  if (r.w < 4 || r.h < 4) return;
+  uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
+  color_t hi = FRAME_FOCUS;
+  char side = a->hover_side;
+
+  if (side == 'l' || side == 'r') {
+    uint16_t bx = side == 'l' ? r.x : x1;
+    uint16_t mid = (uint16_t)(r.x + r.w / 2);
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+      screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
+      screen_text(s, mid, y, "\u254e", hi, NO_COLOR, 0);
+    }
+  } else {
+    uint16_t by = side == 't' ? r.y : y1;
+    uint16_t mid = (uint16_t)(r.y + r.h / 2);
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+      screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
+      screen_text(s, x, mid, "\u254c", hi, NO_COLOR, 0);
+    }
+  }
+}
+
 static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
   if (r.w < 3 || r.h < 3) return;
@@ -1198,20 +1239,21 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     hit_add(&s->hits, r.x, r.y, r.w, 1, action);
   }
 
-  /* The split button is budgeted BEFORE the title, and hit-tested from the
-   * same rect it is drawn in. Both halves of that sentence are scar tissue
-   * from the sl0ppi fork, where a title long enough to fill the frame ate the
-   * button's columns and the click landed two cells away from the glyph. */
+  /* No split button. The border *is* the button: clicking an edge splits
+   * toward it, which encodes the direction a single glyph never could, and
+   * gives every frame its columns back. */
   uint16_t avail = (uint16_t)(r.w - 2);
-  uint16_t btn_x = 0;
-  bool has_btn = avail >= 6;
-  if (has_btn) {
-    btn_x = (uint16_t)(x1 - 2);
-    screen_text(s, btn_x, r.y, "+", fg, NO_COLOR, ATTR_BOLD);
+  bool has_btn = false;
+  uint16_t btn_x = x1;
+
+  {
     char action[48];
-    snprintf(action, sizeof action, "split:%u", leaf->id);
-    hit_add(&s->hits, btn_x, r.y, 1, 1, action);
-    avail = (uint16_t)(avail - 3);
+    snprintf(action, sizeof action, "border:%u:l", leaf->id);
+    hit_add(&s->hits, r.x, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
+    snprintf(action, sizeof action, "border:%u:r", leaf->id);
+    hit_add(&s->hits, x1, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
+    snprintf(action, sizeof action, "border:%u:b", leaf->id);
+    hit_add(&s->hits, r.x, y1, r.w, 1, action);
   }
 
   draw_pane_status(s, leaf, fg, focused);
@@ -1325,6 +1367,7 @@ static void draw_cb(node_t *n, void *ud) {
     return;
   }
   pane_compose(n->pane, d->s, n->content.x, n->content.y, n == cur(d->a)->focus);
+  draw_split_guide(d->a, d->s, n);
 }
 
 static void draw_tab_strip(app_t *a, screen_t *s) {
@@ -1610,12 +1653,30 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
       return;
     }
     if (ev->maction == MOUSE_PRESS) {
+      /* The top border is both a drag handle and an edge: whether this is a
+       * move or a split-upward is decided by whether the pointer moves. */
       a->drag.kind = DRAG_TITLE;
       a->drag.src = id;
       a->drag.target = id;
       a->drag.x = ev->mx;
       a->drag.y = ev->my;
+      a->drag.moved = false;
+      a->drag.side = 't';
       app_focus_pane(a, id);
+    }
+    return;
+  }
+  if (strncmp(action, "border:", 7) == 0) {
+    uint32_t id = (uint32_t)strtoul(action + 7, NULL, 10);
+    const char *colon = strchr(action + 7, ':');
+    char side = colon && colon[1] ? colon[1] : 'r';
+    if (ev->maction == MOUSE_PRESS) {
+      a->drag.kind = DRAG_BORDER;
+      a->drag.src = id;
+      a->drag.side = side;
+      a->drag.moved = false;
+      a->drag.x = ev->mx;
+      a->drag.y = ev->my;
     }
     return;
   }
@@ -1835,8 +1896,25 @@ void app_event(app_t *a, const input_event_t *ev) {
       if (!a->painted) break;
       const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
 
+      /* Which border the pointer is over, for the guide. */
+      if (ev->maction == MOUSE_MOTION && a->drag.kind == DRAG_NONE) {
+        uint32_t hp = 0;
+        char hs = 0;
+        if (action && strncmp(action, "border:", 7) == 0) {
+          hp = (uint32_t)strtoul(action + 7, NULL, 10);
+          const char *colon = strchr(action + 7, ':');
+          hs = colon && colon[1] ? colon[1] : 0;
+        } else if (action && strncmp(action, "title:", 6) == 0) {
+          hp = (uint32_t)strtoul(action + 6, NULL, 10);
+          hs = 't';
+        }
+        a->hover_pane = hp;
+        a->hover_side = hs;
+      }
+
       if (a->drag.kind != DRAG_NONE) {
         if (ev->maction == MOUSE_MOTION) {
+          a->drag.moved = true;
           if (a->drag.kind == DRAG_SELECT) {
             node_t *n = pane_by_id(a, a->drag.src);
             if (n)
@@ -1856,6 +1934,25 @@ void app_event(app_t *a, const input_event_t *ev) {
           a->drag.x = ev->mx;
           a->drag.y = ev->my;
         } else if (ev->maction == MOUSE_RELEASE) {
+          /* A press that never moved is a click, and a click on an edge
+           * splits toward it. */
+          if (!a->drag.moved &&
+              (a->drag.kind == DRAG_BORDER || a->drag.kind == DRAG_TITLE)) {
+            node_t *n = pane_by_id(a, a->drag.src);
+            if (n) {
+              char side = a->drag.side;
+              bool rows = side == 't' || side == 'b';
+              bool before = side == 'l' || side == 't';
+              split_node(a, n, rows ? SPLIT_ROWS : SPLIT_COLS, before);
+              app_toast(a, side == 'l'   ? "split left"
+                           : side == 'r' ? "split right"
+                           : side == 't' ? "split up"
+                                         : "split down");
+            }
+            a->drag.kind = DRAG_NONE;
+            a->drag.src = a->drag.target = 0;
+            break;
+          }
           if (a->drag.kind == DRAG_SELECT) {
             /* Releasing copies, which is the whole point: no menu, no chord,
              * the selection *is* the copy. */

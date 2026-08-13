@@ -250,6 +250,23 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
 - **M8** — pane sizes as weights: keyboard resize, drag the gap to move a
   boundary, drag a title to swap two panes ✅
 
+### The border is the button
+
+The per-pane `+` is gone. It was one glyph for a verb with four directions, so
+it always split into columns; it cost every frame three columns of title,
+forever, for something pressed rarely; and there were N of them on screen for
+one verb.
+
+**Clicking a pane's border splits toward it.** The side you click is the side
+the new pane appears on, which is the direction information a single glyph
+could never carry. Hovering a border arms it (the edge goes heavy) and draws a
+dashed line where the new boundary would land, so the gesture explains itself
+and costs nothing when the pointer is elsewhere.
+
+The top border keeps its other job: **click splits upward, drag moves the
+pane**. A press that never moves is a click — the same distinction the drag
+machine already had to make.
+
 ### One drag machine, two verbs (M8)
 
 Pane sizes are **weights**, so an even split is simply equal weights and

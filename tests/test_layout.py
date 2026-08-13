@@ -153,24 +153,18 @@ def test_hit_list():
               snap.hit_at(pane["content_x"], pane["content_y"]) == f"pane:{pane['id']}",
               str(snap.hit_at(pane["content_x"], pane["content_y"])))
 
-        # the split button, on the pane's own frame row — not the status bar's
-        # "+tab", which is a different verb and deliberately looks different
-        row = snap.line(pane["y"])
-        pos = (row.index("+"), pane["y"]) if "+" in row else None
-        check("split button is drawn", pos is not None, str(snap.line(pane["y"])))
-        if pos:
-            x, y = pos
-            check("the click target is exactly where the glyph is",
-                  snap.hit_at(x, y) == f"split:{pane['id']}", str(snap.hit_at(x, y)))
-            # the rest of the top row is the drag handle, not the button
-            check("beside the button is not the button",
-                  snap.hit_at(x - 1, y) == f"title:{pane['id']}",
-                  str(snap.hit_at(x - 1, y)))
-
-            s.click(x, y)
-            s.settle()
-            check("clicking the button splits", len(s.panes()) == 2,
-                  str(len(s.panes())))
+        # the border is the split target now; the top row is also the drag
+        # handle, which is why it reports title: rather than border:
+        check("the top border is the drag handle",
+              snap.hit_at(pane["x"] + 4, pane["y"]) == f"title:{pane['id']}",
+              str(snap.hit_at(pane["x"] + 4, pane["y"])))
+        check("the side border is a split target",
+              snap.hit_at(pane["x"], pane["y"] + 2) == f"border:{pane['id']}:l",
+              str(snap.hit_at(pane["x"], pane["y"] + 2)))
+        check("the bottom border too",
+              snap.hit_at(pane["x"] + 4, pane["y"] + pane["h"] - 1)
+              == f"border:{pane['id']}:b",
+              str(snap.hit_at(pane["x"] + 4, pane["y"] + pane["h"] - 1)))
 
 
 def test_click_focuses_and_forwards():

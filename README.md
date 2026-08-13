@@ -52,8 +52,10 @@ sl0ptty cmd '{"cmd":"panes"}'
 | `C-a x` / `C-a d` / `C-a q` | close pane / detach / quit |
 | `C-a C-a` | send a literal `C-a` |
 
-The mouse works throughout: click a pane to focus it, a tab to switch, `+` on a
-frame to split, `+tab` to open one, a collapsed header to expand it, and a
+The mouse works throughout. **Click a pane's border to split toward it** — the
+side you click is the side the new pane appears on, and hovering a border arms
+it and shows a dashed line where the split would land. Click a pane to focus
+it, a tab to switch, `+tab` to open one, a collapsed header to expand it, and a
 pane's own buttons to talk to the program inside it. **Drag a pane's title bar
 onto another pane to swap them, or drag the gap between two panes to move the
 boundary.** Focus follows the pointer (`focus_follows_mouse`, on by default,

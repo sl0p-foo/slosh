@@ -163,11 +163,15 @@ def test_drag_edge_cases():
         before = [(p["id"], p["x"]) for p in s.panes()]
         left = s.panes()[0]
 
-        # a drag that ends where it started must change nothing
+        # a drag that wanders and comes back must change nothing. (A press and
+        # release with no motion is not this: that is a click, and a click on
+        # a border splits — see test_split_ux.py.)
         s.send(rf"\e[<0;{left['x'] + 5};{left['y'] + 1}M")
+        s.send(rf"\e[<32;{left['x'] + 20};{left['y'] + 4}M")
+        s.send(rf"\e[<32;{left['x'] + 5};{left['y'] + 1}M")
         s.send(rf"\e[<0;{left['x'] + 5};{left['y'] + 1}m")
         s.settle()
-        check("dropping a pane on itself does nothing",
+        check("a drag that returns to its origin changes nothing",
               [(p["id"], p["x"]) for p in s.panes()] == before, str(s.panes()))
 
         # a drag released over nothing (the gap ring) must not swap or crash
@@ -184,13 +188,12 @@ def test_drag_edge_cases():
         s.send("k")  # any keystroke ends a drag
         s.settle(60)
         check("a keystroke ends an abandoned drag", s.api("alive")["alive"])
-        snap = s.snapshot()
-        pos = snap.line(left["y"]).find("+")
-        if pos >= 0:
-            s.click(pos, left["y"])
-            s.settle()
-            check("the mouse still works after a drag", len(s.panes()) == 3,
-                  str(len(s.panes())))
+
+        # and a border click still works, which is the proof it is not wedged
+        s.click(left["x"], left["y"] + 2)
+        s.settle()
+        check("the mouse still works after a drag", len(s.panes()) == 3,
+              str(len(s.panes())))
 
 
 def test_drop_target_is_visible():
