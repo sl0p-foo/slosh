@@ -67,6 +67,9 @@ typedef struct {
   /* where the real cursor goes after a flush */
   bool cursor_visible;
   uint16_t cursor_x, cursor_y;
+  /* what the terminal was last told, so an unchanged frame emits nothing */
+  bool shown_cursor_visible;
+  uint16_t shown_cursor_x, shown_cursor_y;
 
   /* output accumulator, flushed in one write() */
   char *out;
@@ -80,6 +83,9 @@ void screen_clear(screen_t *s);
 cell_t *screen_at(screen_t *s, uint16_t x, uint16_t y);
 void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      size_t len, color_t fg, color_t bg, uint16_t attrs);
+/* Write a UTF-8 string one cell per codepoint; returns cells written. */
+uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
+                     color_t fg, color_t bg, uint16_t attrs);
 /* Diff cur against prev and write the minimal byte stream to fd. */
 void screen_flush(screen_t *s, int fd);
 /* Plain-text dump of the composited screen; caller frees. (headless tests) */

@@ -46,6 +46,16 @@ class Snapshot:
                 return run
         return None
 
+    def pane_line(self, pane, row):
+        """One row of a pane's content area, chrome excluded."""
+        y = pane["content_y"] + row
+        x = pane["content_x"]
+        return self.text[y][x:x + pane["content_w"]]
+
+    def pane_text(self, pane):
+        return "\n".join(
+            self.pane_line(pane, r) for r in range(pane["content_h"]))
+
     def hit_at(self, x, y):
         """The action registered at a cell, last painted winning."""
         for e in reversed(self.hits):
@@ -77,6 +87,14 @@ class Session:
         """Bytes as if typed at the outer terminal (decoded, then re-encoded)."""
         self._cmd(f"send {escaped}")
 
+    def key(self, chord):
+        r"""A prefixed command, e.g. key('\\\\') to split. C-a is \x01."""
+        self._cmd(f"send \\x01{chord}")
+
+    def click(self, x, y, button=0):
+        self._cmd(f"send \\e[<{button};{x + 1};{y + 1}M")
+        self._cmd(f"send \\e[<{button};{x + 1};{y + 1}m")
+
     def raw(self, escaped):
         """Bytes straight into the pane's pty, decoder bypassed."""
         self._cmd(f"raw {escaped}")
@@ -94,6 +112,22 @@ class Session:
         if not line:
             raise RuntimeError("sl0ptty exited before answering snapshot")
         return Snapshot(json.loads(line))
+
+    def panes(self):
+        self._cmd("panes")
+        line = self.proc.stdout.readline()
+        if not line:
+            raise RuntimeError("sl0ptty exited before answering panes")
+        return json.loads(line)
+
+    def pane(self, n=0):
+        return self.panes()[n]
+
+    def focused(self):
+        for p in self.panes():
+            if p["focused"]:
+                return p
+        return None
 
     def alive(self):
         self._cmd("alive")

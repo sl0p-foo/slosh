@@ -57,6 +57,23 @@ the cursor never appearing:
 Both are set in `pane_new()`. Expect more of these; the rule is that anything a
 terminal emulator would decide is not decided for us.
 
+### The option-setting convention that will bite you
+
+`ghostty_terminal_set()` takes `const void *value`, and what that points at
+depends on the option's type:
+
+| header says | pass |
+|---|---|
+| `Input type: GhosttyTerminalWritePtyFn` | the function pointer **itself** |
+| `Input type: void*` (userdata) | the pointer **itself** |
+| `Input/output type: GhosttyTerminalModeConfig *` | a pointer to the struct |
+
+A pointer-shaped value is passed as itself. Passing `&fn` compiles, links, and
+stores the address of a stack local as the callback — which survives exactly
+until `pane_new()` returns, and then jumps into a dead frame. It went unnoticed
+until the first program asked the terminal a question (OSC 2, DSR); both paths
+now have regression tests.
+
 ### What we own
 
 1. **Input decoding.** lib-vt encodes events *out* to a pane; nothing decodes
@@ -178,7 +195,7 @@ Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
   it under a layout tree would have been worse, and it is the load-bearing
   half of the mouse work in M4)
 - **M0.5** — headless driver + screen-assert harness ✅
-- **M1** — layout tree, splits, focus, frames (gap/padding/title alignment)
+- **M1** — layout tree, splits, focus, frames (gap/padding/title alignment) ✅
 - **M2** — server/client split, detach/reattach, control socket
 - **M3** — tabs, `purpose=`, JSON control API
 - **M4** — chrome: OSC 5577, buttons, hit-list mouse, drag-to-reorder

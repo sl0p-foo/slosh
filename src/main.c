@@ -3,6 +3,7 @@
  */
 #define _GNU_SOURCE
 #include "sl0ptty.h"
+#include "app.h"
 
 #include <ghostty/vt.h>
 
@@ -18,6 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#define MAX_PANES 64 /* a screen cannot usefully hold more */
 #define FRAME_MS 8   /* ~120Hz cap; pty reads are coalesced into one paint */
 #define ESC_MS 40    /* how long a bare ESC waits to become a sequence */
 
@@ -87,39 +89,10 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
 
 /* ---- interactive -------------------------------------------------------- */
 
-/* Where decoded events go. The prefix (C-a) is handled here, on semantic
- * events, so it cannot be confused by a byte that merely looks like C-a in the
- * middle of a UTF-8 sequence or an escape. */
-typedef struct {
-  pane_t *pane;
-  bool prefix;
-  volatile sig_atomic_t *quit;
-} dispatch_t;
-
+/* Every decoded event goes to the app, which owns the prefix, the layout and
+ * what a key means. The client is only a decoder and a screen. */
 static void on_event(const input_event_t *ev, void *ud) {
-  dispatch_t *d = ud;
-
-  if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
-    bool ctrl_a = (ev->mods & MOD_CTRL) && ev->unshifted == 'a';
-    if (d->prefix) {
-      d->prefix = false;
-      if (ev->key == GHOSTTY_KEY_Q) { *d->quit = 1; return; }
-      if (ctrl_a) { pane_send_key(d->pane, ev); return; } /* C-a C-a = literal */
-      return;                                             /* unbound: swallow */
-    }
-    if (ctrl_a) {
-      d->prefix = true;
-      return;
-    }
-  }
-
-  switch (ev->kind) {
-    case EV_KEY: pane_send_key(d->pane, ev); break;
-    case EV_MOUSE: pane_send_mouse(d->pane, ev); break;
-    case EV_PASTE: pane_send_paste(d->pane, ev->paste, ev->paste_len); break;
-    case EV_FOCUS: break; /* M1: focus follows the layout, not the client */
-    default: break;
-  }
+  app_event((app_t *)ud, ev);
 }
 
 static int run_interactive(const char *const argv[]) {
@@ -131,23 +104,23 @@ static int run_interactive(const char *const argv[]) {
     return 1;
   }
 
-  pane_t *p = pane_new(argv, cols, rows, NULL);
-  if (!p) {
+  app_t *a = app_new(argv, cols, rows);
+  if (!a) {
     fprintf(stderr, "sl0ptty: cannot spawn pane\n");
     return 1;
   }
+  app_resize(a, cols, rows);
 
   screen_t s;
   screen_init(&s, cols, rows);
 
   input_parser_t *in = input_new();
-  dispatch_t d = {.pane = p, .quit = &g_quit};
 
   bool pending_paint = true;
   int64_t next_frame = 0;
   int64_t esc_due = 0;
 
-  while (!g_quit && pane_alive(p)) {
+  while (!g_quit && !app_should_quit(a)) {
     int timeout = -1;
     if (pending_paint) {
       int64_t due = next_frame - now_ms();
@@ -159,17 +132,19 @@ static int run_interactive(const char *const argv[]) {
       if (timeout < 0 || t < timeout) timeout = t;
     }
 
-    struct pollfd pfds[2] = {
-        {.fd = STDIN_FILENO, .events = POLLIN},
-        {.fd = pane_fd(p), .events = POLLIN},
-    };
-    int n = poll(pfds, 2, timeout);
+    int fds[MAX_PANES];
+    size_t npanes = app_fds(a, fds, MAX_PANES);
+    struct pollfd pfds[MAX_PANES + 1];
+    pfds[0] = (struct pollfd){.fd = STDIN_FILENO, .events = POLLIN};
+    for (size_t i = 0; i < npanes; i++)
+      pfds[i + 1] = (struct pollfd){.fd = fds[i], .events = POLLIN};
+    int n = poll(pfds, (nfds_t)(npanes + 1), timeout);
 
     if (g_winch) {
       g_winch = 0;
       term_size(&cols, &rows);
       screen_resize(&s, cols, rows);
-      pane_resize(p, cols, rows);
+      app_resize(a, cols, rows);
       pending_paint = true;
       next_frame = now_ms();
     }
@@ -180,32 +155,38 @@ static int run_interactive(const char *const argv[]) {
       uint8_t buf[8192];
       ssize_t r = read(STDIN_FILENO, buf, sizeof buf);
       if (r > 0) {
-        input_feed(in, buf, (size_t)r, on_event, &d);
+        input_feed(in, buf, (size_t)r, on_event, a);
         esc_due = now_ms() + ESC_MS;
+        pending_paint = true; /* focus, splits and closes are visible changes */
+        if (!next_frame) next_frame = now_ms();
       }
     }
 
     /* A lone ESC is only the Escape key once nothing follows it. */
-    if (input_pending(in) && now_ms() >= esc_due) input_timeout(in, on_event, &d);
+    if (input_pending(in) && now_ms() >= esc_due) input_timeout(in, on_event, a);
 
-    if (n > 0 && (pfds[1].revents & (POLLIN | POLLHUP))) {
-      pane_pump(p);
-      if (!pending_paint) {
-        pending_paint = true;
-        next_frame = now_ms() + FRAME_MS;
+    for (size_t i = 0; i < npanes; i++) {
+      if (n > 0 && (pfds[i + 1].revents & (POLLIN | POLLHUP))) {
+        app_pump_fd(a, pfds[i + 1].fd);
+        if (!pending_paint) {
+          pending_paint = true;
+          next_frame = now_ms() + FRAME_MS;
+        }
       }
     }
+    app_reap(a);
 
     if (pending_paint && now_ms() >= next_frame) {
-      pane_compose(p, &s, 0, 0, true);
+      app_compose(a, &s);
       screen_flush(&s, STDOUT_FILENO);
       pending_paint = false;
+      next_frame = 0;
     }
   }
 
   input_free(in);
   screen_free(&s);
-  pane_free(p);
+  app_free(a);
   restore_tty();
   return 0;
 }

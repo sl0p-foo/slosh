@@ -71,12 +71,17 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   if (ghostty_mouse_encoder_new(NULL, &p->menc) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_mouse_event_new(NULL, &p->mev) != GHOSTTY_SUCCESS) goto fail;
 
-  void *self = p;
-  GhosttyTerminalWritePtyFn wfn = on_write_pty;
-  GhosttyTerminalTitleChangedFn tfn = on_title_changed;
-  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_USERDATA, &self);
-  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY, &wfn);
-  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, &tfn);
+  /* Careful: for pointer-typed options the header says "Input type:
+   * GhosttyTerminalWritePtyFn", not "...Fn *" — the value pointer IS the
+   * value. Passing &fn stores the address of a stack local as the callback,
+   * which survives exactly until pane_new() returns and then jumps into a
+   * dead frame. Struct-typed options (MODE) do take a pointer; the rule is
+   * that a pointer-shaped value is passed as itself. */
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_USERDATA, p);
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY,
+                       (const void *)(uintptr_t)on_write_pty);
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED,
+                       (const void *)(uintptr_t)on_title_changed);
 
   /* lib-vt makes no assumptions a host terminal would: it starts with DECTCEM
    * (mode 25) off, so the cursor is invisible until someone says otherwise.

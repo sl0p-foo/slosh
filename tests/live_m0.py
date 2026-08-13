@@ -59,7 +59,9 @@ def main():
     time.sleep(0.2)
     os.write(fd, b"tput cols\n")
     out = drain(fd)
-    ok &= check("SIGWINCH propagates to the pane", b"100" in out, repr(out[-200:]))
+    # the pane is told its *content* width: 100 columns minus the gap (2 each
+    # side, aspect-corrected) minus the frame border (1 each side)
+    ok &= check("SIGWINCH propagates to the pane", b"94" in out, repr(out[-200:]))
 
     # the diff emitter must not repaint what did not change
     os.write(fd, b"echo a\n")

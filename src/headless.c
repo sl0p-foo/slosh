@@ -26,18 +26,10 @@
 #include <time.h>
 #include <unistd.h>
 
-typedef struct {
-  pane_t *pane;
-} hl_dispatch_t;
+#include "app.h"
 
 static void hl_event(const input_event_t *ev, void *ud) {
-  hl_dispatch_t *d = ud;
-  switch (ev->kind) {
-    case EV_KEY: pane_send_key(d->pane, ev); break;
-    case EV_MOUSE: pane_send_mouse(d->pane, ev); break;
-    case EV_PASTE: pane_send_paste(d->pane, ev->paste, ev->paste_len); break;
-    default: break;
-  }
+  app_event((app_t *)ud, ev);
 }
 
 static int64_t ms_now(void) {
@@ -76,37 +68,49 @@ static size_t unescape(const char *in, uint8_t *out, size_t cap) {
   return n;
 }
 
-/* Pump the pane until it has produced nothing for `quiet` ms. */
-static void settle(pane_t *p, int quiet) {
+/* Pump every pane until none has produced anything for `quiet` ms. */
+static void settle(app_t *a, int quiet) {
   int64_t last = ms_now();
   int64_t deadline = last + 3000;
-  while (pane_alive(p) && ms_now() < deadline) {
-    struct pollfd pfd = {.fd = pane_fd(p), .events = POLLIN};
-    int n = poll(&pfd, 1, 10);
-    if (n > 0) {
-      if (pane_pump(p) > 0) last = ms_now();
-      if (!pane_alive(p)) break;
+  while (!app_should_quit(a) && ms_now() < deadline) {
+    int fds[64];
+    size_t n = app_fds(a, fds, 64);
+    if (n == 0) break;
+    struct pollfd pfds[64];
+    for (size_t i = 0; i < n; i++) {
+      pfds[i].fd = fds[i];
+      pfds[i].events = POLLIN;
+      pfds[i].revents = 0;
     }
+    int r = poll(pfds, (nfds_t)n, 10);
+    if (r > 0) {
+      for (size_t i = 0; i < n; i++)
+        if (pfds[i].revents) {
+          app_pump_fd(a, pfds[i].fd);
+          last = ms_now();
+        }
+    }
+    app_reap(a);
     if (ms_now() - last >= quiet) break;
   }
 }
 
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
                  int idle_ms, bool script) {
-  pane_t *p = pane_new(argv, cols, rows, NULL);
-  if (!p) {
+  app_t *a = app_new(argv, cols, rows);
+  if (!a) {
     fprintf(stderr, "sl0ptty: cannot spawn pane\n");
     return 1;
   }
+  app_resize(a, cols, rows);
   screen_t s;
   screen_init(&s, cols, rows);
   input_parser_t *in = input_new();
-  hl_dispatch_t d = {.pane = p};
 
   /* one-shot: run it, let it settle, print the screen */
   if (!script) {
-    settle(p, idle_ms);
-    pane_compose(p, &s, 0, 0, true);
+    settle(a, idle_ms);
+    app_compose(a, &s);
     char *dump = screen_dump(&s);
     fputs(dump, stdout);
     free(dump);
@@ -123,31 +127,38 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
     if (strcmp(line, "send") == 0) {
       uint8_t buf[4096];
       size_t n = unescape(arg, buf, sizeof buf);
-      input_feed(in, buf, n, hl_event, &d);
-      if (input_pending(in)) input_timeout(in, hl_event, &d);
+      input_feed(in, buf, n, hl_event, a);
+      if (input_pending(in)) input_timeout(in, hl_event, a);
     } else if (strcmp(line, "raw") == 0) {
       uint8_t buf[4096];
       size_t n = unescape(arg, buf, sizeof buf);
-      pane_write(p, buf, n);
+      app_write_focused(a, buf, n);
     } else if (strcmp(line, "settle") == 0) {
-      settle(p, *arg ? atoi(arg) : idle_ms);
+      settle(a, *arg ? atoi(arg) : idle_ms);
     } else if (strcmp(line, "resize") == 0) {
       int c = cols, r = rows;
       sscanf(arg, "%d %d", &c, &r);
       cols = (uint16_t)c;
       rows = (uint16_t)r;
       screen_resize(&s, cols, rows);
-      pane_resize(p, cols, rows);
+      app_resize(a, cols, rows);
     } else if (strcmp(line, "snapshot") == 0) {
-      pane_compose(p, &s, 0, 0, true);
+      app_compose(a, &s);
       char *dump = strcmp(arg, "text") == 0 ? screen_dump(&s)
                                             : screen_dump_json(&s);
       fputs(dump, stdout);
       fputs("\n", stdout);
       free(dump);
       fflush(stdout);
+    } else if (strcmp(line, "panes") == 0) {
+      app_compose(a, &s); /* layout is a function of the frame; compose first */
+      char *dump = app_panes_json(a);
+      fputs(dump, stdout);
+      fputs("\n", stdout);
+      free(dump);
+      fflush(stdout);
     } else if (strcmp(line, "alive") == 0) {
-      printf("%s\n", pane_alive(p) ? "true" : "false");
+      printf("%s\n", app_should_quit(a) ? "false" : "true");
       fflush(stdout);
     } else if (strcmp(line, "quit") == 0) {
       break;
@@ -159,6 +170,6 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
 done:
   input_free(in);
   screen_free(&s);
-  pane_free(p);
+  app_free(a);
   return 0;
 }

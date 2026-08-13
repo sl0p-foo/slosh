@@ -119,11 +119,34 @@ void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
   cell_t *c = screen_at(s, x, y);
   if (!c) return;
   if (len > sizeof c->text) len = sizeof c->text;
+  memset(c->text, 0, sizeof c->text);
   memcpy(c->text, txt, len);
   c->len = (uint8_t)len;
+  c->width = 1;
   c->fg = fg;
   c->bg = bg;
   c->attrs = attrs;
+}
+
+static size_t u8_len(unsigned char b) {
+  if (b < 0x80) return 1;
+  if ((b & 0xe0) == 0xc0) return 2;
+  if ((b & 0xf0) == 0xe0) return 3;
+  if ((b & 0xf8) == 0xf0) return 4;
+  return 1;
+}
+
+uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
+                     color_t fg, color_t bg, uint16_t attrs) {
+  uint16_t n = 0;
+  for (const char *p = txt; *p;) {
+    size_t len = u8_len((unsigned char)*p);
+    if (x + n >= s->cols) break;
+    screen_put_utf8(s, (uint16_t)(x + n), y, p, len, fg, bg, attrs);
+    p += len;
+    n++;
+  }
+  return n; /* cells written, so a caller can lay out what follows */
 }
 
 static bool color_eq(color_t a, color_t b) {
@@ -161,11 +184,16 @@ static bool style_eq(const cell_t *a, const cell_t *b) {
 
 void screen_flush(screen_t *s, int fd) {
   s->out_len = 0;
-  out_str(s, "\x1b[?25l"); /* hide cursor while painting */
+
+  /* The cursor is hidden lazily, on the first cell we actually repaint, so a
+   * frame with no changes emits nothing at all rather than a hide/show pair.
+   * A keystroke that changes nothing should cost zero bytes. */
+  bool painted = false;
 
   if (s->force_full) {
-    out_str(s, "\x1b[0m\x1b[H\x1b[2J");
+    out_str(s, "\x1b[?25l\x1b[0m\x1b[H\x1b[2J");
     memset(s->prev, 0, (size_t)s->cols * s->rows * sizeof(cell_t));
+    painted = true;
   }
 
   bool have_pos = false, have_style = false;
@@ -179,6 +207,10 @@ void screen_flush(screen_t *s, int fd) {
       if (c->width == 0) continue; /* tail of a wide cell: never painted */
       if (cell_eq(c, p)) continue;
 
+      if (!painted) {
+        out_str(s, "\x1b[?25l");
+        painted = true;
+      }
       if (!have_pos || cx != x || cy != y) {
         out_fmt(s, "\x1b[%u;%uH", y + 1, x + 1);
         cx = x;
@@ -199,9 +231,19 @@ void screen_flush(screen_t *s, int fd) {
     }
   }
 
-  if (s->cursor_visible && s->cursor_x < s->cols && s->cursor_y < s->rows) {
-    out_fmt(s, "\x1b[%u;%uH", s->cursor_y + 1, s->cursor_x + 1);
-    out_str(s, "\x1b[?25h");
+  bool cursor_moved = s->cursor_visible != s->shown_cursor_visible ||
+                      s->cursor_x != s->shown_cursor_x ||
+                      s->cursor_y != s->shown_cursor_y;
+  if (painted || cursor_moved) {
+    if (s->cursor_visible && s->cursor_x < s->cols && s->cursor_y < s->rows) {
+      out_fmt(s, "\x1b[%u;%uH", s->cursor_y + 1, s->cursor_x + 1);
+      out_str(s, "\x1b[?25h");
+    } else if (painted) {
+      out_str(s, "\x1b[?25l");
+    }
+    s->shown_cursor_visible = s->cursor_visible;
+    s->shown_cursor_x = s->cursor_x;
+    s->shown_cursor_y = s->cursor_y;
   }
 
   s->force_full = false;
