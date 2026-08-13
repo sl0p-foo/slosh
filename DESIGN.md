@@ -1,0 +1,169 @@
+# sl0ptty — design
+
+An opinionated terminal multiplexer in C, built on
+[libghostty-vt](https://github.com/ghostty-org/ghostty).
+
+Status: **agreed contract, M0 in progress.** This file is what we build against.
+It supersedes the riff in `SEED.md`.
+
+## Why
+
+`sl0ppi` is a fork of zellij carrying 62 patches. Reading them, almost none of
+the work is *multiplexing* — it is fighting a codebase whose assumptions differ
+from ours, at ~5s per iteration on a good day and 5m16s for a release build.
+The valuable part is the **opinion**, and the opinion is small enough to
+implement directly against a VT library that already does the hard half.
+
+libghostty-vt is that library. What it gives us, from its C headers:
+
+- the full VT/ANSI state machine, scrollback, page compression
+- two-layer dirty tracking (global + per-row) — precisely our render loop
+- resolved per-cell fg/bg, styles, UTF-8 grapheme clusters
+- selection incl. semantic word/line/output selection
+- kitty graphics with placement tracking, OSC 8 hyperlinks per cell
+- key and mouse **encoders** (event → the bytes an app expects, honouring that
+  pane's own mode state)
+- an effects callback table: `WRITE_PTY`, `TITLE_CHANGED`, `PWD_CHANGED`,
+  `CLIPBOARD_WRITE`, `BELL`, `DESKTOP_NOTIFICATION`, `PROGRESS_REPORT`, `MODE`,
+  and **`UNKNOWN_SEQUENCE`**
+
+**Correction, found by reading the header rather than the summary:**
+`UNKNOWN_SEQUENCE` today reports **APC sequences only**
+(`GHOSTTY_TERMINAL_UNKNOWN_SEQUENCE_APC` is the sole tag), not unknown OSC. So
+it is *not* a free OSC 5577 hook. Three consequences, all cheap:
+
+1. **OSC 5577 (D1) arrives via a side-channel scanner** on the pty byte stream:
+   ~100 LOC that spots `ESC ] 5577 ; … ST` and lifts it out. The bytes still go
+   to lib-vt, which discards an unknown OSC harmlessly, so nothing is drawn.
+   The hook point is already marked in `pane_pump()`.
+2. **Protocol v2 should be APC**, not OSC — APC *is* delivered as a first-class
+   effect, and no terminal will ever render it. The v1 OSC form stays forever
+   for the existing pi extensions.
+3. Worth an upstream issue: a generic "unhandled OSC" callback. Mitchell's
+   library, our use case, small patch.
+
+### What we own
+
+1. **Input decoding.** lib-vt encodes events *out* to a pane; nothing decodes
+   what the outer terminal sends *in*. We write that parser: legacy keys, kitty
+   CSI-u, SGR mouse, bracketed paste, focus events. Because we decode to a
+   semantic event and re-encode per pane against *that pane's* modes, kitty
+   keyboard passthrough works properly — which tmux and zellij both fumble.
+2. **Compositor + diff → ANSI.** Turning N panes of cells into a minimal byte
+   stream for the real terminal.
+3. **pty spawn, event loop, layout tree, sockets, config.**
+4. **Kitty graphics re-emission** (id remapping across panes and scroll).
+   Possible because lib-vt tracks placements. Not MVP.
+
+Budget: **under 10k LOC**, zero deps beyond libc and lib-vt, static musl
+binary, sub-second full rebuild.
+
+## Two structural commitments
+
+These exist because of two lessons the sl0ppi fork paid for in days.
+
+### One geometry
+
+The `+` split button shipped twice while being invisible on screen, rendering
+correctly in 265 passing unit snapshots, for four independent reasons — three of
+them "the code that paints and the code that hit-tests derived the rect
+separately, and disagreed."
+
+> **Every painted interactive element emits its `(rect, action)` into a hit-list
+> as it is painted, by the same code, in the same pass. A click is a lookup in
+> that list.**
+
+Drawing and hit-testing cannot disagree, because there is only one of them.
+
+### Headless from day one
+
+From the sl0ppi roadmap, four separate times: *unit tests were necessary and
+insufficient.* Every real bug was found by reading the screen.
+
+> **`sl0ptty --headless` runs the entire compositor with no tty, and dumps the
+> composited screen — text, styles, cursor, hit-list — as JSON on the control
+> socket.**
+
+Tests are "drive these events, assert this screen", deterministic and
+sub-second. This lands before splits do, because everything after it rests on
+it.
+
+## Decisions
+
+| # | decision |
+|---|---|
+| **D1** | **OSC 5577 stays byte-compatible** with the sl0ppi fork, so the five existing pi extensions work unmodified. Delivered by a side-channel scanner on the pty stream (see the correction above), with a versioned `hello` handshake added on top — the fork's protocol is unversioned, which is a known risk — and an APC-based v2 once anything new is written against it. |
+| **D2** | **Config is a hand-rolled KDL subset.** Layouts are trees; KDL reads well as a tree and keeps continuity with sl0ppi muscle memory. ~400 LOC of parser, no dependency. Single-line nodes need `;` terminators — same rule as upstream. |
+| **D3** | **Clean JSON control API** (newline-delimited JSON on a unix socket). We do *not* mimic `zellij action`'s surface. The `sl0ppi` CLI is ported on top of it later; `up`'s idempotency and D9's fail-open property carry over. |
+| **D4** | **Scrollback yes** (free from lib-vt), **copy-mode UI later.** |
+| **D5** | Binary, session dir, socket and config are all named **`sl0ptty`**. |
+| **D6** | **Responsive layout is a pure function** — see below. |
+| **D7** | **Server renders, client is dumb.** The client decodes input and writes bytes; the same socket is the scripting API. Detach/reattach is table stakes because agents keep running. |
+| **D8** | **Panes and tabs carry `purpose=`**, sl0ppi's semantics kept verbatim, including the trust model: *layout-declared purposes outrank in-band ones and cannot be overridden*, so `cat hostile.txt` cannot relabel a project tab. |
+| **D9** | **No wasm plugins.** Status bar and pane finder are built in. A "plugin" is a subprocess speaking the control protocol. |
+| **D10** | **One attached client** in the MVP. The protocol allows N (read-only observers are what sl0p.foo actually wants); the multi-user *rendering* path is not built, because it is where the fork's phantom-client and `MY FOCUS AND:` bugs live. |
+| **D11** | **No terminfo/ncurses.** We are opinionated about the outer terminal: emit a known-good modern subset, probe with DA/XTGETTCAP where we must. |
+| **D12** | **Vendor lib-vt source**, pinned by commit in `vendor/libghostty-vt.vendor.json`, with a patches file if we ever need one. zig is a build-time dependency only, and doubles as our C compiler and static/musl cross-linker. |
+
+### D6 — responsive layout as a pure function
+
+A grid of panes squeezed onto a small screen is unusable, so we need this. But
+zellij does it with swap layouts + a remembered position + synthesized stack
+layouts, and it produced the roadmap's "panes stacked after a collapse/expand
+cycle" bug (a feasibility check counted `visible_panes_count()`, which a stack
+lies about).
+
+Instead:
+
+```
+layout(tree, rect) -> (rects, collapsed_set)     recomputed every frame
+```
+
+Each split node carries a min-size policy. When its rect cannot satisfy its
+children, **that node** flips mode locally:
+
+- `split` — children side by side (normal)
+- `stack` — children collapse to title rows, one expanded
+- `rail`  — one child takes the bulk, the rest become a monitored strip
+
+No `.swap.kdl`, no remembered state, no synthesized layouts. The bug class is
+unrepresentable because there is no state to go stale, and `rail` is the thing
+the fork kept almost-reinventing: with agents you want *one big pane you are
+reading* plus *a strip of small ones you are watching*.
+
+## Shape
+
+```
+sl0ptty-server  (one per session; holds ptys + lib-vt terminals + layout)
+   ├── epoll: pty fds, client socket, control socket, signalfd, timerfd
+   ├── pane[] = { pty fd, GhosttyTerminal, purpose, chrome, hit-list }
+   ├── layout tree (tabs -> split tree -> panes; stack/rail are node modes)
+   ├── compositor: dirty panes -> cell grid -> diff vs last frame -> ANSI
+   └── control API: newline-delimited JSON on a unix socket
+sl0ptty-client  (raw mode; decode input -> events; write bytes to tty)
+```
+
+Frame pacing: pty reads are coalesced and painted on a timerfd at a cap
+(~120Hz), never per-read. That single property is why tmux feels sluggish under
+`cat bigfile` and we will not.
+
+## Milestones
+
+- **M0** — pty + one fullscreen pane + input passthrough + resize
+- **M0.5** — headless mode + screen-assert harness
+- **M1** — layout tree, splits, focus, frames (gap/padding/title alignment)
+- **M2** — server/client split, detach/reattach, control socket
+- **M3** — tabs, `purpose=`, JSON control API
+- **M4** — chrome: OSC 5577, buttons, hit-list mouse, drag-to-reorder
+- **M5** — built-in status bar, pane finder overlay, responsive (D6)
+
+M4 is the payoff: the day it lands, the existing pi-ext extensions light up
+unmodified.
+
+## Non-goals
+
+- Not a zellij/tmux replacement for anyone but us.
+- No multi-user session rendering (D10).
+- No content resurrection. Layout restore yes, replaying scrollback no.
+- No plugin sandbox (D9).
+- Nothing but `x86_64-linux` until it works.
