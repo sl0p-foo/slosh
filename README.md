@@ -59,6 +59,13 @@ onto another pane to swap them, or drag the gap between two panes to move the
 boundary.** Focus follows the pointer (`focus_follows_mouse`, on by default,
 and it knows when not to).
 
+**Select to copy.** Drag over text and release: it is on your clipboard, sent
+to your terminal as OSC 52 so it works over ssh. Middle click pastes it back,
+the way a primary selection behaves everywhere else. A program in a pane can
+copy the same way (OSC 52) and can raise a notification (OSC 9), which appears
+as a toast in the corner — as do `{"cmd":"notify","text":"..."}` and things
+like "copied 13 chars".
+
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ptty/config.kdl`.
 

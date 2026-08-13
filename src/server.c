@@ -98,6 +98,46 @@ static int listen_socket(const char *path) {
   return fd;
 }
 
+/* base64, for OSC 52. */
+static char *b64(const char *in, size_t len, size_t *out_len) {
+  static const char T[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  size_t n = ((len + 2) / 3) * 4;
+  char *out = malloc(n + 1);
+  size_t o = 0;
+  for (size_t i = 0; i < len; i += 3) {
+    unsigned v = (unsigned char)in[i] << 16;
+    if (i + 1 < len) v |= (unsigned char)in[i + 1] << 8;
+    if (i + 2 < len) v |= (unsigned char)in[i + 2];
+    out[o++] = T[(v >> 18) & 63];
+    out[o++] = T[(v >> 12) & 63];
+    out[o++] = i + 1 < len ? T[(v >> 6) & 63] : '=';
+    out[o++] = i + 2 < len ? T[v & 63] : '=';
+  }
+  out[o] = 0;
+  *out_len = o;
+  return out;
+}
+
+/* The clipboard lives on the client's machine, not ours, so a copy travels as
+ * OSC 52 for the outer terminal to honour. */
+static void push_clipboard(server_t *s) {
+  char *text = app_take_clipboard(s->app);
+  if (!text) return;
+  conn_t *c = display_conn(s);
+  if (c) {
+    size_t b64len = 0;
+    char *enc = b64(text, strlen(text), &b64len);
+    size_t n = b64len + 32;
+    char *msg = malloc(n);
+    int len = snprintf(msg, n, "\x1b]52;c;%s\x1b\\", enc);
+    if (len > 0) msg_send(c->fd, MSG_OUTPUT, msg, (size_t)len);
+    free(msg);
+    free(enc);
+  }
+  free(text);
+}
+
 /* Send whatever the last compose produced to the display client. */
 static void push_frame(server_t *s) {
   conn_t *c = display_conn(s);
@@ -148,6 +188,8 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   screen_init(&s.screen, cols, rows);
   s.in = input_new();
 
+  app_compose(s.app, &s.screen); /* a click resolves against a painted frame */
+
   bool pending_paint = true;
   int64_t next_frame = now_ms();
   int64_t esc_due = 0;
@@ -174,6 +216,12 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       int64_t due = esc_due - now_ms();
       int t = due <= 0 ? 0 : (int)due;
       if (timeout < 0 || t < timeout) timeout = t;
+    }
+    /* a toast expires on its own, so the loop has to wake for it */
+    int toast_due = app_next_deadline_ms(s.app);
+    if (toast_due >= 0 && (timeout < 0 || toast_due < timeout)) {
+      timeout = toast_due;
+      pending_paint = true;
     }
 
     int r = poll(pfds, (nfds_t)n, timeout);
@@ -288,6 +336,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     if (pending_paint && now_ms() >= next_frame) {
       app_compose(s.app, &s.screen);
       push_frame(&s);
+      push_clipboard(&s);
       pending_paint = false;
       next_frame = now_ms();
     }

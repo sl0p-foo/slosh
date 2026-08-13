@@ -194,11 +194,31 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     s->force_full = true;
     return jok_raw("tabs", app_tabs_json(a));
   }
+  if (strcmp(cmd, "notify") == 0) {
+    const char *text = jv_gets(req, "text", NULL);
+    if (!text) return jerr("need text");
+    app_toast(a, text);
+    return jok_int(NULL, 0);
+  }
+  if (strcmp(cmd, "clipboard") == 0) {
+    const char *text = app_clipboard(a);
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_str(&j, "text", text ? text : "", text ? strlen(text) : 0);
+    json_obj_close(&j);
+    return j.buf;
+  }
   if (strcmp(cmd, "reload") == 0) {
     char err[256] = {0};
-    if (!app_reload_config(err, sizeof err)) return jerr(err[0] ? err : "reload failed");
+    if (!app_reload_config(err, sizeof err)) {
+      app_toast(a, err[0] ? err : "config reload failed");
+      return jerr(err[0] ? err : "reload failed");
+    }
     app_resize(a, s->cols, s->rows); /* geometry may have moved */
     s->force_full = true;
+    app_toast(a, "config reloaded");
     return jok_int(NULL, 0);
   }
   if (strcmp(cmd, "alive") == 0) {

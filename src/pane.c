@@ -37,12 +37,20 @@ struct pane {
   char *cwd;
   char label[128];
 
+  /* Selection anchor, in viewport coordinates, while a drag is in progress. */
+  bool selecting;
+  uint16_t sel_x, sel_y;
+
   osc_scan_t scan;
   char status[256];
   pane_button_t buttons[8];
   size_t nbuttons;
   pane_osc_fn osc_cb;
   void *osc_ud;
+  pane_clip_fn clip_cb;
+  void *clip_ud;
+  pane_notify_fn notify_cb;
+  void *notify_ud;
 };
 
 void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud) {
@@ -126,6 +134,45 @@ static void on_write_pty(GhosttyTerminal t, void *ud, const uint8_t *data,
     if (n <= 0) break;
     off += (size_t)n;
   }
+}
+
+/* A program in the pane wrote the clipboard (OSC 52 / OSC 1337). lib-vt has
+ * already normalised the base64, the chunking and the selectors. */
+static GhosttyClipboardWriteResult on_clipboard_write(
+    GhosttyTerminal t, void *ud, const GhosttyClipboardWrite *write) {
+  pane_t *p = ud;
+  if (!p->clip_cb || !write || !write->contents_len)
+    return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+  const GhosttyString *data = &write->contents[0].data;
+  if (!data->len) return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+  char *copy = malloc(data->len + 1);
+  memcpy(copy, data->ptr, data->len);
+  copy[data->len] = 0;
+  p->clip_cb(p, copy, p->clip_ud); /* the handler takes ownership */
+  return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+}
+
+void pane_set_clipboard_handler(pane_t *p, pane_clip_fn fn, void *ud) {
+  p->clip_cb = fn;
+  p->clip_ud = ud;
+}
+
+void pane_set_notify_handler(pane_t *p, pane_notify_fn fn, void *ud) {
+  p->notify_cb = fn;
+  p->notify_ud = ud;
+}
+
+/* OSC 9 / OSC 777: a program in the pane wants to say something. */
+static void on_notify(GhosttyTerminal t, void *ud,
+                      const GhosttyTerminalDesktopNotification *n) {
+  pane_t *p = ud;
+  if (!p->notify_cb || !n) return;
+  char title[96] = {0}, body[96] = {0};
+  if (n->title.len)
+    snprintf(title, sizeof title, "%.*s", (int)n->title.len, (const char *)n->title.ptr);
+  if (n->body.len)
+    snprintf(body, sizeof body, "%.*s", (int)n->body.len, (const char *)n->body.ptr);
+  p->notify_cb(p, title, body, p->notify_ud);
 }
 
 static void on_title_changed(GhosttyTerminal t, void *ud) {
@@ -213,6 +260,10 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
                        (const void *)(uintptr_t)on_write_pty);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED,
                        (const void *)(uintptr_t)on_title_changed);
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
+                       (const void *)(uintptr_t)on_clipboard_write);
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION,
+                       (const void *)(uintptr_t)on_notify);
 
   /* lib-vt makes no assumptions a host terminal would: it starts with DECTCEM
    * (mode 25) off, so the cursor is invisible until someone says otherwise.
@@ -373,6 +424,65 @@ void pane_send_paste(pane_t *p, const char *text, size_t len) {
   free(buf);
 }
 
+/* ---- selection ---------------------------------------------------------- *
+ *
+ * A selection is two grid references and a flag, so it can be built directly
+ * from two viewport positions — no gesture machinery, and the render state
+ * reports the per-row range for us to highlight.
+ */
+
+static bool grid_ref_at(pane_t *p, uint16_t x, uint16_t y, GhosttyGridRef *out) {
+  GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_VIEWPORT,
+                     .value.coordinate = {.x = x, .y = y}};
+  return ghostty_terminal_grid_ref(p->term, pt, out) == GHOSTTY_SUCCESS;
+}
+
+void pane_select_start(pane_t *p, uint16_t x, uint16_t y) {
+  p->selecting = true;
+  p->sel_x = x;
+  p->sel_y = y;
+  pane_select_clear(p);
+}
+
+void pane_select_extend(pane_t *p, uint16_t x, uint16_t y) {
+  if (!p->selecting) return;
+  GhosttyGridRef a, b;
+  if (!grid_ref_at(p, p->sel_x, p->sel_y, &a) || !grid_ref_at(p, x, y, &b))
+    return;
+  GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+  sel.start = a;
+  sel.end = b;
+  sel.rectangle = false;
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+  p->dirty = true;
+}
+
+void pane_select_clear(pane_t *p) {
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
+  p->dirty = true;
+}
+
+bool pane_selecting(const pane_t *p) { return p->selecting; }
+void pane_select_done(pane_t *p) { p->selecting = false; }
+
+/* The selected text, or NULL. Caller frees. */
+char *pane_selection_text(pane_t *p) {
+  GhosttyTerminalSelectionFormatOptions opts =
+      GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
+  opts.trim = true;
+  uint8_t *ptr = NULL;
+  size_t len = 0;
+  if (ghostty_terminal_selection_format_alloc(p->term, NULL, opts, &ptr, &len) !=
+          GHOSTTY_SUCCESS ||
+      !len)
+    return NULL;
+  char *out = malloc(len + 1);
+  memcpy(out, ptr, len);
+  out[len] = 0;
+  ghostty_free(NULL, ptr, len);
+  return out;
+}
+
 /* ---- scrollback --------------------------------------------------------- */
 
 void pane_scroll(pane_t *p, int delta) {
@@ -455,6 +565,12 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
       continue;
     }
 
+    GhosttyRenderStateRowSelection rowsel =
+        GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
+    bool has_sel = ghostty_render_state_row_get(
+                       p->rows, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION,
+                       &rowsel) == GHOSTTY_SUCCESS;
+
     uint16_t x = 0;
     while (ghostty_render_state_row_cells_next(p->cells)) {
       if (x >= p->cols) break;
@@ -517,6 +633,11 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
       else { dst->text[0] = ' '; n = 1; }
       dst->len = (uint8_t)n;
       dst->width = wide == GHOSTTY_CELL_WIDE_WIDE ? 2 : 1;
+      /* Selected cells are inverted rather than recoloured, so a selection
+       * reads the same over any theme the program inside is using. */
+      if (has_sel && x >= rowsel.start_x && x <= rowsel.end_x)
+        attrs ^= ATTR_INVERSE;
+
       dst->attrs = attrs;
       dst->fg = to_color(&fg, have_fg);
       dst->bg = to_color(&bg, have_bg);

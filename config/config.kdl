@@ -41,6 +41,10 @@ min_pane cols=24 rows=6
 // Rows per wheel notch, and per scroll-up/scroll-down.
 scroll_lines 3
 
+// How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
+// "config reloaded") stays in the bottom-right corner.
+toast_ms 2500
+
 // What a new pane runs. Unset means $SHELL.
 // shell "/bin/bash"
 

@@ -4,6 +4,7 @@
 
 #include <ghostty/vt.h>
 #include <ctype.h>
+#include <time.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,12 +121,26 @@ struct app {
    * on something the hit list says is draggable, so neither can disagree with
    * what is on screen. */
   struct {
-    enum { DRAG_NONE, DRAG_TITLE, DRAG_EDGE } kind;
+    enum { DRAG_NONE, DRAG_TITLE, DRAG_EDGE, DRAG_SELECT } kind;
     uint32_t src;      /* pane being dragged, or the split being resized */
     uint32_t target;   /* pane under the pointer, for the drop highlight */
     size_t edge;       /* which boundary of that split */
     uint16_t x, y;     /* where the pointer was at the last event */
   } drag;
+
+  /* Transient announcements: "copied 13 chars", a notification from a pane,
+   * a config reload. They stack upward from the bottom right and expire on
+   * their own, so nothing has to be dismissed. */
+  struct {
+    char text[128];
+    int64_t until;
+  } toasts[3];
+  size_t ntoasts;
+
+  /* What a selection put on the clipboard, kept for middle-click paste (the
+   * X11 primary-selection habit) and handed to the client as OSC 52. */
+  char *clipboard;
+  char *clipboard_pending;
 
   /* the pane finder overlay: tabs stop being navigation past about six */
   bool finder;
@@ -163,6 +178,106 @@ static void on_pane_osc(pane_t *p, const char *verb, const char *payload,
   if (b.found) app_set_pane_purpose(a, b.found->id, payload, false);
 }
 
+static int64_t now_ms_(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+void app_toast(app_t *a, const char *text) {
+  if (!text || !*text) return;
+  size_t max = sizeof a->toasts / sizeof *a->toasts;
+  if (a->ntoasts == max) { /* drop the oldest */
+    memmove(&a->toasts[0], &a->toasts[1], (max - 1) * sizeof a->toasts[0]);
+    a->ntoasts--;
+  }
+  snprintf(a->toasts[a->ntoasts].text, sizeof a->toasts[0].text, "%s", text);
+  a->toasts[a->ntoasts].until = now_ms_() + CFG.toast_ms;
+  a->ntoasts++;
+}
+
+static void toasts_expire(app_t *a) {
+  int64_t now = now_ms_();
+  size_t keep = 0;
+  for (size_t i = 0; i < a->ntoasts; i++)
+    if (a->toasts[i].until > now) a->toasts[keep++] = a->toasts[i];
+  a->ntoasts = keep;
+}
+
+/* When the next toast expires, so a caller's poll can wake for it. */
+int app_next_deadline_ms(app_t *a) {
+  int64_t soonest = -1;
+  for (size_t i = 0; i < a->ntoasts; i++)
+    if (soonest < 0 || a->toasts[i].until < soonest) soonest = a->toasts[i].until;
+  if (soonest < 0) return -1;
+  int64_t in = soonest - now_ms_();
+  return in <= 0 ? 0 : (int)in;
+}
+
+size_t app_toast_count(app_t *a) {
+  toasts_expire(a);
+  return a->ntoasts;
+}
+
+static void draw_toasts(app_t *a, screen_t *s) {
+  toasts_expire(a);
+  if (!a->ntoasts) return;
+  uint16_t bottom = (uint16_t)(s->rows > 1 ? s->rows - 1 : 0);
+  for (size_t i = 0; i < a->ntoasts; i++) {
+    const char *text = a->toasts[a->ntoasts - 1 - i].text;
+    char line[160];
+    snprintf(line, sizeof line, " %s ", text);
+    uint16_t w = (uint16_t)strlen(line);
+    if (w >= s->cols) w = (uint16_t)(s->cols - 1);
+    uint16_t y = (uint16_t)(bottom - i);
+    if (y >= s->rows) break;
+    uint16_t x = (uint16_t)(s->cols - w - CFG.gap * CFG.gap_aspect);
+    char clipped[160];
+    snprintf(clipped, sizeof clipped, "%.*s", (int)w, line);
+    screen_text(s, x, y, clipped, BTN_FG, BTN_BG, ATTR_BOLD);
+  }
+}
+
+static void set_clipboard(app_t *a, char *text) {
+  if (!text) return;
+  if (!*text) {
+    free(text);
+    return;
+  }
+  free(a->clipboard);
+  a->clipboard = text;
+  {
+    size_t n = strlen(text);
+    char msg[64];
+    snprintf(msg, sizeof msg, "copied %zu char%s", n, n == 1 ? "" : "s");
+    app_toast(a, msg);
+  }
+  free(a->clipboard_pending);
+  a->clipboard_pending = strdup(text); /* the client still has to be told */
+}
+
+static void on_pane_clipboard(pane_t *p, char *text, void *ud) {
+  set_clipboard((app_t *)ud, text);
+}
+
+static void on_pane_notify(pane_t *p, const char *title, const char *body,
+                           void *ud) {
+  char msg[128];
+  if (title && *title && body && *body)
+    snprintf(msg, sizeof msg, "%s: %s", title, body);
+  else
+    snprintf(msg, sizeof msg, "%s", (title && *title) ? title : body ? body : "");
+  app_toast((app_t *)ud, msg);
+}
+
+char *app_take_clipboard(app_t *a) {
+  char *out = a->clipboard_pending;
+  a->clipboard_pending = NULL;
+  return out;
+}
+
+const char *app_clipboard(const app_t *a) { return a->clipboard; }
+
 static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
                            bool suspended, const char *label) {
   pane_t *p = pane_new_ex(argv, 1, 1, cwd, suspended, label);
@@ -173,6 +288,8 @@ static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
   n->pane = p;
   n->id = ++a->next_id;
   pane_set_osc_handler(p, on_pane_osc, a);
+  pane_set_clipboard_handler(p, on_pane_clipboard, a);
+  pane_set_notify_handler(p, on_pane_notify, a);
   return n;
 }
 
@@ -185,6 +302,8 @@ static node_t *leaf_new(app_t *a) {
   n->pane = p;
   n->id = ++a->next_id;
   pane_set_osc_handler(p, on_pane_osc, a);
+  pane_set_clipboard_handler(p, on_pane_clipboard, a);
+  pane_set_notify_handler(p, on_pane_notify, a);
   return n;
 }
 
@@ -246,6 +365,8 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows) {
 
 void app_free(app_t *a) {
   if (!a) return;
+  free(a->clipboard);
+  free(a->clipboard_pending);
   for (size_t i = 0; i < a->ntabs; i++) node_free(a->tabs[i].root);
   free(a->tabs);
   free(a);
@@ -1425,6 +1546,7 @@ void app_compose(app_t *a, screen_t *s) {
   if (CFG.status_bar) draw_tab_strip(a, s);
   draw_node(a, s, cur(a)->root);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
+  draw_toasts(a, s);                /* and above even that: it is transient */
 }
 
 /* ---- input -------------------------------------------------------------- */
@@ -1568,6 +1690,27 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
      *     scrollback of ours to show, so the wheel becomes arrow keys, which
      *     is what it means to that program;
      *   - anything else scrolls our scrollback. */
+    /* Left press on a pane that is not tracking the mouse starts a selection.
+     * A program that wants the mouse keeps it; shift is the usual escape
+     * hatch for selecting over one of those, and it is what people already
+     * press out of habit. */
+    bool select_press = ev->maction == MOUSE_PRESS && ev->button == MBTN_LEFT &&
+                        (!pane_wants_mouse(n->pane) || (ev->mods & MOD_SHIFT));
+    if (select_press) {
+      pane_select_start(n->pane, local.mx, local.my);
+      a->drag.kind = DRAG_SELECT;
+      a->drag.src = n->id;
+      return;
+    }
+
+    /* Middle click pastes the last selection, the way a primary selection
+     * behaves everywhere else. */
+    if (ev->maction == MOUSE_PRESS && ev->button == MBTN_MIDDLE &&
+        !pane_wants_mouse(n->pane) && a->clipboard) {
+      pane_send_paste(n->pane, a->clipboard, strlen(a->clipboard));
+      return;
+    }
+
     bool wheel = ev->maction == MOUSE_PRESS &&
                  (ev->button == MBTN_FOUR || ev->button == MBTN_FIVE);
     if (wheel && !pane_wants_mouse(n->pane)) {
@@ -1647,6 +1790,10 @@ void app_event(app_t *a, const input_event_t *ev) {
    * detaches mid-drag). Any keystroke ends a drag, so the mouse can never be
    * left wedged in a state the user cannot see. */
   if (ev->kind == EV_KEY && a->drag.kind != DRAG_NONE) {
+    if (a->drag.kind == DRAG_SELECT) {
+      node_t *n = pane_by_id(a, a->drag.src);
+      if (n) pane_select_done(n->pane);
+    }
     a->drag.kind = DRAG_NONE;
     a->drag.src = a->drag.target = 0;
   }
@@ -1690,7 +1837,12 @@ void app_event(app_t *a, const input_event_t *ev) {
 
       if (a->drag.kind != DRAG_NONE) {
         if (ev->maction == MOUSE_MOTION) {
-          if (a->drag.kind == DRAG_EDGE) {
+          if (a->drag.kind == DRAG_SELECT) {
+            node_t *n = pane_by_id(a, a->drag.src);
+            if (n)
+              pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
+                                 (uint16_t)(ev->my - n->content.y));
+          } else if (a->drag.kind == DRAG_EDGE) {
             node_t *sp = split_by_id(a, a->drag.src);
             int cells = sp && sp->dir == SPLIT_COLS
                             ? (int)ev->mx - (int)a->drag.x
@@ -1704,6 +1856,15 @@ void app_event(app_t *a, const input_event_t *ev) {
           a->drag.x = ev->mx;
           a->drag.y = ev->my;
         } else if (ev->maction == MOUSE_RELEASE) {
+          if (a->drag.kind == DRAG_SELECT) {
+            /* Releasing copies, which is the whole point: no menu, no chord,
+             * the selection *is* the copy. */
+            node_t *n = pane_by_id(a, a->drag.src);
+            if (n) {
+              set_clipboard(a, pane_selection_text(n->pane));
+              pane_select_done(n->pane);
+            }
+          }
           if (a->drag.kind == DRAG_TITLE && a->drag.target != a->drag.src)
             swap_panes(a, a->drag.src, a->drag.target);
           a->drag.kind = DRAG_NONE;

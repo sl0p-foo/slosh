@@ -120,6 +120,11 @@ typedef struct {
 /* Verbs pane.c does not handle itself (purpose, and whatever comes later). */
 typedef void (*pane_osc_fn)(pane_t *p, const char *verb, const char *payload,
                             void *ud);
+/* A program in the pane wrote the clipboard (OSC 52). Takes ownership. */
+typedef void (*pane_clip_fn)(pane_t *p, char *text, void *ud);
+/* A program in the pane sent a notification (OSC 9 / OSC 777). */
+typedef void (*pane_notify_fn)(pane_t *p, const char *title, const char *body,
+                               void *ud);
 
 pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
                  const char *cwd);
@@ -155,6 +160,16 @@ const char *pane_status(const pane_t *p);
 size_t pane_buttons(const pane_t *p, const pane_button_t **out);
 void pane_click_button(pane_t *p, const char *id);
 void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud);
+void pane_set_clipboard_handler(pane_t *p, pane_clip_fn fn, void *ud);
+void pane_set_notify_handler(pane_t *p, pane_notify_fn fn, void *ud);
+
+/* Selection, in the pane's viewport coordinates. */
+void pane_select_start(pane_t *p, uint16_t x, uint16_t y);
+void pane_select_extend(pane_t *p, uint16_t x, uint16_t y);
+void pane_select_clear(pane_t *p);
+void pane_select_done(pane_t *p);
+bool pane_selecting(const pane_t *p);
+char *pane_selection_text(pane_t *p);
 /* Compose this pane's viewport into the screen at (x0,y0). Clears dirty. */
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused);

@@ -76,6 +76,10 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
     goto done;
   }
 
+  /* Paint once before accepting input: a click resolves against what was
+   * painted, and in a real session a frame always precedes the pointer. */
+  app_compose(a, &s);
+
   char line[4096];
   bool quit = false;
   while (!quit && fgets(line, sizeof line, stdin)) {

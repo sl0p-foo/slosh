@@ -20,6 +20,18 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows);
 void app_free(app_t *a);
 
 void app_event(app_t *a, const input_event_t *ev);
+/* Transient announcements, drawn bottom-right and expiring on their own. */
+void app_toast(app_t *a, const char *text);
+size_t app_toast_count(app_t *a);
+/* Milliseconds until something needs repainting on its own (a toast expiring),
+ * or -1 when nothing does. */
+int app_next_deadline_ms(app_t *a);
+
+/* Text the session has copied, and the copy the client has not been told
+ * about yet (which the front end sends on as OSC 52). Caller frees the take. */
+const char *app_clipboard(const app_t *a);
+char *app_take_clipboard(app_t *a);
+
 /* Re-read the config file. Keeps the working one if the new file is broken. */
 bool app_reload_config(char *err, size_t errcap);
 void app_resize(app_t *a, uint16_t cols, uint16_t rows);
