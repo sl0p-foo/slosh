@@ -76,7 +76,7 @@ def test_the_button_toggles_and_says_which_way():
         s.click(b["x"] + 1, b["y"])
         s.settle(20)
         check("clicking it zooms", len(visible(s)) == 1, str(s.panes()))
-        check("and the mark says so", "][" in s.snapshot().line(2),
+        check("and the mark says so", "\u25a3" in s.snapshot().line(2),
               repr(s.snapshot().line(2)[-14:]))
 
         # The button moved: the pane it belongs to just became the whole tab.
@@ -85,7 +85,7 @@ def test_the_button_toggles_and_says_which_way():
         s.settle(20)
         check("clicking it again puts it back", len(visible(s)) == 2,
               str(s.panes()))
-        check("and the mark goes back too", "[]" in s.snapshot().line(2),
+        check("and the mark goes back too", "\u25a1" in s.snapshot().line(2),
               repr(s.snapshot().line(2)[-14:]))
 
 

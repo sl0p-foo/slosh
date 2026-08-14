@@ -172,8 +172,8 @@ void config_defaults(config_t *c) {
   c->title_align = ALIGN_CENTER;
   c->title_inset = 2;
   c->pane_buttons = true;
-  snprintf(c->zoom_mark, sizeof c->zoom_mark, "[]");
-  snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "][");
+  snprintf(c->zoom_mark, sizeof c->zoom_mark, "\u25a1");
+  snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "\u25a3");
   snprintf(c->close_mark, sizeof c->close_mark, "x");
   snprintf(c->min_mark, sizeof c->min_mark, "_");
   c->bell_indicator = true;
