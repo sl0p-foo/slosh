@@ -441,6 +441,53 @@ def test_the_title_inset_is_configurable():
     os.unlink(lay.name)
 
 
+def test_width_collapses_a_stacked_layout_too():
+    """The floor is per pane and both-ways, not per split.
+
+    A split node only ever asks about the dimension it divides, so a column of
+    stacked panes asked about height and never about width -- and could be
+    squeezed to a few cells wide with nothing in the tree responsible for
+    noticing. Whatever arrangement produced a pane, it has to clear the floor
+    on both of its own sides.
+    """
+    with Session(SH, cols=100, rows=24) as s:
+        s.settle(20)
+        s.api("split", dir="rows")          # stacked: width is the perpendicular axis
+        s.settle(20)
+        check("two stacked panes, both open, at a comfortable width",
+              len([p for p in s.panes() if not p["hidden"]]) == 2, str(s.panes()))
+
+        s.resize(60, 24)
+        s.settle(20)
+        check("still open while each pane clears the floor",
+              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+
+        s.resize(26, 24)
+        s.settle(20)
+        check("narrow enough, and a stacked layout collapses like any other",
+              any(p["hidden"] for p in s.panes()), str(s.panes()))
+
+        s.resize(100, 24)
+        s.settle(20)
+        check("and comes back when there is room again",
+              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+
+
+def test_height_collapses_a_side_by_side_layout_too():
+    """The same hole, the other way round."""
+    with Session(SH, cols=100, rows=24) as s:
+        s.settle(20)
+        s.api("split", dir="cols")          # side by side: height is perpendicular
+        s.settle(20)
+        check("two panes side by side at a comfortable height",
+              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+
+        s.resize(100, 9)
+        s.settle(20)
+        check("short enough, and a side-by-side layout collapses",
+              any(p["hidden"] for p in s.panes()), str(s.panes()))
+
+
 if __name__ == "__main__":
     test_collapse()
     test_collapse_expand_cycle()
@@ -457,4 +504,6 @@ if __name__ == "__main__":
     test_hovering_a_row_does_not_open_it()
     test_a_header_is_shaped_like_a_pane_top()
     test_the_title_inset_is_configurable()
+    test_width_collapses_a_stacked_layout_too()
+    test_height_collapses_a_side_by_side_layout_too()
     sys.exit(report())

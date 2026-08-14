@@ -61,8 +61,13 @@ def test_keyboard_resize():
             s.send(r"\x01L")
         s.settle()
         squeezed = widths(s)
-        check("a pane can be squeezed but not squeezed out", squeezed[1] >= 3,
-              str(squeezed))
+        # It stops at min_pane rather than being pushed under it. Going under
+        # would put a pane below the floor, which collapses the whole tab into
+        # a list -- a drastic answer to "you nudged the divider once more".
+        check("a pane is squeezed down to the floor and no further",
+              squeezed[1] == 24, str(squeezed))
+        check("and nothing collapsed on the way",
+              not any(p["hidden"] for p in s.panes()), str(s.panes()))
         check("the total is still the screen",
               sum(squeezed) + 2 + 4 == 80, str(squeezed))
 
@@ -393,8 +398,32 @@ def test_a_row_boundary_names_its_own_verb():
               pos and top["y"] + top["h"] <= pos[1] < bottom["y"], str(pos))
 
 
+def test_dragging_a_boundary_also_stops_at_the_floor():
+    """The mouse and the keyboard resize through the same clamp; a limit only
+    one of them respected would be worse than none."""
+    with Session(SH, cols=80, rows=16, config=FAST) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle()
+        left, right = s.panes()
+        gx, gy = left["x"] + left["w"], left["y"] + 3
+
+        # drag the boundary far past where the right pane could survive
+        s.send(rf"\e[<0;{gx + 1};{gy + 1}M")
+        s.send(rf"\e[<32;{gx + 60};{gy + 1}M")
+        s.send(rf"\e[<0;{gx + 60};{gy + 1}m")
+        s.settle(60)
+
+        panes = s.panes()
+        check("the dragged-against pane stops at the floor",
+              panes[1]["w"] == 24, str([p["w"] for p in panes]))
+        check("and the tab did not collapse into a list",
+              not any(p["hidden"] for p in panes), str(panes))
+
+
 if __name__ == "__main__":
     test_keyboard_resize()
+    test_dragging_a_boundary_also_stops_at_the_floor()
     test_vertical_resize()
     test_resize_survives_a_collapse_cycle()
     test_edge_drag()

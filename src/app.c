@@ -754,6 +754,14 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
     };
     if (ctx->apply && !n->hidden)
       pane_resize(n->pane, n->content.w, n->content.h);
+
+    /* A pane has to clear the floor in *both* directions, whatever arrangement
+     * produced it. The check on a split node only ever asks about the
+     * dimension that node divides — a row split asks about height and never
+     * about width — so a column of stacked panes could be squeezed to four
+     * cells wide with nothing in the tree responsible for noticing. The leaf
+     * is the only place that can see both of its own sides. */
+    if (r.w < MIN_PANE_COLS || r.h < MIN_PANE_ROWS) ctx->overflow = true;
     return;
   }
 
@@ -1324,9 +1332,40 @@ static size_t index_in_parent(node_t *n) {
 }
 
 /* Move weight between two adjacent siblings, refusing to squeeze either out. */
+/* `from` always shrinks. It stops at the floor rather than being pushed under
+ * one: a pane below the floor collapses the whole tab into a list, and having
+ * that happen because you nudged a divider one cell too far would read as the
+ * session falling over rather than as a limit being reached. Every other
+ * resizable thing simply stops, so this does too.
+ *
+ * The clamp lives here because both ways of resizing end up here — the mouse
+ * through drag_edge and the keyboard through resize_focus — and a limit that
+ * only one of them respected would be worse than none. */
 static void transfer_weight(node_t *from, node_t *to, int amount) {
-  if (from->weight - amount < WEIGHT_MIN) amount = from->weight - WEIGHT_MIN;
-  if (amount <= 0) return;
+  long min_weight = WEIGHT_MIN;
+
+  node_t *sp = from->parent;
+  if (sp && sp->nkids >= 2) {
+    uint16_t floor_ = sp->dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
+    uint16_t gap = sp->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect)
+                                         : CFG.gap;
+    uint16_t span = sp->dir == SPLIT_COLS ? sp->rect.w : sp->rect.h;
+    uint16_t gaps = (uint16_t)(gap * (sp->nkids - 1));
+    uint16_t avail = span > gaps ? (uint16_t)(span - gaps) : span;
+    long total = 0;
+    for (size_t k = 0; k < sp->nkids; k++) total += sp->kids[k]->weight;
+    /* Rounded up: the weight that buys exactly `floor_` cells is a fraction,
+     * and rounding down buys one cell fewer — which is the cell that puts the
+     * pane under the floor. */
+    if (avail && total > 0) {
+      long need = ((long)floor_ * total + avail - 1) / avail;
+      if (need > min_weight) min_weight = need;
+    }
+  }
+
+  if (from->weight - amount < min_weight)
+    amount = (int)(from->weight - min_weight);
+  if (amount <= 0) return; /* already at the floor: the nudge does nothing */
   from->weight -= amount;
   to->weight += amount;
 }
@@ -2368,6 +2407,7 @@ static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
   for (size_t k = 0; k < sp->nkids; k++) total += sp->kids[k]->weight;
   int amount = (int)((long)labs(cells) * total / (span ? span : 1));
   if (amount <= 0) amount = 1;
+
 
   if (cells > 0) transfer_weight(sp->kids[i + 1], sp->kids[i], amount);
   else transfer_weight(sp->kids[i], sp->kids[i + 1], amount);

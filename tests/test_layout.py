@@ -122,7 +122,7 @@ def test_frames_and_gap():
               pane["content_x"] == pane["x"] + 1 and pane["content_y"] == pane["y"] + 1,
               str(pane))
 
-    with Session(SH, cols=76, rows=8) as s:
+    with Session(SH, cols=76, rows=12) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
