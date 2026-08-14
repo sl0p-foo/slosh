@@ -329,7 +329,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
     uint16_t cw = (uint16_t)strlen(cnt);
     if (right > x + cw + 2) {
       screen_text(s, (uint16_t)(right - cw), y, cnt, FRAME_IDLE, NO_COLOR, 0);
-      right = (uint16_t)(right - cw - 1);
+      right = (uint16_t)(right - cw - 2);
     }
   }
 
@@ -342,17 +342,23 @@ static void draw_status_line(app_t *a, screen_t *s) {
     } else if (pane_scrolled(f->pane)) {
       uint32_t above = 0, total = 0;
       pane_scroll_pos(f->pane, &above, &total);
-      snprintf(ind, sizeof ind, "\u25b2%u scrolled", total > above ? total - above : 0);
+      snprintf(ind, sizeof ind, "\u25b2 %u scrolled",
+               total > above ? total - above : 0);
     } else if (pane_alt_screen(f->pane)) {
       snprintf(ind, sizeof ind, "alt screen");
     }
   }
   if (ind[0]) {
-    uint16_t iw = (uint16_t)strlen(ind);
+    /* Columns, not bytes: the only non-ASCII here is the arrow, three bytes
+     * wide and one column, and strlen would hold the whole indicator two
+     * columns further from the edge than it needed to be. */
+    uint16_t iw = 0;
+    for (const char *q = ind; *q; q++)
+      if (((unsigned char)*q & 0xC0) != 0x80) iw++;
     if (right > x + iw + 2) {
       screen_text(s, (uint16_t)(right - iw), y, ind, TITLE_FOCUS, NO_COLOR,
                   ATTR_BOLD);
-      right = (uint16_t)(right - iw - 1);
+      right = (uint16_t)(right - iw - 2);
     }
   }
 
@@ -1655,15 +1661,23 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   if (pane_scrolled(leaf->pane) && avail >= 8) {
     uint32_t above = 0, total = 0;
     pane_scroll_pos(leaf->pane, &above, &total);
+    /* A space between the arrow and the count. U+25B2 is drawn wide enough in
+     * plenty of fonts to touch whatever follows it, and "▲12" then reads as
+     * one smudged token rather than an arrow and a number. */
+    char num[16];
+    int nd = snprintf(num, sizeof num, "%u", total > above ? total - above : 0);
+    if (nd < 0) nd = 0;
     char ind[24];
-    int n = snprintf(ind, sizeof ind, " \u25b2%u ", total > above ? total - above : 0);
-    uint16_t iw = (uint16_t)(n > 0 ? n : 0);
+    snprintf(ind, sizeof ind, " \u25b2 %s ", num);
+    /* Counted in cells, not bytes: the arrow is three bytes and one column,
+     * and measuring it with strlen reserved two columns that were never used. */
+    uint16_t iw = (uint16_t)(nd + 4); /* space, arrow, space, digits, space */
     if (iw + 2 < avail) {
       uint16_t ix = (uint16_t)((has_btn ? btn_x : x1) - iw);
-      screen_text(s, ix, r.y, ind, BTN_FG, BTN_BG, ATTR_BOLD);
+      uint16_t drawn = screen_text(s, ix, r.y, ind, BTN_FG, BTN_BG, ATTR_BOLD);
       char action[48];
       snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
-      hit_add(&s->hits, ix, r.y, iw, 1, action);
+      hit_add(&s->hits, ix, r.y, drawn, 1, action);
       avail = (uint16_t)(avail - iw);
     }
   }

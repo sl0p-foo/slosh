@@ -61,7 +61,9 @@ def test_indicator():
         s.settle(80)
         snap = s.snapshot()
         row = snap.line(p["y"])
-        check("scrolling shows how far down the live view is", "▲9" in row,
+        # A space between the arrow and the count: U+25B2 is drawn wide enough
+        # in plenty of fonts to touch what follows it.
+        check("scrolling shows how far down the live view is", "\u25b2 9" in row,
               repr(row))
 
         x = row.index("▲")
