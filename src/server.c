@@ -211,6 +211,13 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
    * then never again, which is worse than not watching at all because it looks
    * like it works. Watching the directory and filtering by name survives that,
    * and picks up a file that did not exist when the session started. */
+  /* One save is not always one event: an editor that creates the file rather
+   * than rewriting it produces CREATE and then CLOSE_WRITE, and reloading on
+   * each would parse the config twice and announce it twice for one edit.
+   * Waiting a moment for the file to stop changing also means an editor that
+   * writes in chunks is read once it has finished rather than halfway. */
+  const int64_t RELOAD_DEBOUNCE_MS = 80;
+  int64_t reload_due = -1;
   int inofd = -1, inowd = -1;
   char cfg_dir[512] = {0}, cfg_base[256] = {0};
   if (watch) {
@@ -268,6 +275,11 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     }
     /* some things happen without an event: a toast expiring, a hover guide
      * arming under a pointer that is deliberately not moving */
+    if (reload_due >= 0) {
+      int64_t due = reload_due - now_ms();
+      int t = due <= 0 ? 0 : (int)due;
+      if (timeout < 0 || t < timeout) timeout = t;
+    }
     int self_due = app_next_deadline_ms(s.app);
     if (self_due >= 0 && (timeout < 0 || self_due < timeout)) {
       timeout = self_due;
@@ -394,18 +406,21 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
           q += sizeof *ev + ev->len;
         }
       }
-      if (touched) {
-        char err[256] = {0};
-        if (app_reload_config(err, sizeof err)) {
-          app_resize(s.app, s.screen.cols, s.screen.rows);
-          app_toast(s.app, "config reloaded");
-        } else {
-          app_toast(s.app, err[0] ? err : "config reload failed");
-        }
-        s.screen.force_full = true;
-        pending_paint = true;
-        next_frame = now_ms();
+      if (touched) reload_due = now_ms() + RELOAD_DEBOUNCE_MS;
+    }
+
+    if (reload_due >= 0 && now_ms() >= reload_due) {
+      reload_due = -1;
+      char err[256] = {0};
+      if (app_reload_config(err, sizeof err)) {
+        app_resize(s.app, s.screen.cols, s.screen.rows);
+        app_toast(s.app, "config reloaded");
+      } else {
+        app_toast(s.app, err[0] ? err : "config reload failed");
       }
+      s.screen.force_full = true;
+      pending_paint = true;
+      next_frame = now_ms();
     }
 
     app_reap(s.app);

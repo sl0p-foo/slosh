@@ -120,6 +120,43 @@ def test_watch():
                 os.unlink(f)
 
 
+def toast_count(session, text):
+    """How many times `text` appears on screen. Toasts stack, so a config that
+    reloaded twice announces itself twice."""
+    out = subprocess.run([BIN, "-s", session, "cmd", "snapshot"],
+                         capture_output=True, text=True).stdout
+    try:
+        rows = json.loads(out)["text"]
+    except Exception:
+        return -1
+    return sum(1 for r in rows if text in r)
+
+
+def test_one_save_is_one_reload():
+    """An editor that creates the file rather than rewriting it produces two
+    inotify events -- CREATE then CLOSE_WRITE -- and reloading on each would
+    parse the config twice and say so twice for a single edit."""
+    name = "t" + uuid.uuid4().hex[:8]
+    cfg = f"/tmp/{name}.kdl"
+    write(cfg, "#00ff00")
+    p = start(name, cfg)
+    try:
+        # Recreate it the way an editor that unlinks first would.
+        os.unlink(cfg)
+        write(cfg, "#ff0000")
+        check("the recreated file is picked up",
+              wait_for_colour(name, "#ff0000") == "#ff0000",
+              str(frame_colour(name)))
+        time.sleep(0.3)   # bounded: let any second reload land if it is coming
+        n = toast_count(name, "config reloaded")
+        check("and announced exactly once, not once per inotify event",
+              n == 1, f"{n} toasts")
+    finally:
+        stop(name, p)
+        if os.path.exists(cfg):
+            os.unlink(cfg)
+
+
 def test_no_reload():
     name = "t" + uuid.uuid4().hex[:8]
     cfg = f"/tmp/{name}.kdl"
@@ -147,6 +184,7 @@ def test_no_reload():
 
 if __name__ == "__main__":
     test_watch()
+    test_one_save_is_one_reload()
     test_no_reload()
     print()
     print(f"{'FAILED' if fails else 'all green'} ({fails} failures)")
