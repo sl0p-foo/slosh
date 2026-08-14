@@ -168,6 +168,7 @@ void config_defaults(config_t *c) {
   c->pad = 0;
   c->rounded = true;
   c->title_align = ALIGN_CENTER;
+  c->title_inset = 2;
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
   c->min_split_cols = 32;
@@ -302,6 +303,9 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
     else if (strcmp(align, "right") == 0) c->title_align = ALIGN_RIGHT;
     else c->title_align = ALIGN_CENTER;
   }
+
+  c->title_inset =
+      (uint16_t)kdl_arg_int(kdl_child(root, "title_inset"), 0, c->title_inset);
 
   const kdl_node_t *mins = kdl_child(root, "min_split");
   if (mins) {

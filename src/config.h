@@ -74,6 +74,10 @@ typedef struct {
   uint16_t gap, gap_aspect, pad;
   bool rounded;
   align_t title_align;
+  /* Cells between a frame's corner and the start of its title. The title
+   * always carries a space on each side on top of this, so a title can never
+   * end up welded to the rule beside it. */
+  uint16_t title_inset;
   uint16_t min_pane_cols, min_pane_rows;
   /* The smallest pane a split is allowed to *produce*. min_pane is the point
    * below which the layout gives up and collapses a pane; this is the point

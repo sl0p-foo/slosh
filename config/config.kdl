@@ -24,6 +24,11 @@ rounded true
 // "left" | "center" | "right"
 title_align "center"
 
+// Cells between a frame's corner and the start of its title, for the edge the
+// title is anchored to. The title always carries a space on each side on top
+// of this, so it can never end up welded to the rule beside it.
+title_inset 2
+
 // The one-row bar with tabs, the +tab button and the pane count.
 status_bar true
 

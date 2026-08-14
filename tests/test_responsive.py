@@ -65,9 +65,11 @@ def test_collapse():
         check("the focused pane keeps a usable size",
               [p for p in panes if p["focused"]][0]["content_h"] >= 3,
               str([p for p in panes if p["focused"]]))
-        check("collapsed panes are drawn as a header row",
-              any(row.strip().startswith("pane") for row in snap.text),
-              repr(snap.screen()))
+        hidden = [q for q in s.panes() if q["hidden"]]
+        tops = sum(1 for row in snap.text if row.strip().startswith("\u256d"))
+        check("every collapsed pane is drawn as the top edge of a pane",
+              tops == len(hidden) + 1,   # the headers, plus the open pane
+              f"{tops} tops for {len(hidden)} hidden: " + repr(snap.screen()))
 
 
 def test_collapse_expand_cycle():
@@ -295,7 +297,9 @@ def test_a_tab_is_laid_out_or_it_is_a_list_never_both():
 
 # ---- hovering a row in the stack -------------------------------------------
 
-BTN_BG = "#ff5fd7"
+FRAME_FOCUS = "#ff5fd7"   # the rule, while hovered
+TITLE_FOCUS = "#ffffff"   # the title, while hovered
+FRAME_IDLE = "#45454a"
 
 
 def stacked_session():
@@ -314,8 +318,13 @@ def hover(s, x, y):
     s.send(rf"\e[<35;{x + 1};{y + 1}M")
 
 
+def rule_fg(snap, pane):
+    """Colour of the header's rule, away from the title."""
+    return (snap.style_at(pane["x"] + pane["w"] - 3, pane["y"]) or {}).get("fg")
+
+
 def row_bg(snap, pane):
-    return (snap.style_at(pane["x"] + 4, pane["y"]) or {}).get("bg")
+    return (snap.style_at(pane["x"] + pane["w"] - 3, pane["y"]) or {}).get("bg")
 
 
 def test_hovering_a_row_lights_it_up():
@@ -329,20 +338,24 @@ def test_hovering_a_row_lights_it_up():
 
         snap = s.snapshot()
         check("nothing is lit before the pointer arrives",
-              all(row_bg(snap, p) != BTN_BG for p in headers), "")
+              all(rule_fg(snap, p) == FRAME_IDLE for p in headers),
+              str([rule_fg(snap, p) for p in headers]))
 
         hover(s, headers[0]["x"] + 4, headers[0]["y"])
         snap = s.snapshot()
         check("the row under the pointer is lit",
-              row_bg(snap, headers[0]) == BTN_BG, str(row_bg(snap, headers[0])))
+              rule_fg(snap, headers[0]) == FRAME_FOCUS,
+              str(rule_fg(snap, headers[0])))
         check("and only that row",
-              all(row_bg(snap, p) != BTN_BG for p in headers[1:]), "")
+              all(rule_fg(snap, p) == FRAME_IDLE for p in headers[1:]), "")
+        check("by its foreground: no bar is painted behind it",
+              row_bg(snap, headers[0]) is None, str(row_bg(snap, headers[0])))
 
         hover(s, headers[1]["x"] + 4, headers[1]["y"])
         snap = s.snapshot()
         check("the light follows the pointer down the list",
-              row_bg(snap, headers[1]) == BTN_BG
-              and row_bg(snap, headers[0]) != BTN_BG, "")
+              rule_fg(snap, headers[1]) == FRAME_FOCUS
+              and rule_fg(snap, headers[0]) == FRAME_IDLE, "")
 
 
 def test_leaving_the_stack_puts_the_light_out():
@@ -356,7 +369,7 @@ def test_leaving_the_stack_puts_the_light_out():
         hover(s, body["content_x"] + 2, body["content_y"] + 2)
         snap = s.snapshot()
         check("no row is lit once the pointer is off the list",
-              all(row_bg(snap, p) != BTN_BG for p in headers), "")
+              all(rule_fg(snap, p) == FRAME_IDLE for p in headers), "")
 
 
 def test_hovering_a_row_does_not_open_it():
@@ -385,6 +398,49 @@ def test_hovering_a_row_does_not_open_it():
               not now[headers[-1]["id"]]["hidden"], str(s.panes()))
 
 
+def test_a_header_is_shaped_like_a_pane_top():
+    """The row is not a label above a pane; it is a pane, closed."""
+    with stacked_session() as s:
+        s.settle(20)
+        snap = s.snapshot()
+        headers = [p for p in s.panes() if p["hidden"]]
+        if not headers:
+            return
+        for h in headers:
+            row = snap.line(h["y"])[h["x"]:h["x"] + h["w"]]
+            check(f"row at y={h['y']} opens and closes with a corner",
+                  row.startswith("\u256d") and row.endswith("\u256e"), repr(row))
+            check(f"row at y={h['y']} keeps air around its title",
+                  " pane " in row or " p " in row, repr(row))
+            # The title must not be welded to the rule on either side.
+            i = row.find("pane")
+            check(f"row at y={h['y']} has a rule, a space, then the title",
+                  i > 2 and row[i - 1] == " " and row[i - 2] == "\u2500",
+                  repr(row))
+
+
+def test_the_title_inset_is_configurable():
+    lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    lay.write('layout {\n tab name="t" {\n  pane\n'
+              '  pane split="rows" { pane\n   pane }\n }\n}\n')
+    lay.close()
+    seen = {}
+    for inset in (0, 6):
+        conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+        conf.write(f"min_pane cols=24 rows=17\ntitle_inset {inset}\n")
+        conf.close()
+        with Session(SH, cols=100, rows=20, config=conf.name,
+                     layout=lay.name) as s:
+            s.settle(20)
+            h = [p for p in s.panes() if p["hidden"]][0]
+            row = s.snapshot().line(h["y"])[h["x"]:h["x"] + h["w"]]
+            seen[inset] = row.find("pane")
+        os.unlink(conf.name)
+    check("a bigger inset pushes the title further from the corner",
+          seen[6] == seen[0] + 6, str(seen))
+    os.unlink(lay.name)
+
+
 if __name__ == "__main__":
     test_collapse()
     test_collapse_expand_cycle()
@@ -399,4 +455,6 @@ if __name__ == "__main__":
     test_hovering_a_row_lights_it_up()
     test_leaving_the_stack_puts_the_light_out()
     test_hovering_a_row_does_not_open_it()
+    test_a_header_is_shaped_like_a_pane_top()
+    test_the_title_inset_is_configurable()
     sys.exit(report())

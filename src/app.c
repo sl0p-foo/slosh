@@ -1532,11 +1532,14 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
         buf[len] = 0;
       }
     }
-    uint16_t tx = (uint16_t)(r.x + 1);
+    /* The inset is an edge offset, so it applies to whichever edge the title
+     * is anchored to and means nothing in the middle. */
+    uint16_t inset = CFG.title_inset < avail ? CFG.title_inset : 0;
+    uint16_t tx = (uint16_t)(r.x + 1 + inset);
     if (CFG.title_align == ALIGN_CENTER)
       tx = (uint16_t)(r.x + 1 + (avail - len) / 2);
     else if (CFG.title_align == ALIGN_RIGHT)
-      tx = (uint16_t)(r.x + 1 + avail - len);
+      tx = (uint16_t)(r.x + 1 + avail - len - inset);
     /* An editor announces itself: the name sits in the button colours while it
      * is being typed, so a half-finished rename can never be mistaken for what
      * the pane is actually called. */
@@ -1580,9 +1583,10 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
   const char *title = pane_title(leaf->pane);
   const char *status = pane_status(leaf->pane);
   char line[256];
-  snprintf(line, sizeof line, " %s%s%s", title && *title ? title : "pane",
+  /* A space on each side, always. A title welded to the rule beside it reads
+   * as one longer word, and the rule is not part of the name. */
+  snprintf(line, sizeof line, " %s%s%s ", title && *title ? title : "pane",
            status && *status ? " · " : "", status && *status ? status : "");
-  line[r.w < sizeof line ? r.w : sizeof line - 1] = 0;
 
   /* Once a tab is a list, its rows are what you are picking from, and a row
    * under the pointer should say so. Immediate rather than on dwell: this is
@@ -1596,18 +1600,28 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
   bool hot = a->ptr_valid && a->drag.kind == DRAG_NONE && a->ptr_y == r.y &&
              a->ptr_x >= r.x && a->ptr_x < r.x + r.w;
 
-  /* The finder's language for "this is the row": a solid bar, not a brighter
-   * rule. FRAME_FOCUS would have read as "this pane is focused", which is a
-   * different claim and one this row cannot make. */
-  if (hot)
-    for (uint16_t x = r.x; x < r.x + r.w; x++)
-      screen_text(s, x, r.y, " ", BTN_FG, BTN_BG, 0);
-  else
-    for (uint16_t x = r.x; x < r.x + r.w; x++)
-      screen_text(s, x, r.y, "─", FRAME_IDLE, NO_COLOR, 0);
+  /* Foreground only. A filled bar is louder than the thing it is telling you,
+   * and this row has to sit in a list of its own kind without shouting. */
+  color_t rule = hot ? FRAME_FOCUS : FRAME_IDLE;
+  color_t label = hot ? TITLE_FOCUS : FRAME_IDLE;
 
-  screen_text(s, r.x, r.y, line, hot ? BTN_FG : FRAME_IDLE,
-              hot ? BTN_BG : NO_COLOR, hot ? ATTR_BOLD : 0);
+  /* A collapsed pane draws the top edge of a pane, corners and all. It is not
+   * decoration: this row *is* a pane, closed — so a stack of them reads as a
+   * stack of panes rather than as a list of labels that happen to be above
+   * one. The open pane below wears the same corners. */
+  const char *tl = CFG.rounded ? "╭" : "┌", *tr = CFG.rounded ? "╮" : "┐";
+  uint16_t x1 = (uint16_t)(r.x + r.w - 1);
+  for (uint16_t x = r.x; x <= x1; x++)
+    screen_text(s, x, r.y, "─", rule, NO_COLOR, 0);
+  screen_text(s, r.x, r.y, tl, rule, NO_COLOR, 0);
+  screen_text(s, x1, r.y, tr, rule, NO_COLOR, 0);
+
+  uint16_t tx = (uint16_t)(r.x + 1 + CFG.title_inset);
+  if (tx < x1) {
+    size_t room = (size_t)(x1 - tx); /* never over the closing corner */
+    if (strlen(line) > room) line[room] = 0;
+    screen_text(s, tx, r.y, line, label, NO_COLOR, hot ? ATTR_BOLD : 0);
+  }
 
   char action[48];
   snprintf(action, sizeof action, "focus:%u", leaf->id);
