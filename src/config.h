@@ -15,13 +15,15 @@
 #include "sl0ppty.h"
 
 /* Pane states a shader can be hung off, in the order they are tested. Only
- * states a pane can actually be seen in: a pane whose program exits is reaped
- * before the next paint, so there is deliberately no "dead" here — it would
- * name a shader that could never draw a frame. */
+ * states a pane can actually be seen in — which `dead` now is: a pane whose
+ * program exits is kept until it is dismissed, so there is a frame to draw.
+ * It ranks just under the drag states, above every ambient one: nothing about
+ * a pane is more worth knowing than that it is over. */
 typedef enum {
   PSTATE_DRAGGING,    /* the pane you have hold of */
   PSTATE_DROP_HOVER,  /* the one under the pointer, where it would land */
   PSTATE_DROP_TARGET, /* the others, all of them somewhere it could go */
+  PSTATE_DEAD,        /* its program exited; waiting to be re-run or closed */
   PSTATE_SUSPENDED,   /* laid out, never started */
   PSTATE_SCROLLED,    /* looking at scrollback rather than the present */
   PSTATE_UNFOCUSED,
@@ -36,6 +38,7 @@ typedef enum {
   ACT_SPLIT_COLS,
   ACT_SPLIT_ROWS,
   ACT_CLOSE_PANE,
+  ACT_RERUN,
   ACT_ZOOM,
   ACT_MINIMIZE,
   ACT_FOCUS_LEFT,
@@ -100,6 +103,13 @@ typedef struct {
    * terminals while chrome here is booked as one — so the default is narrow
    * and anyone who knows their terminal can say otherwise. */
   char bell_mark[16];
+  /* A pane whose program exits stays, showing what it printed and offering to
+   * run it again, until it is closed. Off restores the old behaviour: the
+   * pane vanishes on the next paint, and with the last pane so does the
+   * session. That is a real choice — a one-shot layout wants it — but it is
+   * not the default, because a pane that disappears takes its own error
+   * message with it. */
+  bool keep_dead;
   uint16_t min_pane_cols, min_pane_rows;
   /* The smallest pane a split is allowed to *produce*. min_pane is the point
    * below which the layout gives up and collapses a pane; this is the point
@@ -193,6 +203,10 @@ typedef struct {
 
   /* the bell mark in a pane's titlebar */
   color_t bell;
+
+  /* what a dead pane says: the line in its backlog, and the word in the
+   * status line and its own frame */
+  color_t dead;
 
   /* the frame's own buttons */
   color_t pane_button, pane_button_hover;

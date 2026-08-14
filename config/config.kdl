@@ -77,6 +77,18 @@ zoom_on_mark "*"
 close_mark "x"
 min_mark "_"
 
+// A pane whose program exits stays where it is, keeping everything it
+// printed, with a line in its own backlog saying why it ended and two buttons
+// in its frame: [re-run] to run the same command again in the same pane and
+// on top of the same scrollback, and [close] to let it go. `sl0ppty` closes
+// with the last pane, so a session no longer disappears the instant the shell
+// in it exits.
+//
+// false is the old behaviour: the pane is closed on the next paint, and with
+// the last pane the session. That suits a one-shot layout, and costs you the
+// last thing a failing command printed.
+keep_dead true
+
 bell_indicator true
 
 // What to draw. A short string rather than a fixed glyph, because the obvious
@@ -161,6 +173,7 @@ double_click_ms 400
 //   dragging     the pane you have hold of
 //   drop_hover   the one under the pointer, where it would land
 //   drop_target  the others, all of them somewhere it could go
+//   dead         its program exited; waiting to be re-run or closed
 //   suspended    laid out, never started (its label is its contents)
 //   scrolled     looking at scrollback rather than at the present
 //   unfocused    the weakest thing that can be true of a pane
@@ -174,13 +187,13 @@ double_click_ms 400
 // Naming a state replaces its default outright — including with nothing, which
 // is how you turn one off:  states { drop_target { } }
 //
-// There is deliberately no `dead`: a pane whose program exits is reaped before
-// the next frame is painted, so a shader for it could never draw.
-//
-// Only drop_hover and drop_target have defaults, shown here.
+// Only drop_hover, drop_target and dead have defaults, shown here. `dead` is
+// gentler than the drag greying on purpose: a dead pane is something you are
+// still meant to read.
 states {
     drop_hover { grayscale amount=200; dim amount=140 }
     drop_target { grayscale amount=200; dim amount=140 }
+    dead { grayscale amount=200; dim amount=90 }
     // dragging { }
     // suspended { grayscale amount=180; dim amount=90 }
     // scrolled { tint amount=30 color="#ffcc88" }
@@ -281,6 +294,18 @@ theme {
     // ── the line along the bottom ───────────────────────────────────────────
     status "#45454a"           // session, tab, pane, and the pane index
     status_state "#ffffff"     // scrolled / alt screen / not started / exited
+    hint "#ffffff"             // what the pointer is on, in the middle
+
+    // ── marks on a pane's frame ─────────────────────────────────────────────
+    bell "#ff5fd7"             // a pane rang and has not been looked at
+    dead "#ff875f"             // its program exited: the line in its backlog,
+                               // and the words in its frame and the status line
+    pane_button "#45454a"      // the frame's own close/zoom/minimise marks
+    pane_button_hover "#ff5fd7"
+
+    // ── the row of minimised panes ──────────────────────────────────────────
+    minbar "#45454a"
+    minbar_hover "#ff5fd7"
 
     // ── the pane finder ─────────────────────────────────────────────────────
     finder_fg "#ffffff"
@@ -307,7 +332,7 @@ theme {
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
-// scroll-bottom zoom minimize new-tab next-tab prev-tab select-tab-1..9 finder detach quit
+// scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder detach quit
 // literal-prefix none
 
 keys {
@@ -316,6 +341,9 @@ keys {
     bind "\\" "split-cols"
     bind "-" "split-rows"
     bind "x" "close-pane"
+    // Run a dead pane's command again, in the same pane and on top of the
+    // same scrollback. Refused on a pane that is still running.
+    bind "r" "rerun"
     bind "z" "zoom"
     bind "m" "minimize"
 

@@ -55,6 +55,22 @@ can be provably even and still look wrong. Three attempts at the frame buttons
 established this; they are plain ASCII now. If someone reports spacing, dump
 the actual cells before touching any arithmetic.
 
+**The test harness is not a session, and the difference hid a real bug.** The
+server set `signal(SIGCHLD, SIG_IGN)`, which does not merely skip a handler —
+it tells the kernel to discard exit statuses, so `waitpid` can never report
+one. The headless driver never set it, so every test agreed that a dead pane
+knew why it died, and the first real session showed `[process exited]` with no
+status at all. Found by looking, in a zellij pane, thirty seconds after the
+suite went green. If something is right in tests and wrong in front of you,
+suspect what `server.c` does that `headless.c` does not.
+
+**A dead pane's fd is closed at EOF, deliberately.** Panes used to be reaped
+before the next paint, so nothing had to think about it. Now that they stay,
+an EOF fd left in the poll set is *readable forever*: the session would spin a
+core behind a pane that looks idle. `collect_cb` skips `fd < 0` for the same
+reason, and that is why `sl0ppty run cmd` still terminates — the settle loop
+ends when no pane has an fd left.
+
 **`settle N` in the test harness is a sleep in disguise.** `send` and
 `snapshot` are already synchronous with the app, so a settle before asserting
 on *our own chrome* waits for nothing. It is only needed to pump a pane's pty.
@@ -80,17 +96,43 @@ what makes "contents, not chrome" the paint order rather than a rule. The
 control API in `cmd.c` is the same vocabulary the headless test driver speaks,
 so a script written against one works against the other.
 
+## Dead panes (D14), and what it changed
+
+A pane now outlives its program: it keeps its contents, writes
+`[process exited: status 3]` into its own backlog, and offers `[re-run]` and
+`[close]` in its bottom frame row. Three things about it are worth knowing
+before changing anything near it.
+
+- **The dead row and the OSC 5577 row are the same row**, by choice. A dead
+  pane's own buttons are inert — a click would write into a closed pty — so
+  `draw_pane_status` swaps the list rather than adding a second mechanism.
+  `close` is listed last so it is drawn rightmost and therefore survives a
+  narrow frame; the thing that drops off is `re-run`.
+- **Re-running is the same pane.** Same id, same node, same terminal, so
+  nothing that referred to it needs telling and the previous run stays above
+  in the scrollback. That is the whole point; do not be tempted to close and
+  reopen.
+- **The exit status is collected with a bounded wait, never a blocking one.**
+  EOF means the program closed its fds, which for an exit already happened, so
+  a few hundred microseconds wins the race with the kernel's exit path. A
+  blocking `waitpid` would hang the entire session on one program that closes
+  its terminal and keeps running. Losing the race costs the words "status 0".
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.
 - **Tab-level shaders**, and the bigger one: **OSC 5577 → shader**, letting a
   pane colour itself by reporting its own state. That is the idea most likely
   to make this feel unlike other multiplexers.
-- **Dead panes are not observable.** `app_reap` closes a pane before the next
-  paint, so there is no `dead` pane state to colour. Making one means keeping
-  dead panes until dismissed — a feature about lifetimes, not colour.
-- **Collapsed headers do not reach the shader pass**, so a `suspended` or
-  `scrolled` colour is invisible on one.
+- **Collapsed headers do not reach the shader pass**, so a `suspended`,
+  `dead` or `scrolled` colour is invisible on one. This is now the most
+  visible gap: a tab that has flattened into a list is exactly where you would
+  want a dead pane to stand out, and it is the one place it does not.
+- **A dead pane cannot be re-run from the finder or the minimised bar** — only
+  from its own frame, `C-a r`, or `{"cmd":"rerun"}`. Fine while a dead pane is
+  something you are looking at; less fine once you have six of them put away.
+- **Nothing re-runs a whole tab**, which is the obvious next want once one
+  pane can be re-run.
 - **Corner crossings**: found for both nestings now, but if more turn up
   missing, ask *how the layout was built* — the split order decides the tree
   shape, and that is where any remaining blind spot will be.

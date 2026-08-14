@@ -140,6 +140,11 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
       return jerr("no such pane");
     return jok_int("id", app_focused_pane_id(a));
   }
+  if (strcmp(cmd, "rerun") == 0) {
+    if (!app_rerun_pane(a, (uint32_t)jv_geti(req, "id", 0)))
+      return jerr("cannot run it again");
+    return jok_int("id", app_focused_pane_id(a));
+  }
   if (strcmp(cmd, "close") == 0) {
     if (!app_close_pane(a, (uint32_t)jv_geti(req, "id", 0)))
       return jerr("no such pane");

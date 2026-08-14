@@ -49,7 +49,8 @@ sl0ppty cmd '{"cmd":"panes"}'
 | `C-a f` | find a pane by title, purpose or tab |
 | `C-a H J K L` or shift+arrows | move the boundary (the pane grows or shrinks accordingly) |
 | `C-a PgUp` `C-a PgDn` `C-a Home` `C-a End` | scrollback (the wheel does it too) |
-| `C-a x` / `C-a d` / `C-a q` | close pane / detach / quit |
+| `C-a x` / `C-a r` | close pane / re-run a dead pane's command |
+| `C-a d` / `C-a q` | detach / quit |
 | `C-a C-a` | send a literal `C-a` |
 
 The mouse works throughout. **Click a pane's border to split toward it** — the
@@ -91,6 +92,24 @@ behind take the space back. Click its name to bring it back. Once a tab is too
 small and has flattened into a list, being minimised means nothing: every pane
 is a row down there already.
 
+**A pane outlives its program.** When what was running in a pane exits, the
+pane stays where it is with everything it printed still on screen, a line in
+its own backlog saying how it ended — `[process exited: status 3]`,
+`[process exited: signal 9]` — and two buttons in its bottom border:
+
+```
+╰ exited: status 3 ───────────────────────────────[re-run]─[close]─╯
+```
+
+**`[re-run]` runs the same command again in the same pane** — same id, same
+place in the layout, same scrollback, so the run that ended stays above the
+new one and you can compare them. `[close]` is what takes the pane away, and
+with the last pane, the session. So a mistyped command no longer closes your
+terminal, and a command that failed while you were looking elsewhere still has
+its error message when you get back. Dead panes drain to grey, so a wall of
+them reads at a glance. `keep_dead false` restores the old behaviour, where a
+pane vanishes the moment its program exits.
+
 **Select to copy.** Drag over text and release: it is on your clipboard, sent
 to your terminal as OSC 52 so it works over ssh. Middle click pastes it back,
 the way a primary selection behaves everywhere else. A program in a pane can
@@ -106,14 +125,16 @@ false` turns it off; `bell_mark` chooses the character.
 **Shaders** are colour passes over a pane's *contents* — never the frame, the
 title or the tab strip, so chrome stays legible over a pane that has been
 dimmed underneath it. A `states { }` block says what a pane looks like while
-it is in a state — being dragged, somewhere a drag could land, suspended,
-scrolled back, or simply not focused. A pane is usually in several at once, so
-exactly one wins, the most deliberate rather than the most ambient:
+it is in a state — being dragged, somewhere a drag could land, dead,
+suspended, scrolled back, or simply not focused. A pane is usually in several
+at once, so exactly one wins, the most deliberate rather than the most
+ambient:
 
 ```kdl
 states {
     dragging { }                                    // untouched, in your hand
     drop_target { grayscale amount=200; dim amount=140 }
+    dead { grayscale amount=200; dim amount=90 }    // its program is over
     suspended { grayscale amount=180; dim amount=90 }
     scrolled { tint amount=30 color="#ffcc88" }     // you are in the past
     unfocused { dim amount=90 }
@@ -148,8 +169,8 @@ a gap can be dragged. `hints false` turns it off.
 A **strip along the top** carries the tabs, the pane count and the prefix
 indicator; a **line along the bottom** says what you are looking at — session,
 tab, the focused pane's purpose or title, which of the tab's panes it is
-(`pane 2/5`), and whether it is scrolled back, on an alternate screen, or not
-started yet. Either can be turned off
+(`pane 2/5`), and whether it is scrolled back, on an alternate screen, not
+started yet, or over (`exited: status 3`). Either can be turned off
 (`status_bar`, `status_line`), and the panes get the row back.
 
 Every colour the compositor draws has its own name in `theme` — the split
@@ -234,10 +255,11 @@ $ sl0ppty -s work cmd '{"cmd":"panes"}'
 {"ok":true,"panes":[{"id":1,"x":2,"y":2,...,"purpose":"agent:main"}]}
 ```
 
-`panes tabs snapshot send raw resize split focus close new-tab close-tab
+`panes tabs snapshot send raw resize split focus close rerun new-tab close-tab
 select-tab set-name set-purpose apply-layout reload alive quit`. Panes are addressed by id, so a
 background tab is scriptable, and a detached session answers exactly as a live
-one does.
+one does. `panes` reports `alive`, `exit_code` and `exit_signal`, so a script
+can find the pane whose command failed and `rerun` it.
 
 ## How it is built
 

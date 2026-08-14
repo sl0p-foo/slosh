@@ -53,12 +53,13 @@ theme {
     finder_sel_fg "#1a1000"
     finder_sel_bg "#ffb000"
 
-    // rename editor, bell, frame buttons, the minimised bar
+    // rename editor, bell, dead panes, frame buttons, the minimised bar
     rename_fg "#1a1000"
     rename_bg "#ffb000"
     toast_fg "#1a1000"
     toast_bg "#ffb000"
     bell "#ffb000"
+    dead "#ffd48a"
     pane_button "#6b4a00"
     pane_button_hover "#ffb000"
     minbar "#6b4a00"

@@ -8,6 +8,8 @@
 #include <ghostty/vt.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "input.h"
@@ -25,6 +27,13 @@ struct pane {
   GhosttyMouseEvent mev;
   uint16_t cols, rows_n;
   bool alive;
+  /* How the program ended. `exit_known` is separate from `!alive` because the
+   * two really are different: EOF on the master says the pane is over, and
+   * the wait that says *why* can lose a race with the kernel finishing the
+   * exit. Better to say "exited" than to invent a status. */
+  bool exit_known;
+  bool exit_signaled;
+  int exit_code;
   bool dirty;
   bool bell; /* rang, and not yet looked at */
   char title[256];
@@ -37,7 +46,11 @@ struct pane {
   /* OSC 5577 state: what this pane asked us to draw in its frame */
   /* A suspended pane is real, sized and laid out, but has not run anything:
    * a root with twelve projects must not become twelve running servers. It
-   * starts on the first keystroke it is given. */
+   * starts on the first keystroke it is given.
+   *
+   * argv and cwd are kept for every pane, not only a suspended one: re-running
+   * a dead pane needs exactly what it was started with, and by then the pane
+   * is the only thing that still knows. */
   bool suspended;
   char **argv;
   char *cwd;
@@ -235,14 +248,12 @@ pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
   if (!p) return NULL;
   snprintf(p->label, sizeof p->label, "%s", label ? label : "");
   if (suspended) {
-    /* pane_new already spawned; a suspended pane must not have. Close it and
-     * keep the arguments for later, rather than duplicating the constructor. */
+    /* pane_new already spawned; a suspended pane must not have. Close it — the
+     * command it was built from is already kept, because every pane keeps it. */
     pty_close(&p->pty);
     p->pty.fd = -1;
     p->suspended = true;
     p->alive = true;
-    p->argv = argv_dup(argv);
-    p->cwd = cwd ? strdup(cwd) : NULL;
   }
   return p;
 }
@@ -299,6 +310,9 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
     ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &mc);
   }
 
+  p->argv = argv_dup(argv);
+  p->cwd = cwd ? strdup(cwd) : NULL;
+
   if (pty_spawn(&p->pty, argv, cols, rows, cwd) != 0) goto fail;
   p->alive = true;
   p->dirty = true;
@@ -351,6 +365,90 @@ void pane_set_name(pane_t *p, const char *name) {
   p->dirty = true;
 }
 
+/* The program is gone: collect its status, and give the pty back.
+ *
+ * Two things have to happen here and nowhere else. The status has to be
+ * waited for *before* pty_close(), which sends SIGHUP to a pid that may by
+ * then have been recycled if something else reaped it first. And the fd has
+ * to be closed, because a pane that outlives its program stays in the tree
+ * now, and an EOF fd left in the poll set is readable forever — a session
+ * spinning at 100% CPU behind a pane that looks idle.
+ *
+ * The wait is bounded and short on purpose. EOF on the master means every
+ * slave fd is closed, which for a program that exited happened *during* its
+ * exit — so it is already on its way to being a zombie and the only race is
+ * with the tail of the kernel's exit path. A few hundred microseconds covers
+ * it; a blocking wait would instead hang the whole session on the one program
+ * that closes its terminal and keeps running. Losing the race costs the word
+ * "status 0" and nothing else. */
+static void pane_died(pane_t *p) {
+  if (!p->alive) return;
+  p->alive = false;
+  p->dirty = true;
+
+  for (int i = 0; p->pty.pid > 0 && i < 5; i++) {
+    int st = 0;
+    pid_t r = waitpid(p->pty.pid, &st, WNOHANG);
+    if (r == p->pty.pid) {
+      p->exit_known = true;
+      p->exit_signaled = WIFSIGNALED(st);
+      p->exit_code = WIFSIGNALED(st) ? WTERMSIG(st)
+                                     : (WIFEXITED(st) ? WEXITSTATUS(st) : 0);
+      p->pty.pid = -1; /* reaped: nothing may signal this number again */
+      break;
+    }
+    if (r < 0) break; /* somebody else's child, or already reaped */
+    nanosleep(&(struct timespec){0, 200000}, NULL);
+  }
+  pty_close(&p->pty);
+}
+
+bool pane_exit(const pane_t *p, int *code, bool *signaled) {
+  if (p->alive || !p->exit_known) return false;
+  if (code) *code = p->exit_code;
+  if (signaled) *signaled = p->exit_signaled;
+  return true;
+}
+
+bool pane_restart(pane_t *p) {
+  if (p->alive || !p->argv) return false;
+  /* Whatever the last run asked us to draw in its frame died with it: a
+   * status line and buttons from a program that is not there describe
+   * nothing, and the new run gets to say its own. */
+  p->status[0] = 0;
+  p->nbuttons = 0;
+  osc_scan_reset(&p->scan);
+  p->exit_known = false;
+  p->exit_signaled = false;
+  p->exit_code = 0;
+
+  if (pty_spawn(&p->pty, (const char *const *)p->argv, p->cols, p->rows_n,
+                p->cwd) != 0)
+    return false;
+  /* The terminal is deliberately not cleared: the run that ended, and the
+   * line saying it ended, stay above this one in the scrollback. That is the
+   * whole reason a dead pane was kept. */
+  p->suspended = false;
+  p->alive = true;
+  p->dirty = true;
+  return true;
+}
+
+void pane_note(pane_t *p, const char *text, color_t fg) {
+  if (!text || !*text) return;
+  char sgr[32] = "\x1b[2m"; /* no colour given: dim, which every terminal has */
+  if (fg.set)
+    snprintf(sgr, sizeof sgr, "\x1b[38;2;%u;%u;%um", fg.r, fg.g, fg.b);
+  char buf[320];
+  /* Leading CRLF because the cursor is wherever the program left it, which is
+   * usually mid-line; trailing so anything after it starts clean. */
+  int n = snprintf(buf, sizeof buf, "\r\n%s%s\x1b[0m\r\n", sgr, text);
+  if (n <= 0) return;
+  if ((size_t)n >= sizeof buf) n = (int)strlen(buf);
+  ghostty_terminal_vt_write(p->term, (const uint8_t *)buf, (size_t)n);
+  p->dirty = true;
+}
+
 ssize_t pane_pump(pane_t *p) {
   if (p->pty.fd < 0) return 0;
   uint8_t buf[65536];
@@ -368,12 +466,12 @@ ssize_t pane_pump(pane_t *p) {
       continue;
     }
     if (n == 0) {
-      p->alive = false;
+      pane_died(p);
       return 0;
     }
     if (errno == EAGAIN || errno == EWOULDBLOCK) break;
     if (errno == EINTR) continue;
-    p->alive = false;
+    pane_died(p);
     return -1;
   }
   return total;

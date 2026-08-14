@@ -98,6 +98,7 @@ bool app_reload_config(char *err, size_t errcap) {
 #define MINBAR (CFG.minbar)
 #define MINBAR_HOVER (CFG.minbar_hover)
 #define HINT_C (CFG.hint)
+#define DEAD_C (CFG.dead)
 
 static const color_t NO_COLOR = {0};
 
@@ -281,6 +282,18 @@ static bool ptr_on(const app_t *a, uint16_t x, uint16_t y, uint16_t w,
          a->ptr_x < x + w && a->ptr_y >= y && a->ptr_y < y + h;
 }
 
+/* "exited", "exited: status 3", "exited: signal 9" — the same words wherever
+ * the fact is reported, so the status line, the pane's own frame and the line
+ * left in its backlog cannot describe one death three ways. */
+static void exit_words(const pane_t *p, char *out, size_t cap) {
+  int code = 0;
+  bool sig = false;
+  if (!pane_exit(p, &code, &sig) || (!sig && code == 0))
+    snprintf(out, cap, "exited");
+  else
+    snprintf(out, cap, "exited: %s %d", sig ? "signal" : "status", code);
+}
+
 typedef void (*leaf_fn_fwd)(node_t *, void *);
 static void walk_all(app_t *a, leaf_fn_fwd fn, void *ud);
 
@@ -384,6 +397,7 @@ static const char *hint_for(app_t *a, const char *action) {
   if (strncmp(action, "zoom:", 5) == 0)
     return app_pane_zoomed(a, id) ? "back to the layout" : "fill the tab";
   if (strncmp(action, "close:", 6) == 0) return "close this pane";
+  if (strncmp(action, "rerun:", 6) == 0) return "run the command again";
   if (strncmp(action, "scrollbottom:", 13) == 0) return "back to the bottom";
   if (strncmp(action, "panetitle:", 10) == 0)
     return "double-click to rename \u00b7 drag to move";
@@ -505,12 +519,14 @@ static void draw_status_line(app_t *a, screen_t *s) {
 
   char ind[64] = {0};
   if (f) {
-    if (app_pane_zoomed(a, f->id)) {
-      snprintf(ind, sizeof ind, "zoomed");
-    } else if (pane_suspended(f->pane)) {
+    /* Ordered by what you would rather be told. A pane whose program is gone
+     * is over, and that outranks every arrangement it happens to be in. */
+    if (pane_suspended(f->pane)) {
       snprintf(ind, sizeof ind, "not started");
     } else if (!pane_alive(f->pane)) {
-      snprintf(ind, sizeof ind, "exited");
+      exit_words(f->pane, ind, sizeof ind);
+    } else if (app_pane_zoomed(a, f->id)) {
+      snprintf(ind, sizeof ind, "zoomed");
     } else if (pane_scrolled(f->pane)) {
       uint32_t above = 0, total = 0;
       pane_scroll_pos(f->pane, &above, &total);
@@ -786,9 +802,13 @@ struct collect {
   int *out;
   size_t n, max;
 };
+/* Only panes that can still say something. A suspended pane has no pty yet
+ * and a dead one no longer has one; handing either to poll() would be an fd
+ * that is never readable, or — the expensive mistake — one at EOF that is
+ * readable forever. */
 static void collect_cb(node_t *n, void *ud) {
   struct collect *c = ud;
-  if (c->n < c->max) c->out[c->n++] = pane_fd(n->pane);
+  if (pane_fd(n->pane) >= 0 && c->n < c->max) c->out[c->n++] = pane_fd(n->pane);
 }
 
 size_t app_fds(app_t *a, int *out, size_t max) {
@@ -801,7 +821,18 @@ bool app_pump_fd(app_t *a, int fd) {
   struct find_fd f = {fd, NULL};
   walk_all(a, find_fd_cb, &f);
   if (!f.found) return false;
+  /* Death is observed here, once, by the only call that can see the edge:
+   * pane_pump() is where EOF arrives, and the note has to be written on the
+   * transition or every later frame would write it again. */
+  bool was_alive = pane_alive(f.found->pane);
   pane_pump(f.found->pane);
+  if (was_alive && !pane_alive(f.found->pane)) {
+    char words[64];
+    exit_words(f.found->pane, words, sizeof words);
+    char note[96];
+    snprintf(note, sizeof note, "[process %s]", words);
+    pane_note(f.found->pane, note, DEAD_C);
+  }
   return true;
 }
 
@@ -1324,7 +1355,13 @@ static void reap_cb(node_t *n, void *ud) {
   if (!r->dead && !pane_alive(n->pane)) r->dead = n;
 }
 
+/* Closing a pane whose program exited is a *policy*, not bookkeeping — which
+ * is the whole of this feature. By default a dead pane stays: it keeps what
+ * it printed, says why it is over, and offers to run the command again. Under
+ * `keep_dead false` this reverts to the old behaviour and the pane goes. */
 void app_reap(app_t *a) {
+  ensure_config();
+  if (CFG.keep_dead) return;
   for (;;) {
     struct reap r = {a, NULL};
     walk_all(a, reap_cb, &r);
@@ -1497,6 +1534,28 @@ bool app_close_pane(app_t *a, uint32_t id) {
   node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
   if (!n) return false;
   close_leaf(a, n);
+  return true;
+}
+
+/* Run a dead pane's command again, in the pane it died in.
+ *
+ * The pane is the same pane throughout — same id, same place in the tree,
+ * same terminal — so nothing that referred to it has to be told anything, and
+ * the run that ended stays above the new one in its scrollback. A suspended
+ * pane is started rather than restarted, because "run the thing this pane is
+ * for" is the same request either way. */
+bool app_rerun_pane(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
+  if (!n) return false;
+  bool ok = pane_suspended(n->pane) ? pane_start(n->pane)
+                                    : pane_restart(n->pane);
+  if (!ok) {
+    app_toast(a, "cannot run it again");
+    return false;
+  }
+  /* The new pty is born at the pane's current size: a dead pane is still laid
+   * out and still resized, pane_resize() just had no pty to tell. */
+  cur(a)->focus = n;
   return true;
 }
 
@@ -1798,15 +1857,52 @@ static void focus_next(app_t *a) {
 
 /* ---- drawing ------------------------------------------------------------ */
 
-/* OSC 5577: a pane's own status line and buttons, drawn in its bottom frame
- * row. Buttons are budgeted from the right *before* the status text gets any
+/* A pane's own status line and buttons, drawn in its bottom frame row.
+ *
+ * Two things end up here, because they are the same thing: what a *live* pane
+ * asked for over OSC 5577, and what a *dead* one is offered instead. A dead
+ * pane's own buttons are inert — clicking one would write a click report into
+ * a pty that is closed — so the row is given over to the two verbs that do
+ * still mean something: run it again, or let it go. Same row, same shape,
+ * same budgeting, so a dead pane is not a second kind of frame.
+ *
+ * Buttons are budgeted from the right *before* the status text gets any
  * columns, and each registers its hit as it is painted — the same rule the
- * split button follows, for the same reason. */
-static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
+ * frame's own buttons follow, for the same reason. Rightmost is last in the
+ * list, so what drops off a narrow frame is what is listed first: `close`
+ * outlives `re-run`, because being unable to dismiss a dead pane is a trap
+ * and being unable to re-run one is an inconvenience. */
+struct row_btn {
+  char label[40];
+  char action[48];
+};
+
+static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
                              bool focused) {
-  const pane_button_t *btns = NULL;
-  size_t nbtn = pane_buttons(leaf->pane, &btns);
-  const char *status = pane_status(leaf->pane);
+  struct row_btn row[8];
+  size_t nbtn = 0;
+  char status[256] = {0};
+  bool dead = !pane_alive(leaf->pane) && !pane_suspended(leaf->pane);
+
+  if (dead) {
+    snprintf(row[nbtn].label, sizeof row[0].label, "re-run");
+    snprintf(row[nbtn].action, sizeof row[0].action, "rerun:%u", leaf->id);
+    nbtn++;
+    snprintf(row[nbtn].label, sizeof row[0].label, "close");
+    snprintf(row[nbtn].action, sizeof row[0].action, "close:%u", leaf->id);
+    nbtn++;
+    exit_words(leaf->pane, status, sizeof status);
+  } else {
+    const pane_button_t *btns = NULL;
+    size_t n = pane_buttons(leaf->pane, &btns);
+    for (size_t i = 0; i < n && nbtn < sizeof row / sizeof *row; i++) {
+      snprintf(row[nbtn].label, sizeof row[0].label, "%s", btns[i].label);
+      snprintf(row[nbtn].action, sizeof row[0].action, "btn:%u:%s", leaf->id,
+               btns[i].id);
+      nbtn++;
+    }
+    snprintf(status, sizeof status, "%s", pane_status(leaf->pane));
+  }
   if (!nbtn && !*status) return;
 
   rect_t r = leaf->rect;
@@ -1817,16 +1913,16 @@ static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
   /* right to left, so a button that does not fit is simply not drawn */
   uint16_t x = right;
   for (size_t i = nbtn; i-- > 0;) {
-    uint16_t w = (uint16_t)(strlen(btns[i].label) + 2); /* [label] */
+    uint16_t w = (uint16_t)(cells(row[i].label) + 2); /* [label] */
     if (x < left + w + 1) break;
     x = (uint16_t)(x - w - 1);
     char label[80];
-    snprintf(label, sizeof label, "[%s]", btns[i].label);
-    uint16_t drawn = screen_text(s, x, y, label, focused ? BTN_FG : fg,
-                                 focused ? BTN_BG : BTN_BG_IDLE, 0);
-    char action[48];
-    snprintf(action, sizeof action, "btn:%u:%s", leaf->id, btns[i].id);
-    hit_add(&s->hits, x, y, drawn, 1, action);
+    snprintf(label, sizeof label, "[%s]", row[i].label);
+    bool hot = ptr_on(a, x, y, w, 1);
+    uint16_t drawn = screen_text(s, x, y, label, focused || hot ? BTN_FG : fg,
+                                 focused || hot ? BTN_BG : BTN_BG_IDLE,
+                                 hot ? ATTR_BOLD : 0);
+    hit_add(&s->hits, x, y, drawn, 1, row[i].action);
   }
 
   if (*status && x > left + 1) {
@@ -1837,8 +1933,9 @@ static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
       len = room;
       buf[len] = 0;
     }
-    screen_text(s, left, y, buf, focused ? TITLE_FOCUS : TITLE_IDLE,
-                NO_COLOR, 0);
+    screen_text(s, left, y, buf,
+                dead ? DEAD_C : (focused ? TITLE_FOCUS : TITLE_IDLE), NO_COLOR,
+                dead ? ATTR_BOLD : 0);
   }
 }
 
@@ -2036,7 +2133,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     hit_add(&s->hits, r.x, y1, r.w, 1, action);
   }
 
-  draw_pane_status(s, leaf, fg, focused);
+  draw_pane_status(a, s, leaf, fg, focused);
 
   /* Scroll position, when there is one: compact, right-aligned, and clickable
    * to get back to the bottom. Budgeted after the button and before the title,
@@ -2140,6 +2237,17 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
 
   const char *title = pane_title(leaf->pane);
   const char *status = pane_status(leaf->pane);
+  /* A dead pane says so here too, in place of whatever its program last asked
+   * us to show — which is stale by definition. This row is the only thing a
+   * flattened tab draws of a pane, and "it is over" is the one fact you
+   * cannot afford to have to open it to discover. The shader pass does not
+   * reach a header, so the words have to carry it. */
+  bool dead = !pane_alive(leaf->pane) && !pane_suspended(leaf->pane);
+  char words[64];
+  if (dead) {
+    exit_words(leaf->pane, words, sizeof words);
+    status = words;
+  }
   char line[256];
   /* A space on each side, always. A title welded to the rule beside it reads
    * as one longer word, and the rule is not part of the name. */
@@ -2160,7 +2268,7 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
   /* Foreground only. A filled bar is louder than the thing it is telling you,
    * and this row has to sit in a list of its own kind without shouting. */
   color_t rule = hot ? HEADER_HOVER : HEADER;
-  color_t label = hot ? HEADER_HOVER_TITLE : HEADER;
+  color_t label = hot ? HEADER_HOVER_TITLE : (dead ? DEAD_C : HEADER);
 
   /* A collapsed pane draws the top edge of a pane, corners and all. It is not
    * decoration: this row *is* a pane, closed — so a stack of them reads as a
@@ -2237,6 +2345,7 @@ static pane_state_t pane_state(app_t *a, node_t *n) {
     if (n->id == a->drag.target) return PSTATE_DROP_HOVER;
     return PSTATE_DROP_TARGET;
   }
+  if (!pane_alive(n->pane) && !pane_suspended(n->pane)) return PSTATE_DEAD;
   if (pane_suspended(n->pane)) return PSTATE_SUSPENDED;
   if (pane_scrolled(n->pane)) return PSTATE_SCROLLED;
   if (n != cur(a)->focus) return PSTATE_UNFOCUSED;
@@ -3183,6 +3292,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     app_toggle_zoom(a, n->id);
   } else if (strncmp(action, "close:", 6) == 0) {
     close_leaf(a, n);
+  } else if (strncmp(action, "rerun:", 6) == 0) {
+    app_rerun_pane(a, n->id);
   } else if (strncmp(action, "scrollbottom:", 13) == 0) {
     if (ev->maction == MOUSE_PRESS) pane_scroll_edge(n->pane, false);
   } else if (strncmp(action, "pane:", 5) == 0) {
@@ -3257,6 +3368,17 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
       return true;
     case ACT_CLOSE_PANE:
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
+      return true;
+    case ACT_RERUN:
+      /* The keyboard's half of a dead pane's [re-run] button. Refused on a
+       * live pane rather than restarting it: "run it again" would mean
+       * killing something that is still working, which is not what anybody
+       * pressing it is asking for. */
+      if (cur(a)->focus && pane_alive(cur(a)->focus->pane) &&
+          !pane_suspended(cur(a)->focus->pane))
+        app_toast(a, "still running");
+      else
+        app_rerun_pane(a, 0);
       return true;
     case ACT_FOCUS_LEFT: focus_dir(a, -1, 0); return true;
     case ACT_FOCUS_RIGHT: focus_dir(a, 1, 0); return true;
@@ -3489,6 +3611,17 @@ static void panes_cb(node_t *n, void *ud) {
   json_bool(j, "focused", n == cur(pj->a)->focus);
   json_bool(j, "hidden", n->hidden);
   json_bool(j, "suspended", pane_suspended(n->pane));
+  /* A dead pane is still a pane, so tooling has to be able to tell: `alive`
+   * false with a status is one whose program is over and which is waiting to
+   * be re-run or closed. `exit_code` is -1 when there is no status to give. */
+  json_bool(j, "alive", pane_alive(n->pane));
+  {
+    int code = 0;
+    bool sig = false;
+    bool known = pane_exit(n->pane, &code, &sig);
+    json_int(j, "exit_code", known && !sig ? code : -1);
+    json_int(j, "exit_signal", known && sig ? code : 0);
+  }
   json_str(j, "purpose", n->purpose, strlen(n->purpose));
   json_bool(j, "purpose_declared", n->purpose_locked);
   json_int(j, "tab", (long long)tab_of(pj->a, n) + 1);

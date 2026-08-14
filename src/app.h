@@ -47,7 +47,9 @@ void app_resize(app_t *a, uint16_t cols, uint16_t rows);
 bool app_pump_fd(app_t *a, int fd);
 /* Fill `out` with every live pane fd; returns the count. */
 size_t app_fds(app_t *a, int *out, size_t max);
-/* Reap panes whose process exited; collapses the tree. */
+/* Close panes whose process exited, collapsing the tree — only under
+ * `keep_dead false`. By default a dead pane stays until it is dismissed, so
+ * this does nothing and the pane offers [re-run] and [close] in its frame. */
 void app_reap(app_t *a);
 
 void app_compose(app_t *a, screen_t *s);
@@ -100,6 +102,9 @@ bool app_pane_zoomed(app_t *a, uint32_t id);
 bool app_focus_pane(app_t *a, uint32_t id);
 bool app_split_pane(app_t *a, uint32_t id, bool rows);
 bool app_close_pane(app_t *a, uint32_t id);
+/* Run a dead (or not-yet-started) pane's command again, in the same pane and
+ * on top of the same scrollback. 0 means the focused one. */
+bool app_rerun_pane(app_t *a, uint32_t id);
 uint32_t app_focused_pane_id(app_t *a);
 uint32_t app_current_tab_id(app_t *a);
 

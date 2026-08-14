@@ -138,8 +138,23 @@ bool pane_start(pane_t *p);
 void pane_free(pane_t *p);
 int pane_fd(const pane_t *p);
 bool pane_alive(const pane_t *p);
+/* How the program ended, for a pane that is no longer alive. `code` is the
+ * exit status, or the signal number when `signaled`. False while it is still
+ * running, and also when the status could not be collected — a pane can be
+ * known to be gone without it being known why. */
+bool pane_exit(const pane_t *p, int *code, bool *signaled);
+/* Run the pane's command again, in the same pty-less pane: same argv, same
+ * cwd, same terminal, so the previous run stays above in the scrollback.
+ * False if the pane is still alive or the spawn failed. */
+bool pane_restart(pane_t *p);
+/* Write a line into the pane's own terminal — the backlog, not the pty (which
+ * by the time this is wanted is closed). It scrolls with the output it
+ * followed, which is the point: it is a thing that happened to this pane. */
+void pane_note(pane_t *p, const char *text, color_t fg);
 /* Read available pty output into the terminal. Returns bytes read, 0 on EOF,
- * -1 on error (EAGAIN is reported as 0 bytes with alive still true). */
+ * -1 on error (EAGAIN is reported as 0 bytes with alive still true). A pane
+ * that reaches EOF stops being alive here and closes its pty, but keeps its
+ * terminal: a dead pane is still a pane with contents you can read. */
 ssize_t pane_pump(pane_t *p);
 void pane_write(pane_t *p, const void *buf, size_t len);
 /* Re-encode a decoded event against this pane's own negotiated modes. */

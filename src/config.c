@@ -14,7 +14,7 @@ static const struct {
   action_t action;
 } ACTIONS[] = {
     {"split-cols", ACT_SPLIT_COLS},   {"split-rows", ACT_SPLIT_ROWS},
-    {"close-pane", ACT_CLOSE_PANE},
+    {"close-pane", ACT_CLOSE_PANE},   {"rerun", ACT_RERUN},
     {"zoom", ACT_ZOOM},
     {"minimize", ACT_MINIMIZE},   {"focus-left", ACT_FOCUS_LEFT},
     {"focus-right", ACT_FOCUS_RIGHT}, {"focus-up", ACT_FOCUS_UP},
@@ -109,8 +109,8 @@ static bool parse_color(const char *text, color_t *out) {
 }
 
 static const char *const PSTATE_NAMES[PSTATE_COUNT] = {
-    "dragging", "drop_hover", "drop_target", "suspended", "scrolled",
-    "unfocused",
+    "dragging", "drop_hover", "drop_target", "dead", "suspended",
+    "scrolled",  "unfocused",
 };
 
 const char *pane_state_name(pane_state_t s) {
@@ -179,6 +179,7 @@ void config_defaults(config_t *c) {
   snprintf(c->min_mark, sizeof c->min_mark, "_");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
+  c->keep_dead = true;
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
   c->min_split_cols = 32;
@@ -211,6 +212,14 @@ void config_defaults(config_t *c) {
   shader_make(&c->state_shaders[PSTATE_DROP_HOVER][1], "dim", (color_t){0},
               140);
   c->state_n[PSTATE_DROP_HOVER] = 2;
+  /* The other state with an opinion, and for the same reason the drag states
+   * have one: what is on those cells is no longer live, and colour is the
+   * only thing that says so without reading a word. Gentler than the drag
+   * greying, because a dead pane is something you still want to read. */
+  shader_make(&c->state_shaders[PSTATE_DEAD][0], "grayscale", (color_t){0},
+              200);
+  shader_make(&c->state_shaders[PSTATE_DEAD][1], "dim", (color_t){0}, 90);
+  c->state_n[PSTATE_DEAD] = 2;
 
   const color_t accent = rgb(0xff, 0x5f, 0xd7);
   const color_t ink = rgb(0x14, 0x14, 0x18);
@@ -257,6 +266,7 @@ void config_defaults(config_t *c) {
   c->finder_sel_bg = accent;
 
   c->bell = accent;
+  c->dead = rgb(0xff, 0x87, 0x5f);
   c->hint = bright;
   c->minbar = dim;
   c->minbar_hover = accent;
@@ -275,6 +285,7 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_BACKSLASH, 0, ACT_SPLIT_COLS);
   bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS);
   bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE);
+  bind_add(c, GHOSTTY_KEY_R, 0, ACT_RERUN);
   bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM);
   bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE);
   bind_add(c, GHOSTTY_KEY_H, 0, ACT_FOCUS_LEFT);
@@ -388,6 +399,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (cm) snprintf(c->close_mark, sizeof c->close_mark, "%s", cm);
   const char *mm = kdl_arg(kdl_child(root, "min_mark"), 0, NULL);
   if (mm) snprintf(c->min_mark, sizeof c->min_mark, "%s", mm);
+  c->keep_dead = kdl_arg_bool(kdl_child(root, "keep_dead"), 0, c->keep_dead);
   c->bell_indicator =
       kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);
   const char *bm = kdl_arg(kdl_child(root, "bell_mark"), 0, NULL);
@@ -485,6 +497,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         {"finder_sel_fg", &c->finder_sel_fg},
         {"finder_sel_bg", &c->finder_sel_bg},
         {"bell", &c->bell},
+        {"dead", &c->dead},
         {"hint", &c->hint},
         {"minbar", &c->minbar},
         {"minbar_hover", &c->minbar_hover},
