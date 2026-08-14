@@ -158,6 +158,9 @@ collapsed tab, each state of a tab, the status line, the finder, toasts, the
 rename editor. Several share a default, which says they look right together
 rather than that they are the same thing.
 
+Six complete themes live in [`contrib/themes`](contrib/themes), and
+`contrib/theme-tour` cycles a running session through them.
+
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ppty/config.kdl`.
 **Saving it re-reads it into every running session** — a file that does not

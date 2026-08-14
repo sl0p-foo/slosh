@@ -1,0 +1,40 @@
+#!/bin/sh
+# Show the themes in contrib/themes on a running session.
+#
+#   contrib/theme-tour                 spawn a session and cycle every theme
+#   contrib/theme-tour slate           apply one to the session named below
+#   SESSION=work contrib/theme-tour    ...to a different session
+#
+# It works by writing the theme to the file the session was started with and
+# letting the config watcher do the rest, which is also a fair demonstration of
+# the watcher.
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+bin="$here/../build/sl0ppty"
+SESSION=${SESSION:-themes}
+CONF=${SL0PPTY_CONFIG:-/tmp/sl0ppty-theme-tour.kdl}
+DWELL=${DWELL:-4}
+
+apply() {
+  cp "$here/themes/$1.kdl" "$CONF"
+  printf '  %-10s %s\n' "$1" "$(sed -n '1s|// ||p' "$here/themes/$1.kdl")"
+}
+
+if [ -n "$1" ]; then
+  [ -f "$here/themes/$1.kdl" ] || { echo "no such theme: $1"; exit 1; }
+  apply "$1"
+  exit 0
+fi
+
+if ! "$bin" ls 2>/dev/null | grep -q "^$SESSION "; then
+  cp "$here/themes/sl0p.kdl" "$CONF"
+  echo "starting a session called $SESSION..."
+  SL0PPTY_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
+  sleep 1
+fi
+
+echo "cycling every theme, ${DWELL}s each. ^C to stop wherever you like."
+for t in "$here"/themes/*.kdl; do
+  apply "$(basename "$t" .kdl)"
+  sleep "$DWELL"
+done

@@ -1,0 +1,66 @@
+// amber -- the other CRT, for people who found green loud
+//
+// Drop into ~/.config/sl0ppty/config.kdl, or point $SL0PPTY_CONFIG at a file
+// that contains it. A running session re-reads it the moment you save.
+theme {
+    // what a shader takes "terminal default" to mean
+    default_fg "#ffc860"
+    default_bg "#0f0900"
+
+    // panes
+    frame_focus "#ffb000"
+    frame_idle "#6b4a00"
+    title "#ffe0a0"
+    title_idle "#6b4a00"
+
+    // a pane's own OSC 5577 buttons
+    button_fg "#1a1000"
+    button_bg "#ffb000"
+    button_bg_idle "#6b4a00"
+
+    // affordances under the pointer
+    guide "#ffb000"
+    resize "#ffb000"
+    drop_target "#ffb000"
+
+    // scrollback indicator
+    scroll_fg "#1a1000"
+    scroll_bg "#ffb000"
+
+    // rows of a tab collapsed into a list
+    header "#6b4a00"
+    header_hover "#ffb000"
+    header_hover_title "#ffe0a0"
+
+    // the strip along the top
+    tab_active_fg "#1a1000"
+    tab_active_bg "#ffb000"
+    tab_active_hover_fg "#ffe0a0"
+    tab_idle "#6b4a00"
+    tab_hover "#ffb000"
+    prefix_fg "#1a1000"
+    prefix_bg "#ffb000"
+    tab_count "#6b4a00"
+
+    // the line along the bottom
+    status "#6b4a00"
+    status_state "#ffe0a0"
+    hint "#ffe0a0"
+
+    // the pane finder
+    finder_fg "#ffe0a0"
+    finder_bg "#6b4a00"
+    finder_sel_fg "#1a1000"
+    finder_sel_bg "#ffb000"
+
+    // rename editor, bell, frame buttons, the minimised bar
+    rename_fg "#1a1000"
+    rename_bg "#ffb000"
+    toast_fg "#1a1000"
+    toast_bg "#ffb000"
+    bell "#ffb000"
+    pane_button "#6b4a00"
+    pane_button_hover "#ffb000"
+    minbar "#6b4a00"
+    minbar_hover "#ffb000"
+}

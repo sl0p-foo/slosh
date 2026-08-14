@@ -1,0 +1,66 @@
+// paper -- a light theme, for a light terminal
+//
+// Drop into ~/.config/sl0ppty/config.kdl, or point $SL0PPTY_CONFIG at a file
+// that contains it. A running session re-reads it the moment you save.
+theme {
+    // what a shader takes "terminal default" to mean
+    default_fg "#1a1a1a"
+    default_bg "#fdfdfa"
+
+    // panes
+    frame_focus "#0057b8"
+    frame_idle "#9aa0a6"
+    title "#1a1a1a"
+    title_idle "#9aa0a6"
+
+    // a pane's own OSC 5577 buttons
+    button_fg "#ffffff"
+    button_bg "#0057b8"
+    button_bg_idle "#9aa0a6"
+
+    // affordances under the pointer
+    guide "#0057b8"
+    resize "#0057b8"
+    drop_target "#0057b8"
+
+    // scrollback indicator
+    scroll_fg "#ffffff"
+    scroll_bg "#0057b8"
+
+    // rows of a tab collapsed into a list
+    header "#9aa0a6"
+    header_hover "#0057b8"
+    header_hover_title "#1a1a1a"
+
+    // the strip along the top
+    tab_active_fg "#ffffff"
+    tab_active_bg "#0057b8"
+    tab_active_hover_fg "#1a1a1a"
+    tab_idle "#9aa0a6"
+    tab_hover "#0057b8"
+    prefix_fg "#ffffff"
+    prefix_bg "#0057b8"
+    tab_count "#9aa0a6"
+
+    // the line along the bottom
+    status "#9aa0a6"
+    status_state "#1a1a1a"
+    hint "#1a1a1a"
+
+    // the pane finder
+    finder_fg "#1a1a1a"
+    finder_bg "#9aa0a6"
+    finder_sel_fg "#ffffff"
+    finder_sel_bg "#0057b8"
+
+    // rename editor, bell, frame buttons, the minimised bar
+    rename_fg "#ffffff"
+    rename_bg "#0057b8"
+    toast_fg "#ffffff"
+    toast_bg "#0057b8"
+    bell "#0057b8"
+    pane_button "#9aa0a6"
+    pane_button_hover "#0057b8"
+    minbar "#9aa0a6"
+    minbar_hover "#0057b8"
+}
