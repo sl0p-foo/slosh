@@ -65,6 +65,33 @@ bool app_reload_config(char *err, size_t errcap) {
 #define BTN_FG (CFG.button_fg)
 #define BTN_BG (CFG.button_bg)
 #define BTN_BG_IDLE (CFG.button_bg_idle)
+#define TITLE_IDLE (CFG.title_idle)
+#define GUIDE (CFG.guide)
+#define RESIZE_C (CFG.resize)
+#define DROP_C (CFG.drop_target)
+#define SCROLL_FG (CFG.scroll_fg)
+#define SCROLL_BG (CFG.scroll_bg)
+#define HEADER (CFG.header)
+#define HEADER_HOVER (CFG.header_hover)
+#define HEADER_HOVER_TITLE (CFG.header_hover_title)
+#define TAB_ACTIVE_FG (CFG.tab_active_fg)
+#define TAB_ACTIVE_BG (CFG.tab_active_bg)
+#define TAB_ACTIVE_HOVER_FG (CFG.tab_active_hover_fg)
+#define TAB_IDLE (CFG.tab_idle)
+#define TAB_HOVER (CFG.tab_hover)
+#define PREFIX_FG (CFG.prefix_fg)
+#define PREFIX_BG (CFG.prefix_bg)
+#define TAB_COUNT (CFG.tab_count)
+#define STATUS_C (CFG.status)
+#define STATUS_STATE (CFG.status_state)
+#define FINDER_FG (CFG.finder_fg)
+#define FINDER_BG (CFG.finder_bg)
+#define FINDER_SEL_FG (CFG.finder_sel_fg)
+#define FINDER_SEL_BG (CFG.finder_sel_bg)
+#define TOAST_FG (CFG.toast_fg)
+#define TOAST_BG (CFG.toast_bg)
+#define RENAME_FG (CFG.rename_fg)
+#define RENAME_BG (CFG.rename_bg)
 
 static const color_t NO_COLOR = {0};
 
@@ -328,7 +355,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
       snprintf(cnt, sizeof cnt, "%zu pane%s", nl, nl == 1 ? "" : "s");
     uint16_t cw = (uint16_t)strlen(cnt);
     if (right > x + cw + 2) {
-      screen_text(s, (uint16_t)(right - cw), y, cnt, FRAME_IDLE, NO_COLOR, 0);
+      screen_text(s, (uint16_t)(right - cw), y, cnt, STATUS_C, NO_COLOR, 0);
       right = (uint16_t)(right - cw - 2);
     }
   }
@@ -356,7 +383,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
     for (const char *q = ind; *q; q++)
       if (((unsigned char)*q & 0xC0) != 0x80) iw++;
     if (right > x + iw + 2) {
-      screen_text(s, (uint16_t)(right - iw), y, ind, TITLE_FOCUS, NO_COLOR,
+      screen_text(s, (uint16_t)(right - iw), y, ind, STATUS_STATE, NO_COLOR,
                   ATTR_BOLD);
       right = (uint16_t)(right - iw - 2);
     }
@@ -383,7 +410,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
   }
   if (!n) return;
   if (n > (size_t)(right - x)) line[right - x] = 0;
-  screen_text(s, x, y, line, FRAME_IDLE, NO_COLOR, 0);
+  screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
 }
 
 static void draw_toasts(app_t *a, screen_t *s) {
@@ -401,7 +428,7 @@ static void draw_toasts(app_t *a, screen_t *s) {
     uint16_t x = (uint16_t)(s->cols - w - CFG.gap * CFG.gap_aspect);
     char clipped[160];
     snprintf(clipped, sizeof clipped, "%.*s", (int)w, line);
-    screen_text(s, x, y, clipped, BTN_FG, BTN_BG, ATTR_BOLD);
+    screen_text(s, x, y, clipped, TOAST_FG, TOAST_BG, ATTR_BOLD);
   }
 }
 
@@ -1514,7 +1541,8 @@ static void draw_pane_status(screen_t *s, node_t *leaf, color_t fg,
       len = room;
       buf[len] = 0;
     }
-    screen_text(s, left, y, buf, focused ? TITLE_FOCUS : fg, NO_COLOR, 0);
+    screen_text(s, left, y, buf, focused ? TITLE_FOCUS : TITLE_IDLE,
+                NO_COLOR, 0);
   }
 }
 
@@ -1558,7 +1586,7 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
   if (r.w < 4 || r.h < 4) return;
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
-  color_t hi = FRAME_FOCUS;
+  color_t hi = GUIDE;
 
   /* An arrow on the new boundary, pointing at the side the new pane will take.
    * The dashed line says where, and on its own leaves which half is the new
@@ -1596,7 +1624,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   bool focused = leaf == cur(a)->focus;
   bool drop_target = a->drag.kind == DRAG_TITLE && a->drag.target == leaf->id &&
                      a->drag.src != leaf->id;
-  color_t fg = drop_target ? BTN_BG : (focused ? FRAME_FOCUS : FRAME_IDLE);
+  color_t fg = drop_target ? DROP_C : (focused ? FRAME_FOCUS : FRAME_IDLE);
   uint16_t attrs = drop_target ? ATTR_BOLD : 0;
 
   /* While a pane is being dragged, every other pane is somewhere it could be
@@ -1674,7 +1702,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     uint16_t iw = (uint16_t)(nd + 4); /* space, arrow, space, digits, space */
     if (iw + 2 < avail) {
       uint16_t ix = (uint16_t)((has_btn ? btn_x : x1) - iw);
-      uint16_t drawn = screen_text(s, ix, r.y, ind, BTN_FG, BTN_BG, ATTR_BOLD);
+      uint16_t drawn = screen_text(s, ix, r.y, ind, SCROLL_FG, SCROLL_BG, ATTR_BOLD);
       char action[48];
       snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
       hit_add(&s->hits, ix, r.y, drawn, 1, action);
@@ -1718,8 +1746,9 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
      * is being typed, so a half-finished rename can never be mistaken for what
      * the pane is actually called. */
     uint16_t drawn =
-        screen_text(s, tx, r.y, buf, editing ? BTN_FG : (focused ? TITLE_FOCUS : fg),
-                    editing ? BTN_BG : NO_COLOR,
+        screen_text(s, tx, r.y, buf,
+                    editing ? RENAME_FG : (focused ? TITLE_FOCUS : TITLE_IDLE),
+                    editing ? RENAME_BG : NO_COLOR,
                     editing || focused ? ATTR_BOLD : 0);
 
     /* The title names the pane; it is not an edge. It carves its own cells out
@@ -1775,8 +1804,8 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
 
   /* Foreground only. A filled bar is louder than the thing it is telling you,
    * and this row has to sit in a list of its own kind without shouting. */
-  color_t rule = hot ? FRAME_FOCUS : FRAME_IDLE;
-  color_t label = hot ? TITLE_FOCUS : FRAME_IDLE;
+  color_t rule = hot ? HEADER_HOVER : HEADER;
+  color_t label = hot ? HEADER_HOVER_TITLE : HEADER;
 
   /* A collapsed pane draws the top edge of a pane, corners and all. It is not
    * decoration: this row *is* a pane, closed — so a stack of them reads as a
@@ -1939,7 +1968,7 @@ static void draw_cb(node_t *n, void *ud) {
       }
     }
     screen_text(d->s, (uint16_t)(n->content.x + (n->content.w - w) / 2),
-                (uint16_t)(n->content.y + n->content.h / 2), line, FRAME_IDLE,
+                (uint16_t)(n->content.y + n->content.h / 2), line, TITLE_IDLE,
                 NO_COLOR, 0);
   } else {
     pane_compose(n->pane, d->s, n->content.x, n->content.y,
@@ -1965,11 +1994,12 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
   snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
   uint16_t iw = (uint16_t)strlen(info);
   if (right > iw + 4) {
-    screen_text(s, (uint16_t)(right - iw), y, info, FRAME_IDLE, NO_COLOR, 0);
+    screen_text(s, (uint16_t)(right - iw), y, info, TAB_COUNT, NO_COLOR, 0);
     right = (uint16_t)(right - iw - 1);
   }
   if (a->prefix && right > 5) { /* the prefix is a mode: say so */
-    screen_text(s, (uint16_t)(right - 3), y, "C-a", BTN_FG, BTN_BG, ATTR_BOLD);
+    screen_text(s, (uint16_t)(right - 3), y, "C-a", PREFIX_FG, PREFIX_BG,
+                ATTR_BOLD);
     right = (uint16_t)(right - 4);
   }
 
@@ -1988,9 +2018,14 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
      * costs a repaint of a few cells and guarantees the lit cells are the
      * registered ones. */
     uint16_t w = screen_text(s, x, y, label,
-                             active ? TITLE_FOCUS : FRAME_IDLE, NO_COLOR, attrs);
+                             active ? TAB_ACTIVE_FG : TAB_IDLE,
+                             active ? TAB_ACTIVE_BG : NO_COLOR, attrs);
+    /* Hovering keeps the active tab's fill — it is still the tab you are in —
+     * so its feedback lands on the text instead. An inactive tab has no fill
+     * to keep, and brightens. */
     if (ptr_on(a, x, y, w, 1))
-      screen_text(s, x, y, label, FRAME_FOCUS, NO_COLOR, attrs);
+      screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
+                  active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
     char action[48];
     snprintf(action, sizeof action, "tab:%u", t->id);
     hit_add(&s->hits, x, y, w, 1, action);
@@ -2000,9 +2035,9 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
   /* Not a bare "+": the frame already has one, for splitting a pane. Two
    * verbs that look identical is a UI bug the fork shipped and noticed. */
   if (x + 6 < right) {
-    uint16_t w = screen_text(s, x, y, " +tab ", FRAME_IDLE, NO_COLOR, 0);
+    uint16_t w = screen_text(s, x, y, " +tab ", TAB_IDLE, NO_COLOR, 0);
     if (ptr_on(a, x, y, w, 1))
-      screen_text(s, x, y, " +tab ", FRAME_FOCUS, NO_COLOR, 0);
+      screen_text(s, x, y, " +tab ", TAB_HOVER, NO_COLOR, ATTR_BOLD);
     hit_add(&s->hits, x, y, w, 1, "newtab");
   }
 }
@@ -2049,16 +2084,16 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
   if (split->dir == SPLIT_COLS) {
     uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
     for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
-      screen_text(s, x, y, active ? "\u2551" : "\u250a", FRAME_FOCUS, NO_COLOR,
+      screen_text(s, x, y, active ? "\u2551" : "\u250a", RESIZE_C, NO_COLOR,
                   attrs);
-    screen_text(s, x, (uint16_t)(gapr.y + gapr.h / 2), "\u21d4", FRAME_FOCUS,
+    screen_text(s, x, (uint16_t)(gapr.y + gapr.h / 2), "\u21d4", RESIZE_C,
                 NO_COLOR, ATTR_BOLD);
   } else {
     uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
     for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
-      screen_text(s, x, y, active ? "\u2550" : "\u2508", FRAME_FOCUS, NO_COLOR,
+      screen_text(s, x, y, active ? "\u2550" : "\u2508", RESIZE_C, NO_COLOR,
                   attrs);
-    screen_text(s, (uint16_t)(gapr.x + gapr.w / 2), y, "\u21d5", FRAME_FOCUS,
+    screen_text(s, (uint16_t)(gapr.x + gapr.w / 2), y, "\u21d5", RESIZE_C,
                 NO_COLOR, ATTR_BOLD);
   }
 }
@@ -2158,12 +2193,12 @@ static void draw_finder(app_t *a, screen_t *s) {
 
   for (uint16_t yy = y; yy < y + h; yy++)
     for (uint16_t xx = x; xx < x + w; xx++)
-      screen_text(s, xx, yy, " ", NO_COLOR, FRAME_IDLE, 0);
+      screen_text(s, xx, yy, " ", NO_COLOR, FINDER_BG, 0);
 
   char head[128];
   snprintf(head, sizeof head, " find: %s\u2588", a->query);
-  screen_text(s, (uint16_t)(x + 1), (uint16_t)(y + 1), head, TITLE_FOCUS,
-              FRAME_IDLE, ATTR_BOLD);
+  screen_text(s, (uint16_t)(x + 1), (uint16_t)(y + 1), head, FINDER_FG,
+              FINDER_BG, ATTR_BOLD);
 
   for (size_t i = 0; i < rows && i < n; i++) {
     size_t idx = i + (a->sel >= rows ? a->sel - rows + 1 : 0);
@@ -2179,8 +2214,8 @@ static void draw_finder(app_t *a, screen_t *s) {
     bool on = idx == a->sel;
     uint16_t yy = (uint16_t)(y + 3 + i);
     uint16_t drawn = screen_text(s, (uint16_t)(x + 1), yy, line,
-                                 on ? BTN_FG : TITLE_FOCUS,
-                                 on ? BTN_BG : FRAME_IDLE, 0);
+                                 on ? FINDER_SEL_FG : FINDER_FG,
+                                 on ? FINDER_SEL_BG : FINDER_BG, 0);
     char action[48];
     snprintf(action, sizeof action, "find:%u", e->node->id);
     hit_add(&s->hits, (uint16_t)(x + 1), yy, drawn, 1, action);

@@ -130,6 +130,12 @@ tab, the focused pane's purpose or title, which of the tab's panes it is
 started yet. Either can be turned off
 (`status_bar`, `status_line`), and the panes get the row back.
 
+Every colour the compositor draws has its own name in `theme` — the split
+guide, the resize handle, a drop target, the scroll indicator, the rows of a
+collapsed tab, each state of a tab, the status line, the finder, toasts, the
+rename editor. Several share a default, which says they look right together
+rather than that they are the same thing.
+
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ppty/config.kdl`.
 

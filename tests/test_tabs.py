@@ -174,9 +174,10 @@ def test_json_api():
 
 # ---- hovering the strip ----------------------------------------------------
 
-STRIP_HOT = "#ff5fd7"   # pointer is here
-STRIP_ON = "#ffffff"    # this is the tab you are in
-STRIP_OFF = "#45454a"
+ACCENT = "#ff5fd7"      # the fill of the tab you are in, and hover on the rest
+INK = "#141418"         # text on that fill
+BRIGHT = "#ffffff"      # that text while the pointer is on it
+DIM = "#45454a"         # a tab you are not in
 
 
 def two_tab_layout():
@@ -200,6 +201,10 @@ def fg_of(snap, h):
     return (snap.style_at(h["x"] + 1, h["y"]) or {}).get("fg")
 
 
+def bg_of(snap, h):
+    return (snap.style_at(h["x"] + 1, h["y"]) or {}).get("bg")
+
+
 def attrs_of(snap, h):
     return (snap.style_at(h["x"] + 1, h["y"]) or {}).get("attrs", [])
 
@@ -211,14 +216,18 @@ def test_hovering_the_strip_lights_what_is_under_the_pointer():
         hits = strip_hits(s.snapshot())
         check("the strip has two tabs and a +tab", len(hits) == 3, str(hits))
 
+        active_id = "tab:" + str(s.tabs()[0]["id"])
         for target, h in hits.items():
             hover(s, h["x"] + 1, h["y"])
             snap = s.snapshot()
+            # The tab you are in keeps its fill and brightens its text; the
+            # others have no fill to keep and take the accent.
+            want = BRIGHT if target == active_id else ACCENT
             check(f"hovering {target} lights it",
-                  fg_of(snap, h) == STRIP_HOT, str(fg_of(snap, h)))
-            others = [fg_of(snap, o) for k, o in hits.items() if k != target]
-            check(f"and nothing else on the strip",
-                  all(c != STRIP_HOT for c in others), str(others))
+                  fg_of(snap, h) == want, f"{fg_of(snap, h)} wanted {want}")
+            others = [(k, fg_of(snap, o)) for k, o in hits.items() if k != target]
+            check("and nothing else on the strip",
+                  all(c in (INK, DIM) for _, c in others), str(others))
     os.unlink(lay)
 
 
@@ -232,16 +241,24 @@ def test_weight_says_active_and_colour_says_pointer():
         active = hits["tab:" + str(s.tabs()[0]["id"])]
 
         snap = s.snapshot()
-        check("the active tab is bold and white while untouched",
-              fg_of(snap, active) == STRIP_ON and "bold" in attrs_of(snap, active),
-              f"{fg_of(snap, active)} {attrs_of(snap, active)}")
+        check("the tab you are in is filled, not merely bold",
+              fg_of(snap, active) == INK and bg_of(snap, active) == ACCENT,
+              f"{fg_of(snap, active)} on {bg_of(snap, active)}")
+        check("and still bold", "bold" in attrs_of(snap, active),
+              str(attrs_of(snap, active)))
+
+        inactive = [h for k, h in hits.items()
+                    if k.startswith("tab:") and h is not active][0]
+        check("a tab you are not in has no fill at all",
+              bg_of(snap, inactive) is None and fg_of(snap, inactive) == DIM,
+              f"{fg_of(snap, inactive)} on {bg_of(snap, inactive)}")
 
         hover(s, active["x"] + 1, active["y"])
         snap = s.snapshot()
-        check("hovering it changes its colour",
-              fg_of(snap, active) == STRIP_HOT, str(fg_of(snap, active)))
-        check("but it keeps the weight that says you are in it",
-              "bold" in attrs_of(snap, active), str(attrs_of(snap, active)))
+        check("hovering it brightens the text",
+              fg_of(snap, active) == BRIGHT, str(fg_of(snap, active)))
+        check("but it keeps the fill that says you are in it",
+              bg_of(snap, active) == ACCENT, str(bg_of(snap, active)))
     os.unlink(lay)
 
 
@@ -263,7 +280,7 @@ def test_leaving_the_strip_puts_it_out_and_hover_switches_nothing():
         hover(s, p["content_x"] + 2, p["content_y"] + 1)
         snap = s.snapshot()
         check("nothing on the strip is lit once the pointer leaves it",
-              all(fg_of(snap, h) != STRIP_HOT for h in hits.values()),
+              all(fg_of(snap, h) in (INK, DIM) for h in hits.values()),
               str([fg_of(snap, h) for h in hits.values()]))
 
         # ...but clicking still switches.

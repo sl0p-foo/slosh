@@ -202,12 +202,55 @@ void config_defaults(config_t *c) {
               140);
   c->state_n[PSTATE_DROP_HOVER] = 2;
 
-  c->frame_focus = rgb(0xff, 0x5f, 0xd7);
-  c->frame_idle = rgb(0x45, 0x45, 0x4a);
-  c->title_focus = rgb(0xff, 0xff, 0xff);
-  c->button_fg = rgb(0x14, 0x14, 0x18);
-  c->button_bg = rgb(0xff, 0x5f, 0xd7);
+  const color_t accent = rgb(0xff, 0x5f, 0xd7);
+  const color_t ink = rgb(0x14, 0x14, 0x18);
+  const color_t dim = rgb(0x45, 0x45, 0x4a);
+  const color_t bright = rgb(0xff, 0xff, 0xff);
+
+  c->frame_focus = accent;
+  c->frame_idle = dim;
+  c->title_focus = bright;
+  c->title_idle = dim;
+
+  c->button_fg = ink;
+  c->button_bg = accent;
   c->button_bg_idle = rgb(0x55, 0x55, 0x5c);
+
+  c->guide = accent;
+  c->resize = accent;
+  c->drop_target = accent;
+
+  c->scroll_fg = ink;
+  c->scroll_bg = accent;
+
+  c->header = dim;
+  c->header_hover = accent;
+  c->header_hover_title = bright;
+
+  /* The tab you are in is stated in colour, not only in weight: bold alone is
+   * easy to miss on a strip of short labels. */
+  c->tab_active_fg = ink;
+  c->tab_active_bg = accent;
+  c->tab_active_hover_fg = bright;
+  c->tab_idle = dim;
+  c->tab_hover = accent;
+  c->prefix_fg = ink;
+  c->prefix_bg = accent;
+  c->tab_count = dim;
+
+  c->status = dim;
+  c->status_state = bright;
+
+  c->finder_fg = bright;
+  c->finder_bg = dim;
+  c->finder_sel_fg = ink;
+  c->finder_sel_bg = accent;
+
+  c->rename_fg = ink;
+  c->rename_bg = accent;
+
+  c->toast_fg = ink;
+  c->toast_bg = accent;
 
   c->prefix_key = GHOSTTY_KEY_A;
   c->prefix_mods = MOD_CTRL;
@@ -376,10 +419,41 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
       const char *name;
       color_t *slot;
     } colors[] = {
-        {"default_fg", &c->default_fg},   {"default_bg", &c->default_bg},
-        {"frame_focus", &c->frame_focus}, {"frame_idle", &c->frame_idle},
-        {"title", &c->title_focus},       {"button_fg", &c->button_fg},
-        {"button_bg", &c->button_bg},     {"button_bg_idle", &c->button_bg_idle},
+        {"default_fg", &c->default_fg},
+        {"default_bg", &c->default_bg},
+        {"frame_focus", &c->frame_focus},
+        {"frame_idle", &c->frame_idle},
+        {"title", &c->title_focus},
+        {"title_idle", &c->title_idle},
+        {"button_fg", &c->button_fg},
+        {"button_bg", &c->button_bg},
+        {"button_bg_idle", &c->button_bg_idle},
+        {"guide", &c->guide},
+        {"resize", &c->resize},
+        {"drop_target", &c->drop_target},
+        {"scroll_fg", &c->scroll_fg},
+        {"scroll_bg", &c->scroll_bg},
+        {"header", &c->header},
+        {"header_hover", &c->header_hover},
+        {"header_hover_title", &c->header_hover_title},
+        {"tab_active_fg", &c->tab_active_fg},
+        {"tab_active_bg", &c->tab_active_bg},
+        {"tab_active_hover_fg", &c->tab_active_hover_fg},
+        {"tab_idle", &c->tab_idle},
+        {"tab_hover", &c->tab_hover},
+        {"prefix_fg", &c->prefix_fg},
+        {"prefix_bg", &c->prefix_bg},
+        {"tab_count", &c->tab_count},
+        {"status", &c->status},
+        {"status_state", &c->status_state},
+        {"finder_fg", &c->finder_fg},
+        {"finder_bg", &c->finder_bg},
+        {"finder_sel_fg", &c->finder_sel_fg},
+        {"finder_sel_bg", &c->finder_sel_bg},
+        {"rename_fg", &c->rename_fg},
+        {"rename_bg", &c->rename_bg},
+        {"toast_fg", &c->toast_fg},
+        {"toast_bg", &c->toast_bg},
     };
     for (size_t i = 0; i < sizeof colors / sizeof *colors; i++) {
       const char *v = kdl_arg(kdl_child(theme, colors[i].name), 0, NULL);

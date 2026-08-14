@@ -171,23 +171,73 @@ toast_ms 2500
 
 // ── theme ───────────────────────────────────────────────────────────────────
 
+// Every colour the compositor draws has its own name here. They started as six
+// names doing thirty jobs, which meant the split guide could not be recoloured
+// without also recolouring the focused frame, because they were the same
+// entry. Several still share a default: that says they look right together,
+// not that they are the same thing.
 theme {
     // What a cell's "terminal default" colour is taken to be when a shader has
-    // to compute on it (dimming a pane, greying it out). We never learn your
-    // terminal's real default, and most text is default-coloured, so without
-    // these a shader would leave nearly everything untouched. Set them to your
-    // terminal's actual foreground/background or shaded panes will shift
-    // colour as they turn on. Panes with no shader ignore these entirely and
-    // still defer to your terminal.
+    // to compute on it. See the shaders section above.
     default_fg "#ffffff"
     default_bg "#000000"
 
-    frame_focus "#ff5fd7"
-    frame_idle "#45454a"
-    title "#ffffff"
+    // ── panes ───────────────────────────────────────────────────────────────
+    frame_focus "#ff5fd7"      // border of the focused pane
+    frame_idle "#45454a"       // border of every other pane
+    title "#ffffff"            // its title, and its OSC 5577 status text
+    title_idle "#45454a"       // the same, on a pane that is not focused
+
+    // A pane's own OSC 5577 buttons.
     button_fg "#141418"
     button_bg "#ff5fd7"
-    button_bg_idle "#55555c"
+    button_bg_idle "#55555c"   // buttons on a pane that is not focused
+
+    // ── things that appear under the pointer ────────────────────────────────
+    guide "#ff5fd7"            // split guide: armed edge, dashed boundary, arrow
+    resize "#ff5fd7"           // the handle in the gap between two panes
+    drop_target "#ff5fd7"      // frame of a pane a drag could land on
+
+    // ── a pane's scrollback indicator ───────────────────────────────────────
+    scroll_fg "#141418"
+    scroll_bg "#ff5fd7"
+
+    // ── rows of a tab that has collapsed into a list ────────────────────────
+    header "#45454a"
+    header_hover "#ff5fd7"          // the rule, under the pointer
+    header_hover_title "#ffffff"    // the name, under the pointer
+
+    // ── the strip along the top ─────────────────────────────────────────────
+    // The tab you are in is filled rather than merely bold: bold alone is easy
+    // to miss on a strip of short labels. It keeps that fill while the pointer
+    // is on it -- it is still the tab you are in -- so its hover lands on the
+    // text instead.
+    tab_active_fg "#141418"
+    tab_active_bg "#ff5fd7"
+    tab_active_hover_fg "#ffffff"
+    tab_idle "#45454a"
+    tab_hover "#ff5fd7"
+    prefix_fg "#141418"        // the "C-a" badge, while the prefix is pending
+    prefix_bg "#ff5fd7"
+    tab_count "#45454a"        // panes in the whole session
+
+    // ── the line along the bottom ───────────────────────────────────────────
+    status "#45454a"           // session, tab, pane, and the pane index
+    status_state "#ffffff"     // scrolled / alt screen / not started / exited
+
+    // ── the pane finder ─────────────────────────────────────────────────────
+    finder_fg "#ffffff"
+    finder_bg "#45454a"
+    finder_sel_fg "#141418"
+    finder_sel_bg "#ff5fd7"
+
+    // ── the in-place editor a double-click opens on a pane title ────────────
+    rename_fg "#141418"
+    rename_bg "#ff5fd7"
+
+    // ── announcements ───────────────────────────────────────────────────────
+    toast_fg "#141418"
+    toast_bg "#ff5fd7"
 }
 
 // ── keys ────────────────────────────────────────────────────────────────────

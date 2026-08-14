@@ -9,10 +9,15 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 from harness import Session, check, report, BIN
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;cfg\\007"; stty raw -echo; cat']
+
+
+def hover(s, x, y):
+    s.send(rf"\e[<35;{x + 1};{y + 1}M")
 
 
 def cfg(text):
@@ -317,6 +322,57 @@ def test_status_pad_holds_both_bars_off_the_edge():
 
 
 
+def test_every_surface_has_its_own_theme_name():
+    """The point of splitting six names into thirty-five: recolouring one
+    surface must not recolour another that happened to share an entry."""
+    conf = cfg('theme {\n'
+               '  guide "#00ff00"\n'
+               '  tab_active_bg "#0000ff"\n'
+               '  status "#ff8800"\n'
+               '  header "#ff00ff"\n'
+               '}\n')
+    with Session(SH, cols=80, rows=16, config=conf) as s:
+        s.settle(20)
+        snap = s.snapshot()
+
+        tab = [h for h in snap.hits if h["action"].startswith("tab:")][0]
+        check("tab_active_bg fills the tab you are in",
+              (snap.style_at(tab["x"] + 1, tab["y"]) or {}).get("bg") == "#0000ff",
+              str(snap.style_at(tab["x"] + 1, tab["y"])))
+        check("status colours the bottom line",
+              (snap.style_at(4, snap.rows - 2) or {}).get("fg") == "#ff8800",
+              str(snap.style_at(4, snap.rows - 2)))
+
+        # ...and the frame, which shares a *default* with guide, did not move.
+        p = s.pane()
+        check("the focused frame keeps its own colour",
+              (snap.style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#ff5fd7",
+              str(snap.style_at(p["x"], p["y"] + 1)))
+
+        # The guide is the one that used to be the same entry as the frame.
+        hover(s, p["x"], p["y"] + 3)
+        time.sleep(0.35)
+        s.settle(40)
+        snap = s.snapshot()
+        check("and the split guide takes the colour named for it",
+              (snap.style_at(p["x"], p["y"] + 3) or {}).get("fg") == "#00ff00",
+              str(snap.style_at(p["x"], p["y"] + 3)))
+    os.unlink(conf)
+
+
+def test_an_unknown_theme_name_is_refused_not_ignored():
+    conf = cfg('theme {\n  frame_focus "not-a-colour"\n}\n')
+    with Session(SH, cols=60, rows=12, config=conf) as s:
+        s.settle(20)
+        check("a bad colour costs a warning, not a terminal", s.alive(), "")
+        p = s.pane()
+        check("and the compiled-in default is kept",
+              (s.snapshot().style_at(p["x"], p["y"] + 1) or {}).get("fg")
+              == "#ff5fd7",
+              str(s.snapshot().style_at(p["x"], p["y"] + 1)))
+    os.unlink(conf)
+
+
 if __name__ == "__main__":
     test_geometry()
     test_status_bar_off()
@@ -330,4 +386,6 @@ if __name__ == "__main__":
     test_status_line_reports_scrollback()
     test_the_two_pane_counts_answer_different_questions()
     test_status_pad_holds_both_bars_off_the_edge()
+    test_every_surface_has_its_own_theme_name()
+    test_an_unknown_theme_name_is_refused_not_ignored()
     sys.exit(report())

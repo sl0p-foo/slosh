@@ -125,9 +125,52 @@ typedef struct {
    * terminal exactly as before. */
   color_t default_fg, default_bg;
 
-  /* theme */
-  color_t frame_focus, frame_idle, title_focus;
+  /* theme
+   *
+   * One name per decision. These began as six names doing thirty jobs, which
+   * meant the split guide could not be recoloured without also recolouring the
+   * focused frame, because they were the same entry. Several still share a
+   * default — that is a statement about what looks right together, not about
+   * them being the same thing. */
+
+  /* panes */
+  color_t frame_focus, frame_idle;
+  color_t title_focus, title_idle;
+
+  /* things you can press: the pane's own OSC 5577 buttons */
   color_t button_fg, button_bg, button_bg_idle;
+
+  /* affordances that appear under the pointer */
+  color_t guide;       /* the split guide: armed edge and dashed boundary */
+  color_t resize;      /* the handle in the gap between two panes */
+  color_t drop_target; /* the frame of a pane a drag could land on */
+
+  /* the scrollback indicator in a pane's frame */
+  color_t scroll_fg, scroll_bg;
+
+  /* rows of a tab that has collapsed into a list */
+  color_t header, header_hover, header_hover_title;
+
+  /* the strip along the top */
+  color_t tab_active_fg, tab_active_bg;
+  /* The active tab keeps its fill while the pointer is on it -- it is still
+   * the tab you are in -- so its hover shows in the text instead. */
+  color_t tab_active_hover_fg;
+  color_t tab_idle, tab_hover;
+  color_t prefix_fg, prefix_bg; /* the "C-a" badge */
+  color_t tab_count;            /* how many panes in the session */
+
+  /* the line along the bottom */
+  color_t status, status_state;
+
+  /* the pane finder */
+  color_t finder_fg, finder_bg, finder_sel_fg, finder_sel_bg;
+
+  /* the in-place editor a double-click opens on a pane's title */
+  color_t rename_fg, rename_bg;
+
+  /* announcements */
+  color_t toast_fg, toast_bg;
 
   /* keys */
   int prefix_key;
