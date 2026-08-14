@@ -1,4 +1,4 @@
-# sl0ptty — see DESIGN.md
+# sl0ppty — see DESIGN.md
 #
 # zig is the C compiler: it is already required to build libghostty-vt, and it
 # gives us static musl linking and cross-compilation for free (D12).
@@ -16,7 +16,7 @@ LDFLAGS  :=
 
 SRC      := $(wildcard src/*.c)
 OBJ      := $(SRC:src/%.c=build/%.o)
-BIN      := build/sl0ptty
+BIN      := build/sl0ppty
 
 .PHONY: all clean vendor run test test-live test-all smoke help
 .DEFAULT_GOAL := help
@@ -24,7 +24,7 @@ BIN      := build/sl0ptty
 help: ## show this
 	@grep -hE '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t20
 
-all: $(BIN) ## build sl0ptty
+all: $(BIN) ## build sl0ppty
 
 $(BIN): $(OBJ) $(VT_LIB)
 	$(CC) $(OBJ) $(VT_LIB) -o $@ $(LDFLAGS)
@@ -70,7 +70,7 @@ test-live: $(BIN) ## the checks that need a real tty (slow)
 test-all: test test-live ## everything
 
 smoke: $(BIN) ## compose a screen headlessly and print it
-	./$(BIN) --headless --cols 40 --rows 6 -- /bin/sh -c 'printf "hello \033[1;32msl0ptty\033[0m\n"; echo "wide: 日本語"'
+	./$(BIN) --headless --cols 40 --rows 6 -- /bin/sh -c 'printf "hello \033[1;32msl0ppty\033[0m\n"; echo "wide: 日本語"'
 
 run: $(BIN) ## build and run
 	./$(BIN)

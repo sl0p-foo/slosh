@@ -1,9 +1,9 @@
-// sl0ptty — every value here is also the compiled-in default, so this file is
+// sl0ppty — every value here is also the compiled-in default, so this file is
 // documentation as much as configuration. Copy it to
-// ~/.config/sl0ptty/config.kdl (or point $SL0PTTY_CONFIG at it) and edit.
+// ~/.config/sl0ppty/config.kdl (or point $SL0PPTY_CONFIG at it) and edit.
 //
 // A broken file costs a warning on stderr and nothing else: the defaults
-// stand. `sl0ptty cmd '{"cmd":"reload"}'` re-reads it into a live session, and
+// stand. `sl0ppty cmd '{"cmd":"reload"}'` re-reads it into a live session, and
 // refuses a file it cannot parse rather than half-applying it.
 
 // ── geometry ────────────────────────────────────────────────────────────────

@@ -32,9 +32,9 @@ static void ensure_config(void) {
     /* A missing file is the normal case; a broken one is worth a line in the
      * log, and in both the compiled-in defaults stand (fail open). */
     if (access(path, R_OK) == 0)
-      fprintf(stderr, "sl0ptty: %s: %s\n", path, err[0] ? err : "parse error");
+      fprintf(stderr, "sl0ppty: %s: %s\n", path, err[0] ? err : "parse error");
   } else if (err[0]) {
-    fprintf(stderr, "sl0ptty: %s: %s\n", path, err);
+    fprintf(stderr, "sl0ppty: %s: %s\n", path, err);
   }
   CFG_LOADED = true;
 }

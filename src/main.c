@@ -1,15 +1,15 @@
 /* Entry point and argument parsing.
  *
- *   sl0ptty                  attach to session "main", creating it if needed
- *   sl0ptty -s NAME          ... a named session
- *   sl0ptty ls               live sessions
- *   sl0ptty cmd LINE         one control command against a session
- *   sl0ptty --server NAME    run a session in the foreground (internal)
- *   sl0ptty --script         the headless driver (no server, no tty)
- *   sl0ptty --headless       run once, print the screen
+ *   sl0ppty                  attach to session "main", creating it if needed
+ *   sl0ppty -s NAME          ... a named session
+ *   sl0ppty ls               live sessions
+ *   sl0ppty cmd LINE         one control command against a session
+ *   sl0ppty --server NAME    run a session in the foreground (internal)
+ *   sl0ppty --script         the headless driver (no server, no tty)
+ *   sl0ppty --headless       run once, print the screen
  */
 #define _GNU_SOURCE
-#include "sl0ptty.h"
+#include "sl0ppty.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,7 +36,7 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
 }
 
 static void usage(void) {
-  fputs("usage: sl0ptty [-s NAME] [--layout FILE] [ls | cmd LINE | -- CMD...]\n",
+  fputs("usage: sl0ppty [-s NAME] [--layout FILE] [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
 
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
       for (int j = i + 1; j < argc && cmd_n < 63; j++) cmd_argv[cmd_n++] = argv[j];
       break;
     } else {
-      fprintf(stderr, "sl0ptty: unknown argument: %s\n", a);
+      fprintf(stderr, "sl0ppty: unknown argument: %s\n", a);
       usage();
       return 2;
     }
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
   if (cmd_line) {
     int fd = server_connect(name);
     if (fd < 0) {
-      fprintf(stderr, "sl0ptty: no session named %s\n", name);
+      fprintf(stderr, "sl0ppty: no session named %s\n", name);
       return 1;
     }
     return client_control(fd, cmd_line);
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
   int fd = server_connect(name);
   if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows, layout);
   if (fd < 0) {
-    fprintf(stderr, "sl0ptty: cannot start session %s\n", name);
+    fprintf(stderr, "sl0ppty: cannot start session %s\n", name);
     return 1;
   }
   return client_run(fd);

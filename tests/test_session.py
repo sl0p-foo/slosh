@@ -16,7 +16,7 @@ import termios
 import time
 import uuid
 
-BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ptty")
+BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty")
 
 fails = 0
 
@@ -33,7 +33,7 @@ def attach(name, cols=60, rows=12, inner=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
+        os.environ["SL0PPTY_CONFIG"] = "/nonexistent/sl0ppty.kdl"
         args = [BIN, "-s", name]
         if inner:
             args += ["--"] + inner

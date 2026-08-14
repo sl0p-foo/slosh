@@ -40,7 +40,7 @@ static int64_t now_ms(void) {
  * by sending MSG_HELLO; anything else (a control command, a liveness probe
  * from `ls`) is just a connection and never displaces anybody.
  *
- * This distinction is not fussiness. The zellij fork sl0ptty replaces had a
+ * This distinction is not fussiness. The zellij fork sl0ppty replaces had a
  * 20-25%% CLI failure rate because every action probed liveness by connecting,
  * that probe counted as a client, and its teardown removed the *real* one. */
 #define MAX_CONNS 16
@@ -176,7 +176,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   if (session_socket_path(name, path, sizeof path) != 0) return 1;
   int lfd = listen_socket(path);
   if (lfd < 0) {
-    fprintf(stderr, "sl0ptty: cannot listen on %s: %s\n", path, strerror(errno));
+    fprintf(stderr, "sl0ppty: cannot listen on %s: %s\n", path, strerror(errno));
     return 1;
   }
 
@@ -192,7 +192,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   if (layout) {
     char err[256] = {0};
     if (!app_apply_layout_file(s.app, layout, true, err, sizeof err))
-      fprintf(stderr, "sl0ptty: %s: %s\n", layout, err[0] ? err : "bad layout");
+      fprintf(stderr, "sl0ppty: %s: %s\n", layout, err[0] ? err : "bad layout");
   }
   app_resize(s.app, cols, rows);
   screen_init(&s.screen, cols, rows);

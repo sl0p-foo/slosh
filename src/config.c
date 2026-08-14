@@ -202,16 +202,16 @@ static action_t action_by_name(const char *name) {
 
 const char *config_default_path(void) {
   static char path[512];
-  const char *explicit_ = getenv("SL0PTTY_CONFIG");
+  const char *explicit_ = getenv("SL0PPTY_CONFIG");
   if (explicit_ && *explicit_) {
     snprintf(path, sizeof path, "%s", explicit_);
     return path;
   }
   const char *xdg = getenv("XDG_CONFIG_HOME");
-  if (xdg && *xdg) snprintf(path, sizeof path, "%s/sl0ptty/config.kdl", xdg);
+  if (xdg && *xdg) snprintf(path, sizeof path, "%s/sl0ppty/config.kdl", xdg);
   else {
     const char *home = getenv("HOME");
-    snprintf(path, sizeof path, "%s/.config/sl0ptty/config.kdl",
+    snprintf(path, sizeof path, "%s/.config/sl0ppty/config.kdl",
              home ? home : ".");
   }
   return path;

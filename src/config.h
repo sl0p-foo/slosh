@@ -4,14 +4,14 @@
  * config file costs you a warning, never a terminal (the fail-open property
  * D9 asks of the CLI, applied to the mux itself).
  */
-#ifndef SL0PTTY_CONFIG_H
-#define SL0PTTY_CONFIG_H
+#ifndef SL0PPTY_CONFIG_H
+#define SL0PPTY_CONFIG_H
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "sl0ptty.h"
+#include "sl0ppty.h"
 
 typedef enum {
   ACT_NONE = 0,
@@ -81,7 +81,7 @@ typedef struct {
  * it keeps the defaults and writes the reason to `err`. */
 void config_defaults(config_t *c);
 bool config_load(config_t *c, const char *path, char *err, size_t errcap);
-/* $SL0PTTY_CONFIG, else $XDG_CONFIG_HOME/sl0ptty/config.kdl, else ~/.config/… */
+/* $SL0PPTY_CONFIG, else $XDG_CONFIG_HOME/sl0ppty/config.kdl, else ~/.config/… */
 const char *config_default_path(void);
 void config_free(config_t *c);
 
@@ -89,4 +89,4 @@ action_t config_lookup(const config_t *c, int key, uint16_t mods);
 /* "ctrl+a", "alt+left", "\\", "f" -> key + mods. False if unparseable. */
 bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods);
 
-#endif /* SL0PTTY_CONFIG_H */
+#endif /* SL0PPTY_CONFIG_H */

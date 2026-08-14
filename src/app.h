@@ -2,10 +2,10 @@
  *
  * Both front ends (the interactive client and the headless driver) drive this
  * same object, so there is exactly one implementation of what a key does. */
-#ifndef SL0PTTY_APP_H
-#define SL0PTTY_APP_H
+#ifndef SL0PPTY_APP_H
+#define SL0PPTY_APP_H
 
-#include "sl0ptty.h"
+#include "sl0ppty.h"
 
 typedef struct {
   uint16_t x, y, w, h;
@@ -93,4 +93,4 @@ uint32_t app_current_tab_id(app_t *a);
 char *app_panes_json(app_t *a);
 char *app_tabs_json(app_t *a);
 
-#endif /* SL0PTTY_APP_H */
+#endif /* SL0PPTY_APP_H */

@@ -8,8 +8,8 @@
  * This is why pi has to fall back to sixel under tmux and zellij: they drop
  * the images entirely. Here the native path works.
  */
-#ifndef SL0PTTY_GRAPHICS_H
-#define SL0PTTY_GRAPHICS_H
+#ifndef SL0PPTY_GRAPHICS_H
+#define SL0PPTY_GRAPHICS_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -59,4 +59,4 @@ void gfx_forget_pane(graphics_t *g, uint32_t pane);
 size_t gfx_placements(const graphics_t *g, const gfx_place_t **out);
 size_t gfx_images(const graphics_t *g, const gfx_image_t **out);
 
-#endif /* SL0PTTY_GRAPHICS_H */
+#endif /* SL0PPTY_GRAPHICS_H */

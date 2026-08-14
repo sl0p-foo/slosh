@@ -75,7 +75,7 @@ int client_run(int fd) {
   term_size(&cols, &rows);
 
   if (tcgetattr(STDIN_FILENO, &g_saved) != 0) {
-    fprintf(stderr, "sl0ptty: not a terminal\n");
+    fprintf(stderr, "sl0ppty: not a terminal\n");
     return 1;
   }
   g_saved_ok = true;

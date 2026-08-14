@@ -1,4 +1,4 @@
-# sl0ptty
+# sl0ppty
 
 An opinionated terminal multiplexer in C, built on
 [libghostty-vt](https://github.com/ghostty-org/ghostty).
@@ -35,10 +35,10 @@ make test-live # the ones that need a real tty
 ## Use
 
 ```bash
-sl0ptty                  # attach to session "main", creating it if needed
-sl0ptty -s work          # a named session
-sl0ptty ls               # live sessions
-sl0ptty cmd '{"cmd":"panes"}'
+sl0ppty                  # attach to session "main", creating it if needed
+sl0ppty -s work          # a named session
+sl0ppty ls               # live sessions
+sl0ppty cmd '{"cmd":"panes"}'
 ```
 
 | key | |
@@ -69,7 +69,7 @@ as a toast in the corner — as do `{"cmd":"notify","text":"..."}` and things
 like "copied 13 chars".
 
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
-every setting by being the defaults. Copy it to `~/.config/sl0ptty/config.kdl`.
+every setting by being the defaults. Copy it to `~/.config/sl0ppty/config.kdl`.
 
 ## Panes can draw their own chrome (OSC 5577)
 
@@ -89,7 +89,7 @@ relabel itself into something tooling trusts.
 ## Images
 
 Kitty graphics pass through. A program in a pane transmits an image and it
-appears, because libghostty-vt tracks the images and placements and sl0ptty
+appears, because libghostty-vt tracks the images and placements and sl0ppty
 re-emits them to your terminal with ids remapped so two panes using image `7`
 stay two images. Placements follow the layout, are cropped at the pane's edges
 by moving the source rectangle (asking for fewer cells would scale instead),
@@ -114,8 +114,8 @@ layout {
 ```
 
 ```bash
-sl0ptty --layout session.kdl                       # build it
-sl0ptty cmd '{"cmd":"apply-layout","path":"..."}'  # add it to a live session
+sl0ppty --layout session.kdl                       # build it
+sl0ppty cmd '{"cmd":"apply-layout","path":"..."}'  # add it to a live session
 ```
 
 `suspended` panes exist, are laid out, and have run nothing — they start on
@@ -131,9 +131,9 @@ vocabulary the test harness drives, so nothing tested can drift from what the
 API does.
 
 ```bash
-$ sl0ptty -s work cmd '{"cmd":"new-tab","name":"api","purpose":"project:api.a1b2"}'
+$ sl0ppty -s work cmd '{"cmd":"new-tab","name":"api","purpose":"project:api.a1b2"}'
 {"ok":true,"id":2}
-$ sl0ptty -s work cmd '{"cmd":"panes"}'
+$ sl0ppty -s work cmd '{"cmd":"panes"}'
 {"ok":true,"panes":[{"id":1,"x":2,"y":2,...,"purpose":"agent:main"}]}
 ```
 
@@ -151,7 +151,7 @@ shape everything:
 action)` as it is painted, and a click is a lookup in that list. Drawing and
 hit-testing cannot disagree, because there is only one of them.
 
-**Headless from day one.** `sl0ptty --script` runs the whole compositor with no
+**Headless from day one.** `sl0ppty --script` runs the whole compositor with no
 tty: commands in, composited screen out as JSON — text, style runs, cursor,
 hit list. Tests are "drive these events, assert this screen", and they take
 milliseconds.

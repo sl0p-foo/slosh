@@ -8,7 +8,7 @@ mode, reading stdin, and the prefix key.
 """
 import os, pty, uuid, select, struct, sys, termios, time, fcntl, signal
 
-BIN = os.path.join(os.path.dirname(__file__), "..", "build", "sl0ptty")
+BIN = os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty")
 INNER = ["--", "/bin/sh", "-c", "stty raw -echo; cat -v"]
 
 fails = 0
@@ -44,7 +44,7 @@ def main():
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
+        os.environ["SL0PPTY_CONFIG"] = "/nonexistent/sl0ppty.kdl"
         os.execv(BIN, [BIN, "-s", session] + INNER)
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 10, 80, 0, 0))

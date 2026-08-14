@@ -1,8 +1,8 @@
 /* A small JSON reader, for the control API (D3). We already emit JSON; this
  * is the other half. Deliberately minimal: no streaming, no comments, no
  * duplicate-key policy beyond "last wins". */
-#ifndef SL0PTTY_JSONVAL_H
-#define SL0PTTY_JSONVAL_H
+#ifndef SL0PPTY_JSONVAL_H
+#define SL0PPTY_JSONVAL_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -37,4 +37,4 @@ const char *jv_gets(const jv_t *obj, const char *key, const char *fallback);
 long jv_geti(const jv_t *obj, const char *key, long fallback);
 bool jv_getb(const jv_t *obj, const char *key, bool fallback);
 
-#endif /* SL0PTTY_JSONVAL_H */
+#endif /* SL0PPTY_JSONVAL_H */

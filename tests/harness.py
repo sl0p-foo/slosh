@@ -1,4 +1,4 @@
-"""Drive sl0ptty's headless driver and assert on the composited screen.
+"""Drive sl0ppty's headless driver and assert on the composited screen.
 
     with Session(["/bin/sh", "-c", "echo hi"], cols=20, rows=3) as s:
         s.settle()
@@ -12,7 +12,7 @@ import json
 import os
 import subprocess
 
-BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ptty")
+BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty")
 
 
 class Snapshot:
@@ -73,9 +73,9 @@ class Session:
         self.cols, self.rows = cols, rows
         environ = dict(os.environ)
         if config:
-            environ["SL0PTTY_CONFIG"] = str(config)
+            environ["SL0PPTY_CONFIG"] = str(config)
         else:
-            environ["SL0PTTY_CONFIG"] = "/nonexistent/sl0ptty.kdl"
+            environ["SL0PPTY_CONFIG"] = "/nonexistent/sl0ppty.kdl"
         if env:
             environ.update(env)
         cmd = [BIN, "--script", "--cols", str(cols), "--rows", str(rows)]
@@ -123,7 +123,7 @@ class Session:
         self._cmd("snapshot json")
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("sl0ptty exited before answering snapshot")
+            raise RuntimeError("sl0ppty exited before answering snapshot")
         return Snapshot(json.loads(line))
 
     def api(self, cmd, **kw):
@@ -132,7 +132,7 @@ class Session:
         self._cmd(json.dumps(kw))
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("sl0ptty exited before answering " + cmd)
+            raise RuntimeError("sl0ppty exited before answering " + cmd)
         return json.loads(line)
 
     def tabs(self):
@@ -143,7 +143,7 @@ class Session:
         self._cmd("panes")
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("sl0ptty exited before answering panes")
+            raise RuntimeError("sl0ppty exited before answering panes")
         return json.loads(line)
 
     def pane(self, n=0):

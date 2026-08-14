@@ -7,7 +7,7 @@
  * `settle` is implemented here because it needs an event loop.
  */
 #define _GNU_SOURCE
-#include "sl0ptty.h"
+#include "sl0ppty.h"
 
 #include <poll.h>
 #include <stdio.h>
@@ -54,13 +54,13 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
                  int idle_ms, bool script, const char *layout) {
   app_t *a = app_new(argv, cols, rows);
   if (!a) {
-    fprintf(stderr, "sl0ptty: cannot spawn pane\n");
+    fprintf(stderr, "sl0ppty: cannot spawn pane\n");
     return 1;
   }
   if (layout) {
     char err[256] = {0};
     if (!app_apply_layout_file(a, layout, true, err, sizeof err))
-      fprintf(stderr, "sl0ptty: %s: %s\n", layout, err[0] ? err : "bad layout");
+      fprintf(stderr, "sl0ppty: %s: %s\n", layout, err[0] ? err : "bad layout");
   }
   app_resize(a, cols, rows);
   screen_t s;
@@ -93,7 +93,7 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
 
     char *reply = cmd_exec(a, &s, in, line, &quit);
     if (!reply) {
-      fprintf(stderr, "sl0ptty: unknown command: %s\n", line);
+      fprintf(stderr, "sl0ppty: unknown command: %s\n", line);
       continue;
     }
     /* Only commands that answer print a line, so the harness stays in step. */

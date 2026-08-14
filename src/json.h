@@ -1,6 +1,6 @@
 /* A minimal JSON writer. No parser: we only ever emit. */
-#ifndef SL0PTTY_JSON_H
-#define SL0PTTY_JSON_H
+#ifndef SL0PPTY_JSON_H
+#define SL0PPTY_JSON_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -25,4 +25,4 @@ void json_int(json_t *j, const char *key, long long val);
 void json_bool(json_t *j, const char *key, bool val);
 void json_null(json_t *j, const char *key);
 
-#endif /* SL0PTTY_JSON_H */
+#endif /* SL0PPTY_JSON_H */

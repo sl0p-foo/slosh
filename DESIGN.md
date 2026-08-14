@@ -1,4 +1,4 @@
-# sl0ptty — design
+# sl0ppty — design
 
 An opinionated terminal multiplexer in C, built on
 [libghostty-vt](https://github.com/ghostty-org/ghostty).
@@ -125,7 +125,7 @@ Drawing and hit-testing cannot disagree, because there is only one of them.
 From the sl0ppi roadmap, four separate times: *unit tests were necessary and
 insufficient.* Every real bug was found by reading the screen.
 
-> **`sl0ptty --script` runs the entire compositor with no tty: commands in
+> **`sl0ppty --script` runs the entire compositor with no tty: commands in
 > (`send`, `raw`, `settle`, `resize`, `snapshot`), and the composited screen out
 > as JSON — rows of text, style runs, cursor, hit-list.**
 
@@ -147,7 +147,7 @@ unreadable.
 | **D2** | **Config is a hand-rolled KDL subset** (`kdl.c`, 300 lines, no dependency): nodes with arguments, `key=value` properties, children, `//` and `/* */` comments, `;` terminators for single-line nodes. `config/config.kdl` documents every setting by *being* the defaults. A broken file costs a warning on stderr and nothing else; `{"cmd":"reload"}` re-reads it live and refuses a file it cannot parse rather than half-applying it. |
 | **D3** | **Clean JSON control API** (one JSON object per line on a unix socket): `{"cmd":"new-tab","purpose":"project:x.deadbeef"}` -> `{"ok":true,"id":2}`. We do *not* mimic `zellij action`'s surface. A bare-verb form (`panes`, `snapshot text`) is kept as a human/harness alias and runs the same code, so a script cannot drift from what the API does. The `sl0ppi` CLI is ported on top later; `up`'s idempotency and D9's fail-open property carry over. |
 | **D4** | **Scrollback yes** (free from lib-vt), **copy-mode UI later.** |
-| **D5** | Binary, session dir, socket and config are all named **`sl0ptty`**. |
+| **D5** | Binary, session dir, socket and config are all named **`sl0ppty`**. |
 | **D6** | **Responsive layout is a pure function** — see below. |
 | **D7** | **Server renders, client is dumb.** The client forwards raw bytes and paints what it is sent — it does not even decode, so the decoder can change without redeploying clients, and a bug there costs a frame rather than a session. The same socket is the scripting API. Detach/reattach is table stakes because agents keep running. |
 | **D8** | **Panes and tabs carry `purpose=`**, sl0ppi's semantics kept verbatim, including the trust model: *declared purposes outrank in-band ones and cannot be overridden*, so `cat hostile.txt` cannot relabel a project tab. Declared means "from a layout or an operator", i.e. the control path; the in-band path (OSC, M4) always passes `declared:false` and is refused against a locked slot. Sanitised on ingest to `[A-Za-z0-9_.:/-]`. |
@@ -221,7 +221,7 @@ Only the display client's `MSG_INPUT` is honoured.
 This is not fussiness, it is the fork's worst bug rebuilt correctly. From the
 sl0ppi roadmap: `zellij action` failed 20-25%% of the time because every action
 probed liveness by connecting, *that probe counted as a client*, and its
-teardown removed the real one. We reproduced it exactly — `sl0ptty ls` kicked
+teardown removed the real one. We reproduced it exactly — `sl0ppty ls` kicked
 the attached client off — within an hour of the server existing. The regression
 test runs 20 x (`ls` + control command) against a live client and requires 0
 failures and a client that can still type.
@@ -229,13 +229,13 @@ failures and a client that can still type.
 ## Shape
 
 ```
-sl0ptty-server  (one per session; holds ptys + lib-vt terminals + layout)
+sl0ppty-server  (one per session; holds ptys + lib-vt terminals + layout)
    ├── epoll: pty fds, client socket, control socket, signalfd, timerfd
    ├── pane[] = { pty fd, GhosttyTerminal, purpose, chrome, hit-list }
    ├── layout tree (tabs -> split tree -> panes; stack/rail are node modes)
    ├── compositor: dirty panes -> cell grid -> diff vs last frame -> ANSI
    └── control API: newline-delimited JSON on a unix socket
-sl0ptty-client  (raw mode; decode input -> events; write bytes to tty)
+sl0ppty-client  (raw mode; decode input -> events; write bytes to tty)
 ```
 
 Frame pacing: pty reads are coalesced and painted on a timerfd at a cap

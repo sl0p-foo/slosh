@@ -248,7 +248,7 @@ def test_hello_handshake():
         s.settle()
         out = s.snapshot().pane_text(s.pane())
         check("hello is answered with an implementation and a version",
-              "5577;1;hello;sl0ptty;1" in out, repr(out[:120]))
+              "5577;1;hello;sl0ppty;1" in out, repr(out[:120]))
 
 
 if __name__ == "__main__":

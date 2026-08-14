@@ -1,6 +1,6 @@
-/* sl0ptty — common types. See DESIGN.md. */
-#ifndef SL0PTTY_H
-#define SL0PTTY_H
+/* sl0ppty — common types. See DESIGN.md. */
+#ifndef SL0PPTY_H
+#define SL0PPTY_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -194,4 +194,4 @@ char *pane_selection_text(pane_t *p);
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused);
 
-#endif /* SL0PTTY_H */
+#endif /* SL0PPTY_H */

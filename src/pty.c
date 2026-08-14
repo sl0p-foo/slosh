@@ -1,7 +1,7 @@
 /* pty spawn. Hand-rolled rather than forkpty() so we need no libutil and
  * behave identically under musl. */
 #define _GNU_SOURCE
-#include "sl0ptty.h"
+#include "sl0ppty.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -54,7 +54,7 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
     /* We are opinionated about the outer terminal (D11), and we present the
      * same contract inward. xterm-ghostty is what libghostty-vt implements. */
     setenv("TERM", "xterm-ghostty", 1);
-    setenv("SL0PTTY", "1", 1);
+    setenv("SL0PPTY", "1", 1);
     unsetenv("ZELLIJ");
 
     signal(SIGPIPE, SIG_DFL);

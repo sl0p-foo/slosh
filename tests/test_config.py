@@ -140,7 +140,7 @@ def test_fail_open():
     proc = subprocess.run([BIN, "--headless", "--cols", "20", "--rows", "3",
                            "--", "/bin/echo", "hi"],
                           capture_output=True, text=True,
-                          env=dict(os.environ, SL0PTTY_CONFIG=broken))
+                          env=dict(os.environ, SL0PPTY_CONFIG=broken))
     check("the reason is reported on stderr",
           "line" in proc.stderr or "parse" in proc.stderr, repr(proc.stderr))
     check("but the run succeeds", proc.returncode == 0, proc.stderr)
@@ -161,7 +161,7 @@ def test_fail_open():
     proc = subprocess.run([BIN, "--headless", "--cols", "20", "--rows", "3",
                            "--", "/bin/echo", "hi"],
                           capture_output=True, text=True,
-                          env=dict(os.environ, SL0PTTY_CONFIG=missing))
+                          env=dict(os.environ, SL0PPTY_CONFIG=missing))
     check("a missing config is silent", proc.stderr == "", repr(proc.stderr))
 
 

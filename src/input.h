@@ -8,8 +8,8 @@
  * The event carries GhosttyKey / GHOSTTY_MODS_* values as plain integers so
  * this header stays free of libghostty-vt.
  */
-#ifndef SL0PTTY_INPUT_H
-#define SL0PTTY_INPUT_H
+#ifndef SL0PPTY_INPUT_H
+#define SL0PPTY_INPUT_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -81,4 +81,4 @@ void input_timeout(input_parser_t *p, input_cb_t cb, void *ud);
 /* Debug/test rendering of an event, e.g. "key ARROW_UP mods=CTRL press". */
 void input_event_describe(const input_event_t *ev, char *buf, size_t cap);
 
-#endif /* SL0PTTY_INPUT_H */
+#endif /* SL0PPTY_INPUT_H */
