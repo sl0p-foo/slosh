@@ -188,7 +188,14 @@ struct app {
    * on something the hit list says is draggable, so neither can disagree with
    * what is on screen. */
   struct {
-    enum { DRAG_NONE, DRAG_TITLE, DRAG_EDGE, DRAG_SELECT, DRAG_BORDER } kind;
+    enum {
+      DRAG_NONE,
+      DRAG_TITLE,
+      DRAG_EDGE,
+      DRAG_SELECT,
+      DRAG_BORDER,
+      DRAG_TAB,
+    } kind;
     uint32_t src;      /* pane being dragged, or the split being resized */
     uint32_t target;   /* pane under the pointer, for the drop highlight */
     size_t edge;       /* which boundary of that split */
@@ -237,16 +244,22 @@ struct app {
   char query[64];
   size_t sel;
 
-  /* Renaming a pane in place: the title cell becomes the editor, so the name
-   * is typed where it will live rather than in a dialog somewhere else. */
-  bool renaming;
+  /* Renaming in place: the title cell becomes the editor, so the name is typed
+   * where it will live rather than in a dialog somewhere else. A pane's title
+   * and a tab's label are the same gesture on two different things, so this is
+   * one editor with a subject rather than two machines that would drift. */
+  enum { RENAME_NONE = 0, RENAME_PANE, RENAME_TAB } renaming;
   uint32_t rename_id;
   /* As wide as a pane title, so seeding the editor never truncates one (and so
    * never truncates one mid-UTF-8). */
   char rename_buf[256];
-  /* The first click of a candidate double-click on a title. */
+  /* The first click of a candidate double-click on a title. The *kind* is
+   * remembered with it: pane ids and tab ids are separate sequences, so pane 2
+   * and tab 2 both exist, and without this a click on one followed by a click
+   * on the other reads as a double-click on neither. */
   int64_t name_click_ms;
   uint32_t name_click_id;
+  int name_click_kind;
   const char *const *argv;
   /* What this session is called. The server knows it because it opened the
    * socket under that name; the app only knows it because it is worth saying
@@ -415,7 +428,10 @@ static const char *hint_for(app_t *a, const char *action) {
   if (strncmp(action, "corner:", 7) == 0) return "drag to resize both ways";
   if (strncmp(action, "focus:", 6) == 0) return "open this pane";
   if (strncmp(action, "find:", 5) == 0) return "go to this pane";
-  if (strncmp(action, "tab:", 4) == 0) return "switch to this tab";
+  /* Not "click to switch": that is the one of the three nobody needs telling.
+   * Same rule as a pane's title, which advertises the rename and the drag. */
+  if (strncmp(action, "tab:", 4) == 0)
+    return "double-click to rename \u00b7 drag to reorder";
   if (strcmp(action, "newtab") == 0) return "new tab";
   return NULL; /* a pane's own content, and anything not worth a word */
 }
@@ -1445,6 +1461,46 @@ bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
   return false;
 }
 
+static tab_t *tab_by_id(app_t *a, uint32_t id) {
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == id) return &a->tabs[i];
+  return NULL;
+}
+
+static size_t tab_index(app_t *a, uint32_t id) {
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == id) return i;
+  return (size_t)-1;
+}
+
+/* Move a tab to another position in the strip.
+ *
+ * A list operation on a list: the strip *is* the order, so there is no
+ * separate ordering to keep in sync with it. `cur` is a position rather than
+ * an identity, so it has to be recomputed here — carrying it across a move
+ * would leave you looking at whichever tab slid into the index you used to
+ * be at, which is the kind of bug that only shows up in front of someone. */
+static void move_tab(app_t *a, size_t from, size_t to) {
+  if (from == to || from >= a->ntabs || to >= a->ntabs) return;
+  tab_t moved = a->tabs[from];
+  if (from < to)
+    memmove(&a->tabs[from], &a->tabs[from + 1], (to - from) * sizeof *a->tabs);
+  else
+    memmove(&a->tabs[to + 1], &a->tabs[to], (from - to) * sizeof *a->tabs);
+  a->tabs[to] = moved;
+
+  if (a->cur == from) a->cur = to;
+  else if (a->cur > from && a->cur <= to) a->cur--;
+  else if (a->cur >= to && a->cur < from) a->cur++;
+}
+
+bool app_move_tab(app_t *a, uint32_t id, size_t index) {
+  size_t from = tab_index(a, id);
+  if (from == (size_t)-1 || index >= a->ntabs) return false;
+  move_tab(a, from, index);
+  return true;
+}
+
 bool app_set_tab_name(app_t *a, uint32_t id, const char *name) {
   for (size_t i = 0; i < a->ntabs; i++)
     if (a->tabs[i].id == id) {
@@ -2168,7 +2224,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   }
 
   const char *title = pane_title(leaf->pane);
-  bool editing = a->renaming && a->rename_id == leaf->id;
+  bool editing = a->renaming == RENAME_PANE && a->rename_id == leaf->id;
   if ((editing || (title && *title)) && avail >= 3) {
     char buf[320]; /* a full-length name, plus the caret and its spaces */
     int len = editing ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
@@ -2527,6 +2583,14 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     if (nm[0]) snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
     else snprintf(label, sizeof label, " %zu ", i + 1);
 
+    /* Renaming: the tab's own cell becomes the editor, in the editor's
+     * colours, so a half-typed name can never be mistaken for the tab's real
+     * one. The caret is part of the label, so the width below — and therefore
+     * the hit — is the width of what is actually drawn. */
+    bool editing = a->renaming == RENAME_TAB && a->rename_id == t->id;
+    if (editing)
+      snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
+
     bool active = i == a->cur;
     uint16_t attrs = active ? ATTR_BOLD : 0;
     /* Two independent signals: weight says which tab you are in, colour says
@@ -2535,8 +2599,11 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
      * costs a repaint of a few cells and guarantees the lit cells are the
      * registered ones. */
     uint16_t w = screen_text(s, x, y, label,
-                             active ? TAB_ACTIVE_FG : TAB_IDLE,
-                             active ? TAB_ACTIVE_BG : NO_COLOR, attrs);
+                             editing ? RENAME_FG
+                                     : (active ? TAB_ACTIVE_FG : TAB_IDLE),
+                             editing ? RENAME_BG
+                                     : (active ? TAB_ACTIVE_BG : NO_COLOR),
+                             editing ? ATTR_BOLD : attrs);
     /* Hovering keeps the active tab's fill — it is still the tab you are in —
      * so its feedback lands on the text instead. An inactive tab has no fill
      * to keep, and brightens. */
@@ -2550,7 +2617,7 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
                                      active ? TAB_ACTIVE_BG : NO_COLOR,
                                      ATTR_BOLD));
     }
-    if (ptr_on(a, x, y, w, 1))
+    if (!editing && ptr_on(a, x, y, w, 1))
       screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
                   active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
     char action[48];
@@ -2580,7 +2647,6 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
       hit_add(&s->hits, x, y, w, 1, "newtab");
     }
   }
-
 }
 
 /* The space between two of a split's children, or false if they are flush.
@@ -2959,15 +3025,16 @@ static bool finder_key(app_t *a, const input_event_t *ev) {
   return true;
 }
 
-/* ---- renaming a pane ---------------------------------------------------- */
+/* ---- renaming a pane or a tab ------------------------------------------- */
 
-/* The editor lives in the title cell itself (drawn by draw_frame), so the name
- * is typed where it is going to live. There is no dialog to place, nothing to
- * dismiss, and the pane it belongs to cannot be in doubt. */
+/* The editor lives in the label itself — a pane's title cell (draw_frame) or a
+ * tab's cell in the strip (draw_tab_strip) — so the name is typed where it is
+ * going to live. There is no dialog to place, nothing to dismiss, and what is
+ * being renamed cannot be in doubt. */
 static void rename_begin(app_t *a, uint32_t id) {
   node_t *n = pane_by_id(a, id);
   if (!n) return;
-  a->renaming = true;
+  a->renaming = RENAME_PANE;
   a->rename_id = id;
   /* Seed with what is on screen: a rename is usually an edit, not a retype. */
   const char *shown = pane_title(n->pane);
@@ -2977,14 +3044,38 @@ static void rename_begin(app_t *a, uint32_t id) {
   app_focus_pane(a, id);
 }
 
+static void rename_tab_begin(app_t *a, uint32_t id) {
+  tab_t *t = tab_by_id(a, id);
+  if (!t) return;
+  a->renaming = RENAME_TAB;
+  a->rename_id = id;
+  /* Seeded with the name only. A pane seeds with its title because a title is
+   * always something; a tab shows its *number* until it is named, and a number
+   * is not a name you are editing — offering "3" to backspace over would be
+   * offering to edit the wrong thing. A purpose is not seeded either: it comes
+   * from a layout and outranks what is typed here. */
+  snprintf(a->rename_buf, sizeof a->rename_buf, "%s", t->name);
+  a->name_click_ms = 0;
+  a->name_click_id = 0;
+  app_select_tab_id(a, id);
+}
+
 static void rename_end(app_t *a, bool keep) {
   if (!a->renaming) return;
-  node_t *n = pane_by_id(a, a->rename_id);
-  if (keep && n) {
-    pane_set_name(n->pane, a->rename_buf);
-    app_toast(a, a->rename_buf[0] ? "renamed" : "name cleared");
+  if (keep) {
+    bool done = false;
+    if (a->renaming == RENAME_PANE) {
+      node_t *n = pane_by_id(a, a->rename_id);
+      if (n) {
+        pane_set_name(n->pane, a->rename_buf);
+        done = true;
+      }
+    } else {
+      done = app_set_tab_name(a, a->rename_id, a->rename_buf);
+    }
+    if (done) app_toast(a, a->rename_buf[0] ? "renamed" : "name cleared");
   }
-  a->renaming = false;
+  a->renaming = RENAME_NONE;
   a->rename_id = 0;
   a->rename_buf[0] = 0;
 }
@@ -3194,13 +3285,14 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
        * second would be renaming a pane that had already moved. */
       if (on_name) {
         int64_t now = now_ms_();
-        if (a->name_click_id == id &&
+        if (a->name_click_id == id && a->name_click_kind == RENAME_PANE &&
             now - a->name_click_ms <= (int64_t)CFG.double_click_ms) {
           rename_begin(a, id);
           return; /* a rename, not a grab: start no drag */
         }
         a->name_click_ms = now;
         a->name_click_id = id;
+        a->name_click_kind = RENAME_PANE;
       }
       /* The top border is both a drag handle and an edge: whether this is a
        * move or a split-upward is decided by whether the pointer moves. The
@@ -3286,8 +3378,33 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     return;
   }
   if (strncmp(action, "tab:", 4) == 0) {
-    if (ev->maction == MOUSE_PRESS)
-      app_select_tab_id(a, (uint32_t)strtoul(action + 4, NULL, 10));
+    if (ev->maction != MOUSE_PRESS) return;
+    uint32_t id = (uint32_t)strtoul(action + 4, NULL, 10);
+    /* Two clicks on a tab, close together, rename it — the same gesture as a
+     * pane's title, on the other thing that has a name. The first click still
+     * switches to it, which is what you want either way: you rename the tab
+     * you are now in. */
+    int64_t now = now_ms_();
+    if (a->name_click_id == id && a->name_click_kind == RENAME_TAB &&
+        now - a->name_click_ms <= (int64_t)CFG.double_click_ms) {
+      rename_tab_begin(a, id);
+      return;
+    }
+    a->name_click_ms = now;
+    a->name_click_id = id;
+    a->name_click_kind = RENAME_TAB;
+    app_select_tab_id(a, id);
+    /* And it is now held: moving the pointer onto another tab reorders the
+     * strip. Armed on every press that is not a rename, exactly like a pane's
+     * title — a press that never moves stays the click that switched tabs,
+     * because the reorder only happens on motion. */
+    a->drag.kind = DRAG_TAB;
+    a->drag.src = id;
+    a->drag.target = id;
+    a->drag.moved = false;
+    a->drag.side = 0; /* shared with the border drag, which owns that field */
+    a->drag.x = ev->mx;
+    a->drag.y = ev->my;
     return;
   }
   /* Chrome activates on press. Forwarding to a pane does not: an app wants the
@@ -3435,8 +3552,11 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
 void app_event(app_t *a, const input_event_t *ev) {
   if (!a->ntabs || !cur(a)->focus) return;
 
-  /* A rename whose pane went away must not keep the keyboard. */
-  if (a->renaming && !pane_by_id(a, a->rename_id)) rename_end(a, false);
+  /* A rename whose subject went away must not keep the keyboard. */
+  if (a->renaming == RENAME_PANE && !pane_by_id(a, a->rename_id))
+    rename_end(a, false);
+  if (a->renaming == RENAME_TAB && !tab_by_id(a, a->rename_id))
+    rename_end(a, false);
 
   /* The rename editor and the finder each own the keyboard while open; the
    * mouse still routes through the hit list, whose topmost entries are the
@@ -3500,11 +3620,13 @@ void app_event(app_t *a, const input_event_t *ev) {
       const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
 
       /* Clicking away keeps the name, the way leaving a field commits it.
-       * Clicking the pane's own name again does not, so a stray second
+       * Clicking the thing's own label again does not, so a stray second
        * double-click lands in the editor instead of closing it. */
       if (a->renaming && ev->maction == MOUSE_PRESS) {
         char own[48];
-        snprintf(own, sizeof own, "panetitle:%u", a->rename_id);
+        snprintf(own, sizeof own,
+                 a->renaming == RENAME_PANE ? "panetitle:%u" : "tab:%u",
+                 a->rename_id);
         if (!action || strcmp(action, own) != 0) rename_end(a, true);
       }
 
@@ -3542,6 +3664,21 @@ void app_event(app_t *a, const input_event_t *ev) {
                             ? (int)ev->mx - (int)a->drag.x
                             : (int)ev->my - (int)a->drag.y;
             drag_edge(a, sp, a->drag.edge, cells);
+          } else if (a->drag.kind == DRAG_TAB) {
+            /* Reordered as you drag, rather than dropped at the end: the
+             * strip is the only thing that could show an insertion point, and
+             * a strip that already shows the result needs no such invention.
+             * Off the strip entirely, nothing moves — dragging away is not a
+             * cancel, it is simply not a move. */
+            size_t from = tab_index(a, a->drag.src);
+            if (from != (size_t)-1 && action) {
+              size_t to = (size_t)-1;
+              if (strncmp(action, "tab:", 4) == 0)
+                to = tab_index(a, (uint32_t)strtoul(action + 4, NULL, 10));
+              else if (strcmp(action, "newtab") == 0)
+                to = a->ntabs - 1; /* past the last tab means last */
+              if (to != (size_t)-1) move_tab(a, from, to);
+            }
           } else if (action && strncmp(action, "title:", 6) == 0) {
             a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
           } else if (action && strncmp(action, "panetitle:", 10) == 0) {

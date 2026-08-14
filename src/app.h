@@ -69,6 +69,9 @@ void app_cycle_tab(app_t *a, int delta);
 size_t app_tab_count(const app_t *a);
 bool app_close_tab(app_t *a, uint32_t id);
 bool app_set_tab_name(app_t *a, uint32_t id, const char *name);
+/* Put a tab at a different position in the strip, 0-based. The strip is the
+ * order, so this is what dragging one does; you stay in the tab you were in. */
+bool app_move_tab(app_t *a, uint32_t id, size_t index);
 
 /* Purposes (D8). `declared` means "from a layout/control API": it outranks an
  * in-band purpose and locks it, so a pane cannot relabel itself afterwards.

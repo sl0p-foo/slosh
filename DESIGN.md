@@ -298,20 +298,29 @@ layout from before it, until the mouse moved and corrected itself. Same lesson
 as the hit list, one level up: do not remember what you can derive from the
 frame you are drawing.
 
-### One drag machine, two verbs (M8)
+### One drag machine, three verbs (M8)
 
 Pane sizes are **weights**, so an even split is simply equal weights and
 resizing is not a special case of anything: the layout pass stays the same
 pure function of the tree and the rect, and a resized layout survives a
 collapse/expand cycle for free.
 
-Both mouse verbs start from the hit list, so neither can disagree with what is
-on screen:
+Every mouse verb starts from the hit list, so none of them can disagree with
+what is on screen:
 
 | target | painted by | drag does |
 |---|---|---|
 | a frame's top row | `draw_frame` | swap this pane with the one you drop it on |
 | the gap between two children | `draw_node`, from the rects they were just given | move that boundary |
+| a tab in the strip | `draw_tab_strip` | move it to where you drop it |
+
+The tab drag reorders **as you go** rather than dropping at the end. The strip
+is the only thing that could show an insertion point, and a strip already
+showing the result needs no such invention -- so there is no ghost tab, no
+caret, and nothing remembered between frames. Dragging off the strip is not a
+cancel: it is simply not a place to put a tab, so it stays where it last was.
+`cur` is a *position*, so a move has to recompute it; carrying it across would
+leave you looking at whichever tab slid into the index you used to be at.
 
 The drop target is highlighted while dragging, and **any keystroke ends a
 drag** — a release can go missing (the pointer leaves the terminal, the client

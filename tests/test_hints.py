@@ -91,8 +91,8 @@ def test_the_gap_and_the_strip_and_the_bar():
 
         t = hit(s, "tab:")
         hover(s, t["x"] + 1, t["y"])
-        check("a tab offers to switch", "switch to this tab" in bar(s),
-              repr(bar(s)))
+        check("a tab offers the two things you would not guess",
+              "rename" in bar(s) and "reorder" in bar(s), repr(bar(s)))
         n = hit(s, "newtab")
         hover(s, n["x"] + 1, n["y"])
         check("the new-tab button offers a new one", "new tab" in bar(s), repr(bar(s)))

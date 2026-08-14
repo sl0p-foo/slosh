@@ -65,7 +65,10 @@ connection goes away. Reattach with the same command.
   drag the crossing to move both at once.
 - **Drag a pane by its title** onto another to swap them. Everything it could
   land on greys out; the pane in your hand does not.
-- **Double-click a pane's title to rename it**, in place.
+- **Double-click a name to rename it, in place** — a pane's title, or a tab in
+  the strip. Enter keeps it, Escape abandons it, empty gives it back.
+- **Drag a tab along the strip** to reorder it; the strip rearranges as you go
+  rather than dropping it somewhere at the end.
 - Click a tab to switch, `+` to open one, a pane to focus it.
 - Hovering anything says what it does, in a word at the bottom of the screen.
 

@@ -168,6 +168,13 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                ? jok_int(NULL, 0)
                : jerr("no such tab");
   }
+  if (strcmp(cmd, "move-tab") == 0) {
+    long index = jv_geti(req, "index", 0);
+    if (index < 1) return jerr("index is 1-based");
+    return app_move_tab(a, (uint32_t)jv_geti(req, "id", 0), (size_t)(index - 1))
+               ? jok_raw("tabs", app_tabs_json(a))
+               : jerr("no such tab");
+  }
   if (strcmp(cmd, "set-name") == 0) {
     return app_set_tab_name(a, (uint32_t)jv_geti(req, "id", 0),
                             jv_gets(req, "name", ""))
