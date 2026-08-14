@@ -82,7 +82,24 @@ like "copied 13 chars".
 title or the tab strip, so chrome stays legible over a pane that has been
 dimmed underneath it. `dim_unfocused` (off by default) fades every pane but
 the focused one; `drag_grayscale` and `drag_dim` are the greying and the
-recession you get while dragging. All are strengths from 0 to 255. Because a cell's colour is often "whatever the
+recession you get while dragging. All are strengths from 0 to 255.
+
+Beyond those the session runs itself, a `shaders { }` block is a chain you
+choose, in the order you write it:
+
+```kdl
+shaders {
+    vignette amount=70                        // darken towards the edges
+    zebra amount=22                           // band alternate rows
+    ruler amount=60 at=80 color="#ff5fd7"     // a column guide, in any program
+    margin amount=90 at=100                   // long lines run out of the pane
+    spotlight amount=90 radius=14             // brightness follows the cursor
+    gradient amount=40 direction=0            // fade down the pane
+}
+```
+
+Each is a pure function of a cell's colour and where it sits, which is why a
+ruler costs no columns and works inside a program that has never heard of one. Because a cell's colour is often "whatever the
 terminal calls default", shaders resolve those through `theme`'s `default_fg`
 and `default_bg` — set them to your terminal's real colours, or a shaded pane
 will shift as it turns on. Panes with no shader defer to your terminal exactly

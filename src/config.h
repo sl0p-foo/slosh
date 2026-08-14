@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "shader.h"
 #include "sl0ppty.h"
 
 typedef enum {
@@ -66,6 +67,12 @@ typedef struct {
   uint8_t dim_unfocused;
   uint8_t drag_grayscale;
   uint8_t drag_dim;
+
+  /* Colour passes every pane gets, in the order they were written. Ordinary
+   * shaders rather than policy: the session has no opinion about these, you
+   * asked for them. */
+  shader_t shaders[SHADE_MAX];
+  size_t nshaders;
   bool status_bar;
   bool focus_follows_mouse;
 

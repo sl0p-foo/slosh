@@ -51,6 +51,24 @@ static void run1(screen_t *s, const char *kind, color_t color, uint8_t amount) {
   shade_apply(s, &sh, 1, 0, 0, s->cols, s->rows, &base);
 }
 
+static void run1p(screen_t *s, const char *kind, color_t color, uint8_t amount,
+                  uint16_t param, const shade_ctx_t *ctx) {
+  shader_t sh;
+  if (!shader_make_p(&sh, kind, color, amount, param)) return;
+  shade_ctx_t base = ctx ? *ctx : base_ctx();
+  shade_apply(s, &sh, 1, 0, 0, s->cols, s->rows, &base);
+}
+
+/* Fills every cell mid-grey, so any change is a change the shader made. */
+static void fill(screen_t *s, color_t fg, color_t bg) {
+  for (uint16_t y = 0; y < s->rows; y++)
+    for (uint16_t x = 0; x < s->cols; x++) put(s, x, y, fg, bg);
+}
+
+static uint8_t fg_at(screen_t *s, uint16_t x, uint16_t y) {
+  return screen_at(s, x, y)->fg.r;
+}
+
 /* A probe shader, to see what the pass tells a shader about where it is. */
 static struct {
   uint16_t x, y, cols, rows;
@@ -90,9 +108,19 @@ int main(void) {
        !shader_make(&sh, "bloom", (color_t){0}, 0), "");
     ok("a NULL kind is refused", !shader_make(&sh, NULL, (color_t){0}, 0), "");
 
+    ok("vignette is a built-in",
+       shader_make(&sh, "vignette", (color_t){0}, 0), "");
+    ok("gradient is a built-in",
+       shader_make(&sh, "gradient", (color_t){0}, 0), "");
+    ok("zebra is a built-in", shader_make(&sh, "zebra", (color_t){0}, 0), "");
+    ok("ruler is a built-in", shader_make(&sh, "ruler", (color_t){0}, 0), "");
+    ok("margin is a built-in", shader_make(&sh, "margin", (color_t){0}, 0), "");
+    ok("spotlight is a built-in",
+       shader_make(&sh, "spotlight", (color_t){0}, 0), "");
+
     size_t n = 0;
     while (shader_kind(n)) n++;
-    ok("the registry enumerates every built-in", n == 3, "");
+    ok("the registry enumerates every built-in", n == 9, "");
   }
 
   /* ---- amount is the whole strength scale ---- */
@@ -296,7 +324,7 @@ int main(void) {
       for (uint16_t x = 0; x < 8; x++)
         put(&s, x, y, rgb(0x11, 0x22, 0x33), rgb(0, 0, 0));
 
-    shader_t sh = {"probe", probe_fn, {0}, 0};
+    shader_t sh = {"probe", probe_fn, {0}, 0, 0};
     shade_ctx_t base = base_ctx();
     base.now_ms = 1234;
     base.focused = true;
@@ -318,6 +346,138 @@ int main(void) {
        ceq(screen_at(&s, 2, 1)->bg, 0, 0, 0), shown(screen_at(&s, 2, 1)->bg));
     ok("and (3,1) is its opposite corner",
        ceq(screen_at(&s, 5, 2)->bg, 3, 1, 0), shown(screen_at(&s, 5, 2)->bg));
+    screen_free(&s);
+  }
+
+  /* ---- positional: vignette ---- */
+  {
+    screen_init(&s, 41, 21);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1(&s, "vignette", (color_t){0}, 255);
+    ok("the centre is untouched", fg_at(&s, 20, 10) == 0xff,
+       shown(screen_at(&s, 20, 10)->fg));
+    ok("a corner is the darkest point",
+       fg_at(&s, 0, 0) < fg_at(&s, 10, 5) && fg_at(&s, 10, 5) < fg_at(&s, 20, 10),
+       shown(screen_at(&s, 0, 0)->fg));
+    ok("it is symmetric left to right", fg_at(&s, 0, 10) == fg_at(&s, 40, 10),
+       "");
+    ok("and top to bottom", fg_at(&s, 20, 0) == fg_at(&s, 20, 20), "");
+    /* A cell is about twice as tall as it is wide, so this pane (41x21) is
+     * square on screen even though it is not square in cells. Its top edge and
+     * its left edge are therefore the same distance from the middle, and come
+     * out equally dark. Without the row doubling the left edge would be four
+     * times further by the maths and much darker — so this equality is the
+     * whole proof that the falloff is round in cells rather than in columns. */
+    ok("a row counts double, so the falloff is round on screen",
+       fg_at(&s, 20, 0) == fg_at(&s, 0, 10),
+       shown(screen_at(&s, 20, 0)->fg));
+    screen_free(&s);
+  }
+
+  /* ---- positional: gradient ---- */
+  {
+    screen_init(&s, 8, 8);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1p(&s, "gradient", (color_t){0}, 255, 0, NULL); /* down */
+    ok("a downward gradient leaves the top row alone", fg_at(&s, 0, 0) == 0xff,
+       shown(screen_at(&s, 0, 0)->fg));
+    ok("and reaches the background by the bottom", fg_at(&s, 0, 7) == 0x00,
+       shown(screen_at(&s, 0, 7)->fg));
+    ok("it is uniform across a row", fg_at(&s, 0, 3) == fg_at(&s, 7, 3), "");
+    screen_free(&s);
+
+    screen_init(&s, 8, 8);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1p(&s, "gradient", (color_t){0}, 255, 2, NULL); /* rightward */
+    ok("direction 2 runs left to right instead",
+       fg_at(&s, 0, 0) == 0xff && fg_at(&s, 7, 0) == 0x00, "");
+    screen_free(&s);
+  }
+
+  /* ---- positional: zebra ---- */
+  {
+    screen_init(&s, 4, 6);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1p(&s, "zebra", (color_t){0}, 255, 1, NULL);
+    ok("even rows are left alone",
+       fg_at(&s, 0, 0) == 0xff && fg_at(&s, 0, 2) == 0xff, "");
+    ok("odd rows are darkened",
+       fg_at(&s, 0, 1) == 0x00 && fg_at(&s, 0, 3) == 0x00, "");
+    screen_free(&s);
+
+    screen_init(&s, 4, 8);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1p(&s, "zebra", (color_t){0}, 255, 2, NULL);
+    ok("a band of 2 alternates every two rows",
+       fg_at(&s, 0, 0) == 0xff && fg_at(&s, 0, 1) == 0xff &&
+           fg_at(&s, 0, 2) == 0x00 && fg_at(&s, 0, 3) == 0x00,
+       "");
+    screen_free(&s);
+  }
+
+  /* ---- positional: ruler ---- */
+  {
+    screen_init(&s, 10, 3);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0x00, 0x00, 0x00));
+    run1p(&s, "ruler", rgb(0xff, 0x00, 0x00), 255, 4, NULL);
+    ok("the marked column takes the colour",
+       ceq(screen_at(&s, 4, 0)->bg, 0xff, 0, 0),
+       shown(screen_at(&s, 4, 0)->bg));
+    ok("down its whole height", ceq(screen_at(&s, 4, 2)->bg, 0xff, 0, 0), "");
+    ok("its neighbours are untouched",
+       ceq(screen_at(&s, 3, 0)->bg, 0, 0, 0) &&
+           ceq(screen_at(&s, 5, 0)->bg, 0, 0, 0),
+       "");
+    /* A guide that recoloured the text would make the code it marks harder to
+     * read, which is the opposite of the job. */
+    ok("the text on it keeps its own colour",
+       ceq(screen_at(&s, 4, 0)->fg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 4, 0)->fg));
+    screen_free(&s);
+  }
+
+  /* ---- positional: margin ---- */
+  {
+    screen_init(&s, 10, 2);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1p(&s, "margin", (color_t){0}, 255, 6, NULL);
+    ok("columns before the margin are untouched", fg_at(&s, 5, 0) == 0xff, "");
+    ok("the margin column itself recedes", fg_at(&s, 6, 0) == 0x00, "");
+    ok("and everything past it", fg_at(&s, 9, 0) == 0x00, "");
+    screen_free(&s);
+  }
+
+  /* ---- positional: spotlight ---- */
+  {
+    shade_ctx_t ctx = base_ctx();
+    ctx.has_cursor = true;
+    ctx.cursor_x = 20;
+    ctx.cursor_y = 10;
+
+    screen_init(&s, 41, 21);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    run1p(&s, "spotlight", (color_t){0}, 255, 5, &ctx);
+    ok("the cell under the cursor is untouched", fg_at(&s, 20, 10) == 0xff, "");
+    ok("and so is everything inside the radius", fg_at(&s, 24, 10) == 0xff, "");
+    ok("just past the radius the light has begun to fall away",
+       fg_at(&s, 26, 10) < 0xff, shown(screen_at(&s, 26, 10)->fg));
+    ok("and keeps falling with distance",
+       fg_at(&s, 26, 10) > fg_at(&s, 28, 10), "");
+    ok("the falloff is a ramp, not an edge",
+       fg_at(&s, 25, 10) > fg_at(&s, 27, 10) &&
+           fg_at(&s, 27, 10) > fg_at(&s, 29, 10),
+       "");
+    ok("far enough out it is fully dark", fg_at(&s, 35, 10) == 0x00, "");
+    screen_free(&s);
+
+    /* With no cursor there is nothing to centre on, so it does nothing at all
+     * rather than guessing at the middle. */
+    screen_init(&s, 41, 21);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    shade_ctx_t nocur = base_ctx();
+    run1p(&s, "spotlight", (color_t){0}, 255, 5, &nocur);
+    ok("without a cursor the spotlight does nothing",
+       fg_at(&s, 0, 0) == 0xff && fg_at(&s, 40, 20) == 0xff, "");
     screen_free(&s);
   }
 

@@ -270,6 +270,44 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
     c->shell = strdup(sh);
   }
 
+  /* `shaders { vignette amount=60; ruler amount=70 at=80 }` — one node per
+   * pass, and the order they are written in is the order they run, because a
+   * chain is a sequence. A block that names nothing known leaves the previous
+   * set alone rather than silently clearing it. */
+  const kdl_node_t *shaders = kdl_child(root, "shaders");
+  if (shaders) {
+    c->nshaders = 0;
+    for (size_t i = 0; i < shaders->nkids && c->nshaders < SHADE_MAX; i++) {
+      const kdl_node_t *k = shaders->kids[i];
+      if (!k || !k->name) continue;
+
+      long amount = kdl_prop_int(k, "amount", 128);
+      if (amount < 0) amount = 0;
+      if (amount > 255) amount = 255;
+      /* Every shader that takes a number calls it something different, so
+       * accept each name rather than making you remember which is which. */
+      long param = kdl_prop_int(k, "at", -1);
+      if (param < 0) param = kdl_prop_int(k, "radius", -1);
+      if (param < 0) param = kdl_prop_int(k, "band", -1);
+      if (param < 0) param = kdl_prop_int(k, "direction", -1);
+      if (param < 0) param = 0;
+      if (param > 65535) param = 65535;
+
+      color_t col = c->frame_focus; /* a sensible default for `ruler` */
+      const char *cs = kdl_prop(k, "color", NULL);
+      if (cs && !parse_color(cs, &col) && err && !err[0])
+        snprintf(err, errcap, "bad colour for shader %s: %s", k->name, cs);
+
+      if (!shader_make_p(&c->shaders[c->nshaders], k->name, col,
+                         (uint8_t)amount, (uint16_t)param)) {
+        if (err && !err[0])
+          snprintf(err, errcap, "unknown shader: %s", k->name);
+        continue;
+      }
+      c->nshaders++;
+    }
+  }
+
   const kdl_node_t *theme = kdl_child(root, "theme");
   if (theme) {
     struct {

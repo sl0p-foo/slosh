@@ -78,6 +78,34 @@ dim_unfocused 0
 drag_grayscale 200
 drag_dim 140
 
+// Colour passes every pane gets, in the order written — a chain is a sequence,
+// so `grayscale` then `tint` is not `tint` then `grayscale`. Each node is one
+// pass; `amount` is 0..255 and defaults to 128. Listing a shader twice is how
+// you get two of it (two rulers, say). An unknown name is refused with a
+// warning and skipped, never guessed at.
+//
+//   dim        amount                    darken towards black
+//   grayscale  amount                    drain colour, weighted for the eye
+//   tint       amount color="#rrggbb"    pull towards a colour
+//   vignette   amount                    darken towards the pane's edges
+//   gradient   amount direction=0..3     fade towards the background
+//                                        0 down, 1 up, 2 right, 3 left
+//   zebra      amount band=1             darken alternate bands of `band` rows;
+//                                        band=1 is also a CRT scanline
+//   ruler      amount at=80 color=       mark a column, background only, so the
+//                                        text on it stays readable
+//   margin     amount at=100             everything from that column recedes
+//   spotlight  amount radius=12          brightness falls away from the cursor
+//
+// Empty by default: these are yours to ask for, not opinions we hold.
+//
+// shaders {
+//     vignette amount=70
+//     zebra amount=22
+//     ruler amount=60 at=80 color="#ff5fd7"
+//     spotlight amount=90 radius=14
+// }
+
 // How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
 // "config reloaded") stays in the bottom-right corner.
 toast_ms 2500

@@ -1499,22 +1499,36 @@ static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
 /* A pane with nothing to apply costs nothing: no context is built and no cell
  * is visited, so an unshaded session emits the same bytes it did before. */
 static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
-  shader_t chain[SHADE_MAX + 2];
+  shader_t chain[SHADE_CHAIN_MAX];
   size_t nc = 0;
 
-  /* Attached first, policy last: a pane's own colour is the thing the
-   * session's opinion of the moment is then applied to. */
-  for (size_t i = 0; i < n->nshaders && nc < SHADE_MAX; i++)
+  /* Configured first, then this pane's own, then policy last: what you asked
+   * every pane to look like, adjusted for this pane, and only then the
+   * session's opinion about this moment — which has to be able to grey out
+   * whatever the other two produced. */
+  for (size_t i = 0; i < CFG.nshaders && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = CFG.shaders[i];
+  for (size_t i = 0; i < n->nshaders && nc < SHADE_CHAIN_MAX; i++)
     chain[nc++] = n->shaders[i];
-  nc += policy_shaders(a, n, &chain[nc], (sizeof chain / sizeof *chain) - nc);
+  nc += policy_shaders(a, n, &chain[nc], SHADE_CHAIN_MAX - nc);
 
   if (!nc) return;
+  bool focused = n == cur(a)->focus;
   shade_ctx_t base = {
       .now_ms = now_ms_(),
-      .focused = n == cur(a)->focus,
+      .focused = focused,
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };
+  /* The screen's cursor belongs to whichever pane is focused, so it is only
+   * this pane's cursor when this pane is the focused one. Handing it to any
+   * other pane would have its spotlight chasing a cursor somewhere else. */
+  if (focused && s->cursor_visible && s->cursor_x >= n->content.x &&
+      s->cursor_y >= n->content.y) {
+    base.has_cursor = true;
+    base.cursor_x = (uint16_t)(s->cursor_x - n->content.x);
+    base.cursor_y = (uint16_t)(s->cursor_y - n->content.y);
+  }
   shade_apply(s, chain, nc, n->content.x, n->content.y, n->content.w,
               n->content.h, &base);
 }

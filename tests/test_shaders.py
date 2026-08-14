@@ -365,6 +365,56 @@ def test_a_keystroke_mid_drag_clears_the_greying():
               content_fg(snap, right) == GREEN, str(content_fg(snap, right)))
 
 
+# ---- the config block ------------------------------------------------------
+
+def test_config_shaders_reach_the_screen():
+    """`shaders { ... }` is the surface these are actually driven from."""
+    conf = 'shaders {\n    ruler amount=255 at=4 color="#ff0000"\n}\n'
+    with Session(SH, cols=60, rows=12, config=cfg(conf)) as s:
+        s.settle(200)
+        p = s.pane()
+        snap = s.snapshot()
+        on = snap.style_at(p["content_x"] + 4, p["content_y"])
+        off = snap.style_at(p["content_x"] + 3, p["content_y"])
+        check("a configured ruler marks its column",
+              (on or {}).get("bg") == "#ff0000", str(on))
+        check("and leaves the neighbouring column alone",
+              (off or {}).get("bg") != "#ff0000", str(off))
+
+
+def test_config_shaders_run_in_written_order():
+    """Order in the block is order in the chain."""
+    a = 'shaders {\n    tint amount=255 color="#ff0000"\n    tint amount=255 color="#0000ff"\n}\n'
+    b = 'shaders {\n    tint amount=255 color="#0000ff"\n    tint amount=255 color="#ff0000"\n}\n'
+    def last(conf):
+        with Session(SH, cols=50, rows=10, config=cfg(conf)) as s:
+            s.settle(200)
+            p = s.pane()
+            return content_fg(s.snapshot(), p)
+    check("the last shader written is the last one applied",
+          last(a) == "#0000ff" and last(b) == "#ff0000",
+          f"{last(a)} / {last(b)}")
+
+
+def test_an_unknown_shader_is_refused_not_guessed():
+    with Session(SH, cols=50, rows=10,
+                 config=cfg('shaders {\n    bloom amount=255\n}\n')) as s:
+        s.settle(200)
+        check("an unknown shader leaves the session running and unshaded",
+              s.alive() and content_fg(s.snapshot(), s.pane()) == GREEN,
+              str(content_fg(s.snapshot(), s.pane())))
+
+
+def test_positional_shaders_stay_off_the_chrome():
+    conf = 'shaders {\n    vignette amount=255\n    zebra amount=255 band=1\n}\n'
+    with Session(SH, cols=60, rows=12, config=cfg(conf)) as s:
+        s.settle(200)
+        p = s.pane()
+        snap = s.snapshot()
+        check("a full-strength positional stack still leaves the frame alone",
+              frame_fg(snap, p) == "#ff5fd7", str(frame_fg(snap, p)))
+
+
 if __name__ == "__main__":
     test_off_by_default()
     test_dims_everything_but_the_focused_pane()
@@ -381,4 +431,8 @@ if __name__ == "__main__":
     test_the_hovered_target_is_still_highlighted_over_the_dashes()
     test_a_drag_that_ends_off_a_pane_still_clears()
     test_a_keystroke_mid_drag_clears_the_greying()
+    test_config_shaders_reach_the_screen()
+    test_config_shaders_run_in_written_order()
+    test_an_unknown_shader_is_refused_not_guessed()
+    test_positional_shaders_stay_off_the_chrome()
     sys.exit(report())

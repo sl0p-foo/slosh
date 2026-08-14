@@ -44,6 +44,87 @@ static void sh_tint(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
   c->bg = mix(c->bg, sh->color, sh->amount);
 }
 
+/* ---- positional --------------------------------------------------------- */
+
+/* A terminal cell is about twice as tall as it is wide, so any effect that
+ * claims to be round has to say so in cells: a row counts double, exactly as
+ * the layout's own centre-distance does. */
+static int dist2(int dx, int dy) { return dx * dx + (dy * 2) * (dy * 2); }
+
+static void dim_by(cell_t *c, uint8_t a) {
+  const color_t black = {true, 0, 0, 0};
+  c->fg = mix(c->fg, black, a);
+  c->bg = mix(c->bg, black, a);
+}
+
+/* Darken towards the edges. Falloff is on squared distance, which is both
+ * cheaper than a square root and the curve a vignette wants anyway: flat
+ * across the middle, then gathering pace. */
+static void sh_vignette(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
+  int cx = ctx->cols / 2, cy = ctx->rows / 2;
+  int far = dist2(cx, cy);
+  if (far <= 0) return;
+  int d = dist2((int)ctx->x - cx, (int)ctx->y - cy);
+  if (d > far) d = far;
+  dim_by(c, (uint8_t)((int)sh->amount * d / far));
+}
+
+/* Fade across the pane towards the background, so a pane reads as a surface
+ * with a light on it rather than a rectangle of text. */
+static void sh_gradient(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
+  int span, pos;
+  switch (sh->param) {
+    case 1: span = ctx->rows; pos = ctx->rows - 1 - ctx->y; break;
+    case 2: span = ctx->cols; pos = ctx->x; break;
+    case 3: span = ctx->cols; pos = ctx->cols - 1 - ctx->x; break;
+    default: span = ctx->rows; pos = ctx->y; break;
+  }
+  if (span <= 1) return;
+  uint8_t a = (uint8_t)((int)sh->amount * pos / (span - 1));
+  c->fg = mix(c->fg, ctx->default_bg, a);
+  c->bg = mix(c->bg, ctx->default_bg, a);
+}
+
+/* Horizontal banding. `param` rows per band, every other band darkened —
+ * which at one row per band is also what a CRT scanline is, so there is one
+ * shader here and not two. */
+static void sh_zebra(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
+  uint16_t band = sh->param ? sh->param : 1;
+  if (((ctx->y / band) & 1) == 0) return;
+  dim_by(c, sh->amount);
+}
+
+/* A column guide. Background only: a ruler that recoloured the text would be
+ * making the code it marks harder to read, which is the opposite of the job. */
+static void sh_ruler(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
+  if (ctx->x != sh->param) return;
+  c->bg = mix(c->bg, sh->color, sh->amount);
+}
+
+/* Everything past a column recedes, so an over-long line visibly runs out of
+ * the part of the pane you meant to use. */
+static void sh_margin(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
+  if (ctx->x < sh->param) return;
+  dim_by(c, sh->amount);
+}
+
+/* Brightness falls away from the cursor. Inside the radius nothing happens at
+ * all, so the text you are working on is never touched; beyond it the dimming
+ * ramps up over the same distance again rather than switching on at an edge. */
+static void sh_spotlight(const shader_t *sh, const shade_ctx_t *ctx,
+                         cell_t *c) {
+  if (!ctx->has_cursor) return;
+  int r = sh->param ? sh->param : 10;
+  int inner = r * r;
+  int d = dist2((int)ctx->x - (int)ctx->cursor_x,
+                (int)ctx->y - (int)ctx->cursor_y);
+  if (d <= inner) return;
+  int ramp = inner * 3;
+  int over = d - inner;
+  int k = over >= ramp ? 255 : over * 255 / ramp;
+  dim_by(c, (uint8_t)((int)sh->amount * k / 255));
+}
+
 static const struct {
   const char *name;
   shade_fn fn;
@@ -51,14 +132,25 @@ static const struct {
     {"dim", sh_dim},
     {"grayscale", sh_grayscale},
     {"tint", sh_tint},
+    {"vignette", sh_vignette},
+    {"gradient", sh_gradient},
+    {"zebra", sh_zebra},
+    {"ruler", sh_ruler},
+    {"margin", sh_margin},
+    {"spotlight", sh_spotlight},
 };
 
 bool shader_make(shader_t *out, const char *kind, color_t color,
                  uint8_t amount) {
+  return shader_make_p(out, kind, color, amount, 0);
+}
+
+bool shader_make_p(shader_t *out, const char *kind, color_t color,
+                   uint8_t amount, uint16_t param) {
   if (!out || !kind) return false;
   for (size_t i = 0; i < sizeof REGISTRY / sizeof *REGISTRY; i++) {
     if (strcmp(REGISTRY[i].name, kind) != 0) continue;
-    *out = (shader_t){REGISTRY[i].name, REGISTRY[i].fn, color, amount};
+    *out = (shader_t){REGISTRY[i].name, REGISTRY[i].fn, color, amount, param};
     return true;
   }
   return false;
