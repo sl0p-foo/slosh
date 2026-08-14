@@ -210,16 +210,32 @@ double_click_ms 400
 // Naming a state replaces its default outright — including with nothing, which
 // is how you turn one off:  states { drop_target { } }
 //
-// Only drop_hover, drop_target and dead have defaults, shown here. `dead` is
-// gentler than the drag greying on purpose: a dead pane is something you are
-// still meant to read.
+// Which states have a default, and why the line falls where it does:
+//
+//   a pane that is *not live* gets one -- dead, suspended, scrolled. In all
+//   three the cells are showing something other than a running program's
+//   present: output from something that exited, a pane that never started, or
+//   the past. None of that is discoverable by looking unless something says
+//   so, which is the entire argument for colouring it.
+//
+//   a pane that is merely *not the one you are in* does not -- unfocused, and
+//   one being dragged. That is ambient contrast, which is a taste, and a taste
+//   shipped as a default is how a tool gets a reputation for fighting you.
+//   `unfocused { dim amount=90 }` is one line away if you disagree.
+//
+// All the defaults are gentle: a dead pane, a suspended one and scrollback are
+// all things you still want to read. The compiled-in scrolled tint uses the
+// scrollback indicator's own colour (theme's scroll_bg) so a theme moves both
+// together; written here it is spelled out, because a `color=` you do not give
+// falls back to theme's frame_focus, which is a different setting that happens
+// to hold the same value in every theme we ship.
 states {
     drop_hover { grayscale amount=200; dim amount=140 }
     drop_target { grayscale amount=200; dim amount=140 }
     dead { grayscale amount=200; dim amount=90 }
+    suspended { grayscale amount=170; dim amount=60 }
+    scrolled { tint amount=22 color="#ff5fd7" }   // = theme's scroll_bg
     // dragging { }
-    // suspended { grayscale amount=180; dim amount=90 }
-    // scrolled { tint amount=30 color="#ffcc88" }
     // unfocused { dim amount=90 }
 }
 

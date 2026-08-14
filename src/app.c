@@ -2332,15 +2332,27 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
 
   const char *title = pane_title(leaf->pane);
   const char *status = pane_status(leaf->pane);
-  /* A dead pane says so here too, in place of whatever its program last asked
-   * us to show — which is stale by definition. This row is the only thing a
-   * flattened tab draws of a pane, and "it is over" is the one fact you
-   * cannot afford to have to open it to discover. The shader pass does not
-   * reach a header, so the words have to carry it. */
+  /* A pane that is not live says so here, in place of whatever its program
+   * last asked us to show — which is stale by definition once the program is
+   * gone or was never started.
+   *
+   * This row is the only thing a flattened tab draws of a pane, and the
+   * shader pass deliberately never reaches it: shaders colour *contents*, and
+   * a header is chrome (D13). So the states that get a colour everywhere else
+   * have to be carried by the words here, in the same order the status line
+   * ranks them. Without this, collapsing a tab hides exactly the facts the
+   * colour exists to show. */
   bool dead = !pane_alive(leaf->pane) && !pane_suspended(leaf->pane);
   char words[64];
   if (dead) {
     exit_words(leaf->pane, words, sizeof words);
+    status = words;
+  } else if (pane_suspended(leaf->pane)) {
+    status = "not started";
+  } else if (pane_scrolled(leaf->pane)) {
+    uint32_t above = 0, total = 0;
+    pane_scroll_pos(leaf->pane, &above, &total);
+    snprintf(words, sizeof words, "\u25b2 %u", total > above ? total - above : 0);
     status = words;
   }
   char line[256];

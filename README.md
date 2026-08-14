@@ -112,14 +112,18 @@ mistake in it is refused rather than half-applied.
 Geometry, key bindings and every colour are configurable. Six ready-made
 themes are in [`contrib/themes`](contrib/themes).
 
-Panes can also be tinted by *state* — dimmed when unfocused, greyed when their
-program has exited, tinted when you are reading scrollback:
+Panes are tinted by *state*, and out of the box only for states that mean
+**this pane is not live**: its program exited, it never started, or you are
+looking at scrollback rather than the present. None of those is discoverable
+by looking unless something says so. A pane that is merely not the one you are
+in is left alone — that is a taste, and it is one line away if it is yours:
 
 ```kdl
 states {
-    dead { grayscale amount=200; dim amount=90 }
-    scrolled { tint amount=30 color="#ffcc88" }
-    unfocused { dim amount=90 }
+    dead { grayscale amount=200; dim amount=90 }   // shipped
+    suspended { grayscale amount=170; dim amount=60 }
+    scrolled { tint amount=22 color="#ff5fd7" }
+    unfocused { dim amount=90 }                    // yours, if you want it
 }
 ```
 

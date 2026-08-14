@@ -245,14 +245,32 @@ void config_defaults(config_t *c) {
   shader_make(&c->state_shaders[PSTATE_DROP_HOVER][1], "dim", (color_t){0},
               140);
   c->state_n[PSTATE_DROP_HOVER] = 2;
-  /* The other state with an opinion, and for the same reason the drag states
-   * have one: what is on those cells is no longer live, and colour is the
-   * only thing that says so without reading a word. Gentler than the drag
-   * greying, because a dead pane is something you still want to read. */
+  /* The states with an opinion, and the line between those and the ones
+   * without it:
+   *
+   *   a pane that is *not live* gets one — dead, suspended, scrolled. In all
+   *   three the cells are showing something other than a running program's
+   *   present: output from something that has exited, a pane that never
+   *   started, or the past. You cannot discover any of that by looking unless
+   *   something says so, and that is the whole argument for the feature;
+   *
+   *   a pane that is merely *not the one you are in* does not — unfocused,
+   *   dragging. That is ambient contrast, which is a taste, and shipping a
+   *   taste as a default is how a tool gets a reputation for fighting you.
+   *
+   * All three are gentle on purpose. A dead pane, a suspended one and
+   * scrollback are all things you still want to read. */
   shader_make(&c->state_shaders[PSTATE_DEAD][0], "grayscale", (color_t){0},
               200);
   shader_make(&c->state_shaders[PSTATE_DEAD][1], "dim", (color_t){0}, 90);
   c->state_n[PSTATE_DEAD] = 2;
+
+  /* Laid out and never started: inert, and still legible — a suspended pane's
+   * contents are the command it is waiting to run. */
+  shader_make(&c->state_shaders[PSTATE_SUSPENDED][0], "grayscale", (color_t){0},
+              170);
+  shader_make(&c->state_shaders[PSTATE_SUSPENDED][1], "dim", (color_t){0}, 60);
+  c->state_n[PSTATE_SUSPENDED] = 2;
 
   const color_t accent = rgb(0xff, 0x5f, 0xd7);
   const color_t ink = rgb(0x14, 0x14, 0x18);
@@ -274,6 +292,14 @@ void config_defaults(config_t *c) {
 
   c->scroll_fg = ink;
   c->scroll_bg = accent;
+
+  /* Looking at the past, said in colour as well as in the ▲ count: a wash of
+   * the same accent the scroll indicator uses, so a theme moves both together
+   * rather than leaving a hardcoded hue nobody can reach. Weak (about 9%) —
+   * it has to survive being read through. Attached here rather than beside
+   * the other states because it is the one that needs the palette. */
+  shader_make(&c->state_shaders[PSTATE_SCROLLED][0], "tint", c->scroll_bg, 22);
+  c->state_n[PSTATE_SCROLLED] = 1;
 
   c->header = dim;
   c->header_hover = accent;

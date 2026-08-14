@@ -222,10 +222,12 @@ after-the-frame output owes the same debt.
 - **Tab-level shaders**, and the bigger one: **OSC 5577 → shader**, letting a
   pane colour itself by reporting its own state. That is the idea most likely
   to make this feel unlike other multiplexers.
-- **Collapsed headers do not reach the shader pass**, so a `suspended`,
-  `dead` or `scrolled` colour is invisible on one. This is now the most
-  visible gap: a tab that has flattened into a list is exactly where you would
-  want a dead pane to stand out, and it is the one place it does not.
+- **Collapsed headers do not reach the shader pass** and never will: a header
+  is chrome, and shaders colour contents (D13). The gap is closed the only
+  honest way, by having the header *say* what the colour says elsewhere —
+  `exited: status 3`, `not started`, `▲ 12` — in the same order the status
+  line ranks them. If you add a not-live state, add it in both places or a
+  flattened tab will hide it.
 - **A dead pane cannot be re-run from the finder or the minimised bar** — only
   from its own frame, `C-a r`, or `{"cmd":"rerun"}`. Fine while a dead pane is
   something you are looking at; less fine once you have six of them put away.
