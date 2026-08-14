@@ -1468,31 +1468,34 @@ size_t app_shade_count(app_t *a, uint32_t pane_id) {
  * that forgot to clear it is a bug that only shows up in front of someone.
  * The rect and the collapsed flag are recomputed every pass for exactly this
  * reason; this is the same rule applied to colour. */
-static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
-  size_t k = 0;
+/* Which state this pane is in, or PSTATE_COUNT for none.
+ *
+ * A pane is usually in several at once, so the order here is the answer: the
+ * first that matches wins and the rest are not asked. It runs from the most
+ * transient and deliberate to the most ambient, because a pane you are holding
+ * should not be recoloured by anything, a mode the whole screen is in outranks
+ * a hint about one pane, and "not focused" is the weakest thing that can be
+ * true of a pane. */
+static pane_state_t pane_state(app_t *a, node_t *n) {
   /* Only once the pointer has actually moved: a press that turns out to be a
-   * click would otherwise flash the whole session grey on its way to nothing. */
+   * click would otherwise flash the whole session on its way to nothing. */
   if (a->drag.kind == DRAG_TITLE && a->drag.moved) {
-    /* The pane being dragged is left alone and everything else is pushed back
-     * — desaturated *and* darkened, because grey alone still competes for
-     * attention at the same brightness. Two passes rather than one shader
-     * that does both: they are independently tunable, and "colourless" and
-     * "recessed" are different things to want.
-     *
-     * This replaces the focus dimming rather than stacking with it: two
-     * reasons to be grey compound into a muddy grey that reads as neither. */
-    if (n->id == a->drag.src) return 0;
-    if (CFG.drag_grayscale && k < cap &&
-        shader_make(&out[k], "grayscale", (color_t){0}, CFG.drag_grayscale))
-      k++;
-    if (CFG.drag_dim && k < cap &&
-        shader_make(&out[k], "dim", (color_t){0}, CFG.drag_dim))
-      k++;
-    return k;
+    if (n->id == a->drag.src) return PSTATE_DRAGGING;
+    if (n->id == a->drag.target) return PSTATE_DROP_HOVER;
+    return PSTATE_DROP_TARGET;
   }
-  if (CFG.dim_unfocused && n != cur(a)->focus && k < cap &&
-      shader_make(&out[k], "dim", (color_t){0}, CFG.dim_unfocused))
-    k++;
+  if (pane_suspended(n->pane)) return PSTATE_SUSPENDED;
+  if (pane_scrolled(n->pane)) return PSTATE_SCROLLED;
+  if (n != cur(a)->focus) return PSTATE_UNFOCUSED;
+  return PSTATE_COUNT;
+}
+
+static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
+  pane_state_t st = pane_state(a, n);
+  if (st >= PSTATE_COUNT) return 0;
+  size_t k = CFG.state_n[st];
+  if (k > cap) k = cap;
+  for (size_t i = 0; i < k; i++) out[i] = CFG.state_shaders[st][i];
   return k;
 }
 
@@ -1550,6 +1553,9 @@ static void draw_cb(node_t *n, void *ud) {
 
   draw_frame(d->a, d->s, n);
   if (pane_suspended(n->pane)) {
+    /* Falls through to the shader pass rather than returning: a pane that has
+     * not started is a state you can want to colour, and its label is the only
+     * content it has. */
     /* The pane exists, is laid out, and has run nothing. Say what it would. */
     const char *label = pane_label(n->pane);
     char line[256];
@@ -1572,9 +1578,10 @@ static void draw_cb(node_t *n, void *ud) {
     screen_text(d->s, (uint16_t)(n->content.x + (n->content.w - w) / 2),
                 (uint16_t)(n->content.y + n->content.h / 2), line, FRAME_IDLE,
                 NO_COLOR, 0);
-    return;
+  } else {
+    pane_compose(n->pane, d->s, n->content.x, n->content.y,
+                 n == cur(d->a)->focus);
   }
-  pane_compose(n->pane, d->s, n->content.x, n->content.y, n == cur(d->a)->focus);
   /* Between the contents and the chrome that goes over them: the frame was
    * painted before this and lies outside the content rect, and the split guide
    * is painted after, so it stays legible on top of a shaded pane. */

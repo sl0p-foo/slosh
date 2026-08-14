@@ -80,12 +80,23 @@ like "copied 13 chars".
 
 **Shaders** are colour passes over a pane's *contents* — never the frame, the
 title or the tab strip, so chrome stays legible over a pane that has been
-dimmed underneath it. `dim_unfocused` (off by default) fades every pane but
-the focused one; `drag_grayscale` and `drag_dim` are the greying and the
-recession you get while dragging. All are strengths from 0 to 255.
+dimmed underneath it. A `states { }` block says what a pane looks like while
+it is in a state — being dragged, somewhere a drag could land, suspended,
+scrolled back, or simply not focused. A pane is usually in several at once, so
+exactly one wins, the most deliberate rather than the most ambient:
 
-Beyond those the session runs itself, a `shaders { }` block is a chain you
-choose, in the order you write it:
+```kdl
+states {
+    dragging { }                                    // untouched, in your hand
+    drop_target { grayscale amount=200; dim amount=140 }
+    suspended { grayscale amount=180; dim amount=90 }
+    scrolled { tint amount=30 color="#ffcc88" }     // you are in the past
+    unfocused { dim amount=90 }
+}
+```
+
+A `shaders { }` block is the same thing every pane gets regardless, in the
+order you write it:
 
 ```kdl
 shaders {

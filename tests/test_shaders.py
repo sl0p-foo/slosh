@@ -29,6 +29,16 @@ def cfg(text):
     return f.name
 
 
+def unfocused_cfg(amount):
+    return "states {\n    unfocused { dim amount=%d }\n}\n" % amount
+
+
+def drag_cfg(chain):
+    """Both drop states get the same chain, which is what the defaults do."""
+    return "states {\n    drop_target { %s }\n    drop_hover { %s }\n}\n" % (
+        chain, chain)
+
+
 def content_fg(snap, pane):
     """The colour of the pane's own first content cell."""
     run = snap.style_at(pane["content_x"], pane["content_y"])
@@ -65,7 +75,7 @@ def release(s, x, y):
     s.send(rf"\e[<0;{x + 1};{y + 1}m")
 
 
-# ---- dim_unfocused ---------------------------------------------------------
+# ---- the unfocused state ---------------------------------------------------
 
 def test_off_by_default():
     with Session(SH, cols=80, rows=14) as s:
@@ -82,7 +92,7 @@ def test_off_by_default():
 
 
 def test_dims_everything_but_the_focused_pane():
-    with Session(SH, cols=80, rows=14, config=cfg("dim_unfocused 128\n")) as s:
+    with Session(SH, cols=80, rows=14, config=cfg(unfocused_cfg(128))) as s:
         s.settle(200)
         split(s)
         s.settle(200)
@@ -100,7 +110,7 @@ def test_dims_everything_but_the_focused_pane():
 
 
 def test_the_dimming_follows_focus():
-    with Session(SH, cols=80, rows=14, config=cfg("dim_unfocused 128\n")) as s:
+    with Session(SH, cols=80, rows=14, config=cfg(unfocused_cfg(128))) as s:
         s.settle(200)
         split(s)
         s.settle(200)
@@ -120,7 +130,7 @@ def test_the_dimming_follows_focus():
 
 
 def test_dimming_never_touches_the_chrome():
-    with Session(SH, cols=80, rows=14, config=cfg("dim_unfocused 200\n")) as s:
+    with Session(SH, cols=80, rows=14, config=cfg(unfocused_cfg(200))) as s:
         s.settle(200)
         split(s)
         s.settle(200)
@@ -132,7 +142,7 @@ def test_dimming_never_touches_the_chrome():
               "#" in str(snap.style_at(3, 1)), str(snap.style_at(3, 1)))
 
 
-# ---- drag_grayscale --------------------------------------------------------
+# ---- the drag states -------------------------------------------------------
 
 def test_dragging_greys_the_other_panes():
     with Session(SH, cols=90, rows=16) as s:
@@ -169,7 +179,7 @@ def test_dragging_greys_the_other_panes():
 
 def test_full_strength_is_a_true_grey():
     with Session(SH, cols=90, rows=16,
-                 config=cfg("drag_grayscale 255\n")) as s:
+                 config=cfg(drag_cfg("grayscale amount=255"))) as s:
         s.settle(200)
         left, right = split(s)
         s.settle(200)
@@ -202,7 +212,7 @@ def test_a_press_that_never_moves_greys_nothing():
 
 def test_the_drag_greying_outranks_the_focus_dimming():
     """Two reasons to be grey would compound into one muddy grey."""
-    with Session(SH, cols=90, rows=16, config=cfg("dim_unfocused 128\n")) as s:
+    with Session(SH, cols=90, rows=16, config=cfg(unfocused_cfg(128))) as s:
         s.settle(200)
         left, right = split(s)
         s.settle(200)
@@ -235,18 +245,18 @@ def drag_and_sample(conf):
 
 
 def test_the_two_drag_knobs_are_independent():
-    both_off = drag_and_sample("drag_grayscale 0\ndrag_dim 0\n")
+    both_off = drag_and_sample(drag_cfg(""))
     check("with both off a drag leaves every pane alone", both_off == GREEN,
           str(both_off))
 
     # Desaturate only: channels converge, brightness roughly survives.
-    gray_only = drag_and_sample("drag_grayscale 255\ndrag_dim 0\n")
+    gray_only = drag_and_sample(drag_cfg("grayscale amount=255"))
     ch = [int(gray_only[i:i + 2], 16) for i in (1, 3, 5)]
     check("grayscale alone desaturates without darkening much",
           ch[0] == ch[1] == ch[2] and ch[1] > 0x60, str(gray_only))
 
     # Darken only: the hue survives, the brightness does not.
-    dim_only = drag_and_sample("drag_grayscale 0\ndrag_dim 200\n")
+    dim_only = drag_and_sample(drag_cfg("dim amount=200"))
     ch = [int(dim_only[i:i + 2], 16) for i in (1, 3, 5)]
     check("dim alone darkens without desaturating",
           ch[0] == 0 and ch[2] == 0 and 0 < ch[1] < 0x60, str(dim_only))
@@ -415,6 +425,133 @@ def test_positional_shaders_stay_off_the_chrome():
               frame_fg(snap, p) == "#ff5fd7", str(frame_fg(snap, p)))
 
 
+# ---- states as a table -----------------------------------------------------
+
+def lay(text):
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write(text)
+    f.close()
+    return f.name
+
+
+def test_the_dragged_pane_can_have_a_state_of_its_own():
+    conf = 'states {\n    dragging { tint amount=255 color="#0000ff" }\n}\n'
+    with Session(SH, cols=90, rows=16, config=cfg(conf)) as s:
+        s.settle(200)
+        left, right = split(s)
+        s.settle(200)
+        press(s, left["x"] + 4, left["y"])
+        motion(s, right["x"] + 5, right["y"] + 3)
+        s.settle(120)
+        snap = s.snapshot()
+        check("the pane in your hand takes the dragging state",
+              content_fg(snap, left) == "#0000ff", str(content_fg(snap, left)))
+        release(s, right["x"] + 5, right["y"] + 3)
+        s.settle(200)
+        check("and gives it back on release",
+              content_fg(s.snapshot(), s.panes()[0]) == GREEN, "")
+
+
+def test_the_hovered_pane_is_a_different_state_from_the_rest():
+    conf = ('states {\n'
+            '    drop_hover { tint amount=255 color="#ff0000" }\n'
+            '    drop_target { tint amount=255 color="#0000ff" }\n'
+            '}\n')
+    with Session(SH, cols=120, rows=20, config=cfg(conf)) as s:
+        s.settle(200)
+        s.key("\\\\")
+        s.settle(150)
+        s.key("\\\\")
+        s.settle(250)
+        panes = sorted(s.panes(), key=lambda p: p["x"])
+        if len(panes) < 3:
+            check("three panes for the drop-state test", False, str(len(panes)))
+            return
+        a, b, c = panes
+        press(s, a["x"] + 4, a["y"])
+        motion(s, b["x"] + 3, b["y"] + 3)
+        s.settle(150)
+        snap = s.snapshot()
+        check("the pane under the pointer is the hover state",
+              content_fg(snap, b) == "#ff0000", str(content_fg(snap, b)))
+        check("the other candidates are the plain target state",
+              content_fg(snap, c) == "#0000ff", str(content_fg(snap, c)))
+        release(s, b["x"] + 3, b["y"] + 3)
+        s.settle(150)
+
+
+def test_a_suspended_pane_is_a_state():
+    """It draws a label rather than a program, and that is still contents."""
+    l = lay('layout {\n  tab name="t" {\n    pane\n'
+            '    pane suspended=true command="sleep 1"\n  }\n}\n')
+    conf = 'states {\n    suspended { tint amount=255 color="#00aaff" }\n}\n'
+    with Session(SH, cols=90, rows=14, config=cfg(conf), layout=l) as s:
+        s.settle(250)
+        panes = s.panes()
+        susp = [p for p in panes if p["suspended"]]
+        check("the layout made a suspended pane", len(susp) == 1, str(panes))
+        if not susp:
+            return
+        snap = s.snapshot()
+        run = snap.style_at(susp[0]["content_x"] + susp[0]["content_w"] // 2,
+                            susp[0]["content_y"] + susp[0]["content_h"] // 2)
+        check("a suspended pane reaches the shader pass at all",
+              (run or {}).get("fg") == "#00aaff", str(run))
+
+
+def test_scrollback_is_a_state():
+    noisy = ["/bin/sh", "-c",
+             'printf "\\033]2;p\\007"; i=0; while [ $i -lt 200 ]; do '
+             'printf "\\033[38;2;0;255;0mline %d\\033[0m\\n" $i; i=$((i+1)); done; '
+             'stty raw -echo; cat']
+    conf = 'states {\n    scrolled { tint amount=255 color="#ffaa00" }\n}\n'
+    with Session(noisy, cols=80, rows=14, config=cfg(conf)) as s:
+        s.settle(300)
+        p = s.pane()
+        check("not scrolled yet, so no state colour",
+              content_fg(s.snapshot(), p) == GREEN,
+              str(content_fg(s.snapshot(), p)))
+        # No scroll command exists, so drive it the way a person does: the
+        # wheel. SGR button 64 is wheel-up.
+        for _ in range(6):
+            s.send(rf"\e[<64;{p['content_x'] + 2};{p['content_y'] + 2}M")
+        s.settle(250)
+        check("looking at the past is a state you can colour",
+              content_fg(s.snapshot(), p) == "#ffaa00",
+              str(content_fg(s.snapshot(), p)))
+
+
+def test_exactly_one_state_wins():
+    """A pane is in several at once; the ranking decides, and does not stack."""
+    l = lay('layout {\n  tab name="t" {\n    pane\n'
+            '    pane suspended=true command="sleep 1"\n  }\n}\n')
+    conf = ('states {\n'
+            '    suspended { tint amount=255 color="#00aaff" }\n'
+            '    unfocused { tint amount=255 color="#ff0000" }\n'
+            '}\n')
+    with Session(SH, cols=90, rows=14, config=cfg(conf), layout=l) as s:
+        s.settle(250)
+        susp = [p for p in s.panes() if p["suspended"]]
+        if not susp or susp[0]["focused"]:
+            check("a suspended, unfocused pane to test with", bool(susp),
+                  str(s.panes()))
+            return
+        run = s.snapshot().style_at(
+            susp[0]["content_x"] + susp[0]["content_w"] // 2,
+            susp[0]["content_y"] + susp[0]["content_h"] // 2)
+        check("suspended outranks unfocused, and they do not mix",
+              (run or {}).get("fg") == "#00aaff", str(run))
+
+
+def test_an_unknown_state_is_refused():
+    conf = 'states {\n    haunted { dim amount=255 }\n}\n'
+    with Session(SH, cols=60, rows=12, config=cfg(conf)) as s:
+        s.settle(200)
+        check("an unknown state name leaves the session running",
+              s.alive() and content_fg(s.snapshot(), s.pane()) == GREEN,
+              str(content_fg(s.snapshot(), s.pane())))
+
+
 if __name__ == "__main__":
     test_off_by_default()
     test_dims_everything_but_the_focused_pane()
@@ -435,4 +572,10 @@ if __name__ == "__main__":
     test_config_shaders_run_in_written_order()
     test_an_unknown_shader_is_refused_not_guessed()
     test_positional_shaders_stay_off_the_chrome()
+    test_the_dragged_pane_can_have_a_state_of_its_own()
+    test_the_hovered_pane_is_a_different_state_from_the_rest()
+    test_a_suspended_pane_is_a_state()
+    test_scrollback_is_a_state()
+    test_exactly_one_state_wins()
+    test_an_unknown_state_is_refused()
     sys.exit(report())

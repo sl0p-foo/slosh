@@ -14,6 +14,23 @@
 #include "shader.h"
 #include "sl0ppty.h"
 
+/* Pane states a shader can be hung off, in the order they are tested. Only
+ * states a pane can actually be seen in: a pane whose program exits is reaped
+ * before the next paint, so there is deliberately no "dead" here — it would
+ * name a shader that could never draw a frame. */
+typedef enum {
+  PSTATE_DRAGGING,    /* the pane you have hold of */
+  PSTATE_DROP_HOVER,  /* the one under the pointer, where it would land */
+  PSTATE_DROP_TARGET, /* the others, all of them somewhere it could go */
+  PSTATE_SUSPENDED,   /* laid out, never started */
+  PSTATE_SCROLLED,    /* looking at scrollback rather than the present */
+  PSTATE_UNFOCUSED,
+  PSTATE_COUNT,
+} pane_state_t;
+
+/* The config name for a state, e.g. "drop_target". */
+const char *pane_state_name(pane_state_t s);
+
 typedef enum {
   ACT_NONE = 0,
   ACT_SPLIT_COLS,
@@ -64,15 +81,25 @@ typedef struct {
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
   /* Shader strengths, 0..255, 0 being off. Ambient dimming is a taste and is
    * off by default; the drag greying is transient and on. */
-  uint8_t dim_unfocused;
-  uint8_t drag_grayscale;
-  uint8_t drag_dim;
-
   /* Colour passes every pane gets, in the order they were written. Ordinary
    * shaders rather than policy: the session has no opinion about these, you
    * asked for them. */
   shader_t shaders[SHADE_MAX];
   size_t nshaders;
+
+  /* What a pane looks like when it is in a particular state. A pane is
+   * usually in several at once — unfocused *and* scrolled, suspended *and*
+   * something you could drop onto — so exactly one wins, the first that
+   * matches in the order below. That order is fixed rather than taken from
+   * the config, because it is a ranking by urgency and not a preference: a
+   * pane you are holding should not be recoloured by anything, and a mode the
+   * whole screen is in outranks an ambient hint about one pane.
+   *
+   * Stacking them instead would let two reasons to be grey compound into one
+   * muddy grey that reads as neither, which is the mistake the drag policy
+   * already had to avoid by hand. */
+  shader_t state_shaders[PSTATE_COUNT][SHADE_MAX];
+  size_t state_n[PSTATE_COUNT];
   bool status_bar;
   bool focus_follows_mouse;
 

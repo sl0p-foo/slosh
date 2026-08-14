@@ -59,24 +59,45 @@ double_click_ms 400
 // Both resolve default-coloured text through theme's default_fg/default_bg,
 // so set those to your terminal's real colours or a shaded pane will shift.
 
-// Dim every pane except the focused one, all the time. Off by default: it is
-// a taste, and an always-on effect is the kind you stop seeing and start
-// fighting. 40 is a hint, 120 is obvious.
-dim_unfocused 0
-
-// While a pane is being dragged by its title, push every *other* pane back so
-// the one that is moving lifts off the page: drag_grayscale drains its colour,
-// drag_dim drops its brightness. Two knobs because "colourless" and "recessed"
-// are different things to want, and grey alone still competes for attention at
-// the same brightness. Transient — they appear once the drag actually moves and
-// are gone on release — so unlike dim_unfocused they cost nothing when you are
-// not dragging. Set both to 0 to turn the effect off.
+// What a pane looks like while it is in a particular state. Each state takes
+// the same chain of passes `shaders` does.
 //
-// The dragged pane's border also stays solid while every other pane's turns
-// dashed, marking them as places it could be dropped. That is chrome, not a
-// shader, so it happens whatever these are set to.
-drag_grayscale 200
-drag_dim 140
+// A pane is usually in several states at once — unfocused *and* scrolled,
+// suspended *and* something you could drop onto — so exactly one wins: the
+// first that matches, tested in this order.
+//
+//   dragging     the pane you have hold of
+//   drop_hover   the one under the pointer, where it would land
+//   drop_target  the others, all of them somewhere it could go
+//   suspended    laid out, never started (its label is its contents)
+//   scrolled     looking at scrollback rather than at the present
+//   unfocused    the weakest thing that can be true of a pane
+//
+// The order is fixed rather than read from this block, because it is a ranking
+// by urgency and not a preference: a pane you are holding should not be
+// recoloured by anything, and a mode the whole screen is in outranks an
+// ambient hint about one pane. They do not stack, for the same reason two
+// reasons to be grey would compound into one muddy grey that reads as neither.
+//
+// Naming a state replaces its default outright — including with nothing, which
+// is how you turn one off:  states { drop_target { } }
+//
+// There is deliberately no `dead`: a pane whose program exits is reaped before
+// the next frame is painted, so a shader for it could never draw.
+//
+// Only drop_hover and drop_target have defaults, shown here.
+states {
+    drop_hover { grayscale amount=200; dim amount=140 }
+    drop_target { grayscale amount=200; dim amount=140 }
+    // dragging { }
+    // suspended { grayscale amount=180; dim amount=90 }
+    // scrolled { tint amount=30 color="#ffcc88" }
+    // unfocused { dim amount=90 }
+}
+
+// While a pane is being dragged its border stays solid and every other pane's
+// turns dashed, marking them as places it could be dropped. That is chrome,
+// not a shader, so it happens whatever the states above are set to.
 
 // Colour passes every pane gets, in the order written — a chain is a sequence,
 // so `grayscale` then `tint` is not `tint` then `grayscale`. Each node is one

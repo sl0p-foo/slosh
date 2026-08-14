@@ -106,6 +106,51 @@ static bool parse_color(const char *text, color_t *out) {
   return true;
 }
 
+static const char *const PSTATE_NAMES[PSTATE_COUNT] = {
+    "dragging", "drop_hover", "drop_target", "suspended", "scrolled",
+    "unfocused",
+};
+
+const char *pane_state_name(pane_state_t s) {
+  return s < PSTATE_COUNT ? PSTATE_NAMES[s] : "";
+}
+
+/* Reads the children of `node` as a shader chain into `out` (SHADE_MAX slots),
+ * returning how many were understood. */
+static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
+                                shader_t *out, char *err, size_t errcap) {
+  size_t n = 0;
+  for (size_t i = 0; i < node->nkids && n < SHADE_MAX; i++) {
+    const kdl_node_t *k = node->kids[i];
+    if (!k || !k->name) continue;
+
+    long amount = kdl_prop_int(k, "amount", 128);
+    if (amount < 0) amount = 0;
+    if (amount > 255) amount = 255;
+    /* Every shader that takes a number calls it something different, so accept
+     * each name rather than making you remember which belongs to which. */
+    long param = kdl_prop_int(k, "at", -1);
+    if (param < 0) param = kdl_prop_int(k, "radius", -1);
+    if (param < 0) param = kdl_prop_int(k, "band", -1);
+    if (param < 0) param = kdl_prop_int(k, "direction", -1);
+    if (param < 0) param = 0;
+    if (param > 65535) param = 65535;
+
+    color_t col = c->frame_focus; /* a sensible default for `ruler` */
+    const char *cs = kdl_prop(k, "color", NULL);
+    if (cs && !parse_color(cs, &col) && err && !err[0])
+      snprintf(err, errcap, "bad colour for shader %s: %s", k->name, cs);
+
+    if (!shader_make_p(&out[n], k->name, col, (uint8_t)amount,
+                       (uint16_t)param)) {
+      if (err && !err[0]) snprintf(err, errcap, "unknown shader: %s", k->name);
+      continue;
+    }
+    n++;
+  }
+  return n;
+}
+
 static void bind_add(config_t *c, int key, uint16_t mods, action_t action) {
   for (size_t i = 0; i < c->nbinds; i++)
     if (c->binds[i].key == key && c->binds[i].mods == mods) {
@@ -129,14 +174,25 @@ void config_defaults(config_t *c) {
   c->toast_ms = 2500;
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
-  c->dim_unfocused = 0;
-  c->drag_grayscale = 200;
-  c->drag_dim = 140;
   c->status_bar = true;
   c->focus_follows_mouse = true;
 
   c->default_fg = rgb(0xff, 0xff, 0xff);
   c->default_bg = rgb(0x00, 0x00, 0x00);
+
+  /* The one state with an opinion out of the box: while a pane is being
+   * dragged, everything it could be dropped onto is pushed back so the pane in
+   * your hand stands out. Everything else is empty until asked for. */
+  shader_make(&c->state_shaders[PSTATE_DROP_TARGET][0], "grayscale",
+              (color_t){0}, 200);
+  shader_make(&c->state_shaders[PSTATE_DROP_TARGET][1], "dim", (color_t){0},
+              140);
+  c->state_n[PSTATE_DROP_TARGET] = 2;
+  shader_make(&c->state_shaders[PSTATE_DROP_HOVER][0], "grayscale",
+              (color_t){0}, 200);
+  shader_make(&c->state_shaders[PSTATE_DROP_HOVER][1], "dim", (color_t){0},
+              140);
+  c->state_n[PSTATE_DROP_HOVER] = 2;
 
   c->frame_focus = rgb(0xff, 0x5f, 0xd7);
   c->frame_idle = rgb(0x45, 0x45, 0x4a);
@@ -257,12 +313,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
                                             c->hover_delay_ms);
   c->double_click_ms = (uint16_t)kdl_arg_int(kdl_child(root, "double_click_ms"),
                                              0, c->double_click_ms);
-  c->dim_unfocused = (uint8_t)kdl_arg_int(kdl_child(root, "dim_unfocused"), 0,
-                                          c->dim_unfocused);
-  c->drag_grayscale = (uint8_t)kdl_arg_int(kdl_child(root, "drag_grayscale"), 0,
-                                           c->drag_grayscale);
-  c->drag_dim =
-      (uint8_t)kdl_arg_int(kdl_child(root, "drag_dim"), 0, c->drag_dim);
+
 
   const char *sh = kdl_arg(kdl_child(root, "shell"), 0, NULL);
   if (sh) {
@@ -270,41 +321,29 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
     c->shell = strdup(sh);
   }
 
-  /* `shaders { vignette amount=60; ruler amount=70 at=80 }` — one node per
-   * pass, and the order they are written in is the order they run, because a
-   * chain is a sequence. A block that names nothing known leaves the previous
-   * set alone rather than silently clearing it. */
+  /* One node per pass, in the order written, because a chain is a sequence.
+   * Shared by `shaders { }` and by every state, so a state's chain is exactly
+   * as expressive as the global one and there is one parser to be wrong. */
   const kdl_node_t *shaders = kdl_child(root, "shaders");
-  if (shaders) {
-    c->nshaders = 0;
-    for (size_t i = 0; i < shaders->nkids && c->nshaders < SHADE_MAX; i++) {
-      const kdl_node_t *k = shaders->kids[i];
+  if (shaders) c->nshaders = parse_shader_list(c, shaders, c->shaders, err, errcap);
+
+  /* `states { drop_target { grayscale amount=200; dim amount=140 } }` — what a
+   * pane looks like while it is in a state. Naming a state at all replaces its
+   * default outright, including with nothing, which is how you turn one off. */
+  const kdl_node_t *states = kdl_child(root, "states");
+  if (states) {
+    for (size_t i = 0; i < states->nkids; i++) {
+      const kdl_node_t *k = states->kids[i];
       if (!k || !k->name) continue;
-
-      long amount = kdl_prop_int(k, "amount", 128);
-      if (amount < 0) amount = 0;
-      if (amount > 255) amount = 255;
-      /* Every shader that takes a number calls it something different, so
-       * accept each name rather than making you remember which is which. */
-      long param = kdl_prop_int(k, "at", -1);
-      if (param < 0) param = kdl_prop_int(k, "radius", -1);
-      if (param < 0) param = kdl_prop_int(k, "band", -1);
-      if (param < 0) param = kdl_prop_int(k, "direction", -1);
-      if (param < 0) param = 0;
-      if (param > 65535) param = 65535;
-
-      color_t col = c->frame_focus; /* a sensible default for `ruler` */
-      const char *cs = kdl_prop(k, "color", NULL);
-      if (cs && !parse_color(cs, &col) && err && !err[0])
-        snprintf(err, errcap, "bad colour for shader %s: %s", k->name, cs);
-
-      if (!shader_make_p(&c->shaders[c->nshaders], k->name, col,
-                         (uint8_t)amount, (uint16_t)param)) {
-        if (err && !err[0])
-          snprintf(err, errcap, "unknown shader: %s", k->name);
+      pane_state_t st = PSTATE_COUNT;
+      for (size_t j = 0; j < PSTATE_COUNT; j++)
+        if (strcmp(pane_state_name((pane_state_t)j), k->name) == 0)
+          st = (pane_state_t)j;
+      if (st == PSTATE_COUNT) {
+        if (err && !err[0]) snprintf(err, errcap, "unknown pane state: %s", k->name);
         continue;
       }
-      c->nshaders++;
+      c->state_n[st] = parse_shader_list(c, k, c->state_shaders[st], err, errcap);
     }
   }
 
