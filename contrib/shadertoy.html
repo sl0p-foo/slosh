@@ -61,8 +61,11 @@
   .deps b { color: var(--accent); font-weight: 500; }
   .deps .cached { color: #7fd67f; }
   .deps .live { color: #f0c674; }
-  canvas { border: 1px solid var(--line); border-radius: 5px; image-rendering: pixelated;
-           max-width: 100%; }
+  /* Never scaled up: the preview is drawn at the size it means, and a
+     viewport with room to spare gets space around it rather than a blur.
+     Shrinks (smoothly) when the window is genuinely too small for it. */
+  canvas { border: 1px solid var(--line); border-radius: 5px;
+           max-width: 100%; height: auto; align-self: start; }
   pre#config {
     background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
     padding: 10px; margin: 0; overflow-x: auto; color: var(--fg); font-size: 12px;
@@ -395,8 +398,21 @@ function renderPresets() {
 
 const canvas = document.getElementById("screen");
 const ctx = canvas.getContext("2d");
-canvas.width = COLS * CW;
-canvas.height = ROWS * CH;
+
+/* Two sizes, deliberately. The backing store is device pixels, so text stays
+ * sharp on a HiDPI screen; the CSS size is the one the layout sees, and it is
+ * fixed at the real thing so nothing ever stretches a 576-pixel preview
+ * across a 1400-pixel pane and calls it a terminal. */
+function sizeCanvas() {
+  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  canvas.width = COLS * CW * dpr;
+  canvas.height = ROWS * CH * dpr;
+  canvas.style.width = `${COLS * CW}px`;
+  canvas.style.height = `${ROWS * CH}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+sizeCanvas();
+window.addEventListener("resize", sizeCanvas);
 
 canvas.addEventListener("mousemove", (e) => {
   const r = canvas.getBoundingClientRect();
@@ -443,7 +459,7 @@ function refresh() {
 
 function draw(now) {
   ctx.fillStyle = rgb2css(DEFAULT_BG);
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, COLS * CW, ROWS * CH);
   ctx.font = `${CH - 5}px ui-monospace, monospace`;
   ctx.textBaseline = "top";
 
