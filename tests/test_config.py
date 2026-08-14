@@ -216,10 +216,11 @@ def test_status_line_says_what_you_are_looking_at():
         bottom = s.snapshot().text[-2]
         check("it names the tab and the focused pane",
               "api" in bottom and "agent:main" in bottom, repr(bottom))
-        # The top strip already answers "which tab" and "how many panes";
-        # the bottom is about the pane, so it must not just repeat that.
-        check("and does not repeat the pane count from the top strip",
-              "panes" not in bottom, repr(bottom))
+        # The bottom carries a count too, but it is this tab's rather than the
+        # session's (see test_the_two_pane_counts_answer_different_questions).
+        # What it must not do is restate the strip itself.
+        check("and is not a second copy of the tab strip",
+              "+tab" not in bottom, repr(bottom))
 
         ids = [p["id"] for p in s.panes()]
         s.api("focus", id=ids[1])
@@ -248,6 +249,42 @@ def test_status_line_reports_scrollback():
               repr(s.snapshot().text[-2]))
 
 
+def test_the_two_pane_counts_answer_different_questions():
+    """The strip above counts the session; the line below counts this tab."""
+    lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    lay.write('layout {\n tab name="api" {\n  pane\n  pane\n }\n'
+              ' tab name="notes" {\n  pane\n }\n}\n')
+    lay.close()
+    with Session(SH, cols=80, rows=16, layout=lay.name) as s:
+        s.settle(20)
+        top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
+        check("the strip counts every pane in the session",
+              "3 panes" in top, repr(top))
+        check("the line counts only this tab's",
+              "2 panes" in bottom, repr(bottom))
+
+        tabs = s.tabs()
+        s.api("select-tab", id=tabs[1]["id"])
+        s.settle(20)
+        top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
+        check("the session count does not move with the tab",
+              "3 panes" in top, repr(top))
+        check("the tab count does", "1 pane" in bottom, repr(bottom))
+        check("and says pane, not panes, when there is one",
+              "1 panes" not in bottom, repr(bottom))
+
+        # The count sits hard against the edge; a state that comes and goes
+        # must not shove it around.
+        before = bottom.rstrip()
+        s.api("split", dir="cols")
+        s.settle(20)
+        check("adding a pane to the tab moves its count",
+              "2 panes" in s.snapshot().text[-2], repr(s.snapshot().text[-2]))
+        check("and the session count follows too",
+              "4 panes" in s.snapshot().line(1), repr(s.snapshot().line(1)))
+    os.unlink(lay.name)
+
+
 if __name__ == "__main__":
     test_geometry()
     test_status_bar_off()
@@ -259,4 +296,5 @@ if __name__ == "__main__":
     test_status_line_reserves_a_row_at_the_bottom()
     test_status_line_says_what_you_are_looking_at()
     test_status_line_reports_scrollback()
+    test_the_two_pane_counts_answer_different_questions()
     sys.exit(report())

@@ -16,7 +16,7 @@ def test_status_bar():
         s.settle()
         snap = s.snapshot()
         bar = snap.line(1)
-        check("the bar shows a pane count", "1 panes" in bar, repr(bar))
+        check("the bar shows a pane count", "1 pane" in bar, repr(bar))
         check("the bar shows a new-tab button", "+tab" in bar, repr(bar))
 
         x = bar.index("+tab")

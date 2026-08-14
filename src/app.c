@@ -270,6 +270,8 @@ size_t app_toast_count(app_t *a) {
   return a->ntoasts;
 }
 
+static size_t count_leaves(node_t *n); /* defined with the layout */
+
 /* The line along the bottom: what you are looking at, rather than what you
  * could switch to. The strip along the top already answers "which tab" and
  * "how many panes"; repeating that here would spend a row saying it twice.
@@ -288,7 +290,24 @@ static void draw_status_line(app_t *a, screen_t *s) {
   node_t *f = a->ntabs ? cur(a)->focus : NULL;
 
   /* Right side first, so a long name can never push the state off the end —
-   * the same budgeting rule the tab strip and the pane frame both use. */
+   * the same budgeting rule the tab strip and the pane frame both use.
+   *
+   * The count goes hard against the edge with the state inboard of it, which
+   * is how the strip above orders its own pair: the number is always there,
+   * the mode only sometimes, and a thing that comes and goes should not move
+   * a thing that does not. This count is *this tab's*; the strip above counts
+   * the whole session, which is why they can disagree. */
+  if (a->ntabs && cur(a)->root) {
+    char cnt[32];
+    size_t np = count_leaves(cur(a)->root);
+    snprintf(cnt, sizeof cnt, "%zu pane%s", np, np == 1 ? "" : "s");
+    uint16_t cw = (uint16_t)strlen(cnt);
+    if (right > x + cw + 2) {
+      screen_text(s, (uint16_t)(right - cw), y, cnt, FRAME_IDLE, NO_COLOR, 0);
+      right = (uint16_t)(right - cw - 1);
+    }
+  }
+
   char ind[64] = {0};
   if (f) {
     if (pane_suspended(f->pane)) {
@@ -1864,7 +1883,8 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
    * same budgeting rule as the split button and the OSC buttons. */
   uint16_t right = (uint16_t)(s->cols - CFG.gap * CFG.gap_aspect);
   char info[64];
-  snprintf(info, sizeof info, "%zu panes", app_pane_count(a));
+  size_t np = app_pane_count(a);
+  snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
   uint16_t iw = (uint16_t)strlen(info);
   if (right > iw + 4) {
     screen_text(s, (uint16_t)(right - iw), y, info, FRAME_IDLE, NO_COLOR, 0);

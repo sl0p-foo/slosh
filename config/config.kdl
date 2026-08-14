@@ -34,8 +34,9 @@ status_bar true
 
 // The line along the bottom: which session and tab you are in, what the
 // focused pane calls itself, and whether it is in a state worth knowing about
-// - scrolled back, on an alternate screen, or not started yet. The strip above
-// answers "which tab" and "how many panes", so this one does not repeat it.
+// - scrolled back, on an alternate screen, or not started yet. On the right it
+// counts the panes in *this tab*; the strip above counts the whole session, so
+// the two disagree whenever you have more than one tab.
 status_line true
 
 // Focus follows the pointer. It never steals focus mid-chord (while the prefix
