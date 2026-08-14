@@ -60,6 +60,7 @@ typedef struct {
   uint16_t scroll_lines;
   uint16_t toast_ms;
   uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
+  uint16_t double_click_ms; /* how close two clicks must be to be a double */
   bool status_bar;
   bool focus_follows_mouse;
 

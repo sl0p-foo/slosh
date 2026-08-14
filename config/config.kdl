@@ -46,6 +46,12 @@ scroll_lines 3
 // somewhere else should not make the screen flash. 0 arms immediately.
 hover_delay_ms 250
 
+// How close together two clicks on a pane's title must be to count as a
+// double-click, which renames that pane in place. Enter keeps the new name,
+// Escape abandons it, and an empty name gives the pane back to whatever its
+// program calls itself.
+double_click_ms 400
+
 // How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
 // "config reloaded") stays in the bottom-right corner.
 toast_ms 2500

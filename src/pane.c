@@ -27,6 +27,11 @@ struct pane {
   bool alive;
   bool dirty;
   char title[256];
+  /* A name the user typed. It shadows `title` rather than overwriting it, so
+   * the program's own title keeps arriving underneath and clearing the name
+   * (renaming to nothing) falls back to whatever the program calls itself
+   * now — not to whatever it happened to say when the rename began. */
+  char name[256];
 
   /* OSC 5577 state: what this pane asked us to draw in its frame */
   /* A suspended pane is real, sized and laid out, but has not run anything:
@@ -312,7 +317,17 @@ void pane_free(pane_t *p) {
 int pane_fd(const pane_t *p) { return p->pty.fd; }
 bool pane_alive(const pane_t *p) { return p->alive; }
 bool pane_dirty(pane_t *p) { return p->dirty; }
-const char *pane_title(const pane_t *p) { return p->title; }
+const char *pane_title(const pane_t *p) {
+  return p->name[0] ? p->name : p->title;
+}
+
+const char *pane_name(const pane_t *p) { return p->name; }
+
+void pane_set_name(pane_t *p, const char *name) {
+  if (!name) name = "";
+  snprintf(p->name, sizeof p->name, "%s", name);
+  p->dirty = true;
+}
 
 ssize_t pane_pump(pane_t *p) {
   if (p->pty.fd < 0) return 0;

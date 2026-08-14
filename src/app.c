@@ -159,6 +159,17 @@ struct app {
   bool finder;
   char query[64];
   size_t sel;
+
+  /* Renaming a pane in place: the title cell becomes the editor, so the name
+   * is typed where it will live rather than in a dialog somewhere else. */
+  bool renaming;
+  uint32_t rename_id;
+  /* As wide as a pane title, so seeding the editor never truncates one (and so
+   * never truncates one mid-UTF-8). */
+  char rename_buf[256];
+  /* The first click of a candidate double-click on a title. */
+  int64_t name_click_ms;
+  uint32_t name_click_id;
   const char *const *argv;
   /* the screen we last composed into: its hit list is what a click resolves
    * against, so routing can never consult geometry the user never saw */
@@ -1325,20 +1336,57 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   }
 
   const char *title = pane_title(leaf->pane);
-  if (title && *title && avail >= 3) {
-    char buf[256];
-    int len = snprintf(buf, sizeof buf, " %s ", title);
+  bool editing = a->renaming && a->rename_id == leaf->id;
+  if ((editing || (title && *title)) && avail >= 3) {
+    char buf[320]; /* a full-length name, plus the caret and its spaces */
+    int len = editing ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
+                      : snprintf(buf, sizeof buf, " %s ", title);
+    /* snprintf reports what it *would* have written; clamp to what it did, or
+     * the scroll below would move bytes that are not there. */
+    if (len < 0) len = 0;
+    if ((size_t)len >= sizeof buf) len = (int)strlen(buf);
     if (len > (int)avail) {
-      len = (int)avail;
-      buf[len] = 0;
+      if (editing) {
+        /* Scroll the head off, not the tail: the cursor is the one thing that
+         * must stay on screen while typing. Whole characters only. */
+        size_t off = (size_t)(len - (int)avail);
+        while (off < (size_t)len && ((unsigned char)buf[off] & 0xC0) == 0x80)
+          off++;
+        memmove(buf, buf + off, (size_t)len - off + 1);
+        len = (int)((size_t)len - off);
+      } else {
+        len = (int)avail;
+        buf[len] = 0;
+      }
     }
     uint16_t tx = (uint16_t)(r.x + 1);
     if (CFG.title_align == ALIGN_CENTER)
       tx = (uint16_t)(r.x + 1 + (avail - len) / 2);
     else if (CFG.title_align == ALIGN_RIGHT)
       tx = (uint16_t)(r.x + 1 + avail - len);
-    screen_text(s, tx, r.y, buf, focused ? TITLE_FOCUS : fg, NO_COLOR,
-                focused ? ATTR_BOLD : 0);
+    /* An editor announces itself: the name sits in the button colours while it
+     * is being typed, so a half-finished rename can never be mistaken for what
+     * the pane is actually called. */
+    uint16_t drawn =
+        screen_text(s, tx, r.y, buf, editing ? BTN_FG : (focused ? TITLE_FOCUS : fg),
+                    editing ? BTN_BG : NO_COLOR,
+                    editing || focused ? ATTR_BOLD : 0);
+
+    /* The title names the pane; it is not an edge. It carves its own cells out
+     * of the top row's handle so that resting there arms no split guide and
+     * clicking there splits nothing, which leaves the gesture free for a
+     * double-click rename — otherwise a rename would split twice on its way.
+     * Dragging still moves the pane: that reads as grabbing it by its name.
+     *
+     * Registered last, because hit_test() scans backwards and the title is
+     * painted last too. Hit-testing therefore agrees with what is on screen,
+     * and the width comes from screen_text() so a title of wide characters
+     * claims the cells it actually drew. */
+    if (drawn) {
+      char action[48];
+      snprintf(action, sizeof action, "panetitle:%u", leaf->id);
+      hit_add(&s->hits, tx, r.y, drawn, 1, action);
+    }
   }
 }
 
@@ -1626,6 +1674,70 @@ static bool finder_key(app_t *a, const input_event_t *ev) {
   return true;
 }
 
+/* ---- renaming a pane ---------------------------------------------------- */
+
+/* The editor lives in the title cell itself (drawn by draw_frame), so the name
+ * is typed where it is going to live. There is no dialog to place, nothing to
+ * dismiss, and the pane it belongs to cannot be in doubt. */
+static void rename_begin(app_t *a, uint32_t id) {
+  node_t *n = pane_by_id(a, id);
+  if (!n) return;
+  a->renaming = true;
+  a->rename_id = id;
+  /* Seed with what is on screen: a rename is usually an edit, not a retype. */
+  const char *shown = pane_title(n->pane);
+  snprintf(a->rename_buf, sizeof a->rename_buf, "%s", shown ? shown : "");
+  a->name_click_ms = 0;
+  a->name_click_id = 0;
+  app_focus_pane(a, id);
+}
+
+static void rename_end(app_t *a, bool keep) {
+  if (!a->renaming) return;
+  node_t *n = pane_by_id(a, a->rename_id);
+  if (keep && n) {
+    pane_set_name(n->pane, a->rename_buf);
+    app_toast(a, a->rename_buf[0] ? "renamed" : "name cleared");
+  }
+  a->renaming = false;
+  a->rename_id = 0;
+  a->rename_buf[0] = 0;
+}
+
+/* Returns true when the rename editor consumed the event. */
+static bool rename_key(app_t *a, const input_event_t *ev) {
+  if (!a->renaming) return false;
+  if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
+
+  switch (ev->key) {
+    case GHOSTTY_KEY_ESCAPE:
+      rename_end(a, false);
+      return true;
+    case GHOSTTY_KEY_ENTER:
+      rename_end(a, true);
+      return true;
+    case GHOSTTY_KEY_BACKSPACE: {
+      /* A character, not a byte: a title is whatever the program could set,
+       * and half a UTF-8 sequence is not a name. */
+      size_t l = strlen(a->rename_buf);
+      while (l && ((unsigned char)a->rename_buf[l - 1] & 0xC0) == 0x80) l--;
+      if (l) l--;
+      a->rename_buf[l] = 0;
+      return true;
+    }
+    default:
+      break;
+  }
+  if (ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
+    size_t l = strlen(a->rename_buf);
+    if (l + ev->text_len < sizeof a->rename_buf) {
+      memcpy(a->rename_buf + l, ev->text, ev->text_len);
+      a->rename_buf[l + ev->text_len] = 0;
+    }
+  }
+  return true;
+}
+
 void app_compose(app_t *a, screen_t *s) {
   screen_clear(s); /* every frame starts blank: no ghosts in the gap ring */
   hit_reset(&s->hits);
@@ -1766,27 +1878,43 @@ static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
  * pointer crossed its header — which is why only `pane:` and `title:` targets
  * count, and the frame rect's `focus:` does not. */
 static bool hover_focus_allowed(const app_t *a) {
-  return CFG.focus_follows_mouse && !a->prefix && !a->finder &&
+  return CFG.focus_follows_mouse && !a->prefix && !a->finder && !a->renaming &&
          a->drag.kind == DRAG_NONE;
 }
 
 static void do_action(app_t *a, const char *action, const input_event_t *ev) {
-  if (strncmp(action, "title:", 6) == 0) {
-    uint32_t id = (uint32_t)strtoul(action + 6, NULL, 10);
+  bool on_name = strncmp(action, "panetitle:", 10) == 0;
+  if (on_name || strncmp(action, "title:", 6) == 0) {
+    uint32_t id = (uint32_t)strtoul(action + (on_name ? 10 : 6), NULL, 10);
     if (ev->maction == MOUSE_MOTION && hover_focus_allowed(a)) {
       app_focus_pane(a, id);
       return;
     }
     if (ev->maction == MOUSE_PRESS) {
+      /* Two clicks on the name, close together, rename the pane. This is why
+       * the name is not an edge: the first click must not have split, or the
+       * second would be renaming a pane that had already moved. */
+      if (on_name) {
+        int64_t now = now_ms_();
+        if (a->name_click_id == id &&
+            now - a->name_click_ms <= (int64_t)CFG.double_click_ms) {
+          rename_begin(a, id);
+          return; /* a rename, not a grab: start no drag */
+        }
+        a->name_click_ms = now;
+        a->name_click_id = id;
+      }
       /* The top border is both a drag handle and an edge: whether this is a
-       * move or a split-upward is decided by whether the pointer moves. */
+       * move or a split-upward is decided by whether the pointer moves. The
+       * title text is only a handle, so it takes no side: a click that never
+       * moved does nothing there instead of splitting upward. */
       a->drag.kind = DRAG_TITLE;
       a->drag.src = id;
       a->drag.target = id;
       a->drag.x = ev->mx;
       a->drag.y = ev->my;
       a->drag.moved = false;
-      a->drag.side = 't';
+      a->drag.side = on_name ? 0 : 't';
       app_focus_pane(a, id);
     }
     return;
@@ -1965,8 +2093,16 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
 void app_event(app_t *a, const input_event_t *ev) {
   if (!a->ntabs || !cur(a)->focus) return;
 
-  /* The finder owns the keyboard while it is open; the mouse still routes
-   * through the hit list, whose topmost entries are the finder's own rows. */
+  /* A rename whose pane went away must not keep the keyboard. */
+  if (a->renaming && !pane_by_id(a, a->rename_id)) rename_end(a, false);
+
+  /* The rename editor and the finder each own the keyboard while open; the
+   * mouse still routes through the hit list, whose topmost entries are the
+   * finder's own rows. */
+  if (a->renaming && ev->kind == EV_KEY) {
+    rename_key(a, ev);
+    return;
+  }
   if (a->finder && ev->kind == EV_KEY) {
     finder_key(a, ev);
     return;
@@ -2021,6 +2157,15 @@ void app_event(app_t *a, const input_event_t *ev) {
       if (!a->painted) break;
       const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
 
+      /* Clicking away keeps the name, the way leaving a field commits it.
+       * Clicking the pane's own name again does not, so a stray second
+       * double-click lands in the editor instead of closing it. */
+      if (a->renaming && ev->maction == MOUSE_PRESS) {
+        char own[48];
+        snprintf(own, sizeof own, "panetitle:%u", a->rename_id);
+        if (!action || strcmp(action, own) != 0) rename_end(a, true);
+      }
+
       if (!a->ptr_valid || ev->mx != a->ptr_x || ev->my != a->ptr_y)
         a->ptr_still_since = now_ms_();
       a->ptr_x = ev->mx;
@@ -2043,6 +2188,9 @@ void app_event(app_t *a, const input_event_t *ev) {
             drag_edge(a, sp, a->drag.edge, cells);
           } else if (action && strncmp(action, "title:", 6) == 0) {
             a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
+          } else if (action && strncmp(action, "panetitle:", 10) == 0) {
+            /* Dropping onto a pane's name is dropping onto that pane. */
+            a->drag.target = (uint32_t)strtoul(action + 10, NULL, 10);
           } else if (action && strncmp(action, "pane:", 5) == 0) {
             a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
           }
@@ -2051,7 +2199,7 @@ void app_event(app_t *a, const input_event_t *ev) {
         } else if (ev->maction == MOUSE_RELEASE) {
           /* A press that never moved is a click, and a click on an edge
            * splits toward it. */
-          if (!a->drag.moved &&
+          if (!a->drag.moved && a->drag.side &&
               (a->drag.kind == DRAG_BORDER || a->drag.kind == DRAG_TITLE)) {
             node_t *n = pane_by_id(a, a->drag.src);
             if (n) {

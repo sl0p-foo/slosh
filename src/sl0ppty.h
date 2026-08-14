@@ -156,6 +156,10 @@ void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total);
 bool pane_alt_screen(const pane_t *p);
 bool pane_wants_mouse(const pane_t *p);
 const char *pane_title(const pane_t *p);
+/* The user-assigned name, "" when the program's title is showing through. */
+const char *pane_name(const pane_t *p);
+/* "" clears the name and gives the pane back to the program's title. */
+void pane_set_name(pane_t *p, const char *name);
 const char *pane_status(const pane_t *p);
 size_t pane_buttons(const pane_t *p, const pane_button_t **out);
 void pane_click_button(pane_t *p, const char *id);

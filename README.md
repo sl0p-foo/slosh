@@ -61,6 +61,13 @@ onto another pane to swap them, or drag the gap between two panes to move the
 boundary.** Focus follows the pointer (`focus_follows_mouse`, on by default,
 and it knows when not to).
 
+**Double-click a pane's name to rename it**, in the title itself rather than in
+a dialog. Enter keeps the new name, Escape abandons it, clicking away keeps it.
+A name you type outranks whatever the program calls itself, so a shell that
+rewrites its title cannot undo it; clear the name and the pane goes back to the
+program's title. The name is only the title *text*: the rest of the top border
+is still the top edge, and still splits upward when clicked.
+
 **Select to copy.** Drag over text and release: it is on your clipboard, sent
 to your terminal as OSC 52 so it works over ssh. Middle click pastes it back,
 the way a primary selection behaves everywhere else. A program in a pane can
