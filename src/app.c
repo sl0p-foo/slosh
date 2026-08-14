@@ -109,6 +109,12 @@ struct node {
    * equal weights, so resizing is not a special case of anything. */
   int weight;
 
+  /* Put away: out of the layout, into a strip along the bottom, still running.
+   * Intent, like the weight beside it and unlike the rect and the collapsed
+   * flag below — layout_node must not clear this, or it would un-minimise
+   * every pane on every frame. */
+  bool minimized;
+
   /* leaf */
   pane_t *pane;
   uint32_t id;
@@ -669,6 +675,26 @@ static size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k) {
   return k;
 }
 
+/* Does anything under here still want space in the layout? */
+static bool subtree_live(node_t *n) {
+  if (!n) return false;
+  if (n->kind == NODE_LEAF) return !n->minimized;
+  for (size_t i = 0; i < n->nkids; i++)
+    if (subtree_live(n->kids[i])) return true;
+  return false;
+}
+
+static size_t collect_minimized(node_t *n, node_t **out, size_t cap, size_t k) {
+  if (!n || k >= cap) return k;
+  if (n->kind == NODE_LEAF) {
+    if (n->minimized) out[k++] = n;
+    return k;
+  }
+  for (size_t i = 0; i < n->nkids; i++)
+    k = collect_minimized(n->kids[i], out, cap, k);
+  return k;
+}
+
 static size_t count_leaves(node_t *n) {
   if (!n) return 0;
   if (n->kind == NODE_LEAF) return 1;
@@ -780,6 +806,12 @@ static void layout_solo(node_t *n, rect_t r, layout_ctx_t *ctx) {
 }
 
 static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
+  /* Minimised panes are placed by the strip, not by the tree. Returning before
+   * touching the rect leaves the strip's placement standing, and returning
+   * before the floor check is right too: a pane that is one row by request is
+   * not a pane that failed to fit. */
+  if (n->kind == NODE_LEAF && n->minimized) return;
+
   n->rect = r;
   n->collapsed = false;
   if (n->kind == NODE_LEAF) n->hidden = false;
@@ -807,7 +839,18 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
     return;
   }
 
-  size_t k = n->nkids;
+  /* Divide among the children that still want space. A split with one live
+   * child is that child, exactly as a split with one child would be. */
+  node_t *live[64];
+  size_t k = 0;
+  for (size_t i = 0; i < n->nkids && k < 64; i++)
+    if (subtree_live(n->kids[i])) live[k++] = n->kids[i];
+  if (k == 0) return;
+  if (k == 1) {
+    layout_node(live[0], r, ctx);
+    return;
+  }
+
   uint16_t gap = n->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect)
                                       : CFG.gap;
   uint16_t total = n->dir == SPLIT_COLS ? r.w : r.h;
@@ -835,13 +878,13 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
   /* Sizes are proportional to weights; the remainder goes to the widest
    * children, largest first, so nothing drifts and nothing rounds to zero. */
   long total_weight = 0;
-  for (size_t i = 0; i < k; i++) total_weight += n->kids[i]->weight;
+  for (size_t i = 0; i < k; i++) total_weight += live[i]->weight;
   if (total_weight <= 0) total_weight = 1;
 
   uint16_t sizes[64];
   uint16_t used = 0;
   for (size_t i = 0; i < k && i < 64; i++) {
-    long want = (long)avail * n->kids[i]->weight / total_weight;
+    long want = (long)avail * live[i]->weight / total_weight;
     if (want < 1) want = 1;
     sizes[i] = (uint16_t)want;
     used = (uint16_t)(used + sizes[i]);
@@ -863,7 +906,7 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
     rect_t cr = n->dir == SPLIT_COLS
                     ? (rect_t){.x = pos, .y = r.y, .w = size, .h = r.h}
                     : (rect_t){.x = r.x, .y = pos, .w = r.w, .h = size};
-    layout_node(n->kids[i], cr, ctx);
+    layout_node(live[i], cr, ctx);
     pos = (uint16_t)(pos + size + gap);
   }
 }
@@ -886,6 +929,12 @@ static void layout(app_t *a) {
                                   : 1)};
   node_t *root = cur(a)->root;
   if (!root) return;
+
+  /* Focusing a minimised pane is how you get it back, and it is checked here
+   * rather than in the several places focus can move: any route that ends with
+   * this pane focused restores it, including ones that do not exist yet. */
+  if (cur(a)->focus && cur(a)->focus->minimized)
+    cur(a)->focus->minimized = false;
 
   /* A zoomed pane is the whole tab. Reuses the solo path rather than adding a
    * third arrangement: "show this one and nothing else" is a thing the layout
@@ -912,13 +961,35 @@ static void layout(app_t *a) {
    * layout with resizing switched off, rather than a second implementation of
    * the same arithmetic — two copies of "does this fit" is exactly how the
    * guide and the layout would start disagreeing. */
+  /* Minimised panes come out of the layout and sit in a strip along the
+   * bottom, one row each. The tree is then laid out in what is left, so a
+   * minimised pane costs a row rather than a share. */
+  node_t *mins[64];
+  size_t nmin = collect_minimized(root, mins, 64, 0);
+  rect_t tree_r = r;
+  if (nmin) {
+    /* If the strip would leave too little to be worth looking at, do not
+     * reserve it: the tab flattens instead, and down there a minimised pane is
+     * just another row, which is what it would have become anyway. */
+    if ((uint16_t)(r.h - nmin) >= (uint16_t)(MIN_PANE_ROWS + 2))
+      tree_r.h = (uint16_t)(r.h - nmin);
+    else
+      nmin = 0;
+  }
+
   layout_ctx_t probe = {.focus = cur(a)->focus, .apply = false};
-  layout_node(root, r, &probe);
+  layout_node(root, tree_r, &probe);
 
   layout_ctx_t real = {.focus = cur(a)->focus, .apply = true};
   if (!probe.overflow) {
-    layout_node(root, r, &real);
-  } else if (r.h >= (uint16_t)(count_leaves(root) + 2)) {
+    layout_node(root, tree_r, &real);
+    /* The strip, under the layout it was taken out of. */
+    for (size_t i = 0; i < nmin; i++)
+      collapse_leaf(mins[i], (rect_t){r.x, (uint16_t)(tree_r.y + tree_r.h + i),
+                                      r.w, 1});
+    return;
+  }
+  if (r.h >= (uint16_t)(count_leaves(root) + 2)) {
     /* One row per pane, plus a body worth opening into: a frame is two rows. */
     layout_stack(root, r, &real);
   } else {
@@ -1201,6 +1272,34 @@ static node_t *pane_by_id(app_t *a, uint32_t id) {
   struct byid b = {id, NULL};
   walk_all(a, byid_cb, &b);
   return b.found;
+}
+
+bool app_minimize(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
+  if (!n || n->minimized) return false;
+  size_t ti = tab_of(a, n);
+  if (ti == (size_t)-1) return false;
+
+  /* Refused if it would leave nothing on screen. A tab showing no panes at all
+   * has no way back that is discoverable from the tab, and "everything is put
+   * away" is not a state worth being able to reach by accident. */
+  node_t *next = NULL;
+  node_t *leaves[64];
+  size_t nl = collect_leaves(a->tabs[ti].root, leaves, 64, 0);
+  for (size_t i = 0; i < nl; i++)
+    if (leaves[i] != n && !leaves[i]->minimized) {
+      next = leaves[i];
+      break;
+    }
+  if (!next) return false;
+
+  n->minimized = true;
+  a->cur = ti;
+  /* Focus has to leave, or the rule that a focused pane is never minimised
+   * would undo this on the next frame. */
+  if (a->tabs[ti].focus == n) a->tabs[ti].focus = next;
+  layout(a);
+  return true;
 }
 
 bool app_toggle_zoom(app_t *a, uint32_t id) {
@@ -1736,6 +1835,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
         {CFG.close_mark, "close"},
         {app_pane_zoomed(a, leaf->id) ? CFG.zoom_on_mark : CFG.zoom_mark,
          "zoom"},
+        {CFG.min_mark, "minimize"},
     };
     uint16_t bx = (uint16_t)(x1 - 1);
     for (size_t i = 0; i < sizeof btns / sizeof *btns; i++) {
@@ -2695,6 +2795,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   if (strncmp(action, "split:", 6) == 0) {
     cur(a)->focus = n;
     split_focus(a, SPLIT_COLS);
+  } else if (strncmp(action, "minimize:", 9) == 0) {
+    if (!app_minimize(a, n->id)) app_toast(a, "nothing else to show");
   } else if (strncmp(action, "zoom:", 5) == 0) {
     app_toggle_zoom(a, n->id);
   } else if (strncmp(action, "close:", 6) == 0) {
@@ -2768,6 +2870,9 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
     case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
     case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
     case ACT_ZOOM: app_toggle_zoom(a, 0); return true;
+    case ACT_MINIMIZE:
+      if (!app_minimize(a, 0)) app_toast(a, "nothing else to show");
+      return true;
     case ACT_CLOSE_PANE:
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;

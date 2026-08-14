@@ -37,6 +37,7 @@ typedef enum {
   ACT_SPLIT_ROWS,
   ACT_CLOSE_PANE,
   ACT_ZOOM,
+  ACT_MINIMIZE,
   ACT_FOCUS_LEFT,
   ACT_FOCUS_RIGHT,
   ACT_FOCUS_UP,
@@ -84,7 +85,7 @@ typedef struct {
   /* Buttons in the top-right of a pane's frame: zoom, and close. Off leaves
    * the keyboard bindings alone; it is about the affordance, not the verb. */
   bool pane_buttons;
-  char zoom_mark[16], zoom_on_mark[16], close_mark[16];
+  char zoom_mark[16], zoom_on_mark[16], close_mark[16], min_mark[16];
   bool bell_indicator;
   /* What to draw. A short string rather than a fixed glyph: the obvious
    * choice is an emoji bell, and emoji are drawn two columns wide by many

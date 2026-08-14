@@ -87,6 +87,11 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
  * because it opened the socket under that name. */
 void app_set_session(app_t *a, const char *name);
 
+/* Put a pane away into the strip along the bottom. 0 means the focused one.
+ * False if it would leave the tab with nothing on screen. Restoring is done by
+ * focusing it, which is what clicking its row does. */
+bool app_minimize(app_t *a, uint32_t id);
+
 /* Fill the tab with one pane, or put it back. 0 means the focused one. */
 bool app_toggle_zoom(app_t *a, uint32_t id);
 bool app_pane_zoomed(app_t *a, uint32_t id);

@@ -15,7 +15,8 @@ static const struct {
 } ACTIONS[] = {
     {"split-cols", ACT_SPLIT_COLS},   {"split-rows", ACT_SPLIT_ROWS},
     {"close-pane", ACT_CLOSE_PANE},
-    {"zoom", ACT_ZOOM},   {"focus-left", ACT_FOCUS_LEFT},
+    {"zoom", ACT_ZOOM},
+    {"minimize", ACT_MINIMIZE},   {"focus-left", ACT_FOCUS_LEFT},
     {"focus-right", ACT_FOCUS_RIGHT}, {"focus-up", ACT_FOCUS_UP},
     {"focus-down", ACT_FOCUS_DOWN},   {"focus-next", ACT_FOCUS_NEXT},
     {"resize-left", ACT_RESIZE_LEFT}, {"resize-right", ACT_RESIZE_RIGHT},
@@ -174,6 +175,7 @@ void config_defaults(config_t *c) {
   snprintf(c->zoom_mark, sizeof c->zoom_mark, "\u25a1");
   snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "\u25a3");
   snprintf(c->close_mark, sizeof c->close_mark, "\u00d7");
+  snprintf(c->min_mark, sizeof c->min_mark, "\u2013");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
   c->min_pane_cols = 24;
@@ -270,6 +272,7 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS);
   bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE);
   bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM);
+  bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE);
   bind_add(c, GHOSTTY_KEY_H, 0, ACT_FOCUS_LEFT);
   bind_add(c, GHOSTTY_KEY_L, 0, ACT_FOCUS_RIGHT);
   bind_add(c, GHOSTTY_KEY_K, 0, ACT_FOCUS_UP);
@@ -378,6 +381,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (zo) snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "%s", zo);
   const char *cm = kdl_arg(kdl_child(root, "close_mark"), 0, NULL);
   if (cm) snprintf(c->close_mark, sizeof c->close_mark, "%s", cm);
+  const char *mm = kdl_arg(kdl_child(root, "min_mark"), 0, NULL);
+  if (mm) snprintf(c->min_mark, sizeof c->min_mark, "%s", mm);
   c->bell_indicator =
       kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);
   const char *bm = kdl_arg(kdl_child(root, "bell_mark"), 0, NULL);

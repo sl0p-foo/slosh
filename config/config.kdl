@@ -40,8 +40,10 @@ title_inset 2
 // real choice rather than an oversight.
 // ── the frame's own buttons ─────────────────────────────────────────────────
 //
-// Zoom and close, in the top-right of every pane's frame. Three columns each,
-// because a one-column target is a thing you miss with a mouse.
+// Minimise, zoom and close, in the top-right of every pane's frame. Three
+// columns each, because a one-column target is a thing you miss with a mouse.
+// They are drawn right to left and stop when they run out of room, so a narrow
+// pane keeps close and zoom and loses minimise first.
 //
 // The split button was removed from this frame once already, on the grounds
 // that one glyph cannot mean four directions and the border can. These are two
@@ -57,6 +59,7 @@ pane_buttons true
 zoom_mark "□"
 zoom_on_mark "▣"
 close_mark "×"
+min_mark "–"
 
 bell_indicator true
 
@@ -288,7 +291,7 @@ theme {
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
-// scroll-bottom zoom new-tab next-tab prev-tab select-tab-1..9 finder detach quit
+// scroll-bottom zoom minimize new-tab next-tab prev-tab select-tab-1..9 finder detach quit
 // literal-prefix none
 
 keys {
@@ -298,6 +301,7 @@ keys {
     bind "-" "split-rows"
     bind "x" "close-pane"
     bind "z" "zoom"
+    bind "m" "minimize"
 
     bind "h" "focus-left"
     bind "l" "focus-right"
