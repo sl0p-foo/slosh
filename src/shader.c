@@ -78,7 +78,10 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
   ctx.cols = w;
   ctx.rows = h;
 
-  for (size_t i = 0; i < n && i < SHADE_MAX; i++) {
+  /* `n` is the caller's to bound: SHADE_MAX is how many a pane may have
+   * *attached*, and a caller may legitimately pass that many plus the one the
+   * session derived for this frame. Capping here would silently drop it. */
+  for (size_t i = 0; i < n; i++) {
     const shader_t *sh = &shaders[i];
     if (!sh->kind || !sh->fn) continue;
 

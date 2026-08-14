@@ -52,6 +52,24 @@ hover_delay_ms 250
 // program calls itself.
 double_click_ms 400
 
+// ── shaders ─────────────────────────────────────────────────────────────────
+//
+// Colour passes over a pane's contents (never the frame, title or tab strip).
+// Both are strengths from 0 to 255, where 0 is off and 255 is fully applied.
+// Both resolve default-coloured text through theme's default_fg/default_bg,
+// so set those to your terminal's real colours or a shaded pane will shift.
+
+// Dim every pane except the focused one, all the time. Off by default: it is
+// a taste, and an always-on effect is the kind you stop seeing and start
+// fighting. 40 is a hint, 120 is obvious.
+dim_unfocused 0
+
+// While a pane is being dragged by its title, grey every *other* pane, so the
+// one that is moving lifts off the page. Transient — it appears once the drag
+// actually moves and is gone on release — so unlike the above it costs
+// nothing when you are not doing it.
+drag_grayscale 200
+
 // How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
 // "config reloaded") stays in the bottom-right corner.
 toast_ms 2500

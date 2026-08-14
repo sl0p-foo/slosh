@@ -61,6 +61,10 @@ typedef struct {
   uint16_t toast_ms;
   uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
+  /* Shader strengths, 0..255, 0 being off. Ambient dimming is a taste and is
+   * off by default; the drag greying is transient and on. */
+  uint8_t dim_unfocused;
+  uint8_t drag_grayscale;
   bool status_bar;
   bool focus_follows_mouse;
 

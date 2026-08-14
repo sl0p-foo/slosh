@@ -1448,18 +1448,52 @@ size_t app_shade_count(app_t *a, uint32_t pane_id) {
   return n ? n->nshaders : 0;
 }
 
-/* A pane with no shaders costs nothing: no context is built and no cell is
- * visited, so an unshaded session emits the same bytes it did before. */
+/* The session's opinion about this pane at this moment, as a shader.
+ *
+ * Derived every frame rather than attached and remembered. Focus and drags
+ * move through too many paths — hover, click, the finder, a close, a layout —
+ * to keep an attachment in sync with, and a pane left grey by the one path
+ * that forgot to clear it is a bug that only shows up in front of someone.
+ * The rect and the collapsed flag are recomputed every pass for exactly this
+ * reason; this is the same rule applied to colour. */
+static size_t policy_shader(app_t *a, node_t *n, shader_t *out) {
+  /* Only once the pointer has actually moved: a press that turns out to be a
+   * click would otherwise flash the whole session grey on its way to nothing. */
+  if (a->drag.kind == DRAG_TITLE && a->drag.moved) {
+    /* The pane being dragged keeps its colour and everything else goes grey,
+     * so the one that is moving lifts off the page. This replaces the focus
+     * dimming rather than stacking with it: two reasons to be grey compound
+     * into one muddy grey that reads as neither. */
+    if (n->id == a->drag.src || !CFG.drag_grayscale) return 0;
+    return shader_make(out, "grayscale", (color_t){0}, CFG.drag_grayscale) ? 1
+                                                                           : 0;
+  }
+  if (CFG.dim_unfocused && n != cur(a)->focus)
+    return shader_make(out, "dim", (color_t){0}, CFG.dim_unfocused) ? 1 : 0;
+  return 0;
+}
+
+/* A pane with nothing to apply costs nothing: no context is built and no cell
+ * is visited, so an unshaded session emits the same bytes it did before. */
 static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
-  if (!n->nshaders) return;
+  shader_t chain[SHADE_MAX + 1];
+  size_t nc = 0;
+
+  /* Attached first, policy last: a pane's own colour is the thing the
+   * session's opinion of the moment is then applied to. */
+  for (size_t i = 0; i < n->nshaders && nc < SHADE_MAX; i++)
+    chain[nc++] = n->shaders[i];
+  nc += policy_shader(a, n, &chain[nc]);
+
+  if (!nc) return;
   shade_ctx_t base = {
       .now_ms = now_ms_(),
       .focused = n == cur(a)->focus,
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };
-  shade_apply(s, n->shaders, n->nshaders, n->content.x, n->content.y,
-              n->content.w, n->content.h, &base);
+  shade_apply(s, chain, nc, n->content.x, n->content.y, n->content.w,
+              n->content.h, &base);
 }
 
 static void draw_node(app_t *a, screen_t *s, node_t *n);

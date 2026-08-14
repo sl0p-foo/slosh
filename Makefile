@@ -65,7 +65,7 @@ test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) ## unit + headless checks (f
 	@echo
 	cd tests && python3 test_screen.py && python3 test_layout.py && python3 test_tabs.py && python3 test_osc5577.py && \
 		python3 test_responsive.py && python3 test_finder.py && \
-		python3 test_config.py && python3 test_layout_files.py && python3 test_drag.py && python3 test_hover.py && python3 test_scroll.py && python3 test_clipboard.py && python3 test_split_ux.py && python3 test_graphics.py && python3 test_pane_title.py
+		python3 test_config.py && python3 test_layout_files.py && python3 test_drag.py && python3 test_hover.py && python3 test_scroll.py && python3 test_clipboard.py && python3 test_split_ux.py && python3 test_graphics.py && python3 test_pane_title.py && python3 test_shaders.py
 
 test-live: $(BIN) ## the checks that need a real tty (slow)
 	python3 tests/live_m0.py
