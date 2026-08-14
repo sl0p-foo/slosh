@@ -83,7 +83,7 @@ fills the tab until you put it back; the other panes keep running, they are
 just not drawn. `×` beside it closes the pane. `pane_buttons false` takes both
 buttons off without touching the keybindings.
 
-**Minimise a pane** with `C-a m` or the `–` button and it leaves the layout for
+**Minimise a pane** with `C-a m` or the `▁` button and it leaves the layout for
 a strip along the bottom, one row each, still running — the panes it leaves
 behind take the space back. Click its row to bring it back. Once a tab is too
 small and has flattened into a list, being minimised means nothing: every pane

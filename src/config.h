@@ -85,6 +85,10 @@ typedef struct {
   /* Buttons in the top-right of a pane's frame: zoom, and close. Off leaves
    * the keyboard bindings alone; it is about the affordance, not the verb. */
   bool pane_buttons;
+  /* Marks of similar visual weight, so the even spacing between the buttons
+   * reads as even: a glyph that floats in a mostly-empty cell donates its own
+   * whitespace to the gap beside it and looks further away than its
+   * neighbours, which is what an en dash did here. */
   char zoom_mark[16], zoom_on_mark[16], close_mark[16], min_mark[16];
   bool bell_indicator;
   /* What to draw. A short string rather than a fixed glyph: the obvious

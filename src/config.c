@@ -175,7 +175,7 @@ void config_defaults(config_t *c) {
   snprintf(c->zoom_mark, sizeof c->zoom_mark, "\u25a1");
   snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "\u25a3");
   snprintf(c->close_mark, sizeof c->close_mark, "\u00d7");
-  snprintf(c->min_mark, sizeof c->min_mark, "\u2013");
+  snprintf(c->min_mark, sizeof c->min_mark, "\u2581");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
   c->min_pane_cols = 24;
