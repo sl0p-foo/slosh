@@ -1,0 +1,15 @@
+// matrix rain — motion
+//
+// Generated from contrib/shadertoy.html by contrib/gen-shaders; edit the
+// preset there, where you can see what it does, and run that again.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a
+// pane state instead of every pane, put the same passes inside one:
+//
+//     states { unfocused { ... } }
+
+shaders {
+    grayscale amount="220"
+    tint color="#33ff66" amount="clamp(240 - (((t / 70 + (x * 11) % 23 * 3) % rows - y + rows) % rows) * 45, 0, 240)"
+}

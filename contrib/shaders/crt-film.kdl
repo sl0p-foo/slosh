@@ -1,0 +1,16 @@
+// film — crt
+//
+// Generated from contrib/shadertoy.html by contrib/gen-shaders; edit the
+// preset there, where you can see what it does, and run that again.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a
+// pane state instead of every pane, put the same passes inside one:
+//
+//     states { unfocused { ... } }
+
+shaders {
+    grayscale amount="255"
+    dim amount="((x * 7 + y * 13 + t / 40) % 17 < 2) * 70"
+    dim amount="clamp(dist(x, y, cols / 2, rows / 2) * 5, 0, 165)"
+}

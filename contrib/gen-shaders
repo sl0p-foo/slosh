@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+/*
+ * Write contrib/shaders/*.kdl from the presets in contrib/shadertoy.html.
+ *
+ * The page is the source: it is where the presets are written, previewed and
+ * conformance-tested, and a second copy maintained by hand would be a second
+ * copy maintained badly. tests/test_shader_presets.py regenerates into a temp
+ * directory and fails if the committed files have drifted, so "I edited the
+ * page and forgot" is a failing test rather than a stale example.
+ *
+ *   contrib/gen-shaders            write the files
+ *   contrib/gen-shaders --check    say whether they are current, write nothing
+ */
+"use strict";
+const fs = require("fs");
+const path = require("path");
+
+const here = __dirname;
+const html = fs.readFileSync(path.join(here, "shadertoy.html"), "utf8");
+const script = html.split("<script>")[1].split("</script>")[0];
+/* Everything up to the DOM: the presets and nothing that needs a browser. */
+const prelude = script.slice(0, script.indexOf("/* ---- the chain UI"));
+const PRESETS = new Function(prelude + "; return PRESETS;")();
+
+/* "built-ins, as expressions" is a heading, not a filename: the qualifier is
+ * dropped so the file is built-ins-scanlines.kdl and not a sentence. */
+const slug = (s) => s.toLowerCase().replace(/,.*$/, "")
+  .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+function render(group, name, chain) {
+  const body = chain.map((p) => {
+    const color = p.op === "tint" ? ` color="${p.color}"` : "";
+    return `    ${p.op}${color} amount="${p.amount}"`;
+  }).join("\n");
+  return `// ${name} — ${group}
+//
+// Generated from contrib/shadertoy.html by contrib/gen-shaders; edit the
+// preset there, where you can see what it does, and run that again.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a
+// pane state instead of every pane, put the same passes inside one:
+//
+//     states { unfocused { ... } }
+
+shaders {
+${body}
+}
+`;
+}
+
+const outDir = process.argv.includes("--out")
+  ? process.argv[process.argv.indexOf("--out") + 1]
+  : path.join(here, "shaders");
+const check = process.argv.includes("--check");
+
+if (!check) fs.mkdirSync(outDir, { recursive: true });
+
+let stale = [];
+let count = 0;
+for (const [group, entries] of Object.entries(PRESETS)) {
+  for (const [name, chain] of Object.entries(entries)) {
+    const file = path.join(outDir, `${slug(group)}-${slug(name)}.kdl`);
+    const text = render(group, name, chain);
+    count++;
+    if (check) {
+      let have = null;
+      try { have = fs.readFileSync(file, "utf8"); } catch { /* missing */ }
+      if (have !== text) stale.push(path.basename(file));
+    } else {
+      fs.writeFileSync(file, text);
+    }
+  }
+}
+
+if (check) {
+  /* A file nobody generates any more is as stale as one that has changed. */
+  const want = new Set();
+  for (const [group, entries] of Object.entries(PRESETS))
+    for (const name of Object.keys(entries))
+      want.add(`${slug(group)}-${slug(name)}.kdl`);
+  for (const f of fs.readdirSync(outDir))
+    if (f.endsWith(".kdl") && !want.has(f)) stale.push(`${f} (no longer a preset)`);
+
+  if (stale.length) {
+    console.error("stale, run contrib/gen-shaders:\n  " + stale.join("\n  "));
+    process.exit(1);
+  }
+  console.log(`${count} preset files are current`);
+} else {
+  console.log(`wrote ${count} files to ${path.relative(process.cwd(), outDir)}`);
+}

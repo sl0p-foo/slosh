@@ -34,6 +34,38 @@ It works by writing the theme over the file the session was started with and
 letting the config watcher notice, which is also a fair demonstration of the
 watcher.
 
+## shaders/ and shader-tour
+
+Thirty-two ready-made shaders, one file each, generated from the presets in
+`shadertoy.html` by `gen-shaders` — the page is where they are written and
+previewed, and a second copy kept by hand would be a second copy kept badly.
+`tests/test_shader_presets.py` fails if the two ever disagree.
+
+To use one, append it to `~/.config/sl0ppty/config.kdl`; a running session
+picks it up when you save.
+
+```sh
+cat contrib/shaders/guides-torch.kdl >> ~/.config/sl0ppty/config.kdl
+```
+
+To look before choosing:
+
+```sh
+contrib/shader-tour                 # spawn a session and cycle every one
+contrib/shader-tour crt             # cycle one group
+contrib/shader-tour torch           # apply one to the session named by $SESSION
+DWELL=8 contrib/shader-tour motion  # linger longer on each
+```
+
+The groups are `guides` (a cursor line, a crosshair, indent guides, a torch —
+things that tell you where you are), `crt` (phosphor, amber, film grain, a
+rolling bar), `motion` (sonar, ripples, plasma, matrix rain), `built-ins`
+(every compiled-in shader written as an expression, which is the point:
+`vignette` is `dim` with an argument) and `pane-states`.
+
+Move the mouse while the cursor-following ones are up. `curx`/`cury` is where
+the cursor is, and standing still tells you nothing about a torch.
+
 ## shader-plugin/
 
 A skeleton for adding your own shaders as a shared library, with a Makefile

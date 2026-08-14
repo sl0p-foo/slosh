@@ -1,0 +1,14 @@
+// ripples — motion
+//
+// Generated from contrib/shadertoy.html by contrib/gen-shaders; edit the
+// preset there, where you can see what it does, and run that again.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a
+// pane state instead of every pane, put the same passes inside one:
+//
+//     states { unfocused { ... } }
+
+shaders {
+    tint color="#7aa2f7" amount="((dist(x, y, curx, cury) + t / 30) % 10 < 5) * 50"
+}

@@ -139,7 +139,10 @@ shaders {
 
 Integer arithmetic over `x y cols rows curx cury focused t`, with `min max abs
 clamp dist` and comparisons that give 0 or 1 — so `(x < 10) * 200` is how you
-write a rule. There are no loops, so a config cannot hang a session. The
+write a rule. Thirty-two ready-made ones are in
+[`contrib/shaders`](contrib/shaders) — a cursor line, a crosshair, a torch, a
+phosphor CRT, sonar pings that follow your cursor — and `contrib/shader-tour`
+cycles a live session through them. There are no loops, so a config cannot hang a session. The
 expression produces the *strength* and never the colour, which keeps the
 mixing in C and means the whole program can be worked out once into a per-cell
 map and reused: a shader you wrote in your config costs about what a compiled

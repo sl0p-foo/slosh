@@ -1,0 +1,81 @@
+#!/bin/sh
+# Show the shaders in contrib/shaders on a running session.
+#
+#   contrib/shader-tour                  spawn a session and cycle every one
+#   contrib/shader-tour torch            apply one to the session named below
+#   contrib/shader-tour guides           cycle just that group
+#   SESSION=work contrib/shader-tour     ...to a different session
+#   DWELL=8 contrib/shader-tour          linger longer on each
+#
+# Like theme-tour, it works by writing the config the session was started with
+# and letting the watcher notice. The cursor-following ones (torch, sonar,
+# ripples, crosshair) want the mouse moved over the session while they are up:
+# `curx`/`cury` is where the cursor is, and standing still tells you nothing.
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+bin="$here/../build/sl0ppty"
+SESSION=${SESSION:-shaders}
+CONF=${SL0PPTY_CONFIG:-/tmp/sl0ppty-shader-tour.kdl}
+DWELL=${DWELL:-5}
+
+# A name can be the whole slug (guides-torch), or just the interesting half
+# (torch) when that is unambiguous, because nobody wants to remember which
+# group a shader is in.
+resolve() {
+  [ -f "$here/shaders/$1.kdl" ] && { echo "$1"; return 0; }
+  set -- $(cd "$here/shaders" && ls -- *-"$1".kdl 2>/dev/null | sed 's|\.kdl$||')
+  [ $# -eq 1 ] && { echo "$1"; return 0; }
+  return 1
+}
+
+apply() {
+  name=$(resolve "$1") || { echo "no such shader: $1"; exit 1; }
+  f="$here/shaders/$name.kdl"
+  # The theme goes with it: shaders resolve default-coloured text through
+  # theme's default_fg/default_bg, so a preset judged without one is being
+  # judged against a guess.
+  {
+    cat "$here/themes/sl0p.kdl"
+    echo
+    cat "$f"
+  } > "$CONF"
+  printf '  %-26s %s\n' "$name" "$(sed -n '1s|// ||p' "$f")"
+}
+
+# A tour needs something to tour. Applying a single shader does not: it may
+# well be aimed at a session you already have, or at a config you are editing.
+ensure_session() {
+  "$bin" ls 2>/dev/null | grep -q "^$SESSION " && return 0
+  cp "$here/themes/sl0p.kdl" "$CONF"
+  echo "starting a session called $SESSION..."
+  SL0PPTY_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
+  sleep 1
+}
+
+if [ -n "$1" ]; then
+  # A whole group (guides, crt, motion, built-ins, pane-states) or one shader.
+  set +e
+  ls "$here/shaders/$1-"*.kdl >/dev/null 2>&1
+  isgroup=$?
+  set -e
+  if [ $isgroup -eq 0 ]; then
+    ensure_session
+    echo "cycling $1, ${DWELL}s each. ^C to stop wherever you like."
+    for f in "$here/shaders/$1-"*.kdl; do
+      apply "$(basename "$f" .kdl)"
+      sleep "$DWELL"
+    done
+  else
+    apply "$1"
+  fi
+  exit 0
+fi
+
+ensure_session
+
+echo "cycling every shader, ${DWELL}s each. ^C to stop wherever you like."
+echo "move the mouse over the session for the ones that follow the cursor."
+for f in "$here"/shaders/*.kdl; do
+  apply "$(basename "$f" .kdl)"
+  sleep "$DWELL"
+done
