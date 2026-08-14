@@ -217,6 +217,7 @@ def test_drop_target_is_visible():
 
 GRIP_V, GRAB_V = "\u250a", "\u2551"   # dotted / doubled, vertical boundary
 GRIP_H, GRAB_H = "\u2508", "\u2550"   # dotted / doubled, horizontal boundary
+ARROW_V, ARROW_H = "\u21d4", "\u21d5"  # which way that boundary travels
 
 
 def test_the_gap_says_it_is_a_handle():
@@ -311,6 +312,61 @@ def test_no_resize_hint_during_another_drag():
         s.settle(80)
 
 
+def test_the_gap_names_the_verb():
+    """The dots say it is a handle; the arrow says what pulling it does."""
+    with Session(SH, cols=120, rows=26) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle(200)
+        left, right = s.panes()
+        gx, gy = left["x"] + left["w"], left["y"] + 3
+
+        s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
+        time.sleep(0.35)
+        s.settle(60)
+        snap = s.snapshot()
+        check("hovering a column boundary shows a sideways arrow",
+              ARROW_V in snap.screen(), "")
+        # A divider between columns is drawn vertically and travels sideways;
+        # the useful half of that is the travelling.
+        check("and not the up-down one", ARROW_H not in snap.screen(), "")
+
+        pos = snap.find(ARROW_V)
+        check("the arrow sits in the middle of the boundary",
+              pos and pos[1] == left["y"] + left["h"] // 2, str(pos))
+        check("on the line itself, inside the gap",
+              pos and left["x"] + left["w"] <= pos[0] < right["x"], str(pos))
+
+        s.send(rf"\e[<0;{gx + 1};{gy + 1}M")
+        s.send(rf"\e[<32;{gx + 5};{gy + 1}M")
+        s.settle(80)
+        check("it stays while the boundary is actually moving",
+              ARROW_V in s.snapshot().screen(), "")
+        s.send(rf"\e[<0;{gx + 5};{gy + 1}m")
+        s.settle(120)
+        check("and goes with the rest of the hint",
+              ARROW_V not in s.snapshot().screen(), "")
+
+
+def test_a_row_boundary_names_its_own_verb():
+    with Session(SH, cols=120, rows=26) as s:
+        s.settle()
+        s.key("-")
+        s.settle(200)
+        top, bottom = s.panes()
+        gx, gy = top["x"] + 6, top["y"] + top["h"]
+
+        s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
+        time.sleep(0.35)
+        s.settle(60)
+        snap = s.snapshot()
+        check("a row boundary shows an up-down arrow",
+              ARROW_H in snap.screen() and ARROW_V not in snap.screen(), "")
+        pos = snap.find(ARROW_H)
+        check("in the gap between the rows",
+              pos and top["y"] + top["h"] <= pos[1] < bottom["y"], str(pos))
+
+
 if __name__ == "__main__":
     test_keyboard_resize()
     test_vertical_resize()
@@ -323,4 +379,6 @@ if __name__ == "__main__":
     test_the_hint_changes_while_resizing()
     test_a_horizontal_boundary_uses_horizontal_marks()
     test_no_resize_hint_during_another_drag()
+    test_the_gap_names_the_verb()
+    test_a_row_boundary_names_its_own_verb()
     sys.exit(report())

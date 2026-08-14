@@ -1736,16 +1736,31 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
   }
 
   uint16_t attrs = active ? ATTR_BOLD : 0;
+
+  /* An arrow in the middle of the line, naming the verb: the dots say this is
+   * a handle, the arrow says what pulling it does. It points along the axis the
+   * boundary *moves*, not the one it lies on — a divider between two columns is
+   * drawn vertically and travels sideways, and the useful half of that is the
+   * travelling. Always bold: it is the one cell meant to be read.
+   *
+   * Double arrows rather than U+2194/U+2195, which carry emoji presentation and
+   * are widely drawn double-width; screen_text books a chrome cell as one, so a
+   * glyph that drew as two would shift the row. They also happen to rhyme with
+   * the doubled line the active state uses. */
   if (split->dir == SPLIT_COLS) {
     uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
     for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
       screen_text(s, x, y, active ? "\u2551" : "\u250a", FRAME_FOCUS, NO_COLOR,
                   attrs);
+    screen_text(s, x, (uint16_t)(gapr.y + gapr.h / 2), "\u21d4", FRAME_FOCUS,
+                NO_COLOR, ATTR_BOLD);
   } else {
     uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
     for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
       screen_text(s, x, y, active ? "\u2550" : "\u2508", FRAME_FOCUS, NO_COLOR,
                   attrs);
+    screen_text(s, (uint16_t)(gapr.x + gapr.w / 2), y, "\u21d5", FRAME_FOCUS,
+                NO_COLOR, ATTR_BOLD);
   }
 }
 
