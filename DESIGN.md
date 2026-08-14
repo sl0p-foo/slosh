@@ -189,7 +189,7 @@ reading* plus *a strip of small ones you are watching*.
 because a stack of headers *is* the monitored strip:
 
 ```
-   1  2  +tab                                    5 panes
+   1  2  +                                       5 panes
    pi · ready───────────────────────────────────────────
    pi · ready───────────────────────────────────────────
    pi · ready───────────────────────────────────────────

@@ -97,6 +97,9 @@ typedef struct {
    * whitespace to the gap beside it and looks further away than its
    * neighbours, which is what an en dash did here. */
   char zoom_mark[16], zoom_on_mark[16], close_mark[16], min_mark[16];
+  /* The new-tab button at the end of the strip. Drawn with a space each side,
+   * so a one-character mark is still a three-cell target. */
+  char newtab_mark[16];
   bool bell_indicator;
   /* What to draw. A short string rather than a fixed glyph: the obvious
    * choice is an emoji bell, and emoji are drawn two columns wide by many

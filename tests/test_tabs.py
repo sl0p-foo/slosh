@@ -214,7 +214,7 @@ def test_hovering_the_strip_lights_what_is_under_the_pointer():
     with Session(SH, cols=80, rows=14, layout=lay) as s:
         s.settle(20)
         hits = strip_hits(s.snapshot())
-        check("the strip has two tabs and a +tab", len(hits) == 3, str(hits))
+        check("the strip has two tabs and a new-tab button", len(hits) == 3, str(hits))
 
         active_id = "tab:" + str(s.tabs()[0]["id"])
         for target, h in hits.items():

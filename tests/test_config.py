@@ -225,7 +225,7 @@ def test_status_line_says_what_you_are_looking_at():
         # session's (see test_the_two_pane_counts_answer_different_questions).
         # What it must not do is restate the strip itself.
         check("and is not a second copy of the tab strip",
-              "+tab" not in bottom, repr(bottom))
+              "pane 1/2" in bottom and "1:api" not in bottom, repr(bottom))
 
         ids = [p["id"] for p in s.panes()]
         s.api("focus", id=ids[1])

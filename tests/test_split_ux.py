@@ -48,14 +48,19 @@ def click(s, x, y):
 
 
 def test_no_more_plus():
+    """The frame carries no `+`, which is what lets the strip's new-tab button
+    *be* a bare `+`: there is exactly one of them in the UI, so it means one
+    thing. If a `+` ever returns to a frame, that button needs its word back.
+    """
     with Session(SH, cols=60, rows=14, config=FAST) as s:
         s.settle()
         snap = s.snapshot()
         p = s.pane()
         check("the frame has no split button any more",
               "+" not in snap.line(p["y"]), repr(snap.line(p["y"])))
-        check("the status bar still has its own, different one",
-              "+tab" in snap.line(1), repr(snap.line(1)))
+        check("the status bar still has its own new-tab button",
+              any(h["action"] == "newtab" and h["y"] == 1 for h in snap.hits),
+              repr(snap.line(1)))
         # The frame does spend columns again -- six of them, on the zoom and
         # close buttons -- but on two verbs that a single glyph *can* encode.
         # The split button was removed because one glyph cannot mean four

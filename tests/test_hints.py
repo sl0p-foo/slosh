@@ -95,7 +95,7 @@ def test_the_gap_and_the_strip_and_the_bar():
               repr(bar(s)))
         n = hit(s, "newtab")
         hover(s, n["x"] + 1, n["y"])
-        check("+tab offers a new one", "new tab" in bar(s), repr(bar(s)))
+        check("the new-tab button offers a new one", "new tab" in bar(s), repr(bar(s)))
 
         s.send(r"\x01m")
         s.settle(20)

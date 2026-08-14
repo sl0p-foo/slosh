@@ -66,7 +66,7 @@ connection goes away. Reattach with the same command.
 - **Drag a pane by its title** onto another to swap them. Everything it could
   land on greys out; the pane in your hand does not.
 - **Double-click a pane's title to rename it**, in place.
-- Click a tab to switch, `+tab` to open one, a pane to focus it.
+- Click a tab to switch, `+` to open one, a pane to focus it.
 - Hovering anything says what it does, in a word at the bottom of the screen.
 
 ### Panes do not vanish when a command ends

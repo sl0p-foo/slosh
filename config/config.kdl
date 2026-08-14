@@ -77,6 +77,13 @@ zoom_on_mark "*"
 close_mark "x"
 min_mark "_"
 
+// The new-tab button at the end of the tab strip. Drawn with a space on each
+// side, so a one-character mark is still a three-cell target -- a one-cell
+// target is a thing you miss with a mouse. It reads as a bare "+" because
+// nothing else in the UI is one: the frame's old "+" for splitting went when
+// the border became the button. Try "[+]" or "new" if you prefer a word.
+newtab_mark "+"
+
 // A pane whose program exits stays where it is, keeping everything it
 // printed, with a line in its own backlog saying why it ended and two buttons
 // in its frame: [re-run] to run the same command again in the same pane and
@@ -98,7 +105,7 @@ bell_indicator true
 // \u escape, so put the character itself here.)
 bell_mark "•"
 
-// The one-row bar with tabs, the +tab button and the pane count.
+// The one-row bar with tabs, the new-tab button and the pane count.
 status_bar true
 
 // The line along the bottom: which session and tab you are in, what the

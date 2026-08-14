@@ -177,6 +177,7 @@ void config_defaults(config_t *c) {
   snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "*");
   snprintf(c->close_mark, sizeof c->close_mark, "x");
   snprintf(c->min_mark, sizeof c->min_mark, "_");
+  snprintf(c->newtab_mark, sizeof c->newtab_mark, "+");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
   c->keep_dead = true;
@@ -400,6 +401,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (cm) snprintf(c->close_mark, sizeof c->close_mark, "%s", cm);
   const char *mm = kdl_arg(kdl_child(root, "min_mark"), 0, NULL);
   if (mm) snprintf(c->min_mark, sizeof c->min_mark, "%s", mm);
+  const char *nt = kdl_arg(kdl_child(root, "newtab_mark"), 0, NULL);
+  if (nt) snprintf(c->newtab_mark, sizeof c->newtab_mark, "%s", nt);
   c->keep_dead = kdl_arg_bool(kdl_child(root, "keep_dead"), 0, c->keep_dead);
   c->bell_indicator =
       kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);

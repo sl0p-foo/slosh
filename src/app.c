@@ -2559,14 +2559,28 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     x = (uint16_t)(x + w);
   }
 
-  /* Not a bare "+": the frame already has one, for splitting a pane. Two
-   * verbs that look identical is a UI bug the fork shipped and noticed. */
-  if (x + 6 < right) {
-    uint16_t w = screen_text(s, x, y, " +tab ", TAB_IDLE, NO_COLOR, 0);
-    if (ptr_on(a, x, y, w, 1))
-      screen_text(s, x, y, " +tab ", TAB_HOVER, NO_COLOR, ATTR_BOLD);
-    hit_add(&s->hits, x, y, w, 1, "newtab");
+  /* A bare mark, spaced like the frame's own buttons rather than spelled out.
+   * It used to read "+tab", because a pane frame carried a "+" for splitting
+   * and two verbs that look identical is a UI bug the fork shipped. That "+"
+   * went when the border became the button, so the collision it was avoiding
+   * no longer exists and the word was left explaining itself to nobody.
+   *
+   * Padded to three cells for the same reason the frame's buttons are: a
+   * one-cell target is a thing you miss with a mouse. What it does is said by
+   * the hint under the pointer, which is where every other one-character
+   * affordance here says it. */
+  {
+    char btn[24];
+    snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
+    uint16_t bw = (uint16_t)(cells(CFG.newtab_mark) + 2);
+    if (bw > 2 && x + bw <= right) {
+      uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
+      if (ptr_on(a, x, y, w, 1))
+        screen_text(s, x, y, btn, TAB_HOVER, NO_COLOR, ATTR_BOLD);
+      hit_add(&s->hits, x, y, w, 1, "newtab");
+    }
   }
+
 }
 
 /* The space between two of a split's children, or false if they are flush.

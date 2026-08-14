@@ -17,9 +17,12 @@ def test_status_bar():
         snap = s.snapshot()
         bar = snap.line(1)
         check("the bar shows a pane count", "1 pane" in bar, repr(bar))
-        check("the bar shows a new-tab button", "+tab" in bar, repr(bar))
-
-        x = bar.index("+tab")
+        # Found through the hit list rather than by its label: what the
+        # button says is the config's business (`newtab_mark`), and a test
+        # that spells it out fails the day somebody changes their mind.
+        btn = [h for h in snap.hits if h["action"] == "newtab"]
+        check("the bar shows a new-tab button", len(btn) == 1, str(snap.hits))
+        x = btn[0]["x"] + 1
         check("the new-tab button is clickable", snap.hit_at(x, 1) == "newtab",
               str(snap.hit_at(x, 1)))
         s.click(x, 1)
