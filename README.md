@@ -3,16 +3,6 @@
 A terminal multiplexer — panes, tabs, sessions you can detach from — written
 in C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
-```
-   1  2:build  +tab                                        5 panes
-   pi · ready────────────────────────────────────────────────────
-   pi · ready────────────────────────────────────────────────────
-  ╭──────────────────────────── pi ──────────────────────────+─╮
-  │                                                            │
-  │                                                            │
-  ╰ alt+N · ready · #7 ────────────────────[continue]─[explain]─╯
-```
-
 ## Why another one
 
 The multiplexers we have are crusty, and the things that make them awkward are
@@ -128,6 +118,15 @@ states {
 
 The same mechanism draws a column ruler, a margin marker or a spotlight that
 follows the cursor, inside programs that have never heard of such things.
+
+**You can add your own** without rebuilding sl0ppty: a shader is a C function
+from one cell to that cell's colours, and any `*.so` in
+`~/.config/sl0ppty/shaders/` that exports one is loaded at startup and named
+in the config exactly like a built-in. Skeleton, Makefile and the rules a
+shader has to keep: [`contrib/shader-plugin`](contrib/shader-plugin). It is
+native code in the session's process, so install ones you trust — the same
+standing as `shell` and a layout's `command=`, which can already run anything
+as you.
 
 ## Scripting
 

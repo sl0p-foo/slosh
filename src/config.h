@@ -228,6 +228,12 @@ typedef struct {
 
   /* what a new pane runs; NULL means $SHELL */
   char *shell;
+
+  /* Where to look for shader plugins (`*.so`). NULL means the default: a
+   * `shaders` directory beside the config file. Read before the `shaders` and
+   * `states` blocks are parsed, because what they are allowed to name depends
+   * on what has been loaded. */
+  char *shader_dir;
 } config_t;
 
 /* Defaults, then <config dir>/config.kdl on top. Never fails: on a bad file

@@ -156,6 +156,22 @@ hover_delay_ms 250
 // program calls itself.
 double_click_ms 400
 
+// Extra shaders can be loaded from shared libraries: any `*.so` in the
+// directory below that exports a sl0ppty shader plugin. Once loaded they are
+// named here exactly like a built-in. Default: a `shaders` directory beside
+// this file, so dropping the .so next to your config is the whole install.
+//
+// A plugin is native code running in the session's own process, with your
+// privileges and no sandbox -- which is the same thing `shell` and a layout's
+// `command=` already are, and the reason the search path is a directory you
+// own rather than a value that can point anywhere. Install ones you trust.
+//
+// Adding a plugin and saving this file loads it; nothing is ever unloaded, so
+// *replacing* one needs a new session. Skeleton and Makefile:
+// contrib/shader-plugin/
+//
+// shader_dir "~/.config/sl0ppty/shaders"
+
 // ── shaders ─────────────────────────────────────────────────────────────────
 //
 // Colour passes over a pane's contents (never the frame, title or tab strip).

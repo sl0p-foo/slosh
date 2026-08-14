@@ -118,6 +118,31 @@ before changing anything near it.
   blocking `waitpid` would hang the entire session on one program that closes
   its terminal and keeps running. Losing the race costs the words "status 0".
 
+## Shaders: what is measured, and what is not worth doing
+
+Before optimising anything here, read the numbers rather than reasoning about
+them — `.scratch/shbench.c` and `.scratch/shprof.c` produce them in a second
+(they are gitignored; rebuild with the command in their headers).
+
+What they say, per cell per pass on this box:
+
+- the **arithmetic is free**. `vignette` — squared distances, clamp, divide —
+  is *cheaper* than `dim`, which computes nothing. So precomputing an amount
+  per cell, the obvious optimisation, buys approximately zero.
+- the cost is per-cell overhead and the colour mixing. Removing `screen_at()`
+  from the inner loop took the pass from 8.0ns to 6.1ns for ten lines, and
+  that is done.
+- the next real win is **per-row dispatch** (an indirect call per row rather
+  than per cell, which also lets each shader hoist its row-invariant work):
+  measured at 4.7ns in a prototype. Not done, because it is a rewrite of every
+  shader and nothing needs the 1.4ns yet.
+- an **interpreted** shader is 56ns against a compiled 8ns, which is the whole
+  argument for D15 loading native code instead of inventing a language.
+
+All of this is 0.24ms per frame on a 200x50 pane, under 3% of a 120Hz frame.
+It has never been the bottleneck; do not spend a day here without a profile
+saying otherwise.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.
@@ -133,6 +158,11 @@ before changing anything near it.
   something you are looking at; less fine once you have six of them put away.
 - **Nothing re-runs a whole tab**, which is the obvious next want once one
   pane can be re-run.
+- **Shader plugins cannot be replaced without a new session** (D15): loading
+  is additive on purpose, because a `shade_fn` may be live in a config or on a
+  pane. Hot-swapping would need every shader reference to be indirected
+  through the registry, which is a real change and not obviously worth it.
+- **Per-row shader dispatch** — see the numbers above.
 - **Corner crossings**: found for both nestings now, but if more turn up
   missing, ask *how the layout was built* — the split order decides the tree
   shape, and that is where any remaining blind spot will be.

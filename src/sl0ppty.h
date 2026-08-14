@@ -8,35 +8,11 @@
 #include <sys/types.h>
 
 #include "input.h"
+/* cell_t, color_t and the ATTR_* flags live in the shader ABI, because that is
+ * the one place they are a *contract* with code compiled outside this tree. */
+#include "shader_abi.h"
 
 /* ---- screen: our composited cell buffer + diff emitter ---------------- */
-
-enum {
-  ATTR_BOLD = 1 << 0,
-  ATTR_DIM = 1 << 1,
-  ATTR_ITALIC = 1 << 2,
-  ATTR_UNDERLINE = 1 << 3,
-  ATTR_BLINK = 1 << 4,
-  ATTR_INVERSE = 1 << 5,
-  ATTR_INVISIBLE = 1 << 6,
-  ATTR_STRIKE = 1 << 7,
-};
-
-typedef struct {
-  bool set; /* false = terminal default */
-  uint8_t r, g, b;
-} color_t;
-
-/* A composited cell. `len` bytes of UTF-8; a grapheme cluster may be several
- * codepoints, hence the buffer rather than a codepoint. width 0 means this is
- * the tail half of a wide cell and must not be painted. */
-typedef struct {
-  char text[16];
-  uint8_t len;
-  uint8_t width;
-  uint16_t attrs;
-  color_t fg, bg;
-} cell_t;
 
 /* One geometry (DESIGN.md): every painted interactive element records its rect
  * here as it is painted, and a click is a lookup. Drawing and hit-testing

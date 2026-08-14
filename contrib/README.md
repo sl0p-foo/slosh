@@ -33,3 +33,13 @@ SESSION=work contrib/theme-tour slate
 It works by writing the theme over the file the session was started with and
 letting the config watcher notice, which is also a fair demonstration of the
 watcher.
+
+## shader-plugin/
+
+A skeleton for adding your own shaders as a shared library, with a Makefile
+and two worked examples (`checker`, `pulse`). Build it, drop the `.so` in
+`~/.config/sl0ppty/shaders/`, and name it in your config like a built-in.
+
+The only header a plugin needs is `src/shader_abi.h`. What a shader may and
+may not do — and why a plugin is native code rather than a sandboxed one —
+is in that directory's README.

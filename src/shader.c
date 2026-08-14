@@ -1,6 +1,12 @@
-/* The shader pass and the built-in shaders. See shader.h for the model. */
+/* The shader pass, the built-in shaders, and loading more of them from disk.
+ * See shader.h for the model and shader_abi.h for what a plugin sees. */
+#define _GNU_SOURCE
 #include "shader.h"
 
+#include <dlfcn.h>
+#include <glob.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Integer maths throughout: this runs per cell per pass per frame, and a float
@@ -125,10 +131,9 @@ static void sh_spotlight(const shader_t *sh, const shade_ctx_t *ctx,
   dim_by(c, (uint8_t)((int)sh->amount * k / 255));
 }
 
-static const struct {
-  const char *name;
-  shade_fn fn;
-} REGISTRY[] = {
+/* shader_def_t rather than a struct of its own, so a built-in and a loaded
+ * shader are the same kind of thing and lookup does not have two shapes. */
+static const shader_def_t REGISTRY[] = {
     {"dim", sh_dim},
     {"grayscale", sh_grayscale},
     {"tint", sh_tint},
@@ -140,6 +145,33 @@ static const struct {
     {"spotlight", sh_spotlight},
 };
 
+#define NBUILTIN (sizeof REGISTRY / sizeof *REGISTRY)
+
+/* ---- loaded shaders -----------------------------------------------------
+ *
+ * Kept beside the built-ins rather than merged into them: a built-in is a
+ * fixed table the compiler can put in .rodata, and this is a list that grows
+ * at runtime. Lookup asks the built-ins first, so a plugin cannot shadow
+ * `dim` and change what every existing config means.
+ *
+ * Both the name and the function belong to the loaded library, which is why
+ * nothing here is ever freed or unloaded: a shader_t copied into a config or
+ * onto a pane holds both pointers. */
+static struct {
+  shader_def_t *defs;
+  size_t n, cap;
+  char **paths; /* what has been loaded, so a reload does not load it twice */
+  size_t npaths, pathcap;
+} LOADED;
+
+static const shader_def_t *find_kind(const char *kind) {
+  for (size_t i = 0; i < NBUILTIN; i++)
+    if (strcmp(REGISTRY[i].name, kind) == 0) return &REGISTRY[i];
+  for (size_t i = 0; i < LOADED.n; i++)
+    if (strcmp(LOADED.defs[i].name, kind) == 0) return &LOADED.defs[i];
+  return NULL;
+}
+
 bool shader_make(shader_t *out, const char *kind, color_t color,
                  uint8_t amount) {
   return shader_make_p(out, kind, color, amount, 0);
@@ -148,16 +180,136 @@ bool shader_make(shader_t *out, const char *kind, color_t color,
 bool shader_make_p(shader_t *out, const char *kind, color_t color,
                    uint8_t amount, uint16_t param) {
   if (!out || !kind) return false;
-  for (size_t i = 0; i < sizeof REGISTRY / sizeof *REGISTRY; i++) {
-    if (strcmp(REGISTRY[i].name, kind) != 0) continue;
-    *out = (shader_t){REGISTRY[i].name, REGISTRY[i].fn, color, amount, param};
-    return true;
-  }
-  return false;
+  const shader_def_t *d = find_kind(kind);
+  if (!d) return false;
+  *out = (shader_t){d->name, d->fn, color, amount, param};
+  return true;
 }
 
 const char *shader_kind(size_t i) {
-  return i < sizeof REGISTRY / sizeof *REGISTRY ? REGISTRY[i].name : NULL;
+  if (i < NBUILTIN) return REGISTRY[i].name;
+  i -= NBUILTIN;
+  return i < LOADED.n ? LOADED.defs[i].name : NULL;
+}
+
+/* ---- loading ------------------------------------------------------------ */
+
+static bool already_loaded(const char *path) {
+  for (size_t i = 0; i < LOADED.npaths; i++)
+    if (strcmp(LOADED.paths[i], path) == 0) return true;
+  return false;
+}
+
+static void remember_path(const char *path) {
+  if (LOADED.npaths == LOADED.pathcap) {
+    LOADED.pathcap = LOADED.pathcap ? LOADED.pathcap * 2 : 8;
+    LOADED.paths = realloc(LOADED.paths, LOADED.pathcap * sizeof *LOADED.paths);
+  }
+  LOADED.paths[LOADED.npaths++] = strdup(path);
+}
+
+/* One library. Everything that can be wrong with it is checked before a
+ * single one of its shaders is registered, so a plugin is all-or-nothing:
+ * half a bundle is harder to explain than none of it. */
+static size_t load_one(const char *path, char *err, size_t errcap) {
+  void *lib = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+  if (!lib) {
+    if (err && !err[0])
+      snprintf(err, errcap, "%s: %s", path, dlerror() ? dlerror() : "dlopen");
+    return 0;
+  }
+
+  /* An object pointer is not a function pointer in ISO C, and dlsym returns
+   * the former. POSIX requires the conversion to work; the cast through a
+   * union is how it is written without the compiler being right to warn. */
+  union {
+    void *obj;
+    const shader_plugin_t *(*fn)(void);
+  } entry = {.obj = dlsym(lib, SL0PPTY_SHADER_PLUGIN_SYM)};
+
+  if (!entry.obj) {
+    if (err && !err[0])
+      snprintf(err, errcap, "%s: no " SL0PPTY_SHADER_PLUGIN_SYM, path);
+    dlclose(lib);
+    return 0;
+  }
+
+  const shader_plugin_t *t = entry.fn();
+  if (!t || t->abi != SL0PPTY_SHADER_ABI) {
+    if (err && !err[0])
+      snprintf(err, errcap, "%s: shader ABI %u, we speak %u", path,
+               t ? t->abi : 0, SL0PPTY_SHADER_ABI);
+    dlclose(lib);
+    return 0;
+  }
+  /* The version says which contract; the sizes say whether the plugin really
+   * has that contract's structs. They differ when someone edits their copy of
+   * shader_abi.h, which a version number alone reports as fine and a running
+   * session reports as garbled colours or a crash. */
+  if (t->cell_size != sizeof(cell_t) || t->ctx_size != sizeof(shade_ctx_t) ||
+      t->shader_size != sizeof(shader_t)) {
+    if (err && !err[0])
+      snprintf(err, errcap, "%s: built against different structs", path);
+    dlclose(lib);
+    return 0;
+  }
+  if (t->count && !t->shaders) {
+    if (err && !err[0]) snprintf(err, errcap, "%s: empty shader table", path);
+    dlclose(lib);
+    return 0;
+  }
+
+  for (size_t i = 0; i < t->count; i++) {
+    const shader_def_t *d = &t->shaders[i];
+    if (!d->name || !*d->name || !d->fn) {
+      if (err && !err[0]) snprintf(err, errcap, "%s: nameless shader", path);
+      continue;
+    }
+    if (find_kind(d->name)) {
+      /* Refused rather than replacing: a config naming `dim` means the `dim`
+       * it was written against, and a plugin that could redefine it would
+       * change effects nobody asked it to touch. */
+      if (err && !err[0])
+        snprintf(err, errcap, "%s: shader %s already exists", path, d->name);
+      continue;
+    }
+    if (LOADED.n == LOADED.cap) {
+      LOADED.cap = LOADED.cap ? LOADED.cap * 2 : 8;
+      LOADED.defs = realloc(LOADED.defs, LOADED.cap * sizeof *LOADED.defs);
+    }
+    LOADED.defs[LOADED.n++] = *d;
+  }
+
+  /* The library stays mapped for the life of the session, on purpose: see
+   * shader_load_dir()'s comment in the header. */
+  return t->count;
+}
+
+size_t shader_load_dir(const char *dir, char *err, size_t errcap) {
+  if (err && errcap) err[0] = 0;
+  if (!dir || !*dir) return 0;
+
+  char pattern[1024];
+  snprintf(pattern, sizeof pattern, "%s/*.so", dir);
+
+  glob_t g = {0};
+  int rc = glob(pattern, 0, NULL, &g);
+  if (rc != 0) {
+    globfree(&g);
+    return 0; /* no directory, or nothing in it: the normal case */
+  }
+
+  size_t added = 0;
+  for (size_t i = 0; i < g.gl_pathc; i++) {
+    if (already_loaded(g.gl_pathv[i])) continue;
+    /* Remembered whether or not it loads. A library that fails today fails
+     * every reload, and saying so once is a warning while saying so on every
+     * save is a broken editor. */
+    remember_path(g.gl_pathv[i]);
+    added += load_one(g.gl_pathv[i], err, errcap);
+  }
+  globfree(&g);
+  return added;
 }
 
 /* ---- the pass ----------------------------------------------------------- */

@@ -322,6 +322,7 @@ void config_defaults(config_t *c) {
 void config_free(config_t *c) {
   free(c->binds);
   free(c->shell);
+  free(c->shader_dir);
   memset(c, 0, sizeof *c);
 }
 
@@ -431,6 +432,35 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (sh) {
     free(c->shell);
     c->shell = strdup(sh);
+  }
+
+  /* Shader plugins, before any shader is named below: a `shaders` block may
+   * use what one of these adds, and a name is looked up as it is parsed. The
+   * default is a directory beside this file, so dropping a `.so` next to the
+   * config is the whole installation procedure. */
+  const char *sdir = kdl_arg(kdl_child(root, "shader_dir"), 0, NULL);
+  if (sdir) {
+    free(c->shader_dir);
+    c->shader_dir = strdup(sdir);
+  }
+  {
+    char dir[1024];
+    if (c->shader_dir) {
+      char buf[1024];
+      snprintf(dir, sizeof dir, "%s",
+               path_expand(c->shader_dir, buf, sizeof buf));
+    } else {
+      snprintf(dir, sizeof dir, "%s", path);
+      char *slash = strrchr(dir, '/');
+      if (slash) slash[1] = 0;
+      else dir[0] = 0;
+      snprintf(dir + strlen(dir), sizeof dir - strlen(dir), "shaders");
+    }
+    char lerr[256] = {0};
+    shader_load_dir(dir, lerr, sizeof lerr);
+    /* A plugin that will not load is worth a line, and worth nothing more:
+     * the config it came with still works, minus that effect (D9). */
+    if (lerr[0] && err && !err[0]) snprintf(err, errcap, "%s", lerr);
   }
 
   /* One node per pass, in the order written, because a chain is a sequence.

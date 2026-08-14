@@ -4,3 +4,6 @@ vendor/libghostty-vt/zig-out/
 vendor/libghostty-vt/.zig-cache/
 vendor/libghostty-vt/zig-pkg/
 __pycache__/
+
+# built plugins
+*.so

@@ -71,6 +71,23 @@ SHADER_TEST := build/shader_test
 $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) | build
 	$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) -o $@
 
+# Shader plugins, for test_shader_plugin.py: a good one, one that announces an
+# ABI we do not speak, and the example we ship in contrib -- which is built
+# here so that a broken example is a failing test rather than a bug report.
+PLUGIN_CFLAGS := -std=c23 -O1 -fPIC -shared -Isrc
+
+build/testshader.so: tests/shader_plugin_test.c src/shader_abi.h | build
+	$(CC) $(PLUGIN_CFLAGS) $< -o $@
+
+build/badshader.so: tests/shader_plugin_test.c src/shader_abi.h | build
+	$(CC) $(PLUGIN_CFLAGS) -DBAD_ABI $< -o $@
+
+build/exampleshader.so: contrib/shader-plugin/example.c src/shader_abi.h | build
+	$(CC) $(PLUGIN_CFLAGS) $< -o $@
+
+build/.pass-test_shader_plugin: build/testshader.so build/badshader.so \
+                                build/exampleshader.so
+
 build/.pass-%: tests/%.py tests/harness.py $(BIN) | build
 	@cd tests && timeout 300 python3 $(notdir $<) > ../build/.log-$* 2>&1 \
 	  || { echo "FAIL $(notdir $<)"; tail -25 ../build/.log-$*; exit 1; }
