@@ -5,6 +5,7 @@
 #ifndef SL0PPTY_APP_H
 #define SL0PPTY_APP_H
 
+#include "shader.h"
 #include "sl0ppty.h"
 
 typedef struct {
@@ -88,6 +89,15 @@ bool app_split_pane(app_t *a, uint32_t id, bool rows);
 bool app_close_pane(app_t *a, uint32_t id);
 uint32_t app_focused_pane_id(app_t *a);
 uint32_t app_current_tab_id(app_t *a);
+
+/* Colour passes over a pane's contents (shader.h). Policy-only for now: these
+ * are called from inside the app, not reachable over the control API or from
+ * a program in a pane. False if the pane or the shader kind is unknown, or if
+ * the pane already has SHADE_MAX of them. */
+bool app_shade_add(app_t *a, uint32_t pane_id, const char *kind, color_t color,
+                   uint8_t amount);
+void app_shade_clear(app_t *a, uint32_t pane_id);
+size_t app_shade_count(app_t *a, uint32_t pane_id);
 
 /* State as JSON, for the control API and the harness. Caller frees. */
 char *app_panes_json(app_t *a);

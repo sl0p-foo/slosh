@@ -132,6 +132,9 @@ void config_defaults(config_t *c) {
   c->status_bar = true;
   c->focus_follows_mouse = true;
 
+  c->default_fg = rgb(0xff, 0xff, 0xff);
+  c->default_bg = rgb(0x00, 0x00, 0x00);
+
   c->frame_focus = rgb(0xff, 0x5f, 0xd7);
   c->frame_idle = rgb(0x45, 0x45, 0x4a);
   c->title_focus = rgb(0xff, 0xff, 0xff);
@@ -264,6 +267,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
       const char *name;
       color_t *slot;
     } colors[] = {
+        {"default_fg", &c->default_fg},   {"default_bg", &c->default_bg},
         {"frame_focus", &c->frame_focus}, {"frame_idle", &c->frame_idle},
         {"title", &c->title_focus},       {"button_fg", &c->button_fg},
         {"button_bg", &c->button_bg},     {"button_bg_idle", &c->button_bg_idle},

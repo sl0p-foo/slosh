@@ -64,6 +64,13 @@ typedef struct {
   bool status_bar;
   bool focus_follows_mouse;
 
+  /* What a cell's "terminal default" colour resolves to when a shader has to
+   * compute on it. We cannot know the client's real default, and most text is
+   * default-coloured, so a shader would otherwise leave nearly everything
+   * alone. Only consulted while shading: an unshaded pane still defers to the
+   * terminal exactly as before. */
+  color_t default_fg, default_bg;
+
   /* theme */
   color_t frame_focus, frame_idle, title_focus;
   color_t button_fg, button_bg, button_bg_idle;

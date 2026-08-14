@@ -83,6 +83,12 @@ struct node {
   pane_t *pane;
   uint32_t id;
   rect_t content; /* where the pane's cells go */
+
+  /* Colour passes over this pane's contents, applied in order. Attached by
+   * policy inside this file; nothing in-band or over the control API can set
+   * them yet, so a program cannot restyle itself by accident. */
+  shader_t shaders[SHADE_MAX];
+  size_t nshaders;
   char purpose[64];
   bool purpose_locked; /* declared by a layout: in-band cannot override */
 
@@ -1420,6 +1426,42 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
   hit_add(&s->hits, r.x, r.y, r.w, 1, action);
 }
 
+/* ---- shaders ------------------------------------------------------------ */
+
+bool app_shade_add(app_t *a, uint32_t pane_id, const char *kind, color_t color,
+                   uint8_t amount) {
+  node_t *n = pane_by_id(a, pane_id);
+  if (!n || n->nshaders >= SHADE_MAX) return false;
+  shader_t sh;
+  if (!shader_make(&sh, kind, color, amount)) return false;
+  n->shaders[n->nshaders++] = sh;
+  return true;
+}
+
+void app_shade_clear(app_t *a, uint32_t pane_id) {
+  node_t *n = pane_by_id(a, pane_id);
+  if (n) n->nshaders = 0;
+}
+
+size_t app_shade_count(app_t *a, uint32_t pane_id) {
+  node_t *n = pane_by_id(a, pane_id);
+  return n ? n->nshaders : 0;
+}
+
+/* A pane with no shaders costs nothing: no context is built and no cell is
+ * visited, so an unshaded session emits the same bytes it did before. */
+static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
+  if (!n->nshaders) return;
+  shade_ctx_t base = {
+      .now_ms = now_ms_(),
+      .focused = n == cur(a)->focus,
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  shade_apply(s, n->shaders, n->nshaders, n->content.x, n->content.y,
+              n->content.w, n->content.h, &base);
+}
+
 static void draw_node(app_t *a, screen_t *s, node_t *n);
 
 static void draw_cb(node_t *n, void *ud) {
@@ -1462,6 +1504,10 @@ static void draw_cb(node_t *n, void *ud) {
     return;
   }
   pane_compose(n->pane, d->s, n->content.x, n->content.y, n == cur(d->a)->focus);
+  /* Between the contents and the chrome that goes over them: the frame was
+   * painted before this and lies outside the content rect, and the split guide
+   * is painted after, so it stays legible on top of a shaded pane. */
+  shade_leaf(d->a, d->s, n);
   draw_split_guide(d->a, d->s, n);
 }
 

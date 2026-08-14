@@ -1,0 +1,343 @@
+/* The shader pass and the built-ins. Pure cells in -> cells out, so pure
+ * tests: no pty, no terminal, no timing. */
+#include "shader.h"
+
+#include <stdio.h>
+#include <string.h>
+
+static int fails = 0;
+
+static void ok(const char *name, bool cond, const char *detail) {
+  if (!cond) fails++;
+  printf("%s %-52s %s\n", cond ? "ok  " : "FAIL", name, cond ? "" : detail);
+}
+
+static color_t rgb(uint8_t r, uint8_t g, uint8_t b) {
+  return (color_t){true, r, g, b};
+}
+
+static bool ceq(color_t c, uint8_t r, uint8_t g, uint8_t b) {
+  return c.set && c.r == r && c.g == g && c.b == b;
+}
+
+static char detail[256];
+static const char *shown(color_t c) {
+  if (!c.set) snprintf(detail, sizeof detail, "(unset)");
+  else snprintf(detail, sizeof detail, "#%02x%02x%02x", c.r, c.g, c.b);
+  return detail;
+}
+
+/* A screen with one known cell at (x,y), everything else blank. */
+static void put(screen_t *s, uint16_t x, uint16_t y, color_t fg, color_t bg) {
+  cell_t *c = screen_at(s, x, y);
+  c->text[0] = 'x';
+  c->len = 1;
+  c->width = 1;
+  c->attrs = 0;
+  c->fg = fg;
+  c->bg = bg;
+}
+
+static shade_ctx_t base_ctx(void) {
+  return (shade_ctx_t){.default_fg = rgb(0xff, 0xff, 0xff),
+                       .default_bg = rgb(0x00, 0x00, 0x00)};
+}
+
+/* Applies one built-in over the whole screen. */
+static void run1(screen_t *s, const char *kind, color_t color, uint8_t amount) {
+  shader_t sh;
+  if (!shader_make(&sh, kind, color, amount)) return;
+  shade_ctx_t base = base_ctx();
+  shade_apply(s, &sh, 1, 0, 0, s->cols, s->rows, &base);
+}
+
+/* A probe shader, to see what the pass tells a shader about where it is. */
+static struct {
+  uint16_t x, y, cols, rows;
+  int64_t now_ms;
+  bool focused;
+  color_t saw_fg;
+  int calls;
+} probe;
+
+static void probe_fn(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
+  (void)sh;
+  probe.calls++;
+  probe.cols = ctx->cols;
+  probe.rows = ctx->rows;
+  probe.now_ms = ctx->now_ms;
+  probe.focused = ctx->focused;
+  if (ctx->x == 1 && ctx->y == 1) { /* remember one specific cell */
+    probe.x = ctx->x;
+    probe.y = ctx->y;
+    probe.saw_fg = c->fg;
+  }
+  /* Write the position in, so the caller can prove each cell got its own. */
+  c->bg = (color_t){true, (uint8_t)ctx->x, (uint8_t)ctx->y, 0};
+}
+
+int main(void) {
+  screen_t s;
+
+  /* ---- the registry ---- */
+  {
+    shader_t sh;
+    ok("dim is a built-in", shader_make(&sh, "dim", (color_t){0}, 0), "");
+    ok("grayscale is a built-in",
+       shader_make(&sh, "grayscale", (color_t){0}, 0), "");
+    ok("tint is a built-in", shader_make(&sh, "tint", (color_t){0}, 0), "");
+    ok("an unknown kind is refused",
+       !shader_make(&sh, "bloom", (color_t){0}, 0), "");
+    ok("a NULL kind is refused", !shader_make(&sh, NULL, (color_t){0}, 0), "");
+
+    size_t n = 0;
+    while (shader_kind(n)) n++;
+    ok("the registry enumerates every built-in", n == 3, "");
+  }
+
+  /* ---- amount is the whole strength scale ---- */
+  {
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x80, 0x80, 0x80), rgb(0x40, 0x40, 0x40));
+    run1(&s, "dim", (color_t){0}, 0);
+    ok("amount 0 is the identity", ceq(screen_at(&s, 0, 0)->fg, 0x80, 0x80, 0x80),
+       shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x80, 0x80, 0x80), rgb(0x40, 0x40, 0x40));
+    run1(&s, "dim", (color_t){0}, 255);
+    ok("amount 255 dims fully to black",
+       ceq(screen_at(&s, 0, 0)->fg, 0, 0, 0) &&
+           ceq(screen_at(&s, 0, 0)->bg, 0, 0, 0),
+       shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0xff, 0xff, 0xff), rgb(0, 0, 0));
+    run1(&s, "dim", (color_t){0}, 128);
+    cell_t *c = screen_at(&s, 0, 0);
+    ok("halfway dims halfway", c->fg.r > 0x76 && c->fg.r < 0x84, shown(c->fg));
+    screen_free(&s);
+  }
+
+  /* ---- grayscale ---- */
+  {
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0xff, 0x00, 0x00), rgb(0x00, 0x00, 0xff));
+    run1(&s, "grayscale", (color_t){0}, 255);
+    cell_t *c = screen_at(&s, 0, 0);
+    ok("grey means the channels agree",
+       c->fg.r == c->fg.g && c->fg.g == c->fg.b, shown(c->fg));
+    ok("background is greyed too", c->bg.r == c->bg.g && c->bg.g == c->bg.b,
+       shown(c->bg));
+    screen_free(&s);
+
+    /* Weighted, not averaged: pure green must come out brighter than pure
+     * blue, or the grey reads at the wrong brightness. */
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x00, 0xff, 0x00), rgb(0x00, 0x00, 0xff));
+    run1(&s, "grayscale", (color_t){0}, 255);
+    c = screen_at(&s, 0, 0);
+    ok("luma is weighted: green outranks blue", c->fg.r > c->bg.r,
+       shown(c->fg));
+    screen_free(&s);
+  }
+
+  /* ---- tint ---- */
+  {
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x00, 0x00, 0x00), rgb(0x00, 0x00, 0x00));
+    run1(&s, "tint", rgb(0xff, 0x00, 0x00), 255);
+    ok("a full tint reaches the target colour",
+       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0), shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x00, 0x00, 0x00), rgb(0x00, 0x00, 0x00));
+    run1(&s, "tint", rgb(0xff, 0x00, 0x00), 128);
+    cell_t *c = screen_at(&s, 0, 0);
+    ok("a half tint lands between", c->fg.r > 0x76 && c->fg.r < 0x84,
+       shown(c->fg));
+    screen_free(&s);
+  }
+
+  /* ---- the default-colour problem ---- */
+  {
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, (color_t){0}, (color_t){0}); /* both "terminal default" */
+    run1(&s, "grayscale", (color_t){0}, 255);
+    cell_t *c = screen_at(&s, 0, 0);
+    ok("an unset colour is materialised, not skipped", c->fg.set && c->bg.set,
+       shown(c->fg));
+    ok("default fg (white) greys to white", ceq(c->fg, 0xff, 0xff, 0xff),
+       shown(c->fg));
+    ok("default bg (black) greys to black", ceq(c->bg, 0, 0, 0), shown(c->bg));
+    screen_free(&s);
+
+    /* The point of materialising: dimming has to reach default-coloured text,
+     * which is most text. */
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, (color_t){0}, (color_t){0});
+    run1(&s, "dim", (color_t){0}, 255);
+    ok("dim reaches default-coloured text",
+       ceq(screen_at(&s, 0, 0)->fg, 0, 0, 0), shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+
+    /* An unshaded pane must keep deferring to the terminal. */
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, (color_t){0}, (color_t){0});
+    shade_ctx_t base = base_ctx();
+    shade_apply(&s, NULL, 0, 0, 0, 4, 2, &base);
+    ok("no shaders leaves defaults unset", !screen_at(&s, 0, 0)->fg.set,
+       shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+  }
+
+  /* ---- what a shader must not touch ---- */
+  {
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x80, 0x80, 0x80), rgb(0x40, 0x40, 0x40));
+    cell_t *c = screen_at(&s, 0, 0);
+    c->width = 2;
+    c->len = 1;
+    run1(&s, "dim", (color_t){0}, 255);
+    ok("text, width and length survive a pass",
+       c->width == 2 && c->len == 1 && c->text[0] == 'x', "");
+    screen_free(&s);
+
+    /* The tail half of a wide cell is never painted, so it is never shaded. */
+    screen_init(&s, 4, 2);
+    put(&s, 1, 0, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    screen_at(&s, 1, 0)->width = 0;
+    run1(&s, "dim", (color_t){0}, 255);
+    ok("a wide cell's tail is left alone",
+       ceq(screen_at(&s, 1, 0)->fg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 1, 0)->fg));
+    screen_free(&s);
+  }
+
+  /* ---- the pass stays inside its rect: this is what protects the chrome ---- */
+  {
+    screen_init(&s, 8, 4);
+    for (uint16_t y = 0; y < 4; y++)
+      for (uint16_t x = 0; x < 8; x++)
+        put(&s, x, y, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+
+    shader_t sh;
+    shader_make(&sh, "dim", (color_t){0}, 255);
+    shade_ctx_t base = base_ctx();
+    shade_apply(&s, &sh, 1, 2, 1, 4, 2, &base); /* an inset rect */
+
+    ok("a cell inside the rect is shaded",
+       ceq(screen_at(&s, 2, 1)->fg, 0, 0, 0), shown(screen_at(&s, 2, 1)->fg));
+    ok("its far corner too", ceq(screen_at(&s, 5, 2)->fg, 0, 0, 0),
+       shown(screen_at(&s, 5, 2)->fg));
+    ok("the cell left of the rect is untouched",
+       ceq(screen_at(&s, 1, 1)->fg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 1, 1)->fg));
+    ok("the cell right of it is untouched",
+       ceq(screen_at(&s, 6, 1)->fg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 6, 1)->fg));
+    ok("the row above is untouched",
+       ceq(screen_at(&s, 2, 0)->fg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 2, 0)->fg));
+    ok("the row below is untouched",
+       ceq(screen_at(&s, 2, 3)->fg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 2, 3)->fg));
+    screen_free(&s);
+  }
+
+  /* ---- chaining ---- */
+  {
+    /* grayscale then tint is not tint then grayscale: the first flattens the
+     * hue the second would have had to work with. */
+    shader_t gray, tint;
+    shader_make(&gray, "grayscale", (color_t){0}, 255);
+    shader_make(&tint, "tint", rgb(0xff, 0x00, 0x00), 128);
+    shade_ctx_t base = base_ctx();
+
+    screen_init(&s, 2, 1);
+    put(&s, 0, 0, rgb(0x00, 0x80, 0x00), rgb(0, 0, 0));
+    shader_t ab[2] = {gray, tint};
+    shade_apply(&s, ab, 2, 0, 0, 2, 1, &base);
+    color_t after_ab = screen_at(&s, 0, 0)->fg;
+    screen_free(&s);
+
+    screen_init(&s, 2, 1);
+    put(&s, 0, 0, rgb(0x00, 0x80, 0x00), rgb(0, 0, 0));
+    shader_t ba[2] = {tint, gray};
+    shade_apply(&s, ba, 2, 0, 0, 2, 1, &base);
+    color_t after_ba = screen_at(&s, 0, 0)->fg;
+    screen_free(&s);
+
+    ok("order matters: the chain is a sequence, not a set",
+       !(after_ab.r == after_ba.r && after_ab.g == after_ba.g &&
+         after_ab.b == after_ba.b),
+       shown(after_ab));
+
+    /* And a second pass sees the first one's output. */
+    screen_init(&s, 2, 1);
+    put(&s, 0, 0, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    shader_t twice[2];
+    shader_make(&twice[0], "dim", (color_t){0}, 128);
+    shader_make(&twice[1], "dim", (color_t){0}, 128);
+    shade_apply(&s, twice, 2, 0, 0, 2, 1, &base);
+    ok("two half-dims are darker than one",
+       screen_at(&s, 0, 0)->fg.r < 0x70, shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+  }
+
+  /* ---- what the pass tells a shader ---- */
+  {
+    memset(&probe, 0, sizeof probe);
+    screen_init(&s, 8, 4);
+    for (uint16_t y = 0; y < 4; y++)
+      for (uint16_t x = 0; x < 8; x++)
+        put(&s, x, y, rgb(0x11, 0x22, 0x33), rgb(0, 0, 0));
+
+    shader_t sh = {"probe", probe_fn, {0}, 0};
+    shade_ctx_t base = base_ctx();
+    base.now_ms = 1234;
+    base.focused = true;
+    shade_apply(&s, &sh, 1, 2, 1, 4, 2, &base);
+
+    ok("every cell in the rect is visited exactly once", probe.calls == 4 * 2,
+       "");
+    ok("the shader is told the content size, not the screen size",
+       probe.cols == 4 && probe.rows == 2, "");
+    ok("positions are rect-relative, so effects can be positional",
+       probe.x == 1 && probe.y == 1, "");
+    ok("and the cell at that position is the right one",
+       ceq(probe.saw_fg, 0x11, 0x22, 0x33), shown(probe.saw_fg));
+    ok("time is passed through for animation", probe.now_ms == 1234, "");
+    ok("so is focus", probe.focused, "");
+
+    /* Each cell got its own coordinates, not a single shared one. */
+    ok("(0,0) of the rect is the screen cell the rect starts at",
+       ceq(screen_at(&s, 2, 1)->bg, 0, 0, 0), shown(screen_at(&s, 2, 1)->bg));
+    ok("and (3,1) is its opposite corner",
+       ceq(screen_at(&s, 5, 2)->bg, 3, 1, 0), shown(screen_at(&s, 5, 2)->bg));
+    screen_free(&s);
+  }
+
+  /* ---- degenerate input ---- */
+  {
+    screen_init(&s, 4, 2);
+    put(&s, 0, 0, rgb(0x80, 0x80, 0x80), rgb(0, 0, 0));
+    shader_t sh;
+    shader_make(&sh, "dim", (color_t){0}, 255);
+    shade_ctx_t base = base_ctx();
+    shade_apply(&s, &sh, 1, 0, 0, 0, 0, &base);   /* empty rect */
+    shade_apply(&s, &sh, 0, 0, 0, 4, 2, &base);   /* no shaders */
+    shade_apply(NULL, &sh, 1, 0, 0, 4, 2, &base); /* no screen */
+    shade_apply(&s, &sh, 1, 100, 100, 4, 2, &base); /* rect off-screen */
+    ok("a degenerate pass changes nothing and does not crash",
+       ceq(screen_at(&s, 0, 0)->fg, 0x80, 0x80, 0x80),
+       shown(screen_at(&s, 0, 0)->fg));
+    screen_free(&s);
+  }
+
+  printf("\n%s (%d failures)\n", fails ? "FAILED" : "all green", fails);
+  return fails ? 1 : 0;
+}

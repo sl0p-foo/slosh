@@ -62,6 +62,16 @@ toast_ms 2500
 // ── theme ───────────────────────────────────────────────────────────────────
 
 theme {
+    // What a cell's "terminal default" colour is taken to be when a shader has
+    // to compute on it (dimming a pane, greying it out). We never learn your
+    // terminal's real default, and most text is default-coloured, so without
+    // these a shader would leave nearly everything untouched. Set them to your
+    // terminal's actual foreground/background or shaded panes will shift
+    // colour as they turn on. Panes with no shader ignore these entirely and
+    // still defer to your terminal.
+    default_fg "#ffffff"
+    default_bg "#000000"
+
     frame_focus "#ff5fd7"
     frame_idle "#45454a"
     title "#ffffff"

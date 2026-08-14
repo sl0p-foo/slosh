@@ -51,10 +51,17 @@ KDL_TEST := build/kdl_test
 $(KDL_TEST): tests/kdl_test.c src/kdl.c | build
 	$(CC) $(CFLAGS) tests/kdl_test.c src/kdl.c -o $@
 
-test: $(BIN) $(TEST_BIN) $(KDL_TEST) ## unit + headless checks (fast)
+SHADER_TEST := build/shader_test
+
+$(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) | build
+	$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) -o $@
+
+test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) ## unit + headless checks (fast)
 	./$(TEST_BIN)
 	@echo
 	./$(KDL_TEST)
+	@echo
+	./$(SHADER_TEST)
 	@echo
 	cd tests && python3 test_screen.py && python3 test_layout.py && python3 test_tabs.py && python3 test_osc5577.py && \
 		python3 test_responsive.py && python3 test_finder.py && \
