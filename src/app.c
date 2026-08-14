@@ -2510,14 +2510,16 @@ static void find_corners(app_t *a) {
   struct gapinfo g[64];
   size_t n = collect_gaps(cur(a)->root, g, 64, 0);
 
-  for (size_t i = 0; i < n && a->ncorners < 16; i++) {
+  /* Every place a column boundary runs into a row boundary is its own
+   * crossing. Two of them that happen to line up are one crossing with two
+   * boundaries to move; two that do not are two crossings, each moving its
+   * own. Grouping by the columns they occupy gets both, where taking the first
+   * and discarding anything unlike it only ever found the aligned case. */
+  for (size_t i = 0; i < n; i++) {
     if (g[i].sp->dir != SPLIT_ROWS) continue;
     rect_t h = g[i].r;
-    corner_t c = {0};
-    c.h_id = g[i].sp->id;
-    c.h_edge = g[i].i;
 
-    for (size_t j = 0; j < n && c.nv < 2; j++) {
+    for (size_t j = 0; j < n; j++) {
       if (g[j].sp->dir != SPLIT_COLS) continue;
       rect_t v = g[j].r;
       if ((uint16_t)(v.y + v.h) != h.y && (uint16_t)(h.y + h.h) != v.y) continue;
@@ -2526,16 +2528,31 @@ static void find_corners(app_t *a) {
                         ? (uint16_t)(v.x + v.w)
                         : (uint16_t)(h.x + h.w);
       if (xe <= x0) continue;
-      if (!c.nv) {
-        c.r = (rect_t){x0, h.y, (uint16_t)(xe - x0), h.h};
-      } else if (c.r.x != x0 || c.r.w != (uint16_t)(xe - x0)) {
-        continue; /* out of line with the first: not one corner */
+      uint16_t w = (uint16_t)(xe - x0);
+
+      corner_t *c = NULL;
+      for (size_t k = 0; k < a->ncorners; k++) {
+        corner_t *e = &a->corners[k];
+        if (e->h_id == g[i].sp->id && e->h_edge == g[i].i && e->r.x == x0 &&
+            e->r.w == w) {
+          c = e;
+          break;
+        }
       }
-      c.v_id[c.nv] = g[j].sp->id;
-      c.v_edge[c.nv] = g[j].i;
-      c.nv++;
+      if (!c) {
+        if (a->ncorners >= 16) break;
+        c = &a->corners[a->ncorners++];
+        *c = (corner_t){0};
+        c->r = (rect_t){x0, h.y, w, h.h};
+        c->h_id = g[i].sp->id;
+        c->h_edge = g[i].i;
+      }
+      if (c->nv < 2) {
+        c->v_id[c->nv] = g[j].sp->id;
+        c->v_edge[c->nv] = g[j].i;
+        c->nv++;
+      }
     }
-    if (c.nv) a->corners[a->ncorners++] = c;
   }
 }
 

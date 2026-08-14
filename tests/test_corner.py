@@ -187,6 +187,42 @@ def test_the_crossing_shows_itself_before_you_rest_on_it():
               "\u250a" not in s.snapshot().screen(), "")
 
 
+def test_boundaries_out_of_line_are_two_crossings():
+    """Aligned, they are one crossing with two boundaries to move. Out of line,
+    they are two crossings each moving its own -- taking the first and
+    discarding anything unlike it only ever found the aligned case."""
+    l = lay(GRID)
+    with Session(SH, cols=70, rows=22, layout=l) as l_s:
+        s = l_s
+        s.settle(30)
+        check("aligned, there is one", len(corners(s)) == 1, str(corners(s)))
+
+        ids = sorted(rects(s))
+        s.api("focus", id=ids[0])
+        s.settle(10)
+        for _ in range(4):
+            s.send(r"\x01L")
+        s.settle(30)
+
+        c = sorted(corners(s), key=lambda h: h["x"])
+        check("moving one of them makes a second crossing", len(c) == 2,
+              str(c))
+        if len(c) != 2:
+            return
+        check("at the two different columns",
+              c[0]["x"] != c[1]["x"], str(c))
+
+        w0 = [p["w"] for p in s.panes()]
+        s.send(rf"\e[<0;{c[0]['x'] + 1};{c[0]['y'] + 1}M")
+        s.send(rf"\e[<32;{c[0]['x'] + 5};{c[0]['y'] + 1}M")
+        s.send(rf"\e[<0;{c[0]['x'] + 5};{c[0]['y'] + 1}m")
+        s.settle(30)
+        w1 = [p["w"] for p in s.panes()]
+        check("and each moves only the boundary that meets it",
+              w1[:2] == w0[:2] and w1[2:] != w0[2:], f"{w0} -> {w1}")
+    os.unlink(l)
+
+
 if __name__ == "__main__":
     test_a_grid_has_a_corner_where_the_boundaries_cross()
     test_a_layout_with_no_crossing_has_no_corner()
@@ -195,4 +231,5 @@ if __name__ == "__main__":
     test_the_hint_says_both_ways()
     test_a_drag_keeps_the_boundaries_it_grabbed()
     test_the_crossing_shows_itself_before_you_rest_on_it()
+    test_boundaries_out_of_line_are_two_crossings()
     sys.exit(report())
