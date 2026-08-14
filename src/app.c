@@ -1584,9 +1584,30 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
            status && *status ? " · " : "", status && *status ? status : "");
   line[r.w < sizeof line ? r.w : sizeof line - 1] = 0;
 
-  for (uint16_t x = r.x; x < r.x + r.w; x++)
-    screen_text(s, x, r.y, "─", FRAME_IDLE, NO_COLOR, 0);
-  screen_text(s, r.x, r.y, line, FRAME_IDLE, NO_COLOR, 0);
+  /* Once a tab is a list, its rows are what you are picking from, and a row
+   * under the pointer should say so. Immediate rather than on dwell: this is
+   * feedback about where the pointer *is*, not an action being armed, and a
+   * list you are scanning should track the mouse continuously — the dwell that
+   * stops a guide from flashing would only make this feel broken.
+   *
+   * Tested against the rect registered as the hit two lines below, so the row
+   * that lights up and the row that would be clicked are the same row by
+   * construction. A drag already owns the pointer and says nothing here. */
+  bool hot = a->ptr_valid && a->drag.kind == DRAG_NONE && a->ptr_y == r.y &&
+             a->ptr_x >= r.x && a->ptr_x < r.x + r.w;
+
+  /* The finder's language for "this is the row": a solid bar, not a brighter
+   * rule. FRAME_FOCUS would have read as "this pane is focused", which is a
+   * different claim and one this row cannot make. */
+  if (hot)
+    for (uint16_t x = r.x; x < r.x + r.w; x++)
+      screen_text(s, x, r.y, " ", BTN_FG, BTN_BG, 0);
+  else
+    for (uint16_t x = r.x; x < r.x + r.w; x++)
+      screen_text(s, x, r.y, "─", FRAME_IDLE, NO_COLOR, 0);
+
+  screen_text(s, r.x, r.y, line, hot ? BTN_FG : FRAME_IDLE,
+              hot ? BTN_BG : NO_COLOR, hot ? ATTR_BOLD : 0);
 
   char action[48];
   snprintf(action, sizeof action, "focus:%u", leaf->id);

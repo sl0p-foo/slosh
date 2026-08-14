@@ -293,6 +293,98 @@ def test_a_tab_is_laid_out_or_it_is_a_list_never_both():
     os.unlink(lay)
 
 
+# ---- hovering a row in the stack -------------------------------------------
+
+BTN_BG = "#ff5fd7"
+
+
+def stacked_session():
+    """A tab small enough to be a list, with two headers and one body."""
+    lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    lay.write('layout {\n tab name="t" {\n  pane\n'
+              '  pane split="rows" { pane\n   pane }\n }\n}\n')
+    lay.close()
+    conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    conf.write("min_pane cols=24 rows=17\n")
+    conf.close()
+    return Session(SH, cols=100, rows=20, config=conf.name, layout=lay.name)
+
+
+def hover(s, x, y):
+    s.send(rf"\e[<35;{x + 1};{y + 1}M")
+
+
+def row_bg(snap, pane):
+    return (snap.style_at(pane["x"] + 4, pane["y"]) or {}).get("bg")
+
+
+def test_hovering_a_row_lights_it_up():
+    with stacked_session() as s:
+        s.settle(20)
+        headers = [p for p in s.panes() if p["hidden"]]
+        check("the tab is a list with rows to hover", len(headers) >= 2,
+              str(s.panes()))
+        if len(headers) < 2:
+            return
+
+        snap = s.snapshot()
+        check("nothing is lit before the pointer arrives",
+              all(row_bg(snap, p) != BTN_BG for p in headers), "")
+
+        hover(s, headers[0]["x"] + 4, headers[0]["y"])
+        snap = s.snapshot()
+        check("the row under the pointer is lit",
+              row_bg(snap, headers[0]) == BTN_BG, str(row_bg(snap, headers[0])))
+        check("and only that row",
+              all(row_bg(snap, p) != BTN_BG for p in headers[1:]), "")
+
+        hover(s, headers[1]["x"] + 4, headers[1]["y"])
+        snap = s.snapshot()
+        check("the light follows the pointer down the list",
+              row_bg(snap, headers[1]) == BTN_BG
+              and row_bg(snap, headers[0]) != BTN_BG, "")
+
+
+def test_leaving_the_stack_puts_the_light_out():
+    with stacked_session() as s:
+        s.settle(20)
+        headers = [p for p in s.panes() if p["hidden"]]
+        body = [p for p in s.panes() if not p["hidden"]][0]
+        if not headers:
+            return
+        hover(s, headers[0]["x"] + 4, headers[0]["y"])
+        hover(s, body["content_x"] + 2, body["content_y"] + 2)
+        snap = s.snapshot()
+        check("no row is lit once the pointer is off the list",
+              all(row_bg(snap, p) != BTN_BG for p in headers), "")
+
+
+def test_hovering_a_row_does_not_open_it():
+    """Feedback about where the pointer is, not an action. Opening on hover
+    would make the list shuffle under the mouse as you read it."""
+    with stacked_session() as s:
+        s.settle(20)
+        before = [p["id"] for p in s.panes() if p["focused"]]
+        headers = [p for p in s.panes() if p["hidden"]]
+        if not headers:
+            return
+        for h in headers:
+            hover(s, h["x"] + 4, h["y"])
+        s.settle(20)
+        after = [p["id"] for p in s.panes() if p["focused"]]
+        check("hovering every row changes nothing about which is open",
+              before == after, f"{before} -> {after}")
+        check("and they are all still headers",
+              len([p for p in s.panes() if p["hidden"]]) == len(headers), "")
+
+        # ...but clicking one still does open it.
+        s.click(headers[-1]["x"] + 4, headers[-1]["y"])
+        s.settle(20)
+        now = {p["id"]: p for p in s.panes()}
+        check("clicking the row it lit is what opens that pane",
+              not now[headers[-1]["id"]]["hidden"], str(s.panes()))
+
+
 if __name__ == "__main__":
     test_collapse()
     test_collapse_expand_cycle()
@@ -304,4 +396,7 @@ if __name__ == "__main__":
     test_every_collapsed_pane_is_clickable()
     test_a_flattened_stack_offers_no_resize_handles()
     test_a_tab_is_laid_out_or_it_is_a_list_never_both()
+    test_hovering_a_row_lights_it_up()
+    test_leaving_the_stack_puts_the_light_out()
+    test_hovering_a_row_does_not_open_it()
     sys.exit(report())
