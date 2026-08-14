@@ -258,6 +258,41 @@ def test_a_flattened_stack_offers_no_resize_handles():
     os.unlink(lay)
 
 
+def test_a_tab_is_laid_out_or_it_is_a_list_never_both():
+    """The whole tab flattens, not just the subtree that could not fit.
+
+    Half a screen of panes next to half a screen of headers explains neither
+    what happened nor what to do about it, so it is not a state we produce.
+    """
+    lay = nested_layout()
+    # min_pane tuned so the *right column* alone cannot fit while the left
+    # pane, on its own, comfortably could. Locally, only the right would
+    # collapse; globally, everything does.
+    conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    conf.write("min_pane cols=24 rows=17\n")
+    conf.close()
+    with Session(SH, cols=116, rows=52, config=conf.name, layout=lay) as s:
+        s.settle(20)
+        panes = s.panes()
+        shown = [p for p in panes if not p["hidden"]]
+        hidden = [p for p in panes if p["hidden"]]
+
+        check("exactly one pane is open", len(shown) == 1, str(panes))
+        check("every other pane is a header, including the one that did fit",
+              len(hidden) == len(panes) - 1, str(panes))
+        check("the headers all span the full width",
+              len({p["w"] for p in hidden}) == 1
+              and hidden[0]["w"] == shown[0]["w"],
+              str([(p["id"], p["w"]) for p in panes]))
+        # The give-away for the old behaviour: a full-height pane beside a
+        # stack. Nothing may sit next to a header any more.
+        check("no pane sits beside a header",
+              all(p["x"] == hidden[0]["x"] for p in panes),
+              str([(p["id"], p["x"]) for p in panes]))
+    os.unlink(conf.name)
+    os.unlink(lay)
+
+
 if __name__ == "__main__":
     test_collapse()
     test_collapse_expand_cycle()
@@ -268,4 +303,5 @@ if __name__ == "__main__":
     test_collapsing_flattens_the_tree()
     test_every_collapsed_pane_is_clickable()
     test_a_flattened_stack_offers_no_resize_handles()
+    test_a_tab_is_laid_out_or_it_is_a_list_never_both()
     sys.exit(report())

@@ -550,7 +550,17 @@ static node_t *first_leaf_of(node_t *n) {
   return n;
 }
 
-static void layout_node(node_t *n, rect_t r, node_t *focus);
+/* Laying out happens twice: once to ask whether the tab fits at all, and once
+ * to do it. The probe must not resize any pane, because a pane it lays out
+ * normally may be a header by the time the real pass is done, and a pane that
+ * is about to be collapsed must not be told a size it will never show. */
+typedef struct {
+  node_t *focus;
+  bool apply;    /* false during the probe */
+  bool overflow; /* some node could not give its children their floor */
+} layout_ctx_t;
+
+static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx);
 
 /* The collapse: the hierarchy stops existing for as long as it does not fit.
  *
@@ -572,14 +582,14 @@ static void layout_node(node_t *n, rect_t r, node_t *focus);
  *
  * Recomputed from the rect every frame, so there is no state to go stale —
  * which is the whole argument for D6 over swap layouts. */
-static void layout_stack(node_t *n, rect_t r, node_t *focus) {
+static void layout_stack(node_t *n, rect_t r, layout_ctx_t *ctx) {
   node_t *leaves[64];
   size_t nl = collect_leaves(n, leaves, 64, 0);
   if (!nl) return;
 
   size_t expanded = 0;
   for (size_t i = 0; i < nl; i++)
-    if (focus && leaves[i] == focus) expanded = i;
+    if (ctx->focus && leaves[i] == ctx->focus) expanded = i;
 
   span_splits(n, r);
 
@@ -592,28 +602,28 @@ static void layout_stack(node_t *n, rect_t r, node_t *focus) {
     collapse_leaf(leaves[i], (rect_t){r.x, y, r.w, 1});
     y = (uint16_t)(y + 1);
   }
-  layout_node(leaves[expanded], (rect_t){r.x, y, r.w, body}, focus);
+  layout_node(leaves[expanded], (rect_t){r.x, y, r.w, body}, ctx);
 }
 
 /* Not even room for one row per pane plus something to look at: show the
  * focused pane and nothing else. The alternative is rects that do not fit on
  * the screen, and a pane one cell tall helps no one. */
-static void layout_solo(node_t *n, rect_t r, node_t *focus) {
+static void layout_solo(node_t *n, rect_t r, layout_ctx_t *ctx) {
   node_t *leaves[64];
   size_t nl = collect_leaves(n, leaves, 64, 0);
   if (!nl) return;
 
   size_t expanded = 0;
   for (size_t i = 0; i < nl; i++)
-    if (focus && leaves[i] == focus) expanded = i;
+    if (ctx->focus && leaves[i] == ctx->focus) expanded = i;
 
   span_splits(n, r);
   for (size_t i = 0; i < nl; i++)
     if (i != expanded) collapse_leaf(leaves[i], (rect_t){r.x, r.y, 0, 0});
-  layout_node(leaves[expanded], r, focus);
+  layout_node(leaves[expanded], r, ctx);
 }
 
-static void layout_node(node_t *n, rect_t r, node_t *focus) {
+static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
   n->rect = r;
   n->collapsed = false;
   if (n->kind == NODE_LEAF) n->hidden = false;
@@ -628,7 +638,8 @@ static void layout_node(node_t *n, rect_t r, node_t *focus) {
         .w = (uint16_t)(r.w > 2 * bx ? r.w - 2 * bx : 1),
         .h = (uint16_t)(r.h > 2 * by ? r.h - 2 * by : 1),
     };
-    if (!n->hidden) pane_resize(n->pane, n->content.w, n->content.h);
+    if (ctx->apply && !n->hidden)
+      pane_resize(n->pane, n->content.w, n->content.h);
     return;
   }
 
@@ -642,18 +653,18 @@ static void layout_node(node_t *n, rect_t r, node_t *focus) {
   uint16_t floor_ = n->dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
   uint16_t need = (uint16_t)(k * floor_ + gap * (k - 1));
   if (total < need) {
-    /* The stack is one row per pane in the whole subtree, not per child, plus
-     * a body worth opening into — three rows, since a frame is two of them. */
-    size_t nl = count_leaves(n);
-    if (r.h >= (uint16_t)(nl + 2)) layout_stack(n, r, focus);
-    else layout_solo(n, r, focus);
+    /* Report and stop. Whether this becomes a stack is not this node's call
+     * any more: a tab is either laid out or it is a list, and half a screen of
+     * each is the state nobody wants to be looking at. layout() decides, once,
+     * for the whole tab. */
+    ctx->overflow = true;
     return;
   }
 
   uint16_t gaps = (uint16_t)(gap * (k - 1));
   uint16_t avail = total > gaps ? (uint16_t)(total - gaps) : (uint16_t)k;
   if (avail / k == 0) { /* below one cell each, nothing sensible is left */
-    layout_solo(n, r, focus);
+    ctx->overflow = true;
     return;
   }
 
@@ -688,7 +699,7 @@ static void layout_node(node_t *n, rect_t r, node_t *focus) {
     rect_t cr = n->dir == SPLIT_COLS
                     ? (rect_t){.x = pos, .y = r.y, .w = size, .h = r.h}
                     : (rect_t){.x = r.x, .y = pos, .w = r.w, .h = size};
-    layout_node(n->kids[i], cr, focus);
+    layout_node(n->kids[i], cr, ctx);
     pos = (uint16_t)(pos + size + gap);
   }
 }
@@ -703,7 +714,31 @@ static void layout(app_t *a) {
               .y = top,
               .w = (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
               .h = (uint16_t)(a->rows > top + gy ? a->rows - top - gy : 1)};
-  if (cur(a)->root) layout_node(cur(a)->root, r, cur(a)->focus);
+  node_t *root = cur(a)->root;
+  if (!root) return;
+
+  /* Ask first, then do it. A tab is either laid out or it is a list of panes;
+   * there is no third state where one half of the screen is a stack and the
+   * other half is not, because that is the arrangement that explains neither
+   * what happened nor what to do about it.
+   *
+   * So the question is asked of the whole tab: if *any* node cannot give its
+   * children their floor, the entire tab flattens. The probe is the real
+   * layout with resizing switched off, rather than a second implementation of
+   * the same arithmetic — two copies of "does this fit" is exactly how the
+   * guide and the layout would start disagreeing. */
+  layout_ctx_t probe = {.focus = cur(a)->focus, .apply = false};
+  layout_node(root, r, &probe);
+
+  layout_ctx_t real = {.focus = cur(a)->focus, .apply = true};
+  if (!probe.overflow) {
+    layout_node(root, r, &real);
+  } else if (r.h >= (uint16_t)(count_leaves(root) + 2)) {
+    /* One row per pane, plus a body worth opening into: a frame is two rows. */
+    layout_stack(root, r, &real);
+  } else {
+    layout_solo(root, r, &real);
+  }
 }
 
 void app_write_focused(app_t *a, const void *buf, size_t len) {
