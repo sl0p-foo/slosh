@@ -1,0 +1,503 @@
+<!doctype html>
+<!--
+  sl0ppty shadertoy — write a shader expression, watch it happen.
+
+  One file, no build, no network: open it with a browser and it works. The
+  expression language is the one sl0ppty compiles (src/expr.c), reimplemented
+  here in JavaScript, so what you see is what your config will do. That
+  duplication is the obvious hazard, so tests/test_shadertoy.py runs the same
+  expressions through both and fails if they ever disagree.
+
+  Move the mouse over the preview to move the cursor: `curx`/`cury` follow it,
+  which is how a spotlight is meant to be judged.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sl0ppty shadertoy</title>
+<style>
+  :root {
+    --bg: #0d0d10; --panel: #16161b; --line: #2a2a32;
+    --fg: #e8e8ea; --dim: #7a7a86; --accent: #ff5fd7; --bad: #ff6b6b;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.5 var(--mono);
+    display: grid; grid-template-columns: 420px 1fr; height: 100vh;
+  }
+  #left { border-right: 1px solid var(--line); overflow-y: auto; padding: 14px; }
+  #right { padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: .04em; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--dim); margin: 0 0 14px; font-size: 11px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+       color: var(--dim); margin: 16px 0 6px; font-weight: 500; }
+  .pass {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+    padding: 8px; margin-bottom: 7px;
+  }
+  .pass .row { display: flex; gap: 6px; align-items: center; }
+  .pass .row + .row { margin-top: 6px; }
+  select, input[type=text] {
+    background: #0b0b0e; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 5px 7px; font: inherit;
+  }
+  input[type=text] { flex: 1; min-width: 0; }
+  input[type=text]:focus, select:focus { outline: 1px solid var(--accent); }
+  input[type=color] {
+    width: 28px; height: 28px; padding: 0; border: 1px solid var(--line);
+    border-radius: 4px; background: none;
+  }
+  button {
+    background: #22222a; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 5px 9px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.x { padding: 5px 8px; color: var(--dim); }
+  .err { color: var(--bad); font-size: 11px; margin-top: 5px; white-space: pre-wrap; }
+  .deps { color: var(--dim); font-size: 11px; margin-top: 5px; }
+  .deps b { color: var(--accent); font-weight: 500; }
+  .deps .cached { color: #7fd67f; }
+  .deps .live { color: #f0c674; }
+  canvas { border: 1px solid var(--line); border-radius: 5px; image-rendering: pixelated;
+           max-width: 100%; }
+  pre#config {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+    padding: 10px; margin: 0; overflow-x: auto; color: var(--fg); font-size: 12px;
+  }
+  .hint { color: var(--dim); font-size: 11px; }
+  .ref { color: var(--dim); font-size: 11px; line-height: 1.7; }
+  .ref code { color: var(--fg); }
+  .presets { display: flex; flex-wrap: wrap; gap: 5px; }
+  .presets button { font-size: 11px; padding: 4px 7px; }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <h1>sl0ppty <span>shadertoy</span></h1>
+  <p class="sub">A shader's strength is an expression, evaluated for every cell.</p>
+
+  <h2>presets</h2>
+  <div class="presets" id="presets"></div>
+
+  <h2>chain</h2>
+  <div id="chain"></div>
+  <button id="add">+ pass</button>
+
+  <h2>for your config</h2>
+  <pre id="config"></pre>
+
+  <h2>language</h2>
+  <p class="ref">
+    <code>x y</code> the cell, inside the pane<br>
+    <code>cols rows</code> the size of the pane<br>
+    <code>curx cury</code> the cursor (follows your mouse), <code>cursor</code> 0/1<br>
+    <code>focused</code> 0/1 &nbsp; <code>t</code> milliseconds<br>
+    <code>+ - * / %</code> integer only; division by zero is 0<br>
+    <code>&lt; &gt; &lt;= &gt;= == != &amp;&amp; || !</code> give 0 or 1, so
+    <code>(x &lt; 10) * 200</code> is a rule<br>
+    <code>a ? b : c</code> &nbsp; <code>min max abs clamp dist</code><br>
+    <code>dist</code> counts a row double, because a cell is about twice as
+    tall as it is wide.
+  </p>
+</div>
+
+<div id="right">
+  <canvas id="screen"></canvas>
+  <p class="hint" id="status">move the mouse over the preview to move the cursor</p>
+</div>
+
+<script>
+"use strict";
+
+/* ---- the language ------------------------------------------------------
+ *
+ * A transcription of src/expr.c: same variables, same functions, same
+ * arithmetic, same refusals. Integer everywhere, division by zero is 0
+ * rather than a trap, and `?:` evaluates both sides and selects — there is
+ * nothing here with an effect, so it can.
+ */
+
+const DEP = { POS: 1, CURSOR: 2, TIME: 4, FOCUS: 8, SIZE: 16 };
+
+const VARS = {
+  x:       { dep: DEP.POS },
+  y:       { dep: DEP.POS },
+  cols:    { dep: DEP.SIZE },
+  rows:    { dep: DEP.SIZE },
+  curx:    { dep: DEP.CURSOR },
+  cury:    { dep: DEP.CURSOR },
+  cursor:  { dep: DEP.CURSOR },
+  focused: { dep: DEP.FOCUS },
+  t:       { dep: DEP.TIME },
+};
+
+const FNS = { min: 2, max: 2, abs: 1, clamp: 3, dist: 4 };
+
+function compile(src) {
+  let i = 0, deps = 0;
+  const ws = () => { while (i < src.length && /\s/.test(src[i])) i++; };
+  const fail = (what) => { throw new Error(`${what} at offset ${i}`); };
+
+  function primary() {
+    ws();
+    if (src[i] === "(") { i++; const e = expr(); ws();
+      if (src[i] !== ")") fail("expected )"); i++; return e; }
+    /* The env has to be threaded through every closure, including these two:
+     * forgetting it here made `!x` throw instead of evaluating, which the
+     * conformance test caught on its first run. */
+    if (src[i] === "-") { i++; const a = primary(); return (e) => -a(e); }
+    if (src[i] === "!") { i++; const a = primary(); return (e) => a(e) ? 0 : 1; }
+    if (/[0-9]/.test(src[i] || "")) {
+      let s = i; while (/[0-9]/.test(src[i] || "")) i++;
+      const v = parseInt(src.slice(s, i), 10); return () => v;
+    }
+    if (/[A-Za-z_]/.test(src[i] || "")) {
+      let s = i; while (/[A-Za-z0-9_]/.test(src[i] || "")) i++;
+      const name = src.slice(s, i);
+      ws();
+      if (src[i] === "(") {
+        i++;
+        const arity = FNS[name];
+        if (arity === undefined) { i = s; fail("unknown function"); }
+        const args = [];
+        for (let a = 0; a < arity; a++) {
+          if (a) { ws(); if (src[i] !== ",") fail("expected ,"); i++; }
+          args.push(expr());
+        }
+        ws(); if (src[i] !== ")") fail("expected )"); i++;
+        return makeCall(name, args);
+      }
+      const v = VARS[name];
+      if (!v) { i = s; fail("unknown name"); }
+      deps |= v.dep;
+      return (env) => env[name];
+    }
+    fail("expected a value");
+  }
+
+  function makeCall(name, a) {
+    switch (name) {
+      case "min":   return (e) => Math.min(a[0](e), a[1](e));
+      case "max":   return (e) => Math.max(a[0](e), a[1](e));
+      case "abs":   return (e) => Math.abs(a[0](e));
+      case "clamp": return (e) => { const v = a[0](e), lo = a[1](e), hi = a[2](e);
+                                    return v < lo ? lo : v > hi ? hi : v; };
+      /* A row counts double: a cell is about twice as tall as it is wide, and
+       * without this every "circle" is an ellipse. Integer square root, so
+       * `dist` is a distance and not its square. */
+      case "dist":  return (e) => {
+        const dx = a[0](e) - a[2](e), dy = (a[1](e) - a[3](e)) * 2;
+        return Math.min(Math.floor(Math.sqrt(dx * dx + dy * dy)), 4096);
+      };
+    }
+  }
+
+  const binop = (op, l, r) => {
+    switch (op) {
+      case "*": return (e) => Math.trunc(l(e) * r(e));
+      case "/": return (e) => { const b = r(e); return b ? Math.trunc(l(e) / b) : 0; };
+      case "%": return (e) => { const b = r(e); return b ? l(e) % b : 0; };
+      case "+": return (e) => l(e) + r(e);
+      case "-": return (e) => l(e) - r(e);
+      case "<": return (e) => (l(e) < r(e)) | 0;
+      case ">": return (e) => (l(e) > r(e)) | 0;
+      case "<=": return (e) => (l(e) <= r(e)) | 0;
+      case ">=": return (e) => (l(e) >= r(e)) | 0;
+      case "==": return (e) => (l(e) === r(e)) | 0;
+      case "!=": return (e) => (l(e) !== r(e)) | 0;
+      case "&&": return (e) => (l(e) && r(e)) ? 1 : 0;
+      case "||": return (e) => (l(e) || r(e)) ? 1 : 0;
+    }
+  };
+
+  function mul() {
+    let l = primary();
+    for (;;) { ws();
+      const c = src[i];
+      if (c !== "*" && c !== "/" && c !== "%") return l;
+      i++; l = binop(c, l, primary());
+    }
+  }
+  function add() {
+    let l = mul();
+    for (;;) { ws();
+      const c = src[i];
+      if (c !== "+" && c !== "-") return l;
+      i++; l = binop(c, l, mul());
+    }
+  }
+  function cmp() {
+    let l = add();
+    for (;;) { ws();
+      /* Longest first, or `<` eats the `<` of `<=` and leaves an `=`. */
+      const two = src.substr(i, 2);
+      if (["<=", ">=", "==", "!="].includes(two)) { i += 2; l = binop(two, l, add()); continue; }
+      const c = src[i];
+      if (c === "<" || c === ">") { i++; l = binop(c, l, add()); continue; }
+      return l;
+    }
+  }
+  function and() {
+    let l = cmp();
+    while (ws(), src.substr(i, 2) === "&&") { i += 2; l = binop("&&", l, cmp()); }
+    return l;
+  }
+  function or() {
+    let l = and();
+    while (ws(), src.substr(i, 2) === "||") { i += 2; l = binop("||", l, and()); }
+    return l;
+  }
+  function expr() {
+    const c = or(); ws();
+    if (src[i] !== "?") return c;
+    i++;
+    const a = expr(); ws();
+    if (src[i] !== ":") fail("expected :");
+    i++;
+    const b = expr();
+    return (e) => (c(e) ? a(e) : b(e));
+  }
+
+  if (!src.trim()) throw new Error("empty expression");
+  const fn = expr();
+  ws();
+  if (i < src.length) fail("unexpected trailing input");
+  return { fn, deps, constant: deps === 0 };
+}
+
+/* ---- the colour ops ----------------------------------------------------
+ * The three that take an expression. Identical maths to src/shader.c,
+ * including Rec. 601 luma — the green weight is not a rounding error.
+ */
+const mix8 = (from, to, a) => ((from * (255 - a) + to * a) / 255) | 0;
+const mix = (c, to, a) => [mix8(c[0], to[0], a), mix8(c[1], to[1], a), mix8(c[2], to[2], a)];
+const luma = (c) => ((c[0] * 77 + c[1] * 150 + c[2] * 29) >> 8);
+
+const OPS = {
+  dim:       (cell, amt) => { cell.fg = mix(cell.fg, [0, 0, 0], amt);
+                              cell.bg = mix(cell.bg, [0, 0, 0], amt); },
+  grayscale: (cell, amt) => { const f = luma(cell.fg), b = luma(cell.bg);
+                              cell.fg = mix(cell.fg, [f, f, f], amt);
+                              cell.bg = mix(cell.bg, [b, b, b], amt); },
+  tint:      (cell, amt, col) => { cell.fg = mix(cell.fg, col, amt);
+                                   cell.bg = mix(cell.bg, col, amt); },
+};
+
+/* ---- the fake pane ------------------------------------------------------ */
+
+const COLS = 64, ROWS = 24, CW = 9, CH = 18;
+const DEFAULT_FG = [0xff, 0xff, 0xff], DEFAULT_BG = [0x0d, 0x0d, 0x10];
+
+/* Something with shape to it, so an effect has something to be wrong about. */
+const SAMPLE = [
+  ["#7a7a86", "/* the layout pass, once a frame */"],
+  ["#ff5fd7", "static void layout_node(node_t *n, rect_t r) {"],
+  ["#e8e8ea", "  n->rect = r;              // derived, never remembered"],
+  ["#e8e8ea", "  if (n->kind == NODE_LEAF) return;"],
+  ["", ""],
+  ["#e8e8ea", "  int total = 0;"],
+  ["#e8e8ea", "  for (size_t i = 0; i < n->nkids; i++)"],
+  ["#f0c674", "    total += n->kids[i]->weight;"],
+  ["", ""],
+  ["#7a7a86", "  /* every child gets its share of the axis */"],
+  ["#e8e8ea", "  for (size_t i = 0; i < n->nkids; i++) {"],
+  ["#81a2be", "    rect_t k = split_share(r, n->kids[i], total);"],
+  ["#81a2be", "    layout_node(n->kids[i], k);"],
+  ["#e8e8ea", "  }"],
+  ["#e8e8ea", "}"],
+  ["", ""],
+  ["#7a7a86", "$ sl0ppty -s work"],
+  ["#b5bd68", "user@clank ~/dev/sl0ppty  master ❯ make test"],
+  ["#7fd67f", "  ok   test_shaders.py         48 checks"],
+  ["#7fd67f", "  ok   test_shader_expr.py     11 checks"],
+  ["#7fd67f", "  ok   test_graphics.py        33 checks"],
+  ["#e8e8ea", "  all green"],
+  ["", ""],
+  ["#b5bd68", "user@clank ~/dev/sl0ppty  master ❯ "],
+];
+
+const hex2rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16),
+                        parseInt(h.slice(5, 7), 16)];
+const rgb2css = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+/* ---- the chain UI ------------------------------------------------------- */
+
+const PRESETS = {
+  "scanlines":   [{ op: "dim", amount: "(y % 2) * 40", color: "#ff5fd7" }],
+  "right margin":[{ op: "dim", amount: "(x > cols - 10) * 120", color: "#ff5fd7" }],
+  "spotlight":   [{ op: "dim", amount: "clamp(dist(x, y, curx, cury) * 9, 0, 200)", color: "#ff5fd7" }],
+  "vignette":    [{ op: "dim", amount: "clamp(dist(x, y, cols / 2, rows / 2) * 4, 0, 190)", color: "#ff5fd7" }],
+  "ruler at 40": [{ op: "tint", amount: "(x == 40) * 220", color: "#ff5fd7" }],
+  "zebra":       [{ op: "dim", amount: "((y / 3) % 2) * 60", color: "#ff5fd7" }],
+  "checker":     [{ op: "dim", amount: "(((x / 8) + (y / 4)) % 2) * 45", color: "#ff5fd7" }],
+  "unfocused":   [{ op: "grayscale", amount: "180", color: "#ff5fd7" },
+                  { op: "dim", amount: "90", color: "#ff5fd7" }],
+  "pulse (t)":   [{ op: "tint", amount: "clamp((t / 6) % 300 - 45, 0, 160)", color: "#ff5fd7" }],
+  "sweep (t)":   [{ op: "dim", amount: "clamp(abs(x - (t / 24) % cols) * 22, 0, 200)", color: "#ff5fd7" }],
+  "dead pane":   [{ op: "grayscale", amount: "200", color: "#ff5fd7" },
+                  { op: "dim", amount: "90", color: "#ff5fd7" }],
+};
+
+let chain = structuredClone(PRESETS["scanlines"]);
+let cursor = { x: 44, y: 23 };
+
+const el = (tag, props = {}, kids = []) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids) n.append(k);
+  return n;
+};
+
+function renderChain() {
+  const box = document.getElementById("chain");
+  box.replaceChildren();
+  chain.forEach((pass, idx) => {
+    const op = el("select");
+    for (const name of Object.keys(OPS)) {
+      op.append(el("option", { value: name, textContent: name, selected: pass.op === name }));
+    }
+    op.onchange = () => { pass.op = op.value; refresh(); };
+
+    const col = el("input", { type: "color", value: pass.color, title: "color, for tint" });
+    col.oninput = () => { pass.color = col.value; refresh(); };
+
+    const amt = el("input", { type: "text", value: pass.amount, spellcheck: false,
+                              placeholder: "amount expression" });
+    amt.oninput = () => { pass.amount = amt.value; refresh(); };
+
+    const del = el("button", { className: "x", textContent: "×", title: "remove" });
+    del.onclick = () => { chain.splice(idx, 1); renderChain(); refresh(); };
+
+    const err = el("div", { className: "err", id: `err${idx}` });
+    const deps = el("div", { className: "deps", id: `dep${idx}` });
+
+    box.append(el("div", { className: "pass" }, [
+      el("div", { className: "row" }, [op, col, del]),
+      el("div", { className: "row" }, [amt]),
+      err, deps,
+    ]));
+  });
+}
+
+function renderPresets() {
+  const box = document.getElementById("presets");
+  for (const [name, passes] of Object.entries(PRESETS)) {
+    const b = el("button", { textContent: name });
+    b.onclick = () => { chain = structuredClone(passes); renderChain(); refresh(); };
+    box.append(b);
+  }
+}
+
+/* ---- the preview -------------------------------------------------------- */
+
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+canvas.width = COLS * CW;
+canvas.height = ROWS * CH;
+
+canvas.addEventListener("mousemove", (e) => {
+  const r = canvas.getBoundingClientRect();
+  cursor.x = Math.max(0, Math.min(COLS - 1, Math.floor((e.clientX - r.left) / r.width * COLS)));
+  cursor.y = Math.max(0, Math.min(ROWS - 1, Math.floor((e.clientY - r.top) / r.height * ROWS)));
+});
+
+let compiled = [];
+
+function refresh() {
+  compiled = chain.map((pass, idx) => {
+    const errBox = document.getElementById(`err${idx}`);
+    const depBox = document.getElementById(`dep${idx}`);
+    try {
+      const prog = compile(pass.amount);
+      if (errBox) errBox.textContent = "";
+      if (depBox) {
+        const names = Object.entries(DEP)
+          .filter(([, bit]) => prog.deps & bit)
+          .map(([n]) => n.toLowerCase());
+        /* The same classification sl0ppty makes, and for the same reason:
+         * anything that does not read the clock is worked out once per cell
+         * and reused. */
+        const cacheable = !(prog.deps & DEP.TIME);
+        depBox.innerHTML = prog.constant
+          ? `reads <b>nothing</b> · folded to a constant at load`
+          : `reads <b>${names.join(", ")}</b> · ` + (cacheable
+              ? `<span class="cached">cached as a per-cell map</span>`
+              : `<span class="live">re-evaluated every frame</span>`);
+      }
+      return { ...pass, prog };
+    } catch (e) {
+      if (errBox) errBox.textContent = e.message;
+      if (depBox) depBox.textContent = "";
+      return null;                       /* refused: this pass does nothing */
+    }
+  }).filter(Boolean);
+
+  document.getElementById("config").textContent =
+    "shaders {\n" + chain.map((p) =>
+      `    ${p.op}${p.op === "tint" ? ` color="${p.color}"` : ""} amount="${p.amount}"`
+    ).join("\n") + "\n}";
+}
+
+function draw(now) {
+  ctx.fillStyle = rgb2css(DEFAULT_BG);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = `${CH - 5}px ui-monospace, monospace`;
+  ctx.textBaseline = "top";
+
+  const env = { cols: COLS, rows: ROWS, curx: cursor.x, cury: cursor.y,
+                cursor: 1, focused: 1, t: Math.floor(now), x: 0, y: 0 };
+
+  for (let y = 0; y < ROWS; y++) {
+    const [colour, text] = SAMPLE[y] || ["", ""];
+    const fg0 = colour ? hex2rgb(colour) : DEFAULT_FG;
+    for (let x = 0; x < COLS; x++) {
+      const ch = text[x] || " ";
+      const cell = { fg: fg0.slice(), bg: DEFAULT_BG.slice() };
+
+      env.x = x; env.y = y;
+      for (const pass of compiled) {
+        let amt = pass.prog.fn(env);
+        amt = amt < 0 ? 0 : amt > 255 ? 255 : amt | 0;
+        OPS[pass.op](cell, amt, hex2rgb(pass.color));
+      }
+
+      ctx.fillStyle = rgb2css(cell.bg);
+      ctx.fillRect(x * CW, y * CH, CW, CH);
+      if (ch !== " ") {
+        ctx.fillStyle = rgb2css(cell.fg);
+        ctx.fillText(ch, x * CW, y * CH + 2);
+      }
+    }
+  }
+
+  /* The cursor, drawn the way a terminal would, so a spotlight has something
+   * to point at. */
+  ctx.fillStyle = "#ff5fd7";
+  ctx.globalAlpha = 0.85;
+  ctx.fillRect(cursor.x * CW, cursor.y * CH, CW, CH);
+  ctx.globalAlpha = 1;
+
+  document.getElementById("status").textContent =
+    `cursor ${cursor.x},${cursor.y} · ${COLS}×${ROWS} cells · ` +
+    (compiled.some((p) => p.prog.deps & DEP.TIME)
+      ? "animating (an expression reads t)"
+      : "static (nothing reads t)");
+
+  requestAnimationFrame(draw);
+}
+
+document.getElementById("add").onclick = () => {
+  chain.push({ op: "dim", amount: "90", color: "#ff5fd7" });
+  renderChain(); refresh();
+};
+
+renderPresets();
+renderChain();
+refresh();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

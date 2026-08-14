@@ -71,6 +71,13 @@ EXPR_TEST := build/expr_test
 $(EXPR_TEST): tests/expr_test.c src/expr.c | build
 	$(CC) $(CFLAGS) tests/expr_test.c src/expr.c -o $@
 
+# The real expression evaluator as a filter, so test_shadertoy.py can hold
+# contrib/shadertoy.html's JavaScript to what the compiler actually does.
+EXPR_EVAL := build/expr_eval
+
+$(EXPR_EVAL): tests/expr_eval.c src/expr.c | build
+	$(CC) $(CFLAGS) tests/expr_eval.c src/expr.c -o $@
+
 SHADER_TEST := build/shader_test
 
 $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) | build
@@ -93,13 +100,15 @@ build/exampleshader.so: contrib/shader-plugin/example.c src/shader_abi.h | build
 build/.pass-test_shader_plugin: build/testshader.so build/badshader.so \
                                 build/exampleshader.so
 
+build/.pass-test_shadertoy: $(EXPR_EVAL) contrib/shadertoy.html
+
 build/.pass-%: tests/%.py tests/harness.py $(BIN) | build
 	@cd tests && timeout 300 python3 $(notdir $<) > ../build/.log-$* 2>&1 \
 	  || { echo "FAIL $(notdir $<)"; tail -25 ../build/.log-$*; exit 1; }
 	@printf '  ok   %-24s %s\n' "$(notdir $<)" "$$(grep -c '^ok' build/.log-$* 2>/dev/null || echo ?) checks"
 	@touch $@
 
-test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(EXPR_TEST) ## unit + headless checks (fast)
+test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(EXPR_TEST) $(EXPR_EVAL) ## unit + headless checks (fast)
 	@./$(TEST_BIN) >/dev/null && ./$(KDL_TEST) >/dev/null && ./$(SHADER_TEST) >/dev/null \
 	  && ./$(EXPR_TEST) >/dev/null \
 	  && printf '  ok   %-24s %s\n' "C unit tests" "4 binaries"
