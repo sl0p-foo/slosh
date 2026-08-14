@@ -188,7 +188,14 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   sigaction(SIGTERM, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGCHLD, SIG_IGN);
+  /* SIG_DFL, not SIG_IGN. Both leave us free of a handler, but SIG_IGN also
+   * tells the kernel to discard exit statuses: children are reaped where we
+   * cannot see them, and every pane then dies of "exited" with no idea what
+   * it exited *with*. The headless driver never set it, so this was invisible
+   * to the whole test suite and showed up the first time a real session was
+   * looked at. SIGCHLD's default action is to be discarded, so nothing is
+   * interrupted and the only difference is that a status waits to be read. */
+  signal(SIGCHLD, SIG_DFL);
 
   server_t s = {0};
   s.app = app_new(argv, cols, rows);

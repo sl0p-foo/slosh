@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -80,7 +81,14 @@ void pty_close(pty_t *p) {
   p->fd = -1;
   if (p->pid > 0) {
     kill(p->pid, SIGHUP);
-    waitpid(p->pid, NULL, WNOHANG);
+    /* Collect it, so a session that opens and closes panes all day does not
+     * accumulate zombies. Bounded and short: almost everything is gone by the
+     * first pass, and a program that outlives a SIGHUP is a bigger problem
+     * than the process-table entry it leaves behind. */
+    for (int i = 0; i < 5; i++) {
+      if (waitpid(p->pid, NULL, WNOHANG) != 0) break;
+      nanosleep(&(struct timespec){0, 200000}, NULL);
+    }
   }
   p->pid = -1;
 }
