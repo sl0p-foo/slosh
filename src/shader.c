@@ -166,6 +166,17 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
                  uint16_t y0, uint16_t w, uint16_t h, const shade_ctx_t *base) {
   if (!s || !shaders || !n || !w || !h) return;
 
+  /* Clip once, here, so the inner loop can walk a row pointer instead of
+   * bounds-checking every cell through screen_at(). That call was a fifth of
+   * the pass: it re-derived the row base and re-checked a coordinate the loop
+   * already guarantees, once per cell per shader. The layout never asks for a
+   * rect that needs clipping; this is so that a caller that does gets a
+   * smaller rect rather than an out-of-bounds write. */
+  if (x0 >= s->cols || y0 >= s->rows) return;
+  if ((size_t)x0 + w > s->cols) w = (uint16_t)(s->cols - x0);
+  if ((size_t)y0 + h > s->rows) h = (uint16_t)(s->rows - y0);
+  if (!w || !h) return;
+
   shade_ctx_t ctx = base ? *base : (shade_ctx_t){0};
   ctx.cols = w;
   ctx.rows = h;
@@ -178,11 +189,13 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
     if (!sh->kind || !sh->fn) continue;
 
     for (uint16_t y = 0; y < h; y++) {
+      cell_t *row = &s->cur[(size_t)(y0 + y) * s->cols + x0];
+      ctx.y = y;
       for (uint16_t x = 0; x < w; x++) {
-        cell_t *c = screen_at(s, (uint16_t)(x0 + x), (uint16_t)(y0 + y));
+        cell_t *c = &row[x];
         /* width 0 is the tail half of a wide cell: never painted, so shading
          * it would be computing a colour nothing can display. */
-        if (!c || !c->width) continue;
+        if (!c->width) continue;
 
         /* Materialised per shader rather than once for the chain, so a shader
          * added later cannot observe a half-resolved cell. Idempotent: once
@@ -191,7 +204,6 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
         if (!c->bg.set) c->bg = ctx.default_bg;
 
         ctx.x = x;
-        ctx.y = y;
         sh->fn(sh, &ctx, c);
       }
     }
