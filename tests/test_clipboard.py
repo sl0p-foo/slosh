@@ -111,7 +111,13 @@ def test_a_program_can_copy():
 
 
 def test_toasts():
-    with Session(SH, cols=50, rows=10) as s:
+    # A toast's lifetime is a real duration, so this really does wait for it -
+    # but the duration is configurable, so it waits 150ms instead of 2500.
+    import tempfile
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write("toast_ms 150\n")
+    f.close()
+    with Session(SH, cols=50, rows=10, config=f.name) as s:
         s.settle()
         r = s.api("notify", text="build finished")
         check("notify is accepted", r["ok"], str(r))
@@ -126,8 +132,8 @@ def test_toasts():
               "build finished" in snap.screen() and "second thing" in snap.screen(),
               repr(snap.screen()[-200:]))
 
-        time.sleep(2.8)
-        s.settle(60)
+        time.sleep(0.25)
+        s.settle(20)
         check("and they expire on their own",
               "build finished" not in s.snapshot().screen(),
               repr(s.snapshot().screen()[-120:]))

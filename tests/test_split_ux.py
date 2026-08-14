@@ -13,11 +13,17 @@ import time
 from harness import Session, check, report
 
 
+FAST_TEXT = "hover_delay_ms 20\n"
+
+
 def cfg(text):
     f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
     f.write(text)
     f.close()
     return f.name
+
+
+FAST = cfg(FAST_TEXT)
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;shell\\007"; stty raw -echo; cat']
 
@@ -27,9 +33,13 @@ def hover(s, x, y):
 
 
 def rest(s, x, y):
-    """Hover and stay there: the guide arms on dwell, not on contact."""
+    """Hover and stay there: the guide arms on dwell, not on contact.
+
+    The wait is real elapsed time - the guide is gated on a clock, not on
+    anything observable - so the sessions that are not *about* the dwell run
+    with FAST_TEXT and pay 20ms instead of 250."""
     hover(s, x, y)
-    time.sleep(0.35)
+    time.sleep(0.06)
 
 
 def click(s, x, y):
@@ -38,7 +48,7 @@ def click(s, x, y):
 
 
 def test_no_more_plus():
-    with Session(SH, cols=60, rows=14) as s:
+    with Session(SH, cols=60, rows=14, config=FAST) as s:
         s.settle()
         snap = s.snapshot()
         p = s.pane()
@@ -57,7 +67,7 @@ def test_each_border_splits_toward_itself():
         ("bottom", lambda p: (p["x"] + 4, p["y"] + p["h"] - 1), "below"),
         ("top", lambda p: (p["x"] + 4, p["y"]), "above"),
     ]:
-        with Session(SH, cols=80, rows=26) as s:
+        with Session(SH, cols=80, rows=26, config=FAST) as s:
             s.settle()
             before = s.pane()
             x, y = cell(before)
@@ -90,7 +100,7 @@ def test_each_border_splits_toward_itself():
 
 
 def test_the_guide():
-    with Session(SH, cols=80, rows=26) as s:
+    with Session(SH, cols=80, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
         snap = s.snapshot()
@@ -127,7 +137,7 @@ def test_guide_follows_the_new_layout():
     until the mouse moved and corrected it. It is derived during the paint
     now, from the rects that paint registered.
     """
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
         edge_x, edge_y = p["x"] + p["w"] - 1, p["y"] + 3
@@ -155,7 +165,7 @@ def test_guide_follows_the_new_layout():
 
 def test_the_guide_waits_for_a_rest():
     """A pointer crossing a border on its way elsewhere must not flash it."""
-    with Session(SH, cols=80, rows=26) as s:
+    with Session(SH, cols=80, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
         left, right = p["x"], p["x"] + p["w"] - 1
@@ -215,7 +225,7 @@ def test_delay_is_configurable():
 
 
 def test_guide_is_per_pane():
-    with Session(SH, cols=150, rows=26) as s:
+    with Session(SH, cols=150, rows=26, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -231,7 +241,7 @@ def test_guide_is_per_pane():
 
 def test_drag_still_moves():
     """The top border does double duty: click splits, drag moves."""
-    with Session(SH, cols=90, rows=26) as s:
+    with Session(SH, cols=90, rows=26, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -257,7 +267,7 @@ def test_drag_still_moves():
 
 
 def test_tiny_panes_have_no_targets():
-    with Session(SH, cols=90, rows=16) as s:
+    with Session(SH, cols=90, rows=16, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -289,7 +299,7 @@ def edge_of(pane, side):
 def test_a_split_below_the_floor_is_not_offered():
     """min_split is a usability floor, not the physical one: the pane below
     would still *fit* by min_pane, and is refused anyway."""
-    conf = cfg("min_pane cols=10 rows=3\nmin_split cols=40 rows=14\n")
+    conf = cfg(FAST_TEXT + "min_pane cols=10 rows=3\nmin_split cols=40 rows=14\n")
     with Session(SH, cols=80, rows=26, config=conf) as s:
         s.settle()
         p = s.pane()
@@ -309,7 +319,7 @@ def test_a_split_below_the_floor_is_not_offered():
 
 def test_the_floor_is_configurable_in_both_axes():
     # Wide enough for columns, too short for rows.
-    conf = cfg("min_split cols=20 rows=40\n")
+    conf = cfg(FAST_TEXT + "min_split cols=20 rows=40\n")
     with Session(SH, cols=90, rows=26, config=conf) as s:
         s.settle()
         p = s.pane()
@@ -327,7 +337,7 @@ def test_the_floor_is_configurable_in_both_axes():
 
 
 def test_the_keyboard_obeys_the_same_floor():
-    conf = cfg("min_split cols=40 rows=14\n")
+    conf = cfg(FAST_TEXT + "min_split cols=40 rows=14\n")
     with Session(SH, cols=80, rows=26, config=conf) as s:
         s.settle()
         s.key("\\\\")
@@ -343,7 +353,7 @@ def test_the_keyboard_obeys_the_same_floor():
 
 
 def test_the_guide_says_which_way_it_goes():
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
         for side in ("l", "r", "t", "b"):
@@ -358,7 +368,7 @@ def test_the_guide_says_which_way_it_goes():
 
 
 def test_the_arrow_sits_on_the_new_boundary():
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
         x, y = edge_of(p, "r")

@@ -10,15 +10,30 @@ VT_OUT   := $(VT)/zig-out
 VT_LIB   := $(VT_OUT)/lib/libghostty-vt.a
 VT_INC   := $(VT_OUT)/include
 
-CFLAGS   := -std=c23 -O1 -g -Wall -Wextra -Wno-unused-parameter \
+# -MMD -MP emits a .d per object listing the headers it included, so editing a
+# header rebuilds what actually uses it. Without this a header edit rebuilt
+# nothing and the only safe move was `make clean`, which is how a 0.1s build
+# turns into a habit of throwing the whole thing away.
+CFLAGS   := -std=c23 -O1 -g -Wall -Wextra -Wno-unused-parameter -MMD -MP \
             -I$(VT_INC) -Isrc
 LDFLAGS  :=
 
 SRC      := $(wildcard src/*.c)
 OBJ      := $(SRC:src/%.c=build/%.o)
+DEPS     := $(OBJ:.o=.d)
 BIN      := build/sl0ppty
 
-.PHONY: all clean vendor run test test-live test-all smoke help
+# One stamp per python test file. The stamp depends on the file, the harness and
+# the binary, so an untouched test whose binary has not changed does not run
+# again — and `make -j` runs the rest at once, because they are separate
+# processes that share nothing (script mode opens no socket).
+# test_session.py drives a real pty and belongs to test-live; it is only named
+# test_* by history.
+PY_TESTS  := $(filter-out test_session.py,$(notdir $(wildcard tests/test_*.py)))
+PY_STAMPS := $(PY_TESTS:%.py=build/.pass-%)
+JOBS      ?= $(shell nproc 2>/dev/null || echo 4)
+
+.PHONY: all clean vendor run test retest test-live test-all smoke help
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -56,16 +71,21 @@ SHADER_TEST := build/shader_test
 $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) | build
 	$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) -o $@
 
+build/.pass-%: tests/%.py tests/harness.py $(BIN) | build
+	@cd tests && timeout 300 python3 $(notdir $<) > ../build/.log-$* 2>&1 \
+	  || { echo "FAIL $(notdir $<)"; tail -25 ../build/.log-$*; exit 1; }
+	@printf '  ok   %-24s %s\n' "$(notdir $<)" "$$(grep -c '^ok' build/.log-$* 2>/dev/null || echo ?) checks"
+	@touch $@
+
 test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) ## unit + headless checks (fast)
-	./$(TEST_BIN)
-	@echo
-	./$(KDL_TEST)
-	@echo
-	./$(SHADER_TEST)
-	@echo
-	cd tests && python3 test_screen.py && python3 test_layout.py && python3 test_tabs.py && python3 test_osc5577.py && \
-		python3 test_responsive.py && python3 test_finder.py && \
-		python3 test_config.py && python3 test_layout_files.py && python3 test_drag.py && python3 test_hover.py && python3 test_scroll.py && python3 test_clipboard.py && python3 test_split_ux.py && python3 test_graphics.py && python3 test_pane_title.py && python3 test_shaders.py
+	@./$(TEST_BIN) >/dev/null && ./$(KDL_TEST) >/dev/null && ./$(SHADER_TEST) >/dev/null \
+	  && printf '  ok   %-24s %s\n' "C unit tests" "3 binaries"
+	@$(MAKE) --no-print-directory -j$(JOBS) $(PY_STAMPS)
+	@printf '\nall green\n'
+
+retest: ## force every python test to run again
+	@rm -f build/.pass-*
+	@$(MAKE) --no-print-directory test
 
 test-live: $(BIN) ## the checks that need a real tty (slow)
 	python3 tests/live_m0.py
@@ -84,3 +104,5 @@ run: $(BIN) ## build and run
 
 clean: ## remove our build output (not the vendor lib)
 	rm -rf build
+
+-include $(DEPS)

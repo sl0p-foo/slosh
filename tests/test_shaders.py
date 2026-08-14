@@ -79,9 +79,8 @@ def release(s, x, y):
 
 def test_off_by_default():
     with Session(SH, cols=80, rows=14) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         split(s)
-        s.settle(200)
         focused, other = by_focus(s)
         snap = s.snapshot()
         check("by default an unfocused pane is not dimmed",
@@ -93,9 +92,8 @@ def test_off_by_default():
 
 def test_dims_everything_but_the_focused_pane():
     with Session(SH, cols=80, rows=14, config=cfg(unfocused_cfg(128))) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         split(s)
-        s.settle(200)
         focused, other = by_focus(s)
         snap = s.snapshot()
         check("the focused pane keeps its colour",
@@ -111,13 +109,11 @@ def test_dims_everything_but_the_focused_pane():
 
 def test_the_dimming_follows_focus():
     with Session(SH, cols=80, rows=14, config=cfg(unfocused_cfg(128))) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         split(s)
-        s.settle(200)
         first_focused, first_other = by_focus(s)
 
         s.api("focus", id=first_other["id"])
-        s.settle(200)
         snap = s.snapshot()
         now_focused = [p for p in s.panes() if p["id"] == first_other["id"]][0]
         now_other = [p for p in s.panes() if p["id"] == first_focused["id"]][0]
@@ -131,9 +127,8 @@ def test_the_dimming_follows_focus():
 
 def test_dimming_never_touches_the_chrome():
     with Session(SH, cols=80, rows=14, config=cfg(unfocused_cfg(200))) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         split(s)
-        s.settle(200)
         _, other = by_focus(s)
         snap = s.snapshot()
         check("a dimmed pane's frame keeps its full colour",
@@ -146,13 +141,11 @@ def test_dimming_never_touches_the_chrome():
 
 def test_dragging_greys_the_other_panes():
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
-        s.settle(120)
         snap = s.snapshot()
         check("the pane being dragged keeps its colour",
               content_fg(snap, left) == GREEN, str(content_fg(snap, left)))
@@ -170,7 +163,6 @@ def test_dragging_greys_the_other_panes():
               ch[0] == ch[2], str(grey))
 
         release(s, right["x"] + 5, right["y"] + 3)
-        s.settle(200)
         snap = s.snapshot()
         for p in s.panes():
             check(f"pane {p['id']} is back to its own colour after the drop",
@@ -180,9 +172,8 @@ def test_dragging_greys_the_other_panes():
 def test_full_strength_is_a_true_grey():
     with Session(SH, cols=90, rows=16,
                  config=cfg(drag_cfg("grayscale amount=255"))) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
@@ -197,12 +188,10 @@ def test_full_strength_is_a_true_grey():
 def test_a_press_that_never_moves_greys_nothing():
     """A click on a title is a click. It must not flash the session grey."""
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         press(s, left["x"] + 4, left["y"])
-        s.settle(120)
         snap = s.snapshot()
         check("pressing without moving greys nothing",
               content_fg(snap, right) == GREEN, str(content_fg(snap, right)))
@@ -213,15 +202,13 @@ def test_a_press_that_never_moves_greys_nothing():
 def test_the_drag_greying_outranks_the_focus_dimming():
     """Two reasons to be grey would compound into one muddy grey."""
     with Session(SH, cols=90, rows=16, config=cfg(unfocused_cfg(128))) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         # Drag the *unfocused* pane, so focus policy would dim it if it applied.
         focused, other = by_focus(s)
         press(s, other["x"] + 4, other["y"])
         motion(s, focused["x"] + 5, focused["y"] + 3)
-        s.settle(120)
         snap = s.snapshot()
         check("the dragged pane lifts off the page, dimming or not",
               content_fg(snap, other) == GREEN, str(content_fg(snap, other)))
@@ -232,12 +219,10 @@ def test_the_drag_greying_outranks_the_focus_dimming():
 def drag_and_sample(conf):
     """Colour of a non-dragged pane's content mid-drag, under `conf`."""
     with Session(SH, cols=90, rows=16, config=cfg(conf)) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
-        s.settle(120)
         got = content_fg(s.snapshot(), right)
         release(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
@@ -280,9 +265,8 @@ SOLID_H = "\u2500"
 
 def test_non_dragged_panes_get_a_dashed_border():
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         snap = s.snapshot()
         check("borders are solid when nothing is being dragged",
@@ -290,7 +274,6 @@ def test_non_dragged_panes_get_a_dashed_border():
 
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
-        s.settle(120)
         snap = s.snapshot()
         top = snap.line(right["y"])[right["x"]:right["x"] + right["w"]]
         dragged_top = snap.line(left["y"])[left["x"]:left["x"] + left["w"]]
@@ -300,7 +283,6 @@ def test_non_dragged_panes_get_a_dashed_border():
               repr(dragged_top))
 
         release(s, right["x"] + 5, right["y"] + 3)
-        s.settle(200)
         snap = s.snapshot()
         for p in s.panes():
             row = snap.line(p["y"])[p["x"]:p["x"] + p["w"]]
@@ -310,11 +292,9 @@ def test_non_dragged_panes_get_a_dashed_border():
 
 def test_a_press_that_never_moves_dashes_nothing():
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
         press(s, left["x"] + 4, left["y"])
-        s.settle(120)
         snap = s.snapshot()
         check("pressing without moving dashes nothing",
               DASH_H not in snap.screen(), "")
@@ -324,12 +304,10 @@ def test_a_press_that_never_moves_dashes_nothing():
 
 def test_the_hovered_target_is_still_highlighted_over_the_dashes():
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
-        s.settle(120)
         snap = s.snapshot()
         run = snap.style_at(right["x"], right["y"])
         check("the pane under the pointer keeps its drop highlight",
@@ -342,16 +320,14 @@ def test_the_hovered_target_is_still_highlighted_over_the_dashes():
 def test_a_drag_that_ends_off_a_pane_still_clears():
     """The clear is derived, so even a drop into nowhere cannot leave it on."""
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
         motion(s, 0, 0)          # out into the margin
         release(s, 0, 0)
-        s.settle(200)
         snap = s.snapshot()
         for p in s.panes():
             check(f"pane {p['id']} is un-greyed after a drop into nowhere",
@@ -361,15 +337,13 @@ def test_a_drag_that_ends_off_a_pane_still_clears():
 def test_a_keystroke_mid_drag_clears_the_greying():
     """Any key ends a drag (so the mouse cannot wedge); colour must follow."""
     with Session(SH, cols=90, rows=16) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
 
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
         s.send("x")
-        s.settle(200)
         snap = s.snapshot()
         check("the greying goes with the drag it belonged to",
               content_fg(snap, right) == GREEN, str(content_fg(snap, right)))
@@ -381,7 +355,7 @@ def test_config_shaders_reach_the_screen():
     """`shaders { ... }` is the surface these are actually driven from."""
     conf = 'shaders {\n    ruler amount=255 at=4 color="#ff0000"\n}\n'
     with Session(SH, cols=60, rows=12, config=cfg(conf)) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         p = s.pane()
         snap = s.snapshot()
         on = snap.style_at(p["content_x"] + 4, p["content_y"])
@@ -409,7 +383,7 @@ def test_config_shaders_run_in_written_order():
 def test_an_unknown_shader_is_refused_not_guessed():
     with Session(SH, cols=50, rows=10,
                  config=cfg('shaders {\n    bloom amount=255\n}\n')) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         check("an unknown shader leaves the session running and unshaded",
               s.alive() and content_fg(s.snapshot(), s.pane()) == GREEN,
               str(content_fg(s.snapshot(), s.pane())))
@@ -418,7 +392,7 @@ def test_an_unknown_shader_is_refused_not_guessed():
 def test_positional_shaders_stay_off_the_chrome():
     conf = 'shaders {\n    vignette amount=255\n    zebra amount=255 band=1\n}\n'
     with Session(SH, cols=60, rows=12, config=cfg(conf)) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         p = s.pane()
         snap = s.snapshot()
         check("a full-strength positional stack still leaves the frame alone",
@@ -437,17 +411,14 @@ def lay(text):
 def test_the_dragged_pane_can_have_a_state_of_its_own():
     conf = 'states {\n    dragging { tint amount=255 color="#0000ff" }\n}\n'
     with Session(SH, cols=90, rows=16, config=cfg(conf)) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         left, right = split(s)
-        s.settle(200)
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
-        s.settle(120)
         snap = s.snapshot()
         check("the pane in your hand takes the dragging state",
               content_fg(snap, left) == "#0000ff", str(content_fg(snap, left)))
         release(s, right["x"] + 5, right["y"] + 3)
-        s.settle(200)
         check("and gives it back on release",
               content_fg(s.snapshot(), s.panes()[0]) == GREEN, "")
 
@@ -470,7 +441,6 @@ def test_the_hovered_pane_is_a_different_state_from_the_rest():
         a, b, c = panes
         press(s, a["x"] + 4, a["y"])
         motion(s, b["x"] + 3, b["y"] + 3)
-        s.settle(150)
         snap = s.snapshot()
         check("the pane under the pointer is the hover state",
               content_fg(snap, b) == "#ff0000", str(content_fg(snap, b)))
@@ -515,7 +485,6 @@ def test_scrollback_is_a_state():
         # wheel. SGR button 64 is wheel-up.
         for _ in range(6):
             s.send(rf"\e[<64;{p['content_x'] + 2};{p['content_y'] + 2}M")
-        s.settle(250)
         check("looking at the past is a state you can colour",
               content_fg(s.snapshot(), p) == "#ffaa00",
               str(content_fg(s.snapshot(), p)))
@@ -546,7 +515,7 @@ def test_exactly_one_state_wins():
 def test_an_unknown_state_is_refused():
     conf = 'states {\n    haunted { dim amount=255 }\n}\n'
     with Session(SH, cols=60, rows=12, config=cfg(conf)) as s:
-        s.settle(200)
+        s.until_text("BLOCK")
         check("an unknown state name leaves the session running",
               s.alive() and content_fg(s.snapshot(), s.pane()) == GREEN,
               str(content_fg(s.snapshot(), s.pane())))

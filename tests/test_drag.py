@@ -10,6 +10,27 @@ import time
 
 from harness import Session, check, report
 
+def _cfg(text):
+    import tempfile
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write(text)
+    f.close()
+    return f.name
+
+
+# The hint is gated on a real clock, so the wait is real - just a short one.
+FAST = _cfg("hover_delay_ms 20\n")
+def _cfg(text):
+    import tempfile
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write(text)
+    f.close()
+    return f.name
+
+
+# The resize hint arms on a real clock, so its tests really do wait - but only
+# the ones *about* the dwell need the default 250ms to prove anything.
+FAST = _cfg("hover_delay_ms 20\n")
 SH = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; stty raw -echo; cat']
 
 
@@ -18,7 +39,7 @@ def widths(s):
 
 
 def test_keyboard_resize():
-    with Session(SH, cols=80, rows=16) as s:
+    with Session(SH, cols=80, rows=16, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -47,7 +68,7 @@ def test_keyboard_resize():
 
 
 def test_vertical_resize():
-    with Session(SH, cols=80, rows=20) as s:
+    with Session(SH, cols=80, rows=20, config=FAST) as s:
         s.settle()
         s.key("-")
         s.settle()
@@ -66,7 +87,7 @@ def test_vertical_resize():
 
 
 def test_resize_survives_a_collapse_cycle():
-    with Session(SH, cols=100, rows=20) as s:
+    with Session(SH, cols=100, rows=20, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -221,6 +242,8 @@ ARROW_V, ARROW_H = "\u21d4", "\u21d5"  # which way that boundary travels
 
 
 def test_the_gap_says_it_is_a_handle():
+    # No FAST here: this is the test that proves contact alone is not enough,
+    # so it needs a dwell long enough to be observably not-yet-elapsed.
     with Session(SH, cols=120, rows=26) as s:
         s.settle()
         s.key("\\\\")
@@ -266,16 +289,19 @@ def test_the_hint_changes_while_resizing():
               GRAB_V in snap.screen() and GRIP_V not in snap.screen(), "")
 
         s.send(rf"\e[<0;{gx + 6};{gy + 1}m")
-        s.settle(150)
-        snap = s.snapshot()
+        s.settle(60)
         check("and the boundary actually moved",
               s.panes()[0]["w"] > before, f'{before} -> {s.panes()[0]["w"]}')
-        check("both hints are gone once it is dropped",
+        # Off the handle: still resting on it would (correctly) re-arm the
+        # dotted hint, which is the pointer following the mouse, not a leak.
+        s.send(rf"\e[<35;{left["x"] + 3};{gy + 1}M")
+        snap = s.snapshot()
+        check("both hints are gone once it is dropped and left alone",
               GRAB_V not in snap.screen() and GRIP_V not in snap.screen(), "")
 
 
 def test_a_horizontal_boundary_uses_horizontal_marks():
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         s.key("-")          # split into rows
         s.settle(200)
@@ -283,7 +309,7 @@ def test_a_horizontal_boundary_uses_horizontal_marks():
         gx, gy = top["x"] + 6, top["y"] + top["h"]
 
         s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
-        time.sleep(0.35)
+        time.sleep(0.06)
         s.settle(60)
         snap = s.snapshot()
         check("a row boundary hints along its own axis",
@@ -295,7 +321,7 @@ def test_a_horizontal_boundary_uses_horizontal_marks():
 
 def test_no_resize_hint_during_another_drag():
     """A pointer already carrying a pane is not shopping for a boundary."""
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle(200)
@@ -304,7 +330,7 @@ def test_no_resize_hint_during_another_drag():
 
         s.send(rf"\e[<0;{left['x'] + 5};{left['y'] + 1}M")   # grab the title
         s.send(rf"\e[<32;{gx + 1};{gy + 1}M")                # drag over the gap
-        time.sleep(0.35)
+        time.sleep(0.06)
         s.settle(80)
         check("a title drag over a gap arms nothing",
               GRIP_V not in s.snapshot().screen(), "")
@@ -314,7 +340,7 @@ def test_no_resize_hint_during_another_drag():
 
 def test_the_gap_names_the_verb():
     """The dots say it is a handle; the arrow says what pulling it does."""
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         s.key("\\\\")
         s.settle(200)
@@ -322,7 +348,7 @@ def test_the_gap_names_the_verb():
         gx, gy = left["x"] + left["w"], left["y"] + 3
 
         s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
-        time.sleep(0.35)
+        time.sleep(0.06)
         s.settle(60)
         snap = s.snapshot()
         check("hovering a column boundary shows a sideways arrow",
@@ -343,13 +369,13 @@ def test_the_gap_names_the_verb():
         check("it stays while the boundary is actually moving",
               ARROW_V in s.snapshot().screen(), "")
         s.send(rf"\e[<0;{gx + 5};{gy + 1}m")
-        s.settle(120)
+        s.send(rf"\e[<35;{left["x"] + 3};{gy + 1}M")   # and off the handle
         check("and goes with the rest of the hint",
               ARROW_V not in s.snapshot().screen(), "")
 
 
 def test_a_row_boundary_names_its_own_verb():
-    with Session(SH, cols=120, rows=26) as s:
+    with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         s.key("-")
         s.settle(200)
@@ -357,7 +383,7 @@ def test_a_row_boundary_names_its_own_verb():
         gx, gy = top["x"] + 6, top["y"] + top["h"]
 
         s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
-        time.sleep(0.35)
+        time.sleep(0.06)
         s.settle(60)
         snap = s.snapshot()
         check("a row boundary shows an up-down arrow",

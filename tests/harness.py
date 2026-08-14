@@ -11,6 +11,7 @@ M1 on is tested through it.
 import json
 import os
 import subprocess
+import time
 
 BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty")
 
@@ -112,8 +113,39 @@ class Session:
         """Bytes straight into the pane's pty, decoder bypassed."""
         self._cmd(f"raw {escaped}")
 
-    def settle(self, ms=120):
+    def settle(self, ms=20):
+        """Pump every pane until none has produced output for `ms`.
+
+        The default is deliberately short. `settle` is a *duration*, and a
+        duration is a guess: too long and every call donates dead time to every
+        run forever, too short and it races. Where the answer is observable,
+        use until()/until_text() instead and stop guessing.
+        """
         self._cmd(f"settle {ms}")
+
+    def until(self, pred, timeout_ms=3000, step_ms=10):
+        """Pump until pred(snapshot) holds, then return that snapshot.
+
+        `settle N` is the only thing that reads a pane's pty, so waiting for a
+        program's output means pumping — but it is also a *duration*, and a
+        duration is a guess about something observable. This polls the thing
+        itself and returns the instant it is true, which is both faster than a
+        generous settle and safer than a tight one: the deadline only bounds
+        failure, never success.
+
+        Returns the last snapshot either way, so a caller's own check reports
+        what was actually on screen rather than a timeout from in here.
+        """
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        while True:
+            self.settle(step_ms)
+            snap = self.snapshot()
+            if pred(snap) or time.monotonic() >= deadline:
+                return snap
+
+    def until_text(self, needle, **kw):
+        """The common case: wait for a program to have printed something."""
+        return self.until(lambda snap: needle in snap.screen(), **kw)
 
     def resize(self, cols, rows):
         self.cols, self.rows = cols, rows
