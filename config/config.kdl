@@ -53,15 +53,18 @@ title_inset 2
 // the setting is about the affordance and not the verb.
 pane_buttons true
 
-// The buttons are evenly spaced whatever is in them, but how even they *look*
-// depends on the glyphs: a light character floating in a mostly-empty cell
-// donates that space to the gap beside it. Emoji are worse -- many terminals
-// draw them two columns wide while chrome here is booked as one -- so avoid
-// those. A mark may be more than one character; the button is measured rather
-// than assumed, so "[]" and "][" work too if you prefer them. Put the character itself
+// Plain single-width ASCII, after box-drawing and block characters were each
+// tried and each looked unevenly spaced: the cells are even, but a glyph that
+// does not fill its own cell hands that space to the gap beside it, and how
+// much it hands over depends on the font. ASCII of a similar weight sidesteps
+// the question. Emoji are the worst case -- many terminals draw them two
+// columns wide while chrome here is booked as one.
+//
+// A mark may be more than one character; the button is measured rather than
+// assumed, so "[]" and "][" work if you prefer them. Put the character itself
 // here; this file has no \u escape.
-zoom_mark "□"
-zoom_on_mark "▣"
+zoom_mark "#"
+zoom_on_mark "*"
 close_mark "x"
 min_mark "_"
 
