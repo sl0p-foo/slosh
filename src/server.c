@@ -4,6 +4,10 @@
 #define _GNU_SOURCE
 #include "server.h"
 
+#include "config.h"
+
+#include <sys/inotify.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -171,7 +175,7 @@ static void drop_display(server_t *s, uint8_t reason) {
 }
 
 int server_run(const char *name, const char *const argv[], uint16_t cols,
-               uint16_t rows, const char *layout) {
+               uint16_t rows, const char *layout, bool watch) {
   char path[512];
   if (session_socket_path(name, path, sizeof path) != 0) return 1;
   int lfd = listen_socket(path);
@@ -201,6 +205,38 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
   app_compose(s.app, &s.screen); /* a click resolves against a painted frame */
 
+  /* Watch the config's *directory*, not the file. Editors overwhelmingly save
+   * by writing a temporary file and renaming it over the target, which swaps
+   * the inode out from under a watch on the file itself: it fires once and
+   * then never again, which is worse than not watching at all because it looks
+   * like it works. Watching the directory and filtering by name survives that,
+   * and picks up a file that did not exist when the session started. */
+  int inofd = -1, inowd = -1;
+  char cfg_dir[512] = {0}, cfg_base[256] = {0};
+  if (watch) {
+    const char *path = config_default_path();
+    if (path && *path) {
+      snprintf(cfg_dir, sizeof cfg_dir, "%s", path);
+      char *slash = strrchr(cfg_dir, '/');
+      if (slash) {
+        *slash = 0;
+        snprintf(cfg_base, sizeof cfg_base, "%s", slash + 1);
+      } else {
+        snprintf(cfg_dir, sizeof cfg_dir, ".");
+        snprintf(cfg_base, sizeof cfg_base, "%s", path);
+      }
+      inofd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+      if (inofd >= 0) {
+        inowd = inotify_add_watch(inofd, cfg_dir,
+                                  IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+        if (inowd < 0) {
+          close(inofd);
+          inofd = -1;
+        }
+      }
+    }
+  }
+
   bool pending_paint = true;
   int64_t next_frame = now_ms();
   int64_t esc_due = 0;
@@ -208,7 +244,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   while (!g_stop && !app_should_quit(s.app)) {
     int fds[MAX_PANES];
     size_t npanes = app_fds(s.app, fds, MAX_PANES);
-    struct pollfd pfds[MAX_PANES + MAX_CONNS + 1];
+    struct pollfd pfds[MAX_PANES + MAX_CONNS + 2]; /* +listen +inotify */
     size_t n = 0;
     pfds[n++] = (struct pollfd){.fd = lfd, .events = POLLIN};
     size_t conn_slot = n;
@@ -217,6 +253,8 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     size_t pane_slot = n;
     for (size_t i = 0; i < npanes; i++)
       pfds[n++] = (struct pollfd){.fd = fds[i], .events = POLLIN};
+    size_t ino_slot = n;
+    if (inofd >= 0) pfds[n++] = (struct pollfd){.fd = inofd, .events = POLLIN};
 
     int timeout = -1;
     if (pending_paint) {
@@ -339,6 +377,37 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
         }
       }
     }
+    /* The config changed on disk. Reloading is the same call the `reload`
+     * command makes, including its fail-open behaviour: a file that does not
+     * parse leaves the running config alone and says so, which matters more
+     * here than there because an editor saving halfway through a change is a
+     * normal thing to see rather than an operator mistake. */
+    if (inofd >= 0 && (pfds[ino_slot].revents & POLLIN)) {
+      char buf[4096];
+      bool touched = false;
+      for (;;) {
+        ssize_t got = read(inofd, buf, sizeof buf);
+        if (got <= 0) break;
+        for (char *q = buf; q < buf + got;) {
+          struct inotify_event *ev = (struct inotify_event *)q;
+          if (ev->len && strcmp(ev->name, cfg_base) == 0) touched = true;
+          q += sizeof *ev + ev->len;
+        }
+      }
+      if (touched) {
+        char err[256] = {0};
+        if (app_reload_config(err, sizeof err)) {
+          app_resize(s.app, s.screen.cols, s.screen.rows);
+          app_toast(s.app, "config reloaded");
+        } else {
+          app_toast(s.app, err[0] ? err : "config reload failed");
+        }
+        s.screen.force_full = true;
+        pending_paint = true;
+        next_frame = now_ms();
+      }
+    }
+
     app_reap(s.app);
 
     if (app_detach_requested(s.app)) {
@@ -367,7 +436,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
 /* Fork a server into the background and wait for its socket to answer. */
 int server_spawn(const char *name, const char *const argv[], uint16_t cols,
-                 uint16_t rows, const char *layout) {
+                 uint16_t rows, const char *layout, bool watch) {
   char path[512], logp[512];
   if (session_socket_path(name, path, sizeof path) != 0) return -1;
   session_log_path(name, logp, sizeof logp);
@@ -384,7 +453,7 @@ int server_spawn(const char *name, const char *const argv[], uint16_t cols,
     dup2(log >= 0 ? log : null, STDERR_FILENO);
     if (null > 2) close(null);
     if (log > 2) close(log);
-    _exit(server_run(name, argv, cols, rows, layout));
+    _exit(server_run(name, argv, cols, rows, layout, watch));
   }
   waitpid(pid, NULL, 0); /* the intermediate exits immediately */
 

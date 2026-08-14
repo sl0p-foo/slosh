@@ -36,7 +36,7 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
 }
 
 static void usage(void) {
-  fputs("usage: sl0ppty [-s NAME] [--layout FILE] [ls | cmd LINE | -- CMD...]\n",
+  fputs("usage: sl0ppty [-s NAME] [--layout FILE] [--no-reload]\n                [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
 
@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
   const char *name = "main";
   const char *cmd_line = NULL;
   const char *layout = NULL;
+  bool watch = true;
   bool list = false;
   const char *cmd_argv[64];
   int cmd_n = 0;
@@ -58,6 +59,7 @@ int main(int argc, char **argv) {
     else if (strcmp(a, "--server") == 0) server = true;
     else if (strcmp(a, "-s") == 0 && i + 1 < argc) name = argv[++i];
     else if (strcmp(a, "--layout") == 0 && i + 1 < argc) layout = argv[++i];
+    else if (strcmp(a, "--no-reload") == 0) watch = false;
     else if (strcmp(a, "ls") == 0) list = true;
     else if (strcmp(a, "cmd") == 0 && i + 1 < argc) cmd_line = argv[++i];
     else if (strcmp(a, "--cols") == 0 && i + 1 < argc) cols = (uint16_t)atoi(argv[++i]);
@@ -107,11 +109,11 @@ int main(int argc, char **argv) {
   if (headless) return run_headless(cmd_argv, cols, rows, idle_ms, script, layout);
 
   if (isatty(STDOUT_FILENO)) term_size(&cols, &rows);
-  if (server) return server_run(name, cmd_argv, cols, rows, layout);
+  if (server) return server_run(name, cmd_argv, cols, rows, layout, watch);
 
   /* attach, creating the session if nobody is home */
   int fd = server_connect(name);
-  if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows, layout);
+  if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows, layout, watch);
   if (fd < 0) {
     fprintf(stderr, "sl0ppty: cannot start session %s\n", name);
     return 1;

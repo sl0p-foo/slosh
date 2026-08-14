@@ -143,6 +143,10 @@ rather than that they are the same thing.
 
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ppty/config.kdl`.
+**Saving it re-reads it into every running session** — a file that does not
+parse leaves the running config alone, so an editor caught mid-save costs
+nothing. `--no-reload` starts a session that does not watch, and
+`{"cmd":"reload"}` asks for one explicitly either way.
 
 ## Panes can draw their own chrome (OSC 5577)
 

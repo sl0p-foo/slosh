@@ -7,12 +7,14 @@
 
 #include "sl0ppty.h"
 
-/* Run the session in this process (the daemonised half). */
+/* Run the session in this process (the daemonised half). `watch` re-reads the
+ * config when the file changes; see server.c for why that is a flag and not a
+ * config setting. */
 int server_run(const char *name, const char *const argv[], uint16_t cols,
-               uint16_t rows, const char *layout);
+               uint16_t rows, const char *layout, bool watch);
 /* Fork a server, then wait for its socket to answer. Returns a connected fd. */
 int server_spawn(const char *name, const char *const argv[], uint16_t cols,
-                 uint16_t rows, const char *layout);
+                 uint16_t rows, const char *layout, bool watch);
 /* Connect to an existing session, or -1. */
 int server_connect(const char *name);
 

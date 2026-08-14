@@ -3,7 +3,9 @@
 // ~/.config/sl0ppty/config.kdl (or point $SL0PPTY_CONFIG at it) and edit.
 //
 // A broken file costs a warning on stderr and nothing else: the defaults
-// stand. `sl0ppty cmd '{"cmd":"reload"}'` re-reads it into a live session, and
+// stand. Saving this file re-reads it into every running session on its own;
+// `sl0ppty --no-reload` starts one that does not watch, and
+// `sl0ppty cmd '{"cmd":"reload"}'` asks for a re-read explicitly. And
 // refuses a file it cannot parse rather than half-applying it.
 
 // ── geometry ────────────────────────────────────────────────────────────────
