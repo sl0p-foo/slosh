@@ -70,7 +70,7 @@ test-live: $(BIN) ## the checks that need a real tty (slow)
 test-all: test test-live ## everything
 
 smoke: $(BIN) ## compose a screen headlessly and print it
-	./$(BIN) --headless --cols 40 --rows 6 -- /bin/sh -c 'printf "hello \033[1;32msl0ppty\033[0m\n"; echo "wide: 日本語"'
+	./$(BIN) --headless --cols 40 --rows 12 -- /bin/sh -c 'printf "hello \033[1;32msl0ppty\033[0m\n"; echo "wide: 日本語"'
 
 run: $(BIN) ## build and run
 	./$(BIN)

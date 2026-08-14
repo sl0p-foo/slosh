@@ -27,8 +27,14 @@ static int64_t ms_now(void) {
   return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-/* Pump every pane until none has produced anything for `quiet` ms. */
-static void settle(app_t *a, int quiet) {
+/* Pump every pane until none has produced anything for `quiet` ms.
+ *
+ * `snap`, when given, is composed after each pump and *before* the reap that
+ * would close an exited pane, so a one-shot run still prints what the command
+ * drew. This is exact, not a narrowed race: pane_pump() only marks a pane dead
+ * on EOF, which it reaches after consuming everything the pty had, so the last
+ * snapshot always holds the finished output. */
+static void settle(app_t *a, int quiet, screen_t *snap) {
   int64_t last = ms_now();
   int64_t deadline = last + 3000;
   while (!app_should_quit(a) && ms_now() < deadline) {
@@ -45,6 +51,7 @@ static void settle(app_t *a, int quiet) {
           last = ms_now();
         }
     }
+    if (snap) app_compose(a, snap);
     app_reap(a);
     if (ms_now() - last >= quiet) break;
   }
@@ -68,8 +75,10 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
   input_parser_t *in = input_new();
 
   if (!script) { /* one-shot: run it, let it settle, print the screen */
-    settle(a, idle_ms);
-    app_compose(a, &s);
+    settle(a, idle_ms, &s);
+    /* Panes still alive: take the freshest frame. Otherwise keep the one
+     * settle() snapshotted just before the last pane was reaped. */
+    if (!app_should_quit(a)) app_compose(a, &s);
     char *dump = screen_dump(&s);
     fputs(dump, stdout);
     free(dump);
@@ -87,7 +96,7 @@ int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
     if (!line[0]) continue;
 
     if (strncmp(line, "settle", 6) == 0) {
-      settle(a, line[6] == ' ' ? atoi(line + 7) : idle_ms);
+      settle(a, line[6] == ' ' ? atoi(line + 7) : idle_ms, NULL);
       continue;
     }
 
