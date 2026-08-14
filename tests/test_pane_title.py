@@ -100,7 +100,7 @@ def test_the_title_text_is_its_own_region():
 
 
 def test_resting_on_the_title_arms_no_guide():
-    with Session(SH, cols=60, rows=14) as s:
+    with Session(SH, cols=60, rows=26) as s:
         s.settle()
         p = s.pane()
         _, _, mid = title_span(s.snapshot(), p)
@@ -121,7 +121,7 @@ def test_resting_on_the_title_arms_no_guide():
 
 
 def test_clicking_the_title_does_not_split():
-    with Session(SH, cols=60, rows=14) as s:
+    with Session(SH, cols=60, rows=26) as s:
         s.settle()
         p = s.pane()
         _, _, mid = title_span(s.snapshot(), p)

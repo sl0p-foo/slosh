@@ -28,7 +28,7 @@ def check(name, cond, detail=""):
     print(f"{'ok  ' if cond else 'FAIL'} {name}{'' if cond else '  <- ' + detail}")
 
 
-def attach(name, cols=60, rows=12, inner=None):
+def attach(name, cols=80, rows=24, inner=None):
     """Attach a client on a real pty. Returns (pid, fd)."""
     pid, fd = pty.fork()
     if pid == 0:

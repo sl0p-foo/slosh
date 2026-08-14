@@ -38,7 +38,9 @@ def check_invariants(name, s, snap=None):
 
 
 def test_split_and_close():
-    with Session(SH, cols=60, rows=16) as s:
+    # Big enough for both splits to clear min_split (32x8 by default): a column
+    # split needs 2*32+2 columns of pane, a row split 2*8+1 rows.
+    with Session(SH, cols=80, rows=24) as s:
         s.settle()
         check("starts with one pane", len(s.panes()) == 1)
 
@@ -71,7 +73,7 @@ def test_split_and_close():
 
 def test_three_way_split_is_even():
     """Splitting the same direction twice must give equal shares, not 1/2+1/4+1/4."""
-    with Session(SH, cols=62, rows=10) as s:
+    with Session(SH, cols=110, rows=10) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -84,7 +86,7 @@ def test_three_way_split_is_even():
 
 
 def test_focus_movement():
-    with Session(SH, cols=60, rows=16) as s:
+    with Session(SH, cols=76, rows=16) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -120,7 +122,7 @@ def test_frames_and_gap():
               pane["content_x"] == pane["x"] + 1 and pane["content_y"] == pane["y"] + 1,
               str(pane))
 
-    with Session(SH, cols=60, rows=8) as s:
+    with Session(SH, cols=76, rows=8) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -130,7 +132,7 @@ def test_frames_and_gap():
 
 
 def test_focus_is_visible():
-    with Session(SH, cols=60, rows=10) as s:
+    with Session(SH, cols=76, rows=10) as s:
         s.settle()
         s.key("\\\\")
         s.settle()
@@ -168,7 +170,7 @@ def test_hit_list():
 
 
 def test_click_focuses_and_forwards():
-    with Session(SH, cols=60, rows=12) as s:
+    with Session(SH, cols=76, rows=12) as s:
         s.settle()
         s.key("\\\\")
         s.settle()

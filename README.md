@@ -54,7 +54,11 @@ sl0ppty cmd '{"cmd":"panes"}'
 
 The mouse works throughout. **Click a pane's border to split toward it** — the
 side you click is the side the new pane appears on, and hovering a border arms
-it and shows a dashed line where the split would land. Click a pane to focus
+it and shows a dashed line where the split would land, with an arrow (`◄ ► ▲
+▼`) on that line pointing at the half the new pane will take. Below
+`min_split` the border stops being a button entirely: no guide, no split, on
+the reasoning that two twenty-five column panes technically fit and are not
+worth having. Click a pane to focus
 it, a tab to switch, `+tab` to open one, a collapsed header to expand it, and a
 pane's own buttons to talk to the program inside it. **Drag a pane's title bar
 onto another pane to swap them, or drag the gap between two panes to move the

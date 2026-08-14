@@ -156,7 +156,7 @@ def test_title_drag_reorders():
 
 
 def test_drag_edge_cases():
-    with Session(SH, cols=90, rows=16) as s:
+    with Session(SH, cols=150, rows=16) as s:
         s.settle()
         s.key("\\\\")
         s.settle()

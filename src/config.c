@@ -170,6 +170,8 @@ void config_defaults(config_t *c) {
   c->title_align = ALIGN_CENTER;
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
+  c->min_split_cols = 32;
+  c->min_split_rows = 8;
   c->scroll_lines = 3;
   c->toast_ms = 2500;
   c->hover_delay_ms = 250;
@@ -299,6 +301,14 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
     if (strcmp(align, "left") == 0) c->title_align = ALIGN_LEFT;
     else if (strcmp(align, "right") == 0) c->title_align = ALIGN_RIGHT;
     else c->title_align = ALIGN_CENTER;
+  }
+
+  const kdl_node_t *mins = kdl_child(root, "min_split");
+  if (mins) {
+    c->min_split_cols =
+        (uint16_t)kdl_prop_int(mins, "cols", c->min_split_cols);
+    c->min_split_rows =
+        (uint16_t)kdl_prop_int(mins, "rows", c->min_split_rows);
   }
 
   const kdl_node_t *minp = kdl_child(root, "min_pane");

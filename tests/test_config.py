@@ -59,7 +59,7 @@ def test_theme():
             frame_idle "#333333"
         }
     """)
-    with Session(SH, cols=60, rows=14, config=path) as s:
+    with Session(SH, cols=76, rows=14, config=path) as s:
         s.settle()
         p = s.pane()
         run = s.snapshot().style_at(p["x"], p["y"])
@@ -109,17 +109,21 @@ def test_keys():
 
 
 def test_min_pane_drives_collapse():
+    # Split over the control API rather than the keyboard. This is about what
+    # the *layout* does with a split that does not fit, and the keyboard now
+    # declines to make one — which is a different rule, tested elsewhere. A
+    # script asking for a pane is declaring what it wants, so it still gets it.
     roomy = cfg("min_pane cols=10 rows=3\n")
     tight = cfg("min_pane cols=40 rows=12\n")
     with Session(SH, cols=70, rows=16, config=roomy) as s:
         s.settle()
-        s.key("\\\\")
+        s.api("split", dir="cols")
         s.settle()
         check("a low floor keeps both panes visible",
               not any(p["hidden"] for p in s.panes()), str(s.panes()))
     with Session(SH, cols=70, rows=16, config=tight) as s:
         s.settle()
-        s.key("\\\\")
+        s.api("split", dir="cols")
         s.settle()
         check("a high floor collapses the same split",
               any(p["hidden"] for p in s.panes()), str(s.panes()))

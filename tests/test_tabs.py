@@ -79,7 +79,7 @@ def test_tab_click():
 
 
 def test_closing_a_tab():
-    with Session(SH, cols=60, rows=14) as s:
+    with Session(SH, cols=76, rows=14) as s:
         s.settle()
         s.key("c")
         s.settle()

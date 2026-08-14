@@ -75,6 +75,12 @@ typedef struct {
   bool rounded;
   align_t title_align;
   uint16_t min_pane_cols, min_pane_rows;
+  /* The smallest pane a split is allowed to *produce*. min_pane is the point
+   * below which the layout gives up and collapses a pane; this is the point
+   * below which splitting stopped being worth offering, which is a larger
+   * number and a different question. Never used below min_pane: refusing to
+   * offer something the layout would collapse anyway is the floor. */
+  uint16_t min_split_cols, min_split_rows;
   uint16_t scroll_lines;
   uint16_t toast_ms;
   uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */

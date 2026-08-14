@@ -38,6 +38,23 @@ focus_follows_mouse true
 // widening the terminal always restores exactly the layout you had.
 min_pane cols=24 rows=6
 
+// The smallest pane a split is allowed to *produce*. min_pane above is where
+// the layout gives up and collapses; this is where splitting stopped being
+// worth offering, which is a larger number and a different question — two
+// twenty-five column panes technically fit and are not worth having.
+//
+// Below this the border stops being a button: no guide arms, clicking it does
+// nothing, and the keyboard says so with a toast. The control API and layout
+// files are deliberately exempt, because a script asking for a pane is saying
+// what it wants rather than being offered something, and the responsive
+// collapse is what catches it there.
+//
+// Never used below min_pane: refusing to offer what the layout would collapse
+// anyway is the floor under the floor. Raise it if you like fewer, bigger
+// panes; a column split needs 2*cols + 2 columns of pane to be offered, a row
+// split 2*rows + 1.
+min_split cols=32 rows=8
+
 // Rows per wheel notch, and per scroll-up/scroll-down.
 scroll_lines 3
 

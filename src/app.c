@@ -719,8 +719,63 @@ static void split_node(app_t *a, node_t *leaf, split_dir_t dir, bool before) {
   layout(a);
 }
 
+/* Would splitting this pane produce two panes worth having?
+ *
+ * This is the layout's own arithmetic, not an approximation of it: the same
+ * floor, the same gap, and the same child count the split would actually
+ * create — which is one more sibling when the parent already splits this way,
+ * and two when it does not. Guessing here would let the guide promise a split
+ * that immediately collapsed, and the guide's whole claim is that drawing and
+ * the layout cannot disagree. */
+static bool split_fits(node_t *leaf, split_dir_t dir) {
+  /* Two different questions, and the larger answer wins: min_pane is where the
+   * layout gives up, min_split is where splitting stopped being worth
+   * offering. A pane can clear the first and still be too small to be worth
+   * halving — which is the whole point of having both. */
+  uint16_t floor_ = dir == SPLIT_COLS ? CFG.min_split_cols : CFG.min_split_rows;
+  uint16_t hard = dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
+  if (floor_ < hard) floor_ = hard;
+  uint16_t gap =
+      dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
+
+  size_t k;
+  uint16_t total;
+  if (leaf->parent && leaf->parent->dir == dir) {
+    k = leaf->parent->nkids + 1;
+    total = dir == SPLIT_COLS ? leaf->parent->rect.w : leaf->parent->rect.h;
+  } else {
+    k = 2;
+    total = dir == SPLIT_COLS ? leaf->rect.w : leaf->rect.h;
+  }
+  return total >= (uint16_t)(k * floor_ + gap * (k - 1));
+}
+
+static split_dir_t side_dir(char side) {
+  return (side == 'l' || side == 'r') ? SPLIT_COLS : SPLIT_ROWS;
+}
+
 static void split_focus(app_t *a, split_dir_t dir) {
   split_node(a, cur(a)->focus, dir, false);
+}
+
+/* Splitting because a person just asked for it, which is the only case the
+ * floor applies to.
+ *
+ * The keyboard obeys the same floor the border does: a rule only the mouse
+ * followed would mean the same session splits or refuses depending on how you
+ * asked, and whether there is room cannot depend on that. The control API and
+ * layout files go through split_focus() and are deliberately *not* bound by
+ * it — a script asking for a pane is declaring what it wants, not being
+ * offered something, and D6's responsive collapse is what catches it there. */
+static void split_focus_ui(app_t *a, split_dir_t dir) {
+  node_t *n = cur(a)->focus;
+  if (!n) return;
+  if (!split_fits(n, dir)) {
+    app_toast(a, dir == SPLIT_COLS ? "no room to split across"
+                                   : "no room to split down");
+    return;
+  }
+  split_node(a, n, dir, false);
 }
 
 static node_t *first_leaf(node_t *n) {
@@ -1247,11 +1302,24 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   }
   if (!side) return;
 
+  /* Nothing is offered that cannot be delivered: below the floor this pane
+   * would only collapse, so the border simply stops being a button. */
+  if (!split_fits(leaf, side_dir(side))) return;
+
   rect_t r = leaf->rect;
   if (r.w < 4 || r.h < 4) return;
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
   color_t hi = FRAME_FOCUS;
 
+  /* An arrow on the new boundary, pointing at the side the new pane will take.
+   * The dashed line says where, and on its own leaves which half is the new
+   * one to be inferred from which border you happen to be touching.
+   *
+   * Pointers rather than the matching triangles for left and right: U+25C0 and
+   * U+25B6 carry emoji presentation and terminals widely render them
+   * double-width, and screen_text books every chrome glyph as one cell — so a
+   * cell that draws as two would shift the rest of the row. U+25B2 is already
+   * the scroll indicator, so the vertical pair is known good here. */
   if (side == 'l' || side == 'r') {
     uint16_t bx = side == 'l' ? r.x : x1;
     uint16_t mid = (uint16_t)(r.x + r.w / 2);
@@ -1259,6 +1327,8 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
       screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
       screen_text(s, mid, y, "\u254e", hi, NO_COLOR, 0);
     }
+    screen_text(s, mid, (uint16_t)(r.y + r.h / 2),
+                side == 'l' ? "\u25c4" : "\u25ba", hi, NO_COLOR, ATTR_BOLD);
   } else {
     uint16_t by = side == 't' ? r.y : y1;
     uint16_t mid = (uint16_t)(r.y + r.h / 2);
@@ -1266,6 +1336,8 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
       screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
       screen_text(s, x, mid, "\u254c", hi, NO_COLOR, 0);
     }
+    screen_text(s, (uint16_t)(r.x + r.w / 2), mid,
+                side == 't' ? "\u25b2" : "\u25bc", hi, NO_COLOR, ATTR_BOLD);
   }
 }
 
@@ -2176,8 +2248,8 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
     return true;
   }
   switch (act) {
-    case ACT_SPLIT_COLS: split_focus(a, SPLIT_COLS); return true;
-    case ACT_SPLIT_ROWS: split_focus(a, SPLIT_ROWS); return true;
+    case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
+    case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
     case ACT_CLOSE_PANE:
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;
@@ -2328,13 +2400,21 @@ void app_event(app_t *a, const input_event_t *ev) {
             node_t *n = pane_by_id(a, a->drag.src);
             if (n) {
               char side = a->drag.side;
-              bool rows = side == 't' || side == 'b';
               bool before = side == 'l' || side == 't';
-              split_node(a, n, rows ? SPLIT_ROWS : SPLIT_COLS, before);
-              app_toast(a, side == 'l'   ? "split left"
-                           : side == 'r' ? "split right"
-                           : side == 't' ? "split up"
-                                         : "split down");
+              split_dir_t dir = side_dir(side);
+              /* The guide already declined to offer this, so the click that
+               * the guide would have explained must decline too — otherwise
+               * the border silently does something it just said it would not. */
+              if (!split_fits(n, dir)) {
+                app_toast(a, dir == SPLIT_COLS ? "no room to split across"
+                                               : "no room to split down");
+              } else {
+                split_node(a, n, dir, before);
+                app_toast(a, side == 'l'   ? "split left"
+                             : side == 'r' ? "split right"
+                             : side == 't' ? "split up"
+                                           : "split down");
+              }
             }
             a->drag.kind = DRAG_NONE;
             a->drag.src = a->drag.target = 0;
