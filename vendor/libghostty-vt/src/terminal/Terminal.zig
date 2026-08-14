@@ -3341,12 +3341,17 @@ pub fn eraseDisplay(
             self.screens.active.cursor.pending_wrap = false;
 
             if (comptime build_options.kitty_graphics) {
-                // Clear all Kitty graphics state for this screen
+                // Clear the placements on this screen, but keep the images
+                // themselves: a client transmits with `a=t` once and places
+                // with `a=p` per frame, and freeing the data on a screen clear
+                // makes every later placement of that id draw nothing. The
+                // storage limit (320MB, LRU) is what bounds this, which is why
+                // it exists. sl0ppty patch; see vendor/patches.
                 self.screens.active.kitty_images.delete(
                     self.io(),
                     self.screens.active.alloc,
                     self,
-                    .{ .all = true },
+                    .{ .all = false },
                 );
             }
         },
@@ -3399,12 +3404,17 @@ pub fn eraseDisplay(
             self.screens.active.cursor.pending_wrap = false;
 
             if (comptime build_options.kitty_graphics) {
-                // Clear all Kitty graphics state for this screen
+                // Clear the placements on this screen, but keep the images
+                // themselves: a client transmits with `a=t` once and places
+                // with `a=p` per frame, and freeing the data on a screen clear
+                // makes every later placement of that id draw nothing. The
+                // storage limit (320MB, LRU) is what bounds this, which is why
+                // it exists. sl0ppty patch; see vendor/patches.
                 self.screens.active.kitty_images.delete(
                     self.io(),
                     self.screens.active.alloc,
                     self,
-                    .{ .all = true },
+                    .{ .all = false },
                 );
             }
 

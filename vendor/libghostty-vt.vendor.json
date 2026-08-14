@@ -5,5 +5,7 @@
   "dist_archive": "libghostty-vt-1.3.2-main-+bedb6f2.tar.gz",
   "version": "1.3.2-main-+bedb6f2",
   "built_with_zig": "0.16.0",
-  "patches": []
+  "patches": [
+    "patches/0001-keep-kitty-images-across-a-screen-clear.patch"
+  ]
 }
