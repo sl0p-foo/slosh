@@ -93,6 +93,16 @@ void gfx_begin(graphics_t *g) {
   for (size_t i = 0; i < g->nplaces; i++) g->places[i].live = false;
   g->len = 0;
   if (g->out) g->out[0] = 0;
+  /* Saved here rather than in gfx_flush(): transmissions are emitted as
+   * images are recorded, so by flush time they are already in the buffer and
+   * a save written then would not cover them. See gfx_flush() for why the
+   * whole stream has to be cursor-neutral.
+   *
+   * Split deliberately: "\x1b7" is a *single* hex escape, 0x1b7, which is out
+   * of range for a char -- the compiler catches that one, but the same shape
+   * with a digit that stays in range ("\x1b1") compiles and emits one wrong
+   * byte. Escape then digit is always two strings. */
+  out_str(g, "\x1b" "7"); /* DECSC */
 }
 
 static gfx_image_t *img_find(graphics_t *g, uint32_t pane, uint32_t src_id) {
@@ -180,6 +190,23 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
 }
 
 char *gfx_flush(graphics_t *g, size_t *out_len) {
+  /* This stream must leave the cursor exactly where it found it.
+   *
+   * Placing an image means parking the cursor on the target cell first, and
+   * these bytes go out *after* the cell diff (so a repainted cell cannot land
+   * on top of a placement) -- which is also after the frame has put the real
+   * cursor where the focused pane wants it. Without the save/restore around
+   * this, the last thing the terminal is told each frame is "go to wherever
+   * the last image is", and the cursor sits there instead: in another pane,
+   * moving about with the picture. It looks exactly like the shell you are
+   * typing into has lost its cursor, which is how it was reported.
+   *
+   * DECSC/DECRC rather than tracking the position here, because the frame's
+   * cursor is the screen's business and this file should not have to know it.
+   * The save is written by gfx_begin(); an empty frame drops both below and
+   * still costs nothing. */
+  const size_t before = 2; /* the DECSC gfx_begin() wrote */
+
   /* Placements that were on screen last frame and are not now must be told to
    * go away; a terminal will happily keep drawing an image nobody owns. */
   size_t keep = 0;
@@ -215,6 +242,15 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
     if (p->sw || p->sh)
       out_fmt(g, ",x=%u,y=%u,w=%u,h=%u", p->sx, p->sy, p->sw, p->sh);
     out_str(g, "\x1b\\");
+  }
+
+  if (g->len == before) {
+    /* Nothing happened this frame: drop the save too, so an idle session with
+     * no images on screen emits not one byte. */
+    g->len = 0;
+    if (g->out) g->out[0] = 0;
+  } else {
+    out_str(g, "\x1b" "8"); /* DECRC */
   }
 
   *out_len = g->len;

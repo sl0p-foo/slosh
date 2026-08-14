@@ -206,6 +206,16 @@ it answers with the escape sequences the client is actually sent, so a test
 can assert on the bytes rather than on the model that produced them. If you
 touch graphics, assert on the bytes.
 
+**Anything written after the frame must leave the cursor where the frame put
+it.** Images go out after the cell diff on purpose (a repainted cell must not
+land on top of a placement), and placing an image parks the cursor on its
+target cell first — so the last thing the terminal heard each frame was "go
+to wherever that image is". The cursor then sat in another pane, wandering
+about with the picture, and it was reported as "the shell I am typing in has
+no cursor". The graphics stream now opens with DECSC and closes with DECRC,
+and emits nothing at all when there is nothing to say. Any future
+after-the-frame output owes the same debt.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.

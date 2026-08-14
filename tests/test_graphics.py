@@ -175,6 +175,29 @@ def test_a_scaled_image_keeps_the_cell_count_it_asked_for():
               place and "c=6" in place[0] and "r=2" in place[0], str(place))
 
 
+def test_the_graphics_stream_leaves_the_cursor_alone():
+    """Placing an image parks the cursor on the target cell, and these bytes
+    go out after the cell diff -- so without a save/restore the last thing the
+    terminal hears every frame is "go to wherever that image is", and the real
+    cursor sits there instead of in the pane you are typing in. Reported as
+    "the cursor is not rendered in my shell"."""
+    with Session(sends_image(), cols=44, rows=10) as s:
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        check("it moves the cursor at all (or this proves nothing)",
+              "H" in raw, repr(raw[:80]))
+        check("saved first", raw.startswith("\x1b7"), repr(raw[:8]))
+        check("and restored last", raw.endswith("\x1b8"), repr(raw[-8:]))
+
+
+def test_a_frame_with_no_images_emits_nothing():
+    """The save/restore must not become a cost every idle frame pays."""
+    with Session(["/bin/sh", "-c", "stty raw -echo; cat"], cols=44, rows=10) as s:
+        s.settle(150)
+        check("not one byte", s.api("graphics", format="bytes")["bytes"] == "",
+              repr(s.api("graphics", format="bytes")["bytes"]))
+
+
 def test_ids_cannot_collide_between_panes():
     """Two panes, both using image id 7. They must not become one image."""
     with Session(sends_image(image_id=7), cols=90, rows=12) as s:
@@ -285,6 +308,8 @@ if __name__ == "__main__":
     test_a_placement_with_no_offset_emits_none()
     test_a_natural_image_is_never_rescaled_as_it_moves()
     test_a_scaled_image_keeps_the_cell_count_it_asked_for()
+    test_the_graphics_stream_leaves_the_cursor_alone()
+    test_a_frame_with_no_images_emits_nothing()
     test_ids_cannot_collide_between_panes()
     test_placement_follows_the_layout()
     test_cropped_at_the_pane_edge()
