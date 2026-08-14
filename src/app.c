@@ -1583,7 +1583,12 @@ uint32_t app_current_tab_id(app_t *a) { return a->ntabs ? cur(a)->id : 0; }
  */
 
 static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
-  const char *node_cwd = kdl_prop(node, "cwd", cwd);
+  /* Expanded once here, so both the pane spawned from this node and every
+   * child that inherits the value get the same real directory. The buffer
+   * outlives the recursion below it: children finish before we return. */
+  char cwdbuf[1024];
+  const char *node_cwd =
+      path_expand(kdl_prop(node, "cwd", cwd), cwdbuf, sizeof cwdbuf);
 
   /* a split: children, in order, in one direction */
   size_t kids = 0;

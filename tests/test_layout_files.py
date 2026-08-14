@@ -142,6 +142,34 @@ def test_cwd():
     os.unlink(s._layout_path)
 
 
+def test_cwd_expands_a_tilde():
+    """`~` is a shell thing, and no shell has touched a path in a layout file.
+
+    Unexpanded it reached chdir() literally, failed, and left the pane in
+    whatever directory the session was started from — with the pane running,
+    so nothing looked wrong until you typed `ls`."""
+    home = tempfile.mkdtemp(prefix="sl0ppty-home-")
+    text = """
+    layout {
+        tab name="t" {
+            pane cwd="~" command="pwd; cat"
+            pane cwd="~/sub" command="pwd; cat"
+        }
+    }
+    """
+    os.mkdir(os.path.join(home, "sub"))
+    with session_with(text, cols=76, rows=14, env={"HOME": home}) as s:
+        s.settle()
+        panes = s.panes()
+        snap = s.snapshot()
+        check("~ is the home directory",
+              home in snap.pane_text(panes[0]), repr(snap.pane_text(panes[0])))
+        check("and ~/sub is under it",
+              os.path.join(home, "sub") in snap.pane_text(panes[1]),
+              repr(snap.pane_text(panes[1])))
+    os.unlink(s._layout_path)
+
+
 def test_apply_over_the_api():
     """How `sl0ppi up` will add a project tab to a running session."""
     with Session(SH, cols=70, rows=14) as s:
@@ -206,6 +234,7 @@ if __name__ == "__main__":
     test_suspended()
     test_declared_purposes_are_locked()
     test_cwd()
+    test_cwd_expands_a_tilde()
     test_apply_over_the_api()
     test_bad_layouts()
     sys.exit(report())
