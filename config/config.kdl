@@ -40,9 +40,10 @@ status_bar true
 status_line true
 
 // How far the strip and the line are held off the left and right edges. This
-// is separate from `gap`, which is the space around the panes: they match at
-// the defaults and there is no reason they have to.
-status_pad 2
+// is separate from `gap`, which is the space around the panes, and wider than
+// it by default so the two bars read as chrome outside the layout rather than
+// as another row of it.
+status_pad 4
 
 // Focus follows the pointer. It never steals focus mid-chord (while the prefix
 // is held), never reaches past the finder, never interrupts a drag, and never

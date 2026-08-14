@@ -179,9 +179,10 @@ void config_defaults(config_t *c) {
   c->double_click_ms = 400;
   c->status_bar = true;
   c->status_line = true;
-  /* Matches gap * gap_aspect at the defaults, so the strip lines up with the
-   * panes' outer edge until you say otherwise. */
-  c->status_pad = 2;
+  /* Deliberately wider than the panes' own margin (gap * gap_aspect = 2), so
+   * the strip and the line read as chrome sitting outside the layout rather
+   * than as another row of it. */
+  c->status_pad = 4;
   c->focus_follows_mouse = true;
 
   c->default_fg = rgb(0xff, 0xff, 0xff);

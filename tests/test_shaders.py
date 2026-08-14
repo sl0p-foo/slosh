@@ -133,8 +133,13 @@ def test_dimming_never_touches_the_chrome():
         snap = s.snapshot()
         check("a dimmed pane's frame keeps its full colour",
               frame_fg(snap, other) == "#45454a", str(frame_fg(snap, other)))
+        # Find where the strip actually starts rather than assuming a column:
+        # status_pad decides that, and a test should not have an opinion on it.
+        strip = snap.line(1)
+        first = len(strip) - len(strip.lstrip())
         check("and the tab strip is untouched",
-              "#" in str(snap.style_at(3, 1)), str(snap.style_at(3, 1)))
+              "#" in str(snap.style_at(first, 1)),
+              f"col {first}: " + str(snap.style_at(first, 1)))
 
 
 # ---- the drag states -------------------------------------------------------
