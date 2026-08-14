@@ -220,6 +220,21 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
   }
   if (strcmp(cmd, "graphics") == 0) {
     app_compose(a, s);
+    /* `format:"bytes"` answers with what the client's terminal is actually
+     * sent, escape sequences and all. The model and the bytes are two
+     * different things, and this session was one long lesson in asserting on
+     * the model while the bytes were wrong. */
+    if (strcmp(jv_gets(req, "format", "placements"), "bytes") == 0) {
+      size_t len = 0;
+      const char *raw = app_graphics(a, &len);
+      json_t j;
+      json_init(&j);
+      json_obj_open(&j, NULL);
+      json_bool(&j, "ok", true);
+      json_str(&j, "bytes", raw ? raw : "", raw ? len : 0);
+      json_obj_close(&j);
+      return j.buf;
+    }
     return jok_raw("placements", app_graphics_json(a));
   }
   if (strcmp(cmd, "clipboard") == 0) {

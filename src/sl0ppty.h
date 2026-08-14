@@ -179,6 +179,16 @@ void pane_set_notify_handler(pane_t *p, pane_notify_fn fn, void *ud);
 typedef struct {
   uint32_t image_id, place_id;
   uint16_t col, row, cols, rows;
+  /* Where the image starts inside its first cell, in pixels. Sub-cell
+   * positioning: what a program moving something smoothly relies on, and the
+   * difference between motion and a slideshow. */
+  uint32_t x_off, y_off;
+  /* What the program asked to scale into, or 0 for "draw it at its natural
+   * size". The difference matters on the way out: naming a cell count tells
+   * the terminal to *scale* the image into it, and the count a natural
+   * placement happens to cover changes by one as it slides across a cell
+   * boundary — so passing it on makes a moving image change size. */
+  uint16_t req_cols, req_rows;
   uint32_t px_w, px_h;    /* rendered size */
   uint32_t src_w, src_h;  /* the image's own size */
   /* The part of the image to draw, in pixels. Clipping has to move this:

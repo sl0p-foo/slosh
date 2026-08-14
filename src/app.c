@@ -3191,25 +3191,70 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
   if (g->col >= leaf->content.w || g->row >= leaf->content.h) return;
   uint16_t cols = g->cols, rows = g->rows;
   uint32_t sw = g->sw, sh = g->sh;
+  /* Cropping means moving the source rectangle, and how much source a lost
+   * cell is worth depends on whether the image is being scaled:
+   *
+   *   natural size  one source pixel is one screen pixel, so the crop is the
+   *                 screen pixels the pane has left -- measured from where
+   *                 the image starts, which is `x_off` into its first cell
+   *                 and not at the cell's edge. Cropping by whole cells alone
+   *                 let an offset image hang up to a cell over the border.
+   *   scaled        the program asked for c=/r=, so a cell is worth
+   *                 source/cells pixels and the crop is proportional. Taking
+   *                 screen pixels off a scaled image would crop far too much
+   *                 -- a 4px image across 40 cells loses its whole self. */
   if (g->col + cols > leaf->content.w) {
-    uint16_t over = (uint16_t)(g->col + cols - leaf->content.w);
-    cols = (uint16_t)(cols - over);
-    uint32_t px = over * g->cell_px_w;
-    sw = sw > px ? sw - px : 0;
+    uint16_t avail = (uint16_t)(leaf->content.w - g->col);
+    if (g->req_cols) {
+      sw = cols ? (uint32_t)((uint64_t)sw * avail / cols) : sw;
+    } else {
+      uint32_t px = (uint32_t)avail * g->cell_px_w;
+      px = px > g->x_off ? px - g->x_off : 0;
+      if (sw > px) sw = px;
+    }
+    cols = avail;
   }
   if (g->row + rows > leaf->content.h) {
-    uint16_t over = (uint16_t)(g->row + rows - leaf->content.h);
-    rows = (uint16_t)(rows - over);
-    uint32_t px = over * g->cell_px_h;
-    sh = sh > px ? sh - px : 0;
+    uint16_t avail = (uint16_t)(leaf->content.h - g->row);
+    if (g->req_rows) {
+      sh = rows ? (uint32_t)((uint64_t)sh * avail / rows) : sh;
+    } else {
+      uint32_t px = (uint32_t)avail * g->cell_px_h;
+      px = px > g->y_off ? px - g->y_off : 0;
+      if (sh > px) sh = px;
+    }
+    rows = avail;
   }
   if (!cols || !rows) return;
 
-  gfx_place(c->a->gfx, leaf->id, g->image_id, g->generation, g->place_id,
-            (uint16_t)(leaf->content.x + g->col),
-            (uint16_t)(leaf->content.y + g->row), cols, rows, g->sx, g->sy, sw,
-            sh, g->src_w, g->src_h, g->format, g->compression, g->data,
-            g->data_len);
+  gfx_place(c->a->gfx, &(gfx_req_t){
+      .pane = leaf->id,
+      .src_id = g->image_id,
+      .gen = g->generation,
+      .place_id = g->place_id,
+      .col = (uint16_t)(leaf->content.x + g->col),
+      .row = (uint16_t)(leaf->content.y + g->row),
+      .cols = cols,
+      .rows = rows,
+      /* Carried through untouched: the pane's own clipping already dealt with
+       * it, and the offset is relative to the first cell either way. */
+      .x_off = g->x_off,
+      .y_off = g->y_off,
+      /* Clipped the same way the cell counts were, and zero when the program
+       * never asked to scale. */
+      .scale_cols = g->req_cols ? cols : 0,
+      .scale_rows = g->req_rows ? rows : 0,
+      .sx = g->sx,
+      .sy = g->sy,
+      .sw = sw,
+      .sh = sh,
+      .px_w = g->src_w,
+      .px_h = g->src_h,
+      .format = g->format,
+      .compression = g->compression,
+      .data = g->data,
+      .data_len = g->data_len,
+  });
 }
 
 static void gfx_leaf_cb(node_t *n, void *ud) {
@@ -3245,6 +3290,10 @@ char *app_graphics_json(app_t *a) {
     json_int(&j, "y", places[i].row);
     json_int(&j, "cols", places[i].cols);
     json_int(&j, "rows", places[i].rows);
+    /* Reported so a test can see sub-cell motion, which is otherwise only
+     * visible as "the picture moves smoothly" on somebody's screen. */
+    json_int(&j, "x_off", places[i].x_off);
+    json_int(&j, "y_off", places[i].y_off);
     json_obj_close(&j);
   }
   json_arr_close(&j);

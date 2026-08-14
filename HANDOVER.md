@@ -192,6 +192,20 @@ The 8x16 default matters. Where nobody knows the cell size -- headless, or a
 terminal that will not say -- a plausible cell means images appear at roughly
 the right size, and a zero means they do not appear at all.
 
+Then it rendered, and it was still wrong twice, both only visible in motion:
+
+- we dropped the placement's **sub-cell offset** (`X=`/`Y=`), so a moving
+  image snapped a whole cell at a time;
+- we passed on **`c=`/`r=`** for every placement, which means *scale into this
+  many cells* -- and the count a natural-size image covers goes up by one
+  whenever it straddles another boundary, so it changed size as it moved.
+
+Both were invisible in a still picture, which is exactly what the test suite
+was looking at. `{"cmd":"graphics","format":"bytes"}` exists because of this:
+it answers with the escape sequences the client is actually sent, so a test
+can assert on the bytes rather than on the model that produced them. If you
+touch graphics, assert on the bytes.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.

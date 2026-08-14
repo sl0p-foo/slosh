@@ -127,11 +127,10 @@ static void transmit(graphics_t *g, gfx_image_t *img, uint32_t px_w,
   img->sent = true;
 }
 
-void gfx_place(graphics_t *g, uint32_t pane, uint32_t src_id, uint64_t gen,
-               uint32_t place_id, uint16_t col, uint16_t row, uint16_t cols,
-               uint16_t rows, uint32_t sx, uint32_t sy, uint32_t sw,
-               uint32_t sh, uint32_t px_w, uint32_t px_h, int format,
-               int compression, const uint8_t *data, size_t data_len) {
+void gfx_place(graphics_t *g, const gfx_req_t *req) {
+  if (!g || !req) return;
+  const uint32_t pane = req->pane, src_id = req->src_id;
+  const uint64_t gen = req->gen;
   gfx_image_t *img = img_find(g, pane, src_id);
   if (!img) {
     if (g->nimgs == g->imgcap) {
@@ -147,9 +146,10 @@ void gfx_place(graphics_t *g, uint32_t pane, uint32_t src_id, uint64_t gen,
     img->sent = false;
   }
   if (!img->sent)
-    transmit(g, img, px_w, px_h, format, compression, data, data_len);
+    transmit(g, img, req->px_w, req->px_h, req->format, req->compression,
+             req->data, req->data_len);
 
-  uint32_t pid = place_id ? place_id : 1;
+  uint32_t pid = req->place_id ? req->place_id : 1;
   gfx_place_t *slot = NULL;
   for (size_t i = 0; i < g->nplaces; i++)
     if (g->places[i].out_id == img->out_id && g->places[i].place_id == pid)
@@ -164,14 +164,18 @@ void gfx_place(graphics_t *g, uint32_t pane, uint32_t src_id, uint64_t gen,
     slot->out_id = img->out_id;
     slot->place_id = pid;
   }
-  slot->col = col;
-  slot->row = row;
-  slot->cols = cols;
-  slot->rows = rows;
-  slot->sx = sx;
-  slot->sy = sy;
-  slot->sw = sw;
-  slot->sh = sh;
+  slot->col = req->col;
+  slot->row = req->row;
+  slot->cols = req->cols;
+  slot->rows = req->rows;
+  slot->x_off = req->x_off;
+  slot->y_off = req->y_off;
+  slot->scale_cols = req->scale_cols;
+  slot->scale_rows = req->scale_rows;
+  slot->sx = req->sx;
+  slot->sy = req->sy;
+  slot->sw = req->sw;
+  slot->sh = req->sh;
   slot->live = true;
 }
 
@@ -194,8 +198,19 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
   for (size_t i = 0; i < g->nplaces; i++) {
     gfx_place_t *p = &g->places[i];
     out_fmt(g, "\x1b[%u;%uH", p->row + 1, p->col + 1);
-    out_fmt(g, "\x1b_Ga=p,q=2,C=1,i=%u,p=%u,c=%u,r=%u", p->out_id, p->place_id,
-            p->cols, p->rows);
+    out_fmt(g, "\x1b_Ga=p,q=2,C=1,i=%u,p=%u", p->out_id, p->place_id);
+    /* c=/r= mean *scale into this many cells*, so they are passed on only
+     * when the program asked for them. Sending the cell count a natural-size
+     * image happens to cover looks identical in a still picture and makes a
+     * moving one change size, because that count goes up by one whenever the
+     * image straddles one more cell boundary. */
+    if (p->scale_cols || p->scale_rows)
+      out_fmt(g, ",c=%u,r=%u", p->scale_cols, p->scale_rows);
+    /* Where the image sits inside its first cell. Without these an image can
+     * only ever land on a cell boundary, so anything moving smoothly arrives
+     * in steps of a whole cell -- eight pixels across, sixteen down. */
+    if (p->x_off) out_fmt(g, ",X=%u", p->x_off);
+    if (p->y_off) out_fmt(g, ",Y=%u", p->y_off);
     /* The source rectangle is what actually crops; c/r alone would scale. */
     if (p->sw || p->sh)
       out_fmt(g, ",x=%u,y=%u,w=%u,h=%u", p->sx, p->sy, p->sw, p->sh);

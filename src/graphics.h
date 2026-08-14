@@ -32,6 +32,13 @@ typedef struct {
   uint32_t place_id;
   uint16_t col, row; /* screen cells */
   uint16_t cols, rows;
+  /* Where the image starts *inside* its first cell, in pixels. This is what
+   * makes motion smooth instead of snapping a cell at a time, and dropping it
+   * is invisible in a still picture and obvious the moment anything moves. */
+  uint32_t x_off, y_off;
+  /* Cells to scale into, or 0 to draw at natural size. Only sent on when the
+   * program asked for it. */
+  uint16_t scale_cols, scale_rows;
   uint32_t sx, sy, sw, sh; /* source rectangle, in image pixels */
   bool live;
 } gfx_place_t;
@@ -41,13 +48,32 @@ void gfx_free(graphics_t *g);
 
 /* Start a frame: everything placed last frame is marked stale. */
 void gfx_begin(graphics_t *g);
+/* Everything gfx_place() needs: where it goes, what it crops to, and the
+ * image itself for the first time it is seen.
+ *
+ * A struct rather than the twenty positional arguments this used to be. Half
+ * of them are uint32_t pixel quantities, so a transposed pair compiles
+ * perfectly and shows up as a picture in slightly the wrong place — which is
+ * exactly the bug class this file is for. */
+typedef struct {
+  uint32_t pane;    /* which pane it belongs to */
+  uint32_t src_id;  /* the id the program chose */
+  uint64_t gen;     /* image generation, so a changed image is re-sent */
+  uint32_t place_id;
+  uint16_t col, row;   /* screen cells */
+  uint16_t cols, rows;             /* cells covered */
+  uint16_t scale_cols, scale_rows; /* cells to scale into, 0 for natural */
+  uint32_t x_off, y_off;   /* offset within the first cell, in pixels */
+  uint32_t sx, sy, sw, sh; /* source rectangle, in image pixels */
+  uint32_t px_w, px_h;     /* the image's own size */
+  int format, compression;
+  const uint8_t *data; /* NULL once the client has it */
+  size_t data_len;
+} gfx_req_t;
+
 /* Record a visible placement, transmitting the image if the client has not
  * seen it yet. `data` may be NULL when the image is already transmitted. */
-void gfx_place(graphics_t *g, uint32_t pane, uint32_t src_id, uint64_t gen,
-               uint32_t place_id, uint16_t col, uint16_t row, uint16_t cols,
-               uint16_t rows, uint32_t sx, uint32_t sy, uint32_t sw,
-               uint32_t sh, uint32_t px_w, uint32_t px_h, int format,
-               int compression, const uint8_t *data, size_t data_len);
+void gfx_place(graphics_t *g, const gfx_req_t *req);
 /* End a frame: emit transmits, placements and deletions. Caller frees. */
 char *gfx_flush(graphics_t *g, size_t *out_len);
 

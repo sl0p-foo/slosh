@@ -120,6 +120,61 @@ def test_a_screen_clear_still_removes_what_is_on_screen():
               len(places(s)) == 0, str(places(s)))
 
 
+def test_sub_cell_offsets_survive_to_the_client():
+    """A program that moves something smoothly places it part-way into a cell
+    with X=/Y=. We tracked the placement and dropped the offsets, so anything
+    moving jumped a whole cell at a time -- invisible in a still picture and
+    the first thing you see when it moves."""
+    with Session(transmits_then_places("p,i=7,p=1,q=2,c=6,r=2,X=3,Y=5"),
+                 cols=44, rows=10) as s:
+        s.settle(200)
+        pl = places(s)
+        check("the offsets are tracked", pl and (pl[0]["x_off"], pl[0]["y_off"]) == (3, 5),
+              str(pl))
+
+        # And, separately, that they reach the terminal: the model being right
+        # is not the same as the bytes being right.
+        raw = s.api("graphics", format="bytes")["bytes"]
+        place = [c for c in raw.split("\x1b") if c.startswith("_Ga=p")]
+        check("and emitted to the client", place and "X=3" in place[0] and
+              "Y=5" in place[0], str(place))
+
+
+def test_a_placement_with_no_offset_emits_none():
+    with Session(transmits_then_places("p,i=7,p=1,q=2,c=6,r=2"),
+                 cols=44, rows=10) as s:
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        place = [c for c in raw.split("\x1b") if c.startswith("_Ga=p")]
+        check("nothing is invented", place and "X=" not in place[0] and
+              "Y=" not in place[0], str(place))
+
+
+def test_a_natural_image_is_never_rescaled_as_it_moves():
+    """`c=`/`r=` mean *scale into this many cells*. Passing on the count a
+    natural-size image happens to cover is invisible in a still picture and
+    wrong the moment it moves: the count goes up by one whenever the image
+    straddles one more cell boundary, so the picture changes size."""
+    with Session(transmits_then_places("p,i=7,p=1,q=2,X=3,Y=5"),
+                 cols=44, rows=10) as s:
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        place = [c for c in raw.split("\x1b") if c.startswith("_Ga=p")]
+        check("no cell count is sent for a natural placement",
+              place and "c=" not in place[0] and "r=" not in place[0],
+              str(place))
+
+
+def test_a_scaled_image_keeps_the_cell_count_it_asked_for():
+    with Session(transmits_then_places("p,i=7,p=1,q=2,c=6,r=2"),
+                 cols=44, rows=10) as s:
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        place = [c for c in raw.split("\x1b") if c.startswith("_Ga=p")]
+        check("what the program asked for is passed on",
+              place and "c=6" in place[0] and "r=2" in place[0], str(place))
+
+
 def test_ids_cannot_collide_between_panes():
     """Two panes, both using image id 7. They must not become one image."""
     with Session(sends_image(image_id=7), cols=90, rows=12) as s:
@@ -226,6 +281,10 @@ if __name__ == "__main__":
     test_a_program_can_read_the_pixel_size_from_its_pty()
     test_an_image_outlives_a_screen_clear()
     test_a_screen_clear_still_removes_what_is_on_screen()
+    test_sub_cell_offsets_survive_to_the_client()
+    test_a_placement_with_no_offset_emits_none()
+    test_a_natural_image_is_never_rescaled_as_it_moves()
+    test_a_scaled_image_keeps_the_cell_count_it_asked_for()
     test_ids_cannot_collide_between_panes()
     test_placement_follows_the_layout()
     test_cropped_at_the_pane_edge()

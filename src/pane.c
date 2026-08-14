@@ -593,11 +593,20 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
 
   size_t n = 0;
   while (ghostty_kitty_graphics_placement_next(it)) {
-    uint32_t image_id = 0, place_id = 0;
+    uint32_t image_id = 0, place_id = 0, x_off = 0, y_off = 0;
     ghostty_kitty_graphics_placement_get(
         it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID, &image_id);
     ghostty_kitty_graphics_placement_get(
         it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_PLACEMENT_ID, &place_id);
+    ghostty_kitty_graphics_placement_get(
+        it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_X_OFFSET, &x_off);
+    ghostty_kitty_graphics_placement_get(
+        it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Y_OFFSET, &y_off);
+    uint32_t req_cols = 0, req_rows = 0;
+    ghostty_kitty_graphics_placement_get(
+        it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_COLUMNS, &req_cols);
+    ghostty_kitty_graphics_placement_get(
+        it, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_ROWS, &req_rows);
     GhosttyKittyGraphicsImage img = ghostty_kitty_graphics_image(gfx, image_id);
 
     GhosttyKittyGraphicsPlacementRenderInfo info =
@@ -621,21 +630,31 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
     uint32_t sw = info.source_width, sh = info.source_height;
     int32_t vc = info.viewport_col, vr = info.viewport_row;
     uint32_t cols = info.grid_cols, rows = info.grid_rows;
+    /* Clipping consumes the sub-cell offset first. The image starts `x_off`
+     * pixels into its origin cell, so dropping `off` whole cells from the
+     * left skips `off * cw - x_off` pixels of image, and what remains begins
+     * exactly on a cell boundary — offset zero from there on. */
     if (vc < 0) {
       uint32_t off = (uint32_t)(-vc);
       if (off >= cols) continue;
-      sx += off * cw;
-      sw = sw > off * cw ? sw - off * cw : 0;
+      uint32_t skip = off * cw > x_off ? off * cw - x_off : 0;
+      sx += skip;
+      sw = sw > skip ? sw - skip : 0;
       cols -= off;
+      if (req_cols) req_cols = req_cols > off ? req_cols - off : 0;
       vc = 0;
+      x_off = 0;
     }
     if (vr < 0) {
       uint32_t off = (uint32_t)(-vr);
       if (off >= rows) continue;
-      sy += off * ch;
-      sh = sh > off * ch ? sh - off * ch : 0;
+      uint32_t skip = off * ch > y_off ? off * ch - y_off : 0;
+      sy += skip;
+      sh = sh > skip ? sh - skip : 0;
       rows -= off;
+      if (req_rows) req_rows = req_rows > off ? req_rows - off : 0;
       vr = 0;
+      y_off = 0;
     }
     if (!cols || !rows) continue;
 
@@ -646,6 +665,10 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
         .row = (uint16_t)vr,
         .cols = (uint16_t)cols,
         .rows = (uint16_t)rows,
+        .x_off = x_off,
+        .y_off = y_off,
+        .req_cols = (uint16_t)req_cols,
+        .req_rows = (uint16_t)req_rows,
         .px_w = info.pixel_width,
         .px_h = info.pixel_height,
         .sx = sx,
