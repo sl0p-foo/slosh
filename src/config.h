@@ -112,6 +112,10 @@ typedef struct {
   size_t state_n[PSTATE_COUNT];
   bool status_bar;  /* the strip along the top: tabs, prefix, pane count */
   bool status_line; /* the line along the bottom: what you are looking at */
+  /* How far the strip and the line are held off the left and right edges.
+   * Separate from `gap`, which is the space around the *panes*: the two happen
+   * to match by default and there is no reason they must. */
+  uint16_t status_pad;
   bool focus_follows_mouse;
 
   /* What a cell's "terminal default" colour resolves to when a shader has to

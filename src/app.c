@@ -270,7 +270,8 @@ size_t app_toast_count(app_t *a) {
   return a->ntoasts;
 }
 
-static size_t count_leaves(node_t *n); /* defined with the layout */
+static size_t count_leaves(node_t *n); /* both defined with the layout */
+static size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k);
 
 /* The line along the bottom: what you are looking at, rather than what you
  * could switch to. The strip along the top already answers "which tab" and
@@ -283,8 +284,9 @@ static size_t count_leaves(node_t *n); /* defined with the layout */
 static void draw_status_line(app_t *a, screen_t *s) {
   if (!CFG.status_line || s->rows < 3) return;
   uint16_t y = (uint16_t)(s->rows - CFG.gap - 1);
-  uint16_t x = (uint16_t)(CFG.gap * CFG.gap_aspect);
-  uint16_t right = (uint16_t)(s->cols > x ? s->cols - x : 0);
+  uint16_t x = CFG.status_pad;
+  uint16_t right =
+      (uint16_t)(s->cols > CFG.status_pad ? s->cols - CFG.status_pad : 0);
   if (right <= x) return;
 
   node_t *f = a->ntabs ? cur(a)->focus : NULL;
@@ -298,9 +300,21 @@ static void draw_status_line(app_t *a, screen_t *s) {
    * a thing that does not. This count is *this tab's*; the strip above counts
    * the whole session, which is why they can disagree. */
   if (a->ntabs && cur(a)->root) {
-    char cnt[32];
-    size_t np = count_leaves(cur(a)->root);
-    snprintf(cnt, sizeof cnt, "%zu pane%s", np, np == 1 ? "" : "s");
+    /* Which of this tab's panes, out of how many — the count alone answers
+     * "how big is this tab" and leaves "where am I in it" to be worked out by
+     * counting frames, which is the question you actually have when a tab has
+     * collapsed into a list and only one of them is open. */
+    node_t *leaves[64];
+    size_t nl = collect_leaves(cur(a)->root, leaves, 64, 0);
+    size_t idx = 0;
+    for (size_t i = 0; i < nl; i++)
+      if (leaves[i] == f) idx = i + 1;
+
+    char cnt[40];
+    if (idx)
+      snprintf(cnt, sizeof cnt, "pane %zu/%zu", idx, nl);
+    else /* nothing focused: still say how many there are */
+      snprintf(cnt, sizeof cnt, "%zu pane%s", nl, nl == 1 ? "" : "s");
     uint16_t cw = (uint16_t)strlen(cnt);
     if (right > x + cw + 2) {
       screen_text(s, (uint16_t)(right - cw), y, cnt, FRAME_IDLE, NO_COLOR, 0);
@@ -1876,12 +1890,13 @@ static void draw_cb(node_t *n, void *ud) {
 }
 
 static void draw_tab_strip(app_t *a, screen_t *s) {
-  uint16_t x = (uint16_t)(CFG.gap * CFG.gap_aspect);
+  uint16_t x = CFG.status_pad;
   uint16_t y = CFG.gap;
 
   /* Right side first, so a long tab list can never eat the indicators — the
    * same budgeting rule as the split button and the OSC buttons. */
-  uint16_t right = (uint16_t)(s->cols - CFG.gap * CFG.gap_aspect);
+  uint16_t right = (uint16_t)(s->cols > CFG.status_pad ? s->cols - CFG.status_pad
+                                                       : s->cols);
   char info[64];
   size_t np = app_pane_count(a);
   snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");

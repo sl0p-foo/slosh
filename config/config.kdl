@@ -35,9 +35,14 @@ status_bar true
 // The line along the bottom: which session and tab you are in, what the
 // focused pane calls itself, and whether it is in a state worth knowing about
 // - scrolled back, on an alternate screen, or not started yet. On the right it
-// counts the panes in *this tab*; the strip above counts the whole session, so
-// the two disagree whenever you have more than one tab.
+// says which of *this tab's* panes is open, as `pane 2/5`; the strip above
+// counts the whole session, so the two disagree as soon as you have two tabs.
 status_line true
+
+// How far the strip and the line are held off the left and right edges. This
+// is separate from `gap`, which is the space around the panes: they match at
+// the defaults and there is no reason they have to.
+status_pad 2
 
 // Focus follows the pointer. It never steals focus mid-chord (while the prefix
 // is held), never reaches past the finder, never interrupts a drag, and never

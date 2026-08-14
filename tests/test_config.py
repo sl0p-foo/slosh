@@ -250,7 +250,9 @@ def test_status_line_reports_scrollback():
 
 
 def test_the_two_pane_counts_answer_different_questions():
-    """The strip above counts the session; the line below counts this tab."""
+    """The strip above counts the session. The line below says which of this
+    tab's panes you are in, which is the question you actually have once a tab
+    has collapsed into a list and only one of them is open."""
     lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
     lay.write('layout {\n tab name="api" {\n  pane\n  pane\n }\n'
               ' tab name="notes" {\n  pane\n }\n}\n')
@@ -260,29 +262,59 @@ def test_the_two_pane_counts_answer_different_questions():
         top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
         check("the strip counts every pane in the session",
               "3 panes" in top, repr(top))
-        check("the line counts only this tab's",
-              "2 panes" in bottom, repr(bottom))
+        check("the line says which of this tab's panes is open",
+              "pane 1/2" in bottom, repr(bottom))
+
+        ids = [p["id"] for p in s.panes() if p["tab"] == 1]
+        s.api("focus", id=ids[1])
+        s.settle(20)
+        check("the index moves with the focus",
+              "pane 2/2" in s.snapshot().text[-2],
+              repr(s.snapshot().text[-2]))
+        check("while the session count does not",
+              "3 panes" in s.snapshot().line(1), repr(s.snapshot().line(1)))
 
         tabs = s.tabs()
         s.api("select-tab", id=tabs[1]["id"])
         s.settle(20)
         top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
-        check("the session count does not move with the tab",
+        check("a one-pane tab says so", "pane 1/1" in bottom, repr(bottom))
+        check("and the session count still counts the session",
               "3 panes" in top, repr(top))
-        check("the tab count does", "1 pane" in bottom, repr(bottom))
-        check("and says pane, not panes, when there is one",
-              "1 panes" not in bottom, repr(bottom))
 
-        # The count sits hard against the edge; a state that comes and goes
-        # must not shove it around.
-        before = bottom.rstrip()
         s.api("split", dir="cols")
         s.settle(20)
-        check("adding a pane to the tab moves its count",
-              "2 panes" in s.snapshot().text[-2], repr(s.snapshot().text[-2]))
-        check("and the session count follows too",
-              "4 panes" in s.snapshot().line(1), repr(s.snapshot().line(1)))
+        check("splitting moves both numbers, each in its own way",
+              "pane 2/2" in s.snapshot().text[-2]
+              and "4 panes" in s.snapshot().line(1),
+              repr(s.snapshot().text[-2]) + " / " + repr(s.snapshot().line(1)))
     os.unlink(lay.name)
+
+
+def test_status_pad_holds_both_bars_off_the_edge():
+    lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    lay.write('layout {\n tab name="api" {\n  pane\n }\n}\n')
+    lay.close()
+    seen = {}
+    for pad in (2, 8):
+        path = cfg(f"status_pad {pad}\n")
+        with Session(SH, cols=80, rows=16, config=path, layout=lay.name) as s:
+            s.settle(20)
+            top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
+            seen[pad] = (len(top) - len(top.lstrip()),
+                         len(top.rstrip()),
+                         len(bottom) - len(bottom.lstrip()),
+                         len(bottom.rstrip()))
+        os.unlink(path)
+    check("a bigger pad indents the strip further from the left",
+          seen[8][0] == seen[2][0] + 6, str(seen))
+    check("and holds it further off the right",
+          seen[8][1] == seen[2][1] - 6, str(seen))
+    check("the line below is padded the same on the left",
+          seen[8][2] == seen[2][2] + 6, str(seen))
+    check("and on the right", seen[8][3] == seen[2][3] - 6, str(seen))
+    os.unlink(lay.name)
+
 
 
 if __name__ == "__main__":
@@ -297,4 +329,5 @@ if __name__ == "__main__":
     test_status_line_says_what_you_are_looking_at()
     test_status_line_reports_scrollback()
     test_the_two_pane_counts_answer_different_questions()
+    test_status_pad_holds_both_bars_off_the_edge()
     sys.exit(report())
