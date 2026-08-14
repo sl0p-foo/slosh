@@ -87,6 +87,10 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
  * because it opened the socket under that name. */
 void app_set_session(app_t *a, const char *name);
 
+/* Fill the tab with one pane, or put it back. 0 means the focused one. */
+bool app_toggle_zoom(app_t *a, uint32_t id);
+bool app_pane_zoomed(app_t *a, uint32_t id);
+
 /* Address panes by id (the control API), not "the focused one". */
 bool app_focus_pane(app_t *a, uint32_t id);
 bool app_split_pane(app_t *a, uint32_t id, bool rows);

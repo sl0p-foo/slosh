@@ -78,6 +78,11 @@ rewrites its title cannot undo it; clear the name and the pane goes back to the
 program's title. The name is only the title *text*: the rest of the top border
 is still the top edge, and still splits upward when clicked.
 
+**Zoom a pane** with `C-a z` or the `□` button in its top-right corner, and it
+fills the tab until you put it back; the other panes keep running, they are
+just not drawn. `×` beside it closes the pane. `pane_buttons false` takes both
+buttons off without touching the keybindings.
+
 **Select to copy.** Drag over text and release: it is on your clipboard, sent
 to your terminal as OSC 52 so it works over ssh. Middle click pastes it back,
 the way a primary selection behaves everywhere else. A program in a pane can

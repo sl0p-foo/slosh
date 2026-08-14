@@ -56,7 +56,18 @@ def test_no_more_plus():
               "+" not in snap.line(p["y"]), repr(snap.line(p["y"])))
         check("the status bar still has its own, different one",
               "+tab" in snap.line(1), repr(snap.line(1)))
-        check("the title gets the columns back",
+        # The frame does spend columns again -- six of them, on the zoom and
+        # close buttons -- but on two verbs that a single glyph *can* encode.
+        # The split button was removed because one glyph cannot mean four
+        # directions, not because buttons are forbidden. With them off, the row
+        # is all title and rule again, and that is the stronger claim.
+        check("the title gets most of the row back",
+              snap.line(p["y"]).count("─") > p["w"] - 20, repr(snap.line(p["y"])))
+
+    with Session(SH, cols=60, rows=14, config=cfg(FAST_TEXT + "pane_buttons false\n")) as s:
+        s.settle()
+        snap, p = s.snapshot(), s.pane()
+        check("and all of it when the buttons are off",
               snap.line(p["y"]).count("─") > p["w"] - 12, repr(snap.line(p["y"])))
 
 

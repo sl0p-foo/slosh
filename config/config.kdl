@@ -38,6 +38,26 @@ title_inset 2
 // showed on screen would be useless in a background tab. Looking at the pane
 // is what puts it out. Off makes a bell silent *and* invisible, which is a
 // real choice rather than an oversight.
+// ── the frame's own buttons ─────────────────────────────────────────────────
+//
+// Zoom and close, in the top-right of every pane's frame. Three columns each,
+// because a one-column target is a thing you miss with a mouse.
+//
+// The split button was removed from this frame once already, on the grounds
+// that one glyph cannot mean four directions and the border can. These are two
+// verbs a single glyph *can* mean, which is why they are here and splitting is
+// still done by clicking an edge. They do cost six columns of every frame, so
+// this turns them off -- the keybindings (C-a z, C-a x) are unaffected, because
+// the setting is about the affordance and not the verb.
+pane_buttons true
+
+// Emoji are drawn two columns wide by many terminals while chrome here is
+// booked as one, so these default to narrow glyphs. Put the character itself
+// here; this file has no \u escape.
+zoom_mark "□"
+zoom_on_mark "▣"
+close_mark "×"
+
 bell_indicator true
 
 // What to draw. A short string rather than a fixed glyph, because the obvious
@@ -268,7 +288,7 @@ theme {
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
-// scroll-bottom new-tab next-tab prev-tab select-tab-1..9 finder detach quit
+// scroll-bottom zoom new-tab next-tab prev-tab select-tab-1..9 finder detach quit
 // literal-prefix none
 
 keys {
@@ -277,6 +297,7 @@ keys {
     bind "\\" "split-cols"
     bind "-" "split-rows"
     bind "x" "close-pane"
+    bind "z" "zoom"
 
     bind "h" "focus-left"
     bind "l" "focus-right"

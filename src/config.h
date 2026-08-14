@@ -36,6 +36,7 @@ typedef enum {
   ACT_SPLIT_COLS,
   ACT_SPLIT_ROWS,
   ACT_CLOSE_PANE,
+  ACT_ZOOM,
   ACT_FOCUS_LEFT,
   ACT_FOCUS_RIGHT,
   ACT_FOCUS_UP,
@@ -80,6 +81,10 @@ typedef struct {
   uint16_t title_inset;
   /* Mark a pane's titlebar when a BEL arrives there and nobody has looked
    * since. Off makes a bell silent *and* invisible, which is a real choice. */
+  /* Buttons in the top-right of a pane's frame: zoom, and close. Off leaves
+   * the keyboard bindings alone; it is about the affordance, not the verb. */
+  bool pane_buttons;
+  char zoom_mark[16], zoom_on_mark[16], close_mark[16];
   bool bell_indicator;
   /* What to draw. A short string rather than a fixed glyph: the obvious
    * choice is an emoji bell, and emoji are drawn two columns wide by many
@@ -179,6 +184,9 @@ typedef struct {
 
   /* the bell mark in a pane's titlebar */
   color_t bell;
+
+  /* the frame's own buttons */
+  color_t pane_button, pane_button_hover;
 
   /* announcements */
   color_t toast_fg, toast_bg;

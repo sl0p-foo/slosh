@@ -93,6 +93,8 @@ bool app_reload_config(char *err, size_t errcap) {
 #define RENAME_FG (CFG.rename_fg)
 #define RENAME_BG (CFG.rename_bg)
 #define BELL_C (CFG.bell)
+#define PANE_BTN (CFG.pane_button)
+#define PANE_BTN_HOVER (CFG.pane_button_hover)
 
 static const color_t NO_COLOR = {0};
 
@@ -136,6 +138,10 @@ struct node {
 typedef struct {
   node_t *root;
   node_t *focus;
+  /* The pane filling this tab on its own, or 0. Intent rather than derived
+   * state, like focus: nothing about the tree says a pane is zoomed, you said
+   * so. Kept per tab so zooming one does not disturb another. */
+  uint32_t zoom;
   uint32_t id;
   char name[64];
   char purpose[64];
@@ -363,7 +369,9 @@ static void draw_status_line(app_t *a, screen_t *s) {
 
   char ind[64] = {0};
   if (f) {
-    if (pane_suspended(f->pane)) {
+    if (app_pane_zoomed(a, f->id)) {
+      snprintf(ind, sizeof ind, "zoomed");
+    } else if (pane_suspended(f->pane)) {
       snprintf(ind, sizeof ind, "not started");
     } else if (!pane_alive(f->pane)) {
       snprintf(ind, sizeof ind, "exited");
@@ -863,6 +871,9 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
 #define STRIP_ROWS (CFG.status_bar ? 1 : 0)
 #define LINE_ROWS (CFG.status_line ? 1 : 0)
 
+static node_t *pane_by_id(app_t *a, uint32_t id); /* defined below */
+static size_t tab_of(app_t *a, node_t *n);
+
 static void layout(app_t *a) {
   if (!a->ntabs) return;
   uint16_t gx = (uint16_t)(CFG.gap * CFG.gap_aspect), gy = CFG.gap;
@@ -875,6 +886,21 @@ static void layout(app_t *a) {
                                   : 1)};
   node_t *root = cur(a)->root;
   if (!root) return;
+
+  /* A zoomed pane is the whole tab. Reuses the solo path rather than adding a
+   * third arrangement: "show this one and nothing else" is a thing the layout
+   * already knew how to do, it just used to be a last resort rather than a
+   * request. The id is validated here so a zoom cannot outlive its pane. */
+  if (cur(a)->zoom) {
+    node_t *z = pane_by_id(a, cur(a)->zoom);
+    if (!z || tab_of(a, z) != a->cur) {
+      cur(a)->zoom = 0;
+    } else {
+      layout_ctx_t only = {.focus = z, .apply = true};
+      layout_solo(root, r, &only);
+      return;
+    }
+  }
 
   /* Ask first, then do it. A tab is either laid out or it is a list of panes;
    * there is no third state where one half of the screen is a stack and the
@@ -1175,6 +1201,25 @@ static node_t *pane_by_id(app_t *a, uint32_t id) {
   struct byid b = {id, NULL};
   walk_all(a, byid_cb, &b);
   return b.found;
+}
+
+bool app_toggle_zoom(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
+  if (!n) return false;
+  size_t ti = tab_of(a, n);
+  if (ti == (size_t)-1) return false;
+  a->cur = ti;
+  /* Zooming focuses what it zoomed: the pane filling the tab is the only one
+   * you could be typing into, and leaving focus elsewhere would mean keys
+   * going somewhere invisible. */
+  a->tabs[ti].zoom = a->tabs[ti].zoom == n->id ? 0 : n->id;
+  a->tabs[ti].focus = n;
+  layout(a);
+  return true;
+}
+
+bool app_pane_zoomed(app_t *a, uint32_t id) {
+  return a->ntabs && cur(a)->zoom == id && id != 0;
 }
 
 void app_set_session(app_t *a, const char *name) {
@@ -1677,6 +1722,40 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   uint16_t avail = (uint16_t)(r.w - 2);
   bool has_btn = false;
   uint16_t btn_x = x1;
+
+  /* The frame's own buttons, hard against the right of the top border. Three
+   * cells each: a one-cell target is a thing you miss with a mouse, and the
+   * spaces double as the gap between them. Budgeted before the scroll
+   * indicator, which then places itself to their left — the same right-first
+   * rule the tab strip and the status line use. */
+  if (CFG.pane_buttons && avail > 10) {
+    struct {
+      const char *mark;
+      const char *verb;
+    } btns[] = {
+        {CFG.close_mark, "close"},
+        {app_pane_zoomed(a, leaf->id) ? CFG.zoom_on_mark : CFG.zoom_mark,
+         "zoom"},
+    };
+    uint16_t bx = (uint16_t)(x1 - 1);
+    for (size_t i = 0; i < sizeof btns / sizeof *btns; i++) {
+      char cell[24];
+      snprintf(cell, sizeof cell, " %s ", btns[i].mark);
+      uint16_t bw = 3;
+      if (bx < r.x + 4 + bw) break;
+      uint16_t px = (uint16_t)(bx - bw + 1);
+      bool hot = ptr_on(a, px, r.y, bw, 1);
+      screen_text(s, px, r.y, cell, hot ? PANE_BTN_HOVER : PANE_BTN, NO_COLOR,
+                  hot ? ATTR_BOLD : 0);
+      char action[48];
+      snprintf(action, sizeof action, "%s:%u", btns[i].verb, leaf->id);
+      hit_add(&s->hits, px, r.y, bw, 1, action);
+      bx = (uint16_t)(px - 1);
+      has_btn = true;
+      btn_x = px;
+      avail = (uint16_t)(avail > bw ? avail - bw : 0);
+    }
+  }
 
   {
     char action[48];
@@ -2616,6 +2695,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   if (strncmp(action, "split:", 6) == 0) {
     cur(a)->focus = n;
     split_focus(a, SPLIT_COLS);
+  } else if (strncmp(action, "zoom:", 5) == 0) {
+    app_toggle_zoom(a, n->id);
   } else if (strncmp(action, "close:", 6) == 0) {
     close_leaf(a, n);
   } else if (strncmp(action, "scrollbottom:", 13) == 0) {
@@ -2686,6 +2767,7 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
   switch (act) {
     case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
     case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
+    case ACT_ZOOM: app_toggle_zoom(a, 0); return true;
     case ACT_CLOSE_PANE:
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;
