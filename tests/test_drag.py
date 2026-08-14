@@ -68,7 +68,7 @@ def test_keyboard_resize():
 
 
 def test_vertical_resize():
-    with Session(SH, cols=80, rows=20, config=FAST) as s:
+    with Session(SH, cols=80, rows=24, config=FAST) as s:
         s.settle()
         s.key("-")
         s.settle()

@@ -123,6 +123,12 @@ and `default_bg` — set them to your terminal's real colours, or a shaded pane
 will shift as it turns on. Panes with no shader defer to your terminal exactly
 as before.
 
+A **strip along the top** carries the tabs, the pane count and the prefix
+indicator; a **line along the bottom** says what you are looking at — session,
+tab, the focused pane's purpose or title, and whether it is scrolled back, on
+an alternate screen, or not started yet. Either can be turned off
+(`status_bar`, `status_line`), and the panes get the row back.
+
 Configuration is [`config/config.kdl`](config/config.kdl), which documents
 every setting by being the defaults. Copy it to `~/.config/sl0ppty/config.kdl`.
 

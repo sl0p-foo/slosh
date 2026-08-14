@@ -188,6 +188,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
   server_t s = {0};
   s.app = app_new(argv, cols, rows);
+  if (s.app) app_set_session(s.app, name);
   if (!s.app) return 1;
   if (layout) {
     char err[256] = {0};

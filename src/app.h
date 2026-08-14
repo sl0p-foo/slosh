@@ -83,6 +83,10 @@ bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
 bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
                            size_t errcap);
 
+/* What this session is called, for the status line. The server knows it
+ * because it opened the socket under that name. */
+void app_set_session(app_t *a, const char *name);
+
 /* Address panes by id (the control API), not "the focused one". */
 bool app_focus_pane(app_t *a, uint32_t id);
 bool app_split_pane(app_t *a, uint32_t id, bool rows);

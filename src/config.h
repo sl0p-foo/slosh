@@ -110,7 +110,8 @@ typedef struct {
    * already had to avoid by hand. */
   shader_t state_shaders[PSTATE_COUNT][SHADE_MAX];
   size_t state_n[PSTATE_COUNT];
-  bool status_bar;
+  bool status_bar;  /* the strip along the top: tabs, prefix, pane count */
+  bool status_line; /* the line along the bottom: what you are looking at */
   bool focus_follows_mouse;
 
   /* What a cell's "terminal default" colour resolves to when a shader has to

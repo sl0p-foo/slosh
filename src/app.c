@@ -177,6 +177,10 @@ struct app {
   int64_t name_click_ms;
   uint32_t name_click_id;
   const char *const *argv;
+  /* What this session is called. The server knows it because it opened the
+   * socket under that name; the app only knows it because it is worth saying
+   * out loud when several are running. */
+  char session[64];
   /* the screen we last composed into: its hit list is what a click resolves
    * against, so routing can never consult geometry the user never saw */
   const screen_t *painted;
@@ -264,6 +268,72 @@ int app_next_deadline_ms(app_t *a) {
 size_t app_toast_count(app_t *a) {
   toasts_expire(a);
   return a->ntoasts;
+}
+
+/* The line along the bottom: what you are looking at, rather than what you
+ * could switch to. The strip along the top already answers "which tab" and
+ * "how many panes"; repeating that here would spend a row saying it twice.
+ *
+ * So this one is about the focused pane: which session it lives in, which tab,
+ * what it calls itself, and whether it is in a state worth knowing about —
+ * scrolled back, on an alternate screen, or not started yet. Those last three
+ * are the ones you can otherwise only discover by being surprised. */
+static void draw_status_line(app_t *a, screen_t *s) {
+  if (!CFG.status_line || s->rows < 3) return;
+  uint16_t y = (uint16_t)(s->rows - CFG.gap - 1);
+  uint16_t x = (uint16_t)(CFG.gap * CFG.gap_aspect);
+  uint16_t right = (uint16_t)(s->cols > x ? s->cols - x : 0);
+  if (right <= x) return;
+
+  node_t *f = a->ntabs ? cur(a)->focus : NULL;
+
+  /* Right side first, so a long name can never push the state off the end —
+   * the same budgeting rule the tab strip and the pane frame both use. */
+  char ind[64] = {0};
+  if (f) {
+    if (pane_suspended(f->pane)) {
+      snprintf(ind, sizeof ind, "not started");
+    } else if (!pane_alive(f->pane)) {
+      snprintf(ind, sizeof ind, "exited");
+    } else if (pane_scrolled(f->pane)) {
+      uint32_t above = 0, total = 0;
+      pane_scroll_pos(f->pane, &above, &total);
+      snprintf(ind, sizeof ind, "\u25b2%u scrolled", total > above ? total - above : 0);
+    } else if (pane_alt_screen(f->pane)) {
+      snprintf(ind, sizeof ind, "alt screen");
+    }
+  }
+  if (ind[0]) {
+    uint16_t iw = (uint16_t)strlen(ind);
+    if (right > x + iw + 2) {
+      screen_text(s, (uint16_t)(right - iw), y, ind, TITLE_FOCUS, NO_COLOR,
+                  ATTR_BOLD);
+      right = (uint16_t)(right - iw - 1);
+    }
+  }
+
+  char line[256];
+  size_t n = 0;
+  if (a->session[0])
+    n += (size_t)snprintf(line + n, sizeof line - n, "%s", a->session);
+  if (a->ntabs) {
+    const tab_t *t = &a->tabs[a->cur];
+    const char *tn = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : NULL);
+    if (tn)
+      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s",
+                            n ? " \u00b7 " : "", tn);
+  }
+  if (f) {
+    const char *pt = pane_title(f->pane);
+    const char *pp = f->purpose[0] ? f->purpose : NULL;
+    if (pp)
+      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s", n ? " \u00b7 " : "", pp);
+    else if (pt && *pt)
+      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s", n ? " \u00b7 " : "", pt);
+  }
+  if (!n) return;
+  if (n > (size_t)(right - x)) line[right - x] = 0;
+  screen_text(s, x, y, line, FRAME_IDLE, NO_COLOR, 0);
 }
 
 static void draw_toasts(app_t *a, screen_t *s) {
@@ -705,6 +775,7 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
 }
 
 #define STRIP_ROWS (CFG.status_bar ? 1 : 0)
+#define LINE_ROWS (CFG.status_line ? 1 : 0)
 
 static void layout(app_t *a) {
   if (!a->ntabs) return;
@@ -713,7 +784,9 @@ static void layout(app_t *a) {
   rect_t r = {.x = gx,
               .y = top,
               .w = (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
-              .h = (uint16_t)(a->rows > top + gy ? a->rows - top - gy : 1)};
+              .h = (uint16_t)(a->rows > top + gy + LINE_ROWS
+                                  ? a->rows - top - gy - LINE_ROWS
+                                  : 1)};
   node_t *root = cur(a)->root;
   if (!root) return;
 
@@ -1016,6 +1089,10 @@ static node_t *pane_by_id(app_t *a, uint32_t id) {
   struct byid b = {id, NULL};
   walk_all(a, byid_cb, &b);
   return b.found;
+}
+
+void app_set_session(app_t *a, const char *name) {
+  snprintf(a->session, sizeof a->session, "%s", name ? name : "");
 }
 
 bool app_focus_pane(app_t *a, uint32_t id) {
@@ -2118,6 +2195,7 @@ void app_compose(app_t *a, screen_t *s) {
   layout(a);
   if (CFG.status_bar) draw_tab_strip(a, s);
   draw_node(a, s, cur(a)->root);
+  draw_status_line(a, s);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
   draw_toasts(a, s);                /* and above even that: it is transient */
 }

@@ -32,6 +32,12 @@ title_inset 2
 // The one-row bar with tabs, the +tab button and the pane count.
 status_bar true
 
+// The line along the bottom: which session and tab you are in, what the
+// focused pane calls itself, and whether it is in a state worth knowing about
+// - scrolled back, on an alternate screen, or not started yet. The strip above
+// answers "which tab" and "how many panes", so this one does not repeat it.
+status_line true
+
 // Focus follows the pointer. It never steals focus mid-chord (while the prefix
 // is held), never reaches past the finder, never interrupts a drag, and never
 // expands a collapsed pane just because the pointer crossed its header.

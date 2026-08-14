@@ -93,10 +93,10 @@ def test_resize():
         check("resize changes the composited size",
               snap.cols == 50 and snap.rows == 12 and len(snap.line(0)) == 50,
               f"{snap.cols}x{snap.rows}")
-        # chrome budget: gap 1 (x2 aspect => 2 cols) each side, a border, and the
-        # one-row tab strip along the top
+        # chrome budget: gap 1 (x2 aspect => 2 cols) each side, a border, the
+        # one-row tab strip along the top and the status line along the bottom
         check("the pane grows with the screen, minus its chrome",
-              p["content_w"] == snap.cols - 6 and p["content_h"] == snap.rows - 5,
+              p["content_w"] == snap.cols - 6 and p["content_h"] == snap.rows - 6,
               str(p))
         check("pane still responds after resize", s.alive())
 
@@ -146,7 +146,7 @@ def test_terminal_replies():
         check("device status report is answered", "R" in out and "^[[" in out,
               repr(out[:60]))
 
-    with Session(SH('printf "\\033]2;build.sh\\007"; sleep 5'), cols=44, rows=6) as s:
+    with Session(SH('printf "\\033]2;build.sh\\007"; sleep 5'), cols=44, rows=8) as s:
         s.settle()
         p = s.pane()
         check("OSC 2 sets the pane title", p["title"] == "build.sh", str(p["title"]))

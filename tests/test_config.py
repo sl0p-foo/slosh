@@ -191,6 +191,63 @@ def test_reload():
     os.unlink(path)
 
 
+def test_status_line_reserves_a_row_at_the_bottom():
+    on = cfg("")
+    off = cfg("status_line false\n")
+    heights = {}
+    for name, path in (("on", on), ("off", off)):
+        with Session(SH, cols=50, rows=12, config=path) as s:
+            s.settle()
+            heights[name] = s.pane()["h"]
+    check("turning the status line off gives the row back to the panes",
+          heights["off"] == heights["on"] + 1, str(heights))
+    os.unlink(on)
+    os.unlink(off)
+
+
+def test_status_line_says_what_you_are_looking_at():
+    lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    lay.write('layout {\n tab name="api" purpose="project:api.a1" {\n'
+              '  pane purpose="agent:main"\n'
+              '  pane suspended=true command="top"\n }\n}\n')
+    lay.close()
+    with Session(SH, cols=90, rows=18, layout=lay.name) as s:
+        s.settle(20)
+        bottom = s.snapshot().text[-2]
+        check("it names the tab and the focused pane",
+              "api" in bottom and "agent:main" in bottom, repr(bottom))
+        # The top strip already answers "which tab" and "how many panes";
+        # the bottom is about the pane, so it must not just repeat that.
+        check("and does not repeat the pane count from the top strip",
+              "panes" not in bottom, repr(bottom))
+
+        ids = [p["id"] for p in s.panes()]
+        s.api("focus", id=ids[1])
+        s.settle(20)
+        check("a pane that has not started says so",
+              "not started" in s.snapshot().text[-2],
+              repr(s.snapshot().text[-2]))
+    os.unlink(lay.name)
+
+
+def test_status_line_reports_scrollback():
+    noisy = ["/bin/sh", "-c",
+             'printf "\\033]2;p\\007"; i=0; while [ $i -lt 200 ]; do '
+             'echo "line $i"; i=$((i+1)); done; stty raw -echo; cat']
+    with Session(noisy, cols=90, rows=18) as s:
+        s.settle(30)
+        check("nothing is said while you are in the present",
+              "scrolled" not in s.snapshot().text[-2],
+              repr(s.snapshot().text[-2]))
+        p = s.pane()
+        for _ in range(6):
+            s.send(rf"\e[<64;{p['content_x'] + 2};{p['content_y'] + 2}M")
+        s.settle(30)
+        check("looking at the past is said out loud",
+              "scrolled" in s.snapshot().text[-2],
+              repr(s.snapshot().text[-2]))
+
+
 if __name__ == "__main__":
     test_geometry()
     test_status_bar_off()
@@ -199,4 +256,7 @@ if __name__ == "__main__":
     test_min_pane_drives_collapse()
     test_fail_open()
     test_reload()
+    test_status_line_reserves_a_row_at_the_bottom()
+    test_status_line_says_what_you_are_looking_at()
+    test_status_line_reports_scrollback()
     sys.exit(report())

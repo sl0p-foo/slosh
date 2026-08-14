@@ -276,9 +276,16 @@ def test_tiny_panes_have_no_targets():
         snap = s.snapshot()
         check("a collapsed layout still draws and does not crash",
               s.api("alive")["alive"], "")
-        check("and its header is a focus target, not a split one",
-              all(not (h["action"].startswith("border:") and h["h"] == 1
-                       and h["w"] < 4) for h in snap.hits), str(snap.hits))
+        # Say what this means rather than pattern-matching on shape: a *header*
+        # offers no split targets. The old form forbade any 1x1-ish border hit,
+        # which also catches the legitimate side border of a very short pane
+        # that is merely small, not collapsed.
+        header_rows = {p["y"] for p in s.panes() if p["hidden"]}
+        on_headers = [h for h in snap.hits
+                      if h["action"].startswith("border:")
+                      and h["y"] in header_rows]
+        check("a collapsed header is a focus target, not a split one",
+              not on_headers, str(on_headers))
 
 
 # ---- the floor: a split that is not worth making is not offered ------------

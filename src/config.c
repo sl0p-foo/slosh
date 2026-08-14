@@ -178,6 +178,7 @@ void config_defaults(config_t *c) {
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
   c->status_bar = true;
+  c->status_line = true;
   c->focus_follows_mouse = true;
 
   c->default_fg = rgb(0xff, 0xff, 0xff);
@@ -294,6 +295,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   c->pad = (uint16_t)kdl_arg_int(kdl_child(root, "padding"), 0, c->pad);
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
+  c->status_line =
+      kdl_arg_bool(kdl_child(root, "status_line"), 0, c->status_line);
   c->focus_follows_mouse = kdl_arg_bool(kdl_child(root, "focus_follows_mouse"), 0,
                                         c->focus_follows_mouse);
 
