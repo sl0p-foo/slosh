@@ -97,6 +97,7 @@ bool app_reload_config(char *err, size_t errcap) {
 #define PANE_BTN_HOVER (CFG.pane_button_hover)
 #define MINBAR (CFG.minbar)
 #define MINBAR_HOVER (CFG.minbar_hover)
+#define HINT_C (CFG.hint)
 
 static const color_t NO_COLOR = {0};
 
@@ -341,6 +342,43 @@ static size_t count_leaves(node_t *n); /* all defined with the layout */
 static size_t collect_minimized(node_t *n, node_t **out, size_t cap, size_t k);
 static size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k);
 
+/* What the thing under the pointer would do, in a word.
+ *
+ * Read off the hit list rather than tracked, so anything that registers a hit
+ * gets a hint by being listed here and nothing has to remember to raise one.
+ * The status line is drawn after everything else has registered, so the list
+ * is complete by the time this is asked. */
+static const char *hint_for(app_t *a, const char *action) {
+  if (!action) return NULL;
+  uint32_t id = 0;
+  const char *colon = strchr(action, ':');
+  if (colon) id = (uint32_t)strtoul(colon + 1, NULL, 10);
+
+  if (strncmp(action, "minimize:", 9) == 0) return "minimise";
+  if (strncmp(action, "zoom:", 5) == 0)
+    return app_pane_zoomed(a, id) ? "back to the layout" : "fill the tab";
+  if (strncmp(action, "close:", 6) == 0) return "close this pane";
+  if (strncmp(action, "scrollbottom:", 13) == 0) return "back to the bottom";
+  if (strncmp(action, "panetitle:", 10) == 0)
+    return "double-click to rename \u00b7 drag to move";
+  if (strncmp(action, "title:", 6) == 0) return "drag to move \u00b7 click to split up";
+  if (strncmp(action, "border:", 7) == 0) {
+    const char *side = strrchr(action, ':');
+    switch (side && side[1] ? side[1] : 0) {
+      case 'l': return "click to split left";
+      case 'r': return "click to split right";
+      case 't': return "click to split up";
+      default: return "click to split down";
+    }
+  }
+  if (strncmp(action, "edge:", 5) == 0) return "drag to resize";
+  if (strncmp(action, "focus:", 6) == 0) return "open this pane";
+  if (strncmp(action, "find:", 5) == 0) return "go to this pane";
+  if (strncmp(action, "tab:", 4) == 0) return "switch to this tab";
+  if (strcmp(action, "newtab") == 0) return "new tab";
+  return NULL; /* a pane's own content, and anything not worth a word */
+}
+
 /* The line along the bottom: what you are looking at, rather than what you
  * could switch to. The strip along the top already answers "which tab" and
  * "how many panes"; repeating that here would spend a row saying it twice.
@@ -486,9 +524,25 @@ static void draw_status_line(app_t *a, screen_t *s) {
     else if (pt && *pt)
       n += (size_t)snprintf(line + n, sizeof line - n, "%s%s", n ? " \u00b7 " : "", pt);
   }
-  if (!n) return;
   if (n > (size_t)(right - x)) line[right - x] = 0;
-  screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
+  if (n) screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
+
+  /* The hint sits in what is left between the two ends, centred there rather
+   * than in the row: centring it in the row would put it under the session
+   * name on a narrow screen, and a hint that overwrites what it is explaining
+   * is worse than no hint. It is simply not drawn when it does not fit. */
+  if (!CFG.hints || !a->painted) return;
+  const char *hint = hint_for(a, hit_test(&s->hits, a->ptr_x, a->ptr_y));
+  if (!hint || !a->ptr_valid) return;
+
+  uint16_t used = (uint16_t)(x + cells(line));
+  uint16_t from = (uint16_t)(used + 2);
+  if (right <= from) return;
+  uint16_t span = (uint16_t)(right - from);
+  uint16_t hw = cells(hint);
+  if (hw + 2 > span) return;
+  screen_text(s, (uint16_t)(from + (span - hw) / 2), y, hint, HINT_C, NO_COLOR,
+              0);
 }
 
 static void draw_toasts(app_t *a, screen_t *s) {

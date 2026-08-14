@@ -84,6 +84,10 @@ typedef struct {
    * since. Off makes a bell silent *and* invisible, which is a real choice. */
   /* Buttons in the top-right of a pane's frame: zoom, and close. Off leaves
    * the keyboard bindings alone; it is about the affordance, not the verb. */
+  /* A word in the middle of the status line for whatever the pointer is on.
+   * Discoverability for a frame whose affordances are mostly one character
+   * wide; off if you already know them. */
+  bool hints;
   bool pane_buttons;
   /* Marks of similar visual weight, so the even spacing between the buttons
    * reads as even: a glyph that floats in a mostly-empty cell donates its own
@@ -195,6 +199,9 @@ typedef struct {
 
   /* the row of minimised panes along the bottom */
   color_t minbar, minbar_hover;
+
+  /* the hint in the middle of the status line */
+  color_t hint;
 
   /* announcements */
   color_t toast_fg, toast_bg;

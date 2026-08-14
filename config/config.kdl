@@ -51,6 +51,15 @@ title_inset 2
 // still done by clicking an edge. They do cost six columns of every frame, so
 // this turns them off -- the keybindings (C-a z, C-a x) are unaffected, because
 // the setting is about the affordance and not the verb.
+// A word in the middle of the status line for whatever the pointer is on:
+// which way a border would split, what a one-character button does, that the
+// gap between two panes can be dragged. The frame's affordances are mostly one
+// character wide and a border that splits when clicked looks exactly like a
+// border, so this is where they say so. It gives way to the rest of the line
+// when there is no room between the two ends -- a hint that overwrites what it
+// is explaining is worse than no hint.
+hints true
+
 pane_buttons true
 
 // Plain single-width ASCII, after box-drawing and block characters were each

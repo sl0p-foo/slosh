@@ -171,6 +171,7 @@ void config_defaults(config_t *c) {
   c->rounded = true;
   c->title_align = ALIGN_CENTER;
   c->title_inset = 2;
+  c->hints = true;
   c->pane_buttons = true;
   snprintf(c->zoom_mark, sizeof c->zoom_mark, "#");
   snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "*");
@@ -256,6 +257,7 @@ void config_defaults(config_t *c) {
   c->finder_sel_bg = accent;
 
   c->bell = accent;
+  c->hint = bright;
   c->minbar = dim;
   c->minbar_hover = accent;
   c->pane_button = dim;
@@ -375,6 +377,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
 
   c->title_inset =
       (uint16_t)kdl_arg_int(kdl_child(root, "title_inset"), 0, c->title_inset);
+  c->hints = kdl_arg_bool(kdl_child(root, "hints"), 0, c->hints);
   c->pane_buttons =
       kdl_arg_bool(kdl_child(root, "pane_buttons"), 0, c->pane_buttons);
   const char *zm = kdl_arg(kdl_child(root, "zoom_mark"), 0, NULL);
@@ -482,6 +485,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         {"finder_sel_fg", &c->finder_sel_fg},
         {"finder_sel_bg", &c->finder_sel_bg},
         {"bell", &c->bell},
+        {"hint", &c->hint},
         {"minbar", &c->minbar},
         {"minbar_hover", &c->minbar_hover},
         {"pane_button", &c->pane_button},

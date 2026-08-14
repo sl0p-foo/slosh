@@ -139,6 +139,10 @@ and `default_bg` — set them to your terminal's real colours, or a shaded pane
 will shift as it turns on. Panes with no shader defer to your terminal exactly
 as before.
 
+Hovering anything says what it does, in a word in the middle of the bottom
+line: which way a border would split, what a one-character button is for, that
+a gap can be dragged. `hints false` turns it off.
+
 A **strip along the top** carries the tabs, the pane count and the prefix
 indicator; a **line along the bottom** says what you are looking at — session,
 tab, the focused pane's purpose or title, which of the tab's panes it is
