@@ -193,7 +193,16 @@ struct app {
     uint16_t x, y;     /* where the pointer was at the last event */
     bool moved;        /* a press that never moves is a click */
     char side;         /* border press: 'l' 'r' 't' 'b' */
-    int corner;        /* index into a->corners, or -1 */
+    /* A corner drag carries the boundaries it is moving, not an index into
+     * the corner list: that list is rebuilt from the layout every frame, and
+     * the layout is the thing being changed. Halfway through a drag the
+     * crossing you grabbed may be a different entry, or gone — an index would
+     * quietly start moving somebody else's panes. */
+    uint32_t c_h;
+    size_t c_hedge;
+    uint32_t c_v[2];
+    size_t c_vedge[2];
+    size_t c_nv;
   } drag;
 
   graphics_t *gfx; /* kitty images, and what the client has been told */
@@ -337,7 +346,8 @@ int app_next_deadline_ms(app_t *a) {
       const char *action = hit_test(&a->painted->hits, a->ptr_x, a->ptr_y);
       bool on_border = action && (strncmp(action, "border:", 7) == 0 ||
                                   strncmp(action, "title:", 6) == 0 ||
-                                  strncmp(action, "edge:", 5) == 0);
+                                  strncmp(action, "edge:", 5) == 0 ||
+                                  strncmp(action, "corner:", 7) == 0);
       if (on_border && (soonest < 0 || due < soonest)) soonest = due;
     }
   }
@@ -2287,15 +2297,18 @@ static void draw_corners(app_t *a, screen_t *s) {
     snprintf(action, sizeof action, "corner:%zu", i);
     hit_add(&s->hits, c->r.x, c->r.y, c->r.w, c->r.h, action);
 
-    bool active = a->drag.kind == DRAG_EDGE && a->drag.corner == (int)i;
-    bool hot = active;
-    if (!hot && a->drag.kind == DRAG_NONE && ptr_on(a, c->r.x, c->r.y, c->r.w, c->r.h) &&
-        now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms)
-      hot = true;
-    if (!hot) continue;
+    bool active = a->drag.kind == DRAG_EDGE && a->drag.c_nv &&
+                  a->drag.c_h == c->h_id && a->drag.c_hedge == c->h_edge;
+    /* (C) The mark appears the moment the pointer is on it, before the dwell
+     * that arms the two boundaries. A crossing is two cells wide and gives no
+     * other sign it is anything: something has to say it is there, and the
+     * ghost costs nothing if you were only passing through. */
+    bool over = a->drag.kind == DRAG_NONE && ptr_on(a, c->r.x, c->r.y, c->r.w, c->r.h);
+    if (!active && !over) continue;
+    bool armed = active || now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms;
     for (uint16_t x = c->r.x; x < c->r.x + c->r.w; x++)
-      screen_text(s, x, c->r.y, active ? "\u256c" : "\u253c", RESIZE_C,
-                  NO_COLOR, active ? ATTR_BOLD : 0);
+      screen_text(s, x, c->r.y, armed ? (active ? "\u256c" : "\u253c") : "\u253c",
+                  RESIZE_C, NO_COLOR, active ? ATTR_BOLD : 0);
   }
 }
 
@@ -2556,12 +2569,17 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
                 a->drag.edge == idx;
   /* A corner moves two boundaries, so resting on it arms both of them: the
    * hint has to show what is about to move, not where the pointer is. */
-  int ci = (a->drag.kind == DRAG_EDGE && a->drag.corner >= 0)
-               ? a->drag.corner
-               : (a->drag.kind == DRAG_NONE ? corner_at(a, a->ptr_x, a->ptr_y) : -1);
+  int ci = -1;
+  if (a->drag.kind == DRAG_EDGE && a->drag.c_nv) {
+    if ((a->drag.c_h == split->id && a->drag.c_hedge == idx)) active = true;
+    for (size_t k = 0; k < a->drag.c_nv; k++)
+      if (a->drag.c_v[k] == split->id && a->drag.c_vedge[k] == idx) active = true;
+  } else if (a->drag.kind == DRAG_NONE) {
+    ci = corner_at(a, a->ptr_x, a->ptr_y);
+  }
   if (ci >= 0 && (size_t)ci < a->ncorners &&
       corner_uses(&a->corners[ci], split->id, idx)) {
-    if (a->drag.kind == DRAG_EDGE) active = true;
+    if (false) active = true;
     else if (now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms) {
       uint16_t attrs0 = 0;
       if (split->dir == SPLIT_COLS) {
@@ -3049,8 +3067,17 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   }
   if (strncmp(action, "corner:", 7) == 0) {
     if (ev->maction != MOUSE_PRESS) return;
+    size_t ci = strtoul(action + 7, NULL, 10);
+    if (ci >= a->ncorners) return;
+    corner_t *c = &a->corners[ci];
     a->drag.kind = DRAG_EDGE;
-    a->drag.corner = (int)strtoul(action + 7, NULL, 10);
+    a->drag.c_h = c->h_id;
+    a->drag.c_hedge = c->h_edge;
+    a->drag.c_nv = c->nv;
+    for (size_t k = 0; k < c->nv; k++) {
+      a->drag.c_v[k] = c->v_id[k];
+      a->drag.c_vedge[k] = c->v_edge[k];
+    }
     a->drag.moved = false;
     a->drag.x = ev->mx;
     a->drag.y = ev->my;
@@ -3059,7 +3086,7 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   if (strncmp(action, "edge:", 5) == 0) {
     if (ev->maction != MOUSE_PRESS) return;
     a->drag.kind = DRAG_EDGE;
-    a->drag.corner = -1;
+    a->drag.c_nv = 0;
     a->drag.src = (uint32_t)strtoul(action + 5, NULL, 10);
     const char *colon = strchr(action + 5, ':');
     a->drag.edge = colon ? strtoul(colon + 1, NULL, 10) : 0;
@@ -3312,18 +3339,17 @@ void app_event(app_t *a, const input_event_t *ev) {
             if (n)
               pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
                                  (uint16_t)(ev->my - n->content.y));
-          } else if (a->drag.kind == DRAG_EDGE && a->drag.corner >= 0 &&
-                     (size_t)a->drag.corner < a->ncorners) {
+          } else if (a->drag.kind == DRAG_EDGE && a->drag.c_nv) {
             /* One axis to each: the row boundary takes the vertical movement
              * and the column boundaries the horizontal, so the corner follows
              * the pointer in both at once. The column boundaries above and
              * below get the same delta, which is what keeps them one line. */
-            corner_t c = a->corners[a->drag.corner];
             int dx = (int)ev->mx - (int)a->drag.x;
             int dy = (int)ev->my - (int)a->drag.y;
-            drag_edge(a, split_by_id(a, c.h_id), c.h_edge, dy);
-            for (size_t i = 0; i < c.nv; i++)
-              drag_edge(a, split_by_id(a, c.v_id[i]), c.v_edge[i], dx);
+            drag_edge(a, split_by_id(a, a->drag.c_h), a->drag.c_hedge, dy);
+            for (size_t i = 0; i < a->drag.c_nv; i++)
+              drag_edge(a, split_by_id(a, a->drag.c_v[i]), a->drag.c_vedge[i],
+                        dx);
           } else if (a->drag.kind == DRAG_EDGE) {
             node_t *sp = split_by_id(a, a->drag.src);
             int cells = sp && sp->dir == SPLIT_COLS

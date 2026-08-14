@@ -137,10 +137,62 @@ def test_the_hint_says_both_ways():
     os.unlink(l)
 
 
+def test_a_drag_keeps_the_boundaries_it_grabbed():
+    """The corner list is rebuilt from the layout every frame, and a drag is
+    the thing changing the layout. Holding an index into it would mean the
+    crossing you grabbed becoming a different entry halfway through -- picking
+    up panes you never touched, and dropping the ones you did."""
+    l = lay(GRID)
+    with Session(SH, cols=70, rows=22, layout=l) as s:
+        s.settle(30)
+        ids = sorted(rects(s))
+        # Put the two column boundaries out of line, so only one of them
+        # belongs to the crossing.
+        s.api("focus", id=ids[2])
+        s.settle(10)
+        for _ in range(4):
+            s.send(r"\x01L")
+        s.settle(30)
+
+        w0 = {p["id"]: p["w"] for p in s.panes()}
+        c = corners(s)[0]
+        s.send(rf"\e[<0;{c['x'] + 1};{c['y'] + 1}M")
+        for step in range(1, 9):        # wander, so the layout keeps changing
+            s.send(rf"\e[<32;{c['x'] + 1 + step};{c['y'] + 1 + (step % 3)}M")
+            s.settle(15)
+        s.send(rf"\e[<0;{c['x'] + 9};{c['y'] + 3}m")
+        s.settle(30)
+        w1 = {p["id"]: p["w"] for p in s.panes()}
+
+        top, bottom = ids[:2], ids[2:]
+        check("the boundary it grabbed moved",
+              [w1[i] for i in top] != [w0[i] for i in top],
+              f"{[w0[i] for i in top]} -> {[w1[i] for i in top]}")
+        check("and the one out of line with it was never picked up",
+              [w1[i] for i in bottom] == [w0[i] for i in bottom],
+              f"{[w0[i] for i in bottom]} -> {[w1[i] for i in bottom]}")
+    os.unlink(l)
+
+
+def test_the_crossing_shows_itself_before_you_rest_on_it():
+    l = lay(GRID)
+    with Session(SH, cols=60, rows=20, layout=l) as s:
+        s.settle(30)
+        c = corners(s)[0]
+        s.send(rf"\e[<35;{c['x'] + 1};{c['y'] + 1}M")
+        s.settle(40)                    # no dwell
+        check("a crossing two cells wide says it is there straight away",
+              CROSS in s.snapshot().screen(), repr(s.snapshot().line(c["y"])))
+        check("without arming the boundaries yet",
+              "\u250a" not in s.snapshot().screen(), "")
+
+
 if __name__ == "__main__":
     test_a_grid_has_a_corner_where_the_boundaries_cross()
     test_a_layout_with_no_crossing_has_no_corner()
     test_dragging_it_moves_both_boundaries()
     test_resting_on_it_arms_both_boundaries()
     test_the_hint_says_both_ways()
+    test_a_drag_keeps_the_boundaries_it_grabbed()
+    test_the_crossing_shows_itself_before_you_rest_on_it()
     sys.exit(report())
