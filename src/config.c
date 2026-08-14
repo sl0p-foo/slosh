@@ -131,6 +131,7 @@ void config_defaults(config_t *c) {
   c->double_click_ms = 400;
   c->dim_unfocused = 0;
   c->drag_grayscale = 200;
+  c->drag_dim = 140;
   c->status_bar = true;
   c->focus_follows_mouse = true;
 
@@ -260,6 +261,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
                                           c->dim_unfocused);
   c->drag_grayscale = (uint8_t)kdl_arg_int(kdl_child(root, "drag_grayscale"), 0,
                                            c->drag_grayscale);
+  c->drag_dim =
+      (uint8_t)kdl_arg_int(kdl_child(root, "drag_dim"), 0, c->drag_dim);
 
   const char *sh = kdl_arg(kdl_child(root, "shell"), 0, NULL);
   if (sh) {

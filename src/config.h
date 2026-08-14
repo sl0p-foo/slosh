@@ -65,6 +65,7 @@ typedef struct {
    * off by default; the drag greying is transient and on. */
   uint8_t dim_unfocused;
   uint8_t drag_grayscale;
+  uint8_t drag_dim;
   bool status_bar;
   bool focus_follows_mouse;
 

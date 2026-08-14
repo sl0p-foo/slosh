@@ -1278,6 +1278,18 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   color_t fg = drop_target ? BTN_BG : (focused ? FRAME_FOCUS : FRAME_IDLE);
   uint16_t attrs = drop_target ? ATTR_BOLD : 0;
 
+  /* While a pane is being dragged, every other pane is somewhere it could be
+   * dropped, and a dashed border says so without needing a legend. The pane in
+   * your hand keeps a solid one, so the two states are told apart by the frame
+   * as well as by the colour — which matters on a terminal whose palette makes
+   * the greying subtle. The pane actually under the pointer still takes the
+   * drop_target highlight on top of the dashes: these are all targets, that is
+   * the one you are on. */
+  bool drag_target =
+      a->drag.kind == DRAG_TITLE && a->drag.moved && a->drag.src != leaf->id;
+  const char *hbar = drag_target ? "\u2504" : "\u2500";
+  const char *vbar = drag_target ? "\u2506" : "\u2502";
+
   const char *tl = CFG.rounded ? "╭" : "┌", *tr = CFG.rounded ? "╮" : "┐";
   const char *bl = CFG.rounded ? "╰" : "└", *br = CFG.rounded ? "╯" : "┘";
 
@@ -1287,12 +1299,12 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   screen_text(s, r.x, y1, bl, fg, NO_COLOR, attrs);
   screen_text(s, x1, y1, br, fg, NO_COLOR, attrs);
   for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
-    screen_text(s, x, r.y, "─", fg, NO_COLOR, attrs);
-    screen_text(s, x, y1, "─", fg, NO_COLOR, attrs);
+    screen_text(s, x, r.y, hbar, fg, NO_COLOR, attrs);
+    screen_text(s, x, y1, hbar, fg, NO_COLOR, attrs);
   }
   for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
-    screen_text(s, r.x, y, "│", fg, NO_COLOR, attrs);
-    screen_text(s, x1, y, "│", fg, NO_COLOR, attrs);
+    screen_text(s, r.x, y, vbar, fg, NO_COLOR, attrs);
+    screen_text(s, x1, y, vbar, fg, NO_COLOR, attrs);
   }
 
   /* The frame's top row is the drag handle. Registered before the split
@@ -1456,34 +1468,45 @@ size_t app_shade_count(app_t *a, uint32_t pane_id) {
  * that forgot to clear it is a bug that only shows up in front of someone.
  * The rect and the collapsed flag are recomputed every pass for exactly this
  * reason; this is the same rule applied to colour. */
-static size_t policy_shader(app_t *a, node_t *n, shader_t *out) {
+static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
+  size_t k = 0;
   /* Only once the pointer has actually moved: a press that turns out to be a
    * click would otherwise flash the whole session grey on its way to nothing. */
   if (a->drag.kind == DRAG_TITLE && a->drag.moved) {
-    /* The pane being dragged keeps its colour and everything else goes grey,
-     * so the one that is moving lifts off the page. This replaces the focus
-     * dimming rather than stacking with it: two reasons to be grey compound
-     * into one muddy grey that reads as neither. */
-    if (n->id == a->drag.src || !CFG.drag_grayscale) return 0;
-    return shader_make(out, "grayscale", (color_t){0}, CFG.drag_grayscale) ? 1
-                                                                           : 0;
+    /* The pane being dragged is left alone and everything else is pushed back
+     * — desaturated *and* darkened, because grey alone still competes for
+     * attention at the same brightness. Two passes rather than one shader
+     * that does both: they are independently tunable, and "colourless" and
+     * "recessed" are different things to want.
+     *
+     * This replaces the focus dimming rather than stacking with it: two
+     * reasons to be grey compound into a muddy grey that reads as neither. */
+    if (n->id == a->drag.src) return 0;
+    if (CFG.drag_grayscale && k < cap &&
+        shader_make(&out[k], "grayscale", (color_t){0}, CFG.drag_grayscale))
+      k++;
+    if (CFG.drag_dim && k < cap &&
+        shader_make(&out[k], "dim", (color_t){0}, CFG.drag_dim))
+      k++;
+    return k;
   }
-  if (CFG.dim_unfocused && n != cur(a)->focus)
-    return shader_make(out, "dim", (color_t){0}, CFG.dim_unfocused) ? 1 : 0;
-  return 0;
+  if (CFG.dim_unfocused && n != cur(a)->focus && k < cap &&
+      shader_make(&out[k], "dim", (color_t){0}, CFG.dim_unfocused))
+    k++;
+  return k;
 }
 
 /* A pane with nothing to apply costs nothing: no context is built and no cell
  * is visited, so an unshaded session emits the same bytes it did before. */
 static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
-  shader_t chain[SHADE_MAX + 1];
+  shader_t chain[SHADE_MAX + 2];
   size_t nc = 0;
 
   /* Attached first, policy last: a pane's own colour is the thing the
    * session's opinion of the moment is then applied to. */
   for (size_t i = 0; i < n->nshaders && nc < SHADE_MAX; i++)
     chain[nc++] = n->shaders[i];
-  nc += policy_shader(a, n, &chain[nc]);
+  nc += policy_shaders(a, n, &chain[nc], (sizeof chain / sizeof *chain) - nc);
 
   if (!nc) return;
   shade_ctx_t base = {

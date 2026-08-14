@@ -58,9 +58,11 @@ it and shows a dashed line where the split would land. Click a pane to focus
 it, a tab to switch, `+tab` to open one, a collapsed header to expand it, and a
 pane's own buttons to talk to the program inside it. **Drag a pane's title bar
 onto another pane to swap them, or drag the gap between two panes to move the
-boundary.** While you drag, every *other* pane greys out so the one you are
-moving lifts off the page. Focus follows the pointer (`focus_follows_mouse`,
-on by default, and it knows when not to).
+boundary.** While you drag, every *other* pane drains to grey and drops in
+brightness while its border turns dashed — they are all places the pane could
+land — and the one in your hand keeps its colour and a solid border, so it
+lifts off the page. Focus follows the pointer (`focus_follows_mouse`, on by
+default, and it knows when not to).
 
 **Double-click a pane's name to rename it**, in the title itself rather than in
 a dialog. Enter keeps the new name, Escape abandons it, clicking away keeps it.
@@ -79,8 +81,8 @@ like "copied 13 chars".
 **Shaders** are colour passes over a pane's *contents* — never the frame, the
 title or the tab strip, so chrome stays legible over a pane that has been
 dimmed underneath it. `dim_unfocused` (off by default) fades every pane but
-the focused one; `drag_grayscale` is the greying you get while dragging. Both
-are strengths from 0 to 255. Because a cell's colour is often "whatever the
+the focused one; `drag_grayscale` and `drag_dim` are the greying and the
+recession you get while dragging. All are strengths from 0 to 255. Because a cell's colour is often "whatever the
 terminal calls default", shaders resolve those through `theme`'s `default_fg`
 and `default_bg` — set them to your terminal's real colours, or a shaded pane
 will shift as it turns on. Panes with no shader defer to your terminal exactly

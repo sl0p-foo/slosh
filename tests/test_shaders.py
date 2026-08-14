@@ -219,18 +219,112 @@ def test_the_drag_greying_outranks_the_focus_dimming():
         s.settle(200)
 
 
-def test_drag_greying_can_be_turned_off():
-    with Session(SH, cols=90, rows=16, config=cfg("drag_grayscale 0\n")) as s:
+def drag_and_sample(conf):
+    """Colour of a non-dragged pane's content mid-drag, under `conf`."""
+    with Session(SH, cols=90, rows=16, config=cfg(conf)) as s:
         s.settle(200)
         left, right = split(s)
         s.settle(200)
+        press(s, left["x"] + 4, left["y"])
+        motion(s, right["x"] + 5, right["y"] + 3)
+        s.settle(120)
+        got = content_fg(s.snapshot(), right)
+        release(s, right["x"] + 5, right["y"] + 3)
+        s.settle(120)
+        return got
+
+
+def test_the_two_drag_knobs_are_independent():
+    both_off = drag_and_sample("drag_grayscale 0\ndrag_dim 0\n")
+    check("with both off a drag leaves every pane alone", both_off == GREEN,
+          str(both_off))
+
+    # Desaturate only: channels converge, brightness roughly survives.
+    gray_only = drag_and_sample("drag_grayscale 255\ndrag_dim 0\n")
+    ch = [int(gray_only[i:i + 2], 16) for i in (1, 3, 5)]
+    check("grayscale alone desaturates without darkening much",
+          ch[0] == ch[1] == ch[2] and ch[1] > 0x60, str(gray_only))
+
+    # Darken only: the hue survives, the brightness does not.
+    dim_only = drag_and_sample("drag_grayscale 0\ndrag_dim 200\n")
+    ch = [int(dim_only[i:i + 2], 16) for i in (1, 3, 5)]
+    check("dim alone darkens without desaturating",
+          ch[0] == 0 and ch[2] == 0 and 0 < ch[1] < 0x60, str(dim_only))
+
+
+def test_the_default_drag_look_is_grey_and_recessed():
+    """Both together: the dragged pane has to win on contrast, not just hue."""
+    got = drag_and_sample("")
+    ch = [int(got[i:i + 2], 16) for i in (1, 3, 5)]
+    check("a non-dragged pane is pushed well below full brightness",
+          max(ch) < 0x80, f"{got} max={max(ch):#x}")
+    check("and towards grey", max(ch) - min(ch) < 60,
+          f"{got} spread={max(ch) - min(ch)}")
+
+
+# ---- the drop-target border (chrome, not a shader) -------------------------
+
+DASH_H = "\u2504"
+SOLID_H = "\u2500"
+
+
+def test_non_dragged_panes_get_a_dashed_border():
+    with Session(SH, cols=90, rows=16) as s:
+        s.settle(200)
+        left, right = split(s)
+        s.settle(200)
+
+        snap = s.snapshot()
+        check("borders are solid when nothing is being dragged",
+              DASH_H not in snap.line(right["y"]), repr(snap.line(right["y"])))
 
         press(s, left["x"] + 4, left["y"])
         motion(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
         snap = s.snapshot()
-        check("drag_grayscale 0 leaves every pane alone",
-              content_fg(snap, right) == GREEN, str(content_fg(snap, right)))
+        top = snap.line(right["y"])[right["x"]:right["x"] + right["w"]]
+        dragged_top = snap.line(left["y"])[left["x"]:left["x"] + left["w"]]
+        check("a pane you could drop onto is dashed", DASH_H in top, repr(top))
+        check("the pane in your hand stays solid",
+              DASH_H not in dragged_top and SOLID_H in dragged_top,
+              repr(dragged_top))
+
+        release(s, right["x"] + 5, right["y"] + 3)
+        s.settle(200)
+        snap = s.snapshot()
+        for p in s.panes():
+            row = snap.line(p["y"])[p["x"]:p["x"] + p["w"]]
+            check(f"pane {p['id']} is solid again after the drop",
+                  DASH_H not in row, repr(row))
+
+
+def test_a_press_that_never_moves_dashes_nothing():
+    with Session(SH, cols=90, rows=16) as s:
+        s.settle(200)
+        left, right = split(s)
+        s.settle(200)
+        press(s, left["x"] + 4, left["y"])
+        s.settle(120)
+        snap = s.snapshot()
+        check("pressing without moving dashes nothing",
+              DASH_H not in snap.screen(), "")
+        release(s, left["x"] + 4, left["y"])
+        s.settle(120)
+
+
+def test_the_hovered_target_is_still_highlighted_over_the_dashes():
+    with Session(SH, cols=90, rows=16) as s:
+        s.settle(200)
+        left, right = split(s)
+        s.settle(200)
+        press(s, left["x"] + 4, left["y"])
+        motion(s, right["x"] + 5, right["y"] + 3)
+        s.settle(120)
+        snap = s.snapshot()
+        run = snap.style_at(right["x"], right["y"])
+        check("the pane under the pointer keeps its drop highlight",
+              run and run["fg"] == "#ff5fd7" and "bold" in run["attrs"],
+              str(run))
         release(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
 
@@ -280,7 +374,11 @@ if __name__ == "__main__":
     test_full_strength_is_a_true_grey()
     test_a_press_that_never_moves_greys_nothing()
     test_the_drag_greying_outranks_the_focus_dimming()
-    test_drag_greying_can_be_turned_off()
+    test_the_two_drag_knobs_are_independent()
+    test_the_default_drag_look_is_grey_and_recessed()
+    test_non_dragged_panes_get_a_dashed_border()
+    test_a_press_that_never_moves_dashes_nothing()
+    test_the_hovered_target_is_still_highlighted_over_the_dashes()
     test_a_drag_that_ends_off_a_pane_still_clears()
     test_a_keystroke_mid_drag_clears_the_greying()
     sys.exit(report())

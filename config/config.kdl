@@ -64,11 +64,19 @@ double_click_ms 400
 // fighting. 40 is a hint, 120 is obvious.
 dim_unfocused 0
 
-// While a pane is being dragged by its title, grey every *other* pane, so the
-// one that is moving lifts off the page. Transient — it appears once the drag
-// actually moves and is gone on release — so unlike the above it costs
-// nothing when you are not doing it.
+// While a pane is being dragged by its title, push every *other* pane back so
+// the one that is moving lifts off the page: drag_grayscale drains its colour,
+// drag_dim drops its brightness. Two knobs because "colourless" and "recessed"
+// are different things to want, and grey alone still competes for attention at
+// the same brightness. Transient — they appear once the drag actually moves and
+// are gone on release — so unlike dim_unfocused they cost nothing when you are
+// not dragging. Set both to 0 to turn the effect off.
+//
+// The dragged pane's border also stays solid while every other pane's turns
+// dashed, marking them as places it could be dropped. That is chrome, not a
+// shader, so it happens whatever these are set to.
 drag_grayscale 200
+drag_dim 140
 
 // How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
 // "config reloaded") stays in the bottom-right corner.
