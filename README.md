@@ -62,7 +62,9 @@ worth having. Click a pane to focus
 it, a tab to switch, `+tab` to open one, a collapsed header to expand it, and a
 pane's own buttons to talk to the program inside it. **Drag a pane's title bar
 onto another pane to swap them, or drag the gap between two panes to move the
-boundary.** Resting on a gap marks it dotted to say it is a handle, with an
+boundary.** Where a row boundary crosses a column one, the crossing is a handle of its own:
+drag it and both move at once, and both boundaries light up to say so. Resting
+on a gap marks it dotted to say it is a handle, with an
 arrow in the middle for the way it travels, and doubles the mark while you are
 actually moving it. While you drag a pane,
 every *other* pane drains to grey and drops in

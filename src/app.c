@@ -144,6 +144,17 @@ struct node {
 
 /* A tab is a layout tree and its focus. Panes in every tab keep running; only
  * the current tab is composed. */
+/* Where a row boundary and a column boundary meet, and the boundaries that
+ * meet there. Recomputed every frame with the layout it describes. */
+typedef struct {
+  rect_t r;
+  uint32_t h_id;      /* the rows split: this one moves vertically */
+  size_t h_edge;
+  uint32_t v_id[2];   /* the cols splits above and below: horizontally */
+  size_t v_edge[2];
+  size_t nv;
+} corner_t;
+
 typedef struct {
   node_t *root;
   node_t *focus;
@@ -182,6 +193,7 @@ struct app {
     uint16_t x, y;     /* where the pointer was at the last event */
     bool moved;        /* a press that never moves is a click */
     char side;         /* border press: 'l' 'r' 't' 'b' */
+    int corner;        /* index into a->corners, or -1 */
   } drag;
 
   graphics_t *gfx; /* kitty images, and what the client has been told */
@@ -230,6 +242,8 @@ struct app {
   char session[64];
   /* the screen we last composed into: its hit list is what a click resolves
    * against, so routing can never consult geometry the user never saw */
+  corner_t corners[16];
+  size_t ncorners;
   const screen_t *painted;
 };
 
@@ -372,6 +386,7 @@ static const char *hint_for(app_t *a, const char *action) {
     }
   }
   if (strncmp(action, "edge:", 5) == 0) return "drag to resize";
+  if (strncmp(action, "corner:", 7) == 0) return "drag to resize both ways";
   if (strncmp(action, "focus:", 6) == 0) return "open this pane";
   if (strncmp(action, "find:", 5) == 0) return "go to this pane";
   if (strncmp(action, "tab:", 4) == 0) return "switch to this tab";
@@ -2262,6 +2277,28 @@ static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
               n->content.h, &base);
 }
 
+/* Drawn after the panes, so the corner's hit is registered after the two gap
+ * hits it sits on and wins those cells: the cross is one target, not the
+ * overlap of two. */
+static void draw_corners(app_t *a, screen_t *s) {
+  for (size_t i = 0; i < a->ncorners; i++) {
+    corner_t *c = &a->corners[i];
+    char action[48];
+    snprintf(action, sizeof action, "corner:%zu", i);
+    hit_add(&s->hits, c->r.x, c->r.y, c->r.w, c->r.h, action);
+
+    bool active = a->drag.kind == DRAG_EDGE && a->drag.corner == (int)i;
+    bool hot = active;
+    if (!hot && a->drag.kind == DRAG_NONE && ptr_on(a, c->r.x, c->r.y, c->r.w, c->r.h) &&
+        now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms)
+      hot = true;
+    if (!hot) continue;
+    for (uint16_t x = c->r.x; x < c->r.x + c->r.w; x++)
+      screen_text(s, x, c->r.y, active ? "\u256c" : "\u253c", RESIZE_C,
+                  NO_COLOR, active ? ATTR_BOLD : 0);
+  }
+}
+
 static void draw_node(app_t *a, screen_t *s, node_t *n);
 
 static void draw_cb(node_t *n, void *ud) {
@@ -2402,6 +2439,108 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
   }
 }
 
+/* The space between two of a split's children, or false if they are flush.
+ * One implementation, because the drawing, the hit and the corner-finding all
+ * have to agree about where a gap is down to the cell. */
+static bool gap_rect(node_t *n, size_t i, rect_t *out) {
+  if (!n || n->kind != NODE_SPLIT || i + 1 >= n->nkids) return false;
+  rect_t a_r = n->kids[i]->rect, b_r = n->kids[i + 1]->rect;
+  if (!a_r.w || !b_r.w) return false;
+  if (n->dir == SPLIT_COLS) {
+    uint16_t x0 = (uint16_t)(a_r.x + a_r.w);
+    if (b_r.x <= x0) return false;
+    *out = (rect_t){x0, a_r.y, (uint16_t)(b_r.x - x0), a_r.h};
+  } else {
+    uint16_t y0 = (uint16_t)(a_r.y + a_r.h);
+    if (b_r.y <= y0) return false;
+    *out = (rect_t){a_r.x, y0, a_r.w, (uint16_t)(b_r.y - y0)};
+  }
+  return true;
+}
+
+struct gapinfo {
+  node_t *sp;
+  size_t i;
+  rect_t r;
+};
+
+static size_t collect_gaps(node_t *n, struct gapinfo *out, size_t cap,
+                           size_t k) {
+  if (!n || n->kind != NODE_SPLIT || k >= cap) return k;
+  for (size_t i = 0; i + 1 < n->nkids && k < cap; i++) {
+    rect_t g;
+    if (!gap_rect(n, i, &g)) continue;
+    out[k].sp = n;
+    out[k].i = i;
+    out[k].r = g;
+    k++;
+  }
+  for (size_t i = 0; i < n->nkids; i++)
+    k = collect_gaps(n->kids[i], out, cap, k);
+  return k;
+}
+
+/* Where a boundary between rows crosses a boundary between columns.
+ *
+ * The two never overlap in the tree — a column boundary stops where the row
+ * boundary begins, because they belong to different splits — so a corner is
+ * found by adjacency rather than by intersection: the cells of the row gap
+ * that have a column gap running into them from above or below.
+ *
+ * Both are collected when both are there. In a two-by-two the column boundary
+ * above and the one below are separate splits that happen to line up, and
+ * moving one without the other would leave a step in what reads as one line. */
+static void find_corners(app_t *a) {
+  a->ncorners = 0;
+  if (!a->ntabs || !cur(a)->root) return;
+
+  struct gapinfo g[64];
+  size_t n = collect_gaps(cur(a)->root, g, 64, 0);
+
+  for (size_t i = 0; i < n && a->ncorners < 16; i++) {
+    if (g[i].sp->dir != SPLIT_ROWS) continue;
+    rect_t h = g[i].r;
+    corner_t c = {0};
+    c.h_id = g[i].sp->id;
+    c.h_edge = g[i].i;
+
+    for (size_t j = 0; j < n && c.nv < 2; j++) {
+      if (g[j].sp->dir != SPLIT_COLS) continue;
+      rect_t v = g[j].r;
+      if ((uint16_t)(v.y + v.h) != h.y && (uint16_t)(h.y + h.h) != v.y) continue;
+      uint16_t x0 = v.x > h.x ? v.x : h.x;
+      uint16_t xe = (uint16_t)(v.x + v.w) < (uint16_t)(h.x + h.w)
+                        ? (uint16_t)(v.x + v.w)
+                        : (uint16_t)(h.x + h.w);
+      if (xe <= x0) continue;
+      if (!c.nv) {
+        c.r = (rect_t){x0, h.y, (uint16_t)(xe - x0), h.h};
+      } else if (c.r.x != x0 || c.r.w != (uint16_t)(xe - x0)) {
+        continue; /* out of line with the first: not one corner */
+      }
+      c.v_id[c.nv] = g[j].sp->id;
+      c.v_edge[c.nv] = g[j].i;
+      c.nv++;
+    }
+    if (c.nv) a->corners[a->ncorners++] = c;
+  }
+}
+
+static int corner_at(app_t *a, uint16_t x, uint16_t y) {
+  for (size_t i = 0; i < a->ncorners; i++) {
+    rect_t r = a->corners[i].r;
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return (int)i;
+  }
+  return -1;
+}
+
+static bool corner_uses(const corner_t *c, uint32_t id, size_t edge) {
+  if (c->h_id == id && c->h_edge == edge) return true;
+  for (size_t i = 0; i < c->nv; i++)
+    if (c->v_id[i] == id && c->v_edge[i] == edge) return true;
+  return false;
+}
+
 /* The gap between two panes is a handle, and nothing about two blank columns
  * says so. So it says it on hover — and says something else once you have hold
  * of it, because "you could move this" and "you are moving this" are different
@@ -2415,6 +2554,28 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
                              rect_t gapr) {
   bool active = a->drag.kind == DRAG_EDGE && a->drag.src == split->id &&
                 a->drag.edge == idx;
+  /* A corner moves two boundaries, so resting on it arms both of them: the
+   * hint has to show what is about to move, not where the pointer is. */
+  int ci = (a->drag.kind == DRAG_EDGE && a->drag.corner >= 0)
+               ? a->drag.corner
+               : (a->drag.kind == DRAG_NONE ? corner_at(a, a->ptr_x, a->ptr_y) : -1);
+  if (ci >= 0 && (size_t)ci < a->ncorners &&
+      corner_uses(&a->corners[ci], split->id, idx)) {
+    if (a->drag.kind == DRAG_EDGE) active = true;
+    else if (now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms) {
+      uint16_t attrs0 = 0;
+      if (split->dir == SPLIT_COLS) {
+        uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
+        for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
+          screen_text(s, x, y, "\u250a", RESIZE_C, NO_COLOR, attrs0);
+      } else {
+        uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
+        for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
+          screen_text(s, x, y, "\u2508", RESIZE_C, NO_COLOR, attrs0);
+      }
+      return;
+    }
+  }
   if (!active) {
     /* A pointer busy with anything else is not shopping for a boundary. */
     if (a->drag.kind != DRAG_NONE || !a->ptr_valid) return;
@@ -2473,18 +2634,8 @@ static void draw_node(app_t *a, screen_t *s, node_t *n) {
    * nothing, but it is a real target, derived from the rects the children were
    * just given rather than recomputed from the config. */
   for (size_t i = 0; i + 1 < n->nkids; i++) {
-    rect_t a_r = n->kids[i]->rect, b_r = n->kids[i + 1]->rect;
-    if (!a_r.w || !b_r.w) continue;
     rect_t gapr;
-    if (n->dir == SPLIT_COLS) {
-      uint16_t x0 = (uint16_t)(a_r.x + a_r.w);
-      if (b_r.x <= x0) continue;
-      gapr = (rect_t){x0, a_r.y, (uint16_t)(b_r.x - x0), a_r.h};
-    } else {
-      uint16_t y0 = (uint16_t)(a_r.y + a_r.h);
-      if (b_r.y <= y0) continue;
-      gapr = (rect_t){a_r.x, y0, a_r.w, (uint16_t)(b_r.y - y0)};
-    }
+    if (!gap_rect(n, i, &gapr)) continue;
     char action[48];
     snprintf(action, sizeof action, "edge:%u:%zu", n->id, i);
     hit_add(&s->hits, gapr.x, gapr.y, gapr.w, gapr.h, action);
@@ -2703,8 +2854,10 @@ void app_compose(app_t *a, screen_t *s) {
   if (cur(a)->focus) pane_clear_bell(cur(a)->focus->pane);
 
   layout(a);
+  find_corners(a);
   if (CFG.status_bar) draw_tab_strip(a, s);
   draw_node(a, s, cur(a)->root);
+  draw_corners(a, s);
   draw_min_bar(a, s);
   draw_status_line(a, s);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
@@ -2894,9 +3047,19 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     }
     return;
   }
+  if (strncmp(action, "corner:", 7) == 0) {
+    if (ev->maction != MOUSE_PRESS) return;
+    a->drag.kind = DRAG_EDGE;
+    a->drag.corner = (int)strtoul(action + 7, NULL, 10);
+    a->drag.moved = false;
+    a->drag.x = ev->mx;
+    a->drag.y = ev->my;
+    return;
+  }
   if (strncmp(action, "edge:", 5) == 0) {
     if (ev->maction != MOUSE_PRESS) return;
     a->drag.kind = DRAG_EDGE;
+    a->drag.corner = -1;
     a->drag.src = (uint32_t)strtoul(action + 5, NULL, 10);
     const char *colon = strchr(action + 5, ':');
     a->drag.edge = colon ? strtoul(colon + 1, NULL, 10) : 0;
@@ -3149,6 +3312,18 @@ void app_event(app_t *a, const input_event_t *ev) {
             if (n)
               pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
                                  (uint16_t)(ev->my - n->content.y));
+          } else if (a->drag.kind == DRAG_EDGE && a->drag.corner >= 0 &&
+                     (size_t)a->drag.corner < a->ncorners) {
+            /* One axis to each: the row boundary takes the vertical movement
+             * and the column boundaries the horizontal, so the corner follows
+             * the pointer in both at once. The column boundaries above and
+             * below get the same delta, which is what keeps them one line. */
+            corner_t c = a->corners[a->drag.corner];
+            int dx = (int)ev->mx - (int)a->drag.x;
+            int dy = (int)ev->my - (int)a->drag.y;
+            drag_edge(a, split_by_id(a, c.h_id), c.h_edge, dy);
+            for (size_t i = 0; i < c.nv; i++)
+              drag_edge(a, split_by_id(a, c.v_id[i]), c.v_edge[i], dx);
           } else if (a->drag.kind == DRAG_EDGE) {
             node_t *sp = split_by_id(a, a->drag.src);
             int cells = sp && sp->dir == SPLIT_COLS
