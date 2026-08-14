@@ -246,9 +246,12 @@ int app_next_deadline_ms(app_t *a) {
   if (a->ptr_valid && a->painted) {
     int64_t due = a->ptr_still_since + CFG.hover_delay_ms;
     if (due > now_ms_()) {
+      /* Everything that arms on dwell has to be listed here, or it would only
+       * appear when some unrelated event happened to repaint the frame. */
       const char *action = hit_test(&a->painted->hits, a->ptr_x, a->ptr_y);
       bool on_border = action && (strncmp(action, "border:", 7) == 0 ||
-                                  strncmp(action, "title:", 6) == 0);
+                                  strncmp(action, "title:", 6) == 0 ||
+                                  strncmp(action, "edge:", 5) == 0);
       if (on_border && (soonest < 0 || due < soonest)) soonest = due;
     }
   }
@@ -1705,6 +1708,47 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
   }
 }
 
+/* The gap between two panes is a handle, and nothing about two blank columns
+ * says so. So it says it on hover — and says something else once you have hold
+ * of it, because "you could move this" and "you are moving this" are different
+ * claims and the second one should not have to be inferred from the panes
+ * changing size.
+ *
+ * Dotted while available, doubled and bold while engaged: the same grammar the
+ * split guide already uses, where dashes are a possibility and weight is a
+ * commitment. */
+static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
+                             rect_t gapr) {
+  bool active = a->drag.kind == DRAG_EDGE && a->drag.src == split->id &&
+                a->drag.edge == idx;
+  if (!active) {
+    /* A pointer busy with anything else is not shopping for a boundary. */
+    if (a->drag.kind != DRAG_NONE || !a->ptr_valid) return;
+    /* Tested against the very rect just registered as this gap's hit, in the
+     * same loop iteration — so the hint cannot appear anywhere the click would
+     * not land, without having to trust a lookup to agree. */
+    if (a->ptr_x < gapr.x || a->ptr_x >= gapr.x + gapr.w || a->ptr_y < gapr.y ||
+        a->ptr_y >= gapr.y + gapr.h)
+      return;
+    /* Arm on dwell, like the split guide: crossing a gap on the way to a pane
+     * is the most ordinary mouse movement there is. */
+    if (now_ms_() - a->ptr_still_since < CFG.hover_delay_ms) return;
+  }
+
+  uint16_t attrs = active ? ATTR_BOLD : 0;
+  if (split->dir == SPLIT_COLS) {
+    uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
+    for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
+      screen_text(s, x, y, active ? "\u2551" : "\u250a", FRAME_FOCUS, NO_COLOR,
+                  attrs);
+  } else {
+    uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
+    for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
+      screen_text(s, x, y, active ? "\u2550" : "\u2508", FRAME_FOCUS, NO_COLOR,
+                  attrs);
+  }
+}
+
 static void draw_node(app_t *a, screen_t *s, node_t *n) {
   if (n->collapsed) {
     draw_collapsed(a, s, n);
@@ -1735,6 +1779,7 @@ static void draw_node(app_t *a, screen_t *s, node_t *n) {
     char action[48];
     snprintf(action, sizeof action, "edge:%u:%zu", n->id, i);
     hit_add(&s->hits, gapr.x, gapr.y, gapr.w, gapr.h, action);
+    draw_resize_hint(a, s, n, i, gapr);
   }
 
   for (size_t i = 0; i < n->nkids; i++) draw_node(a, s, n->kids[i]);

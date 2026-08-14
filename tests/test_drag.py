@@ -6,6 +6,7 @@ split is equal weights, and every layout pass is still the same pure function
 of the tree and the rect.
 """
 import sys
+import time
 
 from harness import Session, check, report
 
@@ -212,6 +213,104 @@ def test_drop_target_is_visible():
         s.send(rf"\e[<0;{right['x'] + 5};{right['y'] + 3}m")
 
 
+# ---- the resize zone announces itself --------------------------------------
+
+GRIP_V, GRAB_V = "\u250a", "\u2551"   # dotted / doubled, vertical boundary
+GRIP_H, GRAB_H = "\u2508", "\u2550"   # dotted / doubled, horizontal boundary
+
+
+def test_the_gap_says_it_is_a_handle():
+    with Session(SH, cols=120, rows=26) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle(200)
+        left, right = s.panes()
+        gx, gy = left["x"] + left["w"], left["y"] + 3
+
+        check("an idle gap is blank", GRIP_V not in s.snapshot().screen(), "")
+
+        # Crossing a gap on the way somewhere is the most ordinary mouse
+        # movement there is, so contact alone must not arm it.
+        s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
+        s.settle(60)
+        check("contact alone does not arm it",
+              GRIP_V not in s.snapshot().screen(), "")
+
+        time.sleep(0.35)
+        s.settle(60)
+        snap = s.snapshot()
+        check("resting on it says it can be moved", GRIP_V in snap.screen(), "")
+        check("and does not yet claim it is being moved",
+              GRAB_V not in snap.screen(), "")
+
+        pos = snap.find(GRIP_V)
+        check("the hint is in the gap, not in either pane",
+              pos and left["x"] + left["w"] <= pos[0] < right["x"], str(pos))
+
+
+def test_the_hint_changes_while_resizing():
+    with Session(SH, cols=120, rows=26) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle(200)
+        left, right = s.panes()
+        gx, gy = left["x"] + left["w"], left["y"] + 3
+        before = left["w"]
+
+        s.send(rf"\e[<0;{gx + 1};{gy + 1}M")
+        s.send(rf"\e[<32;{gx + 6};{gy + 1}M")
+        s.settle(80)
+        snap = s.snapshot()
+        check("a resize in progress reads differently from a hover",
+              GRAB_V in snap.screen() and GRIP_V not in snap.screen(), "")
+
+        s.send(rf"\e[<0;{gx + 6};{gy + 1}m")
+        s.settle(150)
+        snap = s.snapshot()
+        check("and the boundary actually moved",
+              s.panes()[0]["w"] > before, f'{before} -> {s.panes()[0]["w"]}')
+        check("both hints are gone once it is dropped",
+              GRAB_V not in snap.screen() and GRIP_V not in snap.screen(), "")
+
+
+def test_a_horizontal_boundary_uses_horizontal_marks():
+    with Session(SH, cols=120, rows=26) as s:
+        s.settle()
+        s.key("-")          # split into rows
+        s.settle(200)
+        top, bottom = s.panes()
+        gx, gy = top["x"] + 6, top["y"] + top["h"]
+
+        s.send(rf"\e[<35;{gx + 1};{gy + 1}M")
+        time.sleep(0.35)
+        s.settle(60)
+        snap = s.snapshot()
+        check("a row boundary hints along its own axis",
+              GRIP_H in snap.screen() and GRIP_V not in snap.screen(), "")
+        pos = snap.find(GRIP_H)
+        check("in the gap between the two rows",
+              pos and top["y"] + top["h"] <= pos[1] < bottom["y"], str(pos))
+
+
+def test_no_resize_hint_during_another_drag():
+    """A pointer already carrying a pane is not shopping for a boundary."""
+    with Session(SH, cols=120, rows=26) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle(200)
+        left, right = s.panes()
+        gx, gy = left["x"] + left["w"], left["y"] + 3
+
+        s.send(rf"\e[<0;{left['x'] + 5};{left['y'] + 1}M")   # grab the title
+        s.send(rf"\e[<32;{gx + 1};{gy + 1}M")                # drag over the gap
+        time.sleep(0.35)
+        s.settle(80)
+        check("a title drag over a gap arms nothing",
+              GRIP_V not in s.snapshot().screen(), "")
+        s.send(rf"\e[<0;{gx + 1};{gy + 1}m")
+        s.settle(80)
+
+
 if __name__ == "__main__":
     test_keyboard_resize()
     test_vertical_resize()
@@ -220,4 +319,8 @@ if __name__ == "__main__":
     test_title_drag_reorders()
     test_drag_edge_cases()
     test_drop_target_is_visible()
+    test_the_gap_says_it_is_a_handle()
+    test_the_hint_changes_while_resizing()
+    test_a_horizontal_boundary_uses_horizontal_marks()
+    test_no_resize_hint_during_another_drag()
     sys.exit(report())

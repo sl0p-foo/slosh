@@ -62,7 +62,9 @@ worth having. Click a pane to focus
 it, a tab to switch, `+tab` to open one, a collapsed header to expand it, and a
 pane's own buttons to talk to the program inside it. **Drag a pane's title bar
 onto another pane to swap them, or drag the gap between two panes to move the
-boundary.** While you drag, every *other* pane drains to grey and drops in
+boundary.** Resting on a gap marks it dotted to say it is a handle, and
+doubles the mark while you are actually moving it. While you drag a pane,
+every *other* pane drains to grey and drops in
 brightness while its border turns dashed — they are all places the pane could
 land — and the one in your hand keeps its colour and a solid border, so it
 lifts off the page. Focus follows the pointer (`focus_follows_mouse`, on by
