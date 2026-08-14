@@ -7,6 +7,8 @@ against a pane count that a stack lies about. Here the layout is recomputed
 from the tree and the rect every frame, so the equivalent bug has nowhere to
 live — and these tests are what says so.
 """
+import os
+import tempfile
 import sys
 
 from harness import Session, check, report
@@ -176,6 +178,86 @@ def test_tiny_terminal():
         check("still alive after every size", s.api("alive")["alive"])
 
 
+# ---- collapsing flattens the hierarchy -------------------------------------
+
+def nested_layout():
+    """left column of three stacked panes, plus one on the right."""
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write('layout {\n tab name="t" {\n  pane split="rows" { pane\n'
+            '   pane\n   pane }\n  pane\n }\n}\n')
+    f.close()
+    return f.name
+
+
+def test_collapsing_flattens_the_tree():
+    lay = nested_layout()
+    with Session(SH, cols=50, rows=26, layout=lay) as s:
+        s.settle(20)
+        ids = [p["id"] for p in s.panes()]
+        s.api("focus", id=ids[-1])
+        s.settle(20)
+        panes = s.panes()
+        hidden = [p for p in panes if p["hidden"]]
+        shown = [p for p in panes if not p["hidden"]]
+
+        check("everything but the focused pane becomes a header",
+              len(hidden) == 3 and len(shown) == 1, str(panes))
+        check("each header is exactly one row",
+              all(p["h"] == 1 for p in hidden), str([p["h"] for p in hidden]))
+        # The nesting is what there is no room to express, so it stops
+        # existing: no two panes sit side by side while collapsed.
+        check("no two panes share a row",
+              len({p["y"] for p in hidden}) == len(hidden),
+              str([p["y"] for p in hidden]))
+        check("the headers come first and the body below them",
+              shown[0]["y"] > max(p["y"] for p in hidden), str(panes))
+    os.unlink(lay)
+
+
+def test_every_collapsed_pane_is_clickable():
+    """The bug flattening fixes: a collapsed subtree used to give every pane
+    inside it the same rect and one hit for the first of them."""
+    lay = nested_layout()
+    with Session(SH, cols=50, rows=26, layout=lay) as s:
+        s.settle(20)
+        ids = [p["id"] for p in s.panes()]
+        s.api("focus", id=ids[-1])
+        s.settle(20)
+        snap = s.snapshot()
+        hidden = [p for p in s.panes() if p["hidden"]]
+
+        actions = [snap.hit_at(p["x"] + 2, p["y"]) for p in hidden]
+        check("every header carries its own pane's focus action",
+              actions == [f"focus:{p['id']}" for p in hidden], str(actions))
+        check("and they are all different", len(set(actions)) == len(actions),
+              str(actions))
+
+        # Clicking the *last* header must reach that pane, not the first one.
+        target = hidden[-1]
+        s.click(target["x"] + 2, target["y"])
+        s.settle(20)
+        now = {p["id"]: p for p in s.panes()}
+        check("clicking the last header expands that exact pane",
+              not now[target["id"]]["hidden"] and now[target["id"]]["h"] > 1,
+              str(s.panes()))
+    os.unlink(lay)
+
+
+def test_a_flattened_stack_offers_no_resize_handles():
+    """Nothing is side by side any more, so there is nothing to drag."""
+    lay = nested_layout()
+    with Session(SH, cols=50, rows=26, layout=lay) as s:
+        s.settle(20)
+        ids = [p["id"] for p in s.panes()]
+        s.api("focus", id=ids[-1])
+        s.settle(20)
+        snap = s.snapshot()
+        edges = [h for h in snap.hits if h["action"].startswith("edge:")]
+        check("a collapsed stack registers no resize edges", edges == [],
+              str(edges))
+    os.unlink(lay)
+
+
 if __name__ == "__main__":
     test_collapse()
     test_collapse_expand_cycle()
@@ -183,4 +265,7 @@ if __name__ == "__main__":
     test_click_a_header()
     test_hidden_panes_keep_running()
     test_tiny_terminal()
+    test_collapsing_flattens_the_tree()
+    test_every_collapsed_pane_is_clickable()
+    test_a_flattened_stack_offers_no_resize_handles()
     sys.exit(report())

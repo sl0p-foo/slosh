@@ -501,24 +501,48 @@ bool app_pump_fd(app_t *a, int fd) {
 
 /* ---- layout: a pure function of the tree and the rect ------------------- */
 
-static bool subtree_has(node_t *n, node_t *needle) {
-  if (n == needle) return true;
-  if (n->kind == NODE_LEAF) return false;
+/* Every leaf under a node, in tree order. */
+static size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k) {
+  if (!n || k >= cap) return k;
+  if (n->kind == NODE_LEAF) {
+    out[k++] = n;
+    return k;
+  }
   for (size_t i = 0; i < n->nkids; i++)
-    if (subtree_has(n->kids[i], needle)) return true;
-  return false;
+    k = collect_leaves(n->kids[i], out, cap, k);
+  return k;
 }
 
-/* A collapsed subtree keeps running and keeps its size; it is simply not
- * drawn. Its leaves take the header's rect so that focusing "down" onto a
- * header still works, and focusing a hidden pane expands it on the next pass. */
-static void mark_collapsed(node_t *n, rect_t r) {
+static size_t count_leaves(node_t *n) {
+  if (!n) return 0;
+  if (n->kind == NODE_LEAF) return 1;
+  size_t k = 0;
+  for (size_t i = 0; i < n->nkids; i++) k += count_leaves(n->kids[i]);
+  return k;
+}
+
+/* A collapsed pane keeps running and keeps its size — it is simply not drawn,
+ * and deliberately not resized, so nothing inside it reflows to one row and
+ * back while you drag a terminal narrower. */
+static void collapse_leaf(node_t *leaf, rect_t r) {
+  leaf->collapsed = true;
+  leaf->hidden = true;
+  leaf->rect = r;
+  /* `content` is deliberately left alone. It is the size the program inside
+   * still believes it has — it was not resized on the way in and must not
+   * appear to have been — and nothing draws a collapsed pane's content, so a
+   * header rect there would only be a more convincing lie. */
+}
+
+/* The splits above a flattened stack span the whole area and draw nothing.
+ * Their children no longer sit side by side, so the gap loop in draw_node
+ * finds no gap between any two of them and registers no resize handles —
+ * which is right, because there is nothing left to resize. */
+static void span_splits(node_t *n, rect_t r) {
+  if (!n || n->kind == NODE_LEAF) return;
   n->rect = r;
-  if (n->kind == NODE_LEAF) {
-    n->hidden = true;
-    return;
-  }
-  for (size_t i = 0; i < n->nkids; i++) mark_collapsed(n->kids[i], r);
+  n->collapsed = false;
+  for (size_t i = 0; i < n->nkids; i++) span_splits(n->kids[i], r);
 }
 
 static node_t *first_leaf_of(node_t *n) {
@@ -528,46 +552,65 @@ static node_t *first_leaf_of(node_t *n) {
 
 static void layout_node(node_t *n, rect_t r, node_t *focus);
 
-/* The collapse: one expanded child, every other child a single header row.
+/* The collapse: the hierarchy stops existing for as long as it does not fit.
+ *
+ * Every pane under this node becomes one row in a flat list, with the focused
+ * one opened below them. Nesting is exactly what there is no room to express,
+ * so a subtree that cannot fit does not get to keep spending rows saying how
+ * its panes are arranged — and a reader in this state wants "which pane",
+ * not "which arrangement".
+ *
+ * Flat also makes every pane reachable. Collapsing a *subtree* to one header
+ * gave every leaf inside it the same rect and one hit for the first of them,
+ * so the rest could not be clicked at all. One row each fixes that by
+ * construction.
+ *
+ * Headers first and the body below, rather than the open pane sitting in its
+ * own position: switching then moves only the content, and the list you are
+ * picking from holds still. The tree order it would have preserved is the
+ * thing being flattened away anyway.
+ *
  * Recomputed from the rect every frame, so there is no state to go stale —
  * which is the whole argument for D6 over swap layouts. */
 static void layout_stack(node_t *n, rect_t r, node_t *focus) {
-  size_t expanded = 0;
-  for (size_t i = 0; i < n->nkids; i++)
-    if (focus && subtree_has(n->kids[i], focus)) expanded = i;
+  node_t *leaves[64];
+  size_t nl = collect_leaves(n, leaves, 64, 0);
+  if (!nl) return;
 
-  uint16_t headers = (uint16_t)(n->nkids - 1);
-  uint16_t body = (uint16_t)(r.h - headers);
+  size_t expanded = 0;
+  for (size_t i = 0; i < nl; i++)
+    if (focus && leaves[i] == focus) expanded = i;
+
+  span_splits(n, r);
+
+  uint16_t headers = (uint16_t)(nl - 1);
+  uint16_t body = r.h > headers ? (uint16_t)(r.h - headers) : 1;
 
   uint16_t y = r.y;
-  for (size_t i = 0; i < n->nkids; i++) {
-    if (i == expanded) {
-      layout_node(n->kids[i], (rect_t){r.x, y, r.w, body}, focus);
-      y = (uint16_t)(y + body);
-    } else {
-      node_t *k = n->kids[i];
-      k->collapsed = true;
-      mark_collapsed(k, (rect_t){r.x, y, r.w, 1});
-      y = (uint16_t)(y + 1);
-    }
+  for (size_t i = 0; i < nl; i++) {
+    if (i == expanded) continue;
+    collapse_leaf(leaves[i], (rect_t){r.x, y, r.w, 1});
+    y = (uint16_t)(y + 1);
   }
+  layout_node(leaves[expanded], (rect_t){r.x, y, r.w, body}, focus);
 }
 
-/* Not even room for one header row per sibling: show the focused subtree and
- * nothing else. The alternative is rects that do not fit on the screen, and a
- * pane one cell tall helps no one. */
+/* Not even room for one row per pane plus something to look at: show the
+ * focused pane and nothing else. The alternative is rects that do not fit on
+ * the screen, and a pane one cell tall helps no one. */
 static void layout_solo(node_t *n, rect_t r, node_t *focus) {
+  node_t *leaves[64];
+  size_t nl = collect_leaves(n, leaves, 64, 0);
+  if (!nl) return;
+
   size_t expanded = 0;
-  for (size_t i = 0; i < n->nkids; i++)
-    if (focus && subtree_has(n->kids[i], focus)) expanded = i;
-  for (size_t i = 0; i < n->nkids; i++) {
-    if (i == expanded) {
-      layout_node(n->kids[i], r, focus);
-    } else {
-      n->kids[i]->collapsed = true;
-      mark_collapsed(n->kids[i], (rect_t){r.x, r.y, 0, 0});
-    }
-  }
+  for (size_t i = 0; i < nl; i++)
+    if (focus && leaves[i] == focus) expanded = i;
+
+  span_splits(n, r);
+  for (size_t i = 0; i < nl; i++)
+    if (i != expanded) collapse_leaf(leaves[i], (rect_t){r.x, r.y, 0, 0});
+  layout_node(leaves[expanded], r, focus);
 }
 
 static void layout_node(node_t *n, rect_t r, node_t *focus) {
@@ -599,8 +642,10 @@ static void layout_node(node_t *n, rect_t r, node_t *focus) {
   uint16_t floor_ = n->dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
   uint16_t need = (uint16_t)(k * floor_ + gap * (k - 1));
   if (total < need) {
-    /* a stack needs one row per collapsed sibling plus a usable body */
-    if (r.h >= (uint16_t)(k + 2)) layout_stack(n, r, focus);
+    /* The stack is one row per pane in the whole subtree, not per child, plus
+     * a body worth opening into — three rows, since a frame is two of them. */
+    size_t nl = count_leaves(n);
+    if (r.h >= (uint16_t)(nl + 2)) layout_stack(n, r, focus);
     else layout_solo(n, r, focus);
     return;
   }
