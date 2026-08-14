@@ -85,6 +85,11 @@ copy the same way (OSC 52) and can raise a notification (OSC 9), which appears
 as a toast in the corner — as do `{"cmd":"notify","text":"..."}` and things
 like "copied 13 chars".
 
+A **BEL** from a program marks the pane it came from and the tab that pane is
+in, until you look at it. A bell is for the pane you are *not* watching, so one
+that only showed on screen would be useless in a background tab. `bell_indicator
+false` turns it off; `bell_mark` chooses the character.
+
 **Shaders** are colour passes over a pane's *contents* — never the frame, the
 title or the tab strip, so chrome stays legible over a pane that has been
 dimmed underneath it. A `states { }` block says what a pane looks like while

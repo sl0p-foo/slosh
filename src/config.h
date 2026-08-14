@@ -78,6 +78,14 @@ typedef struct {
    * always carries a space on each side on top of this, so a title can never
    * end up welded to the rule beside it. */
   uint16_t title_inset;
+  /* Mark a pane's titlebar when a BEL arrives there and nobody has looked
+   * since. Off makes a bell silent *and* invisible, which is a real choice. */
+  bool bell_indicator;
+  /* What to draw. A short string rather than a fixed glyph: the obvious
+   * choice is an emoji bell, and emoji are drawn two columns wide by many
+   * terminals while chrome here is booked as one — so the default is narrow
+   * and anyone who knows their terminal can say otherwise. */
+  char bell_mark[16];
   uint16_t min_pane_cols, min_pane_rows;
   /* The smallest pane a split is allowed to *produce*. min_pane is the point
    * below which the layout gives up and collapses a pane; this is the point
@@ -168,6 +176,9 @@ typedef struct {
 
   /* the in-place editor a double-click opens on a pane's title */
   color_t rename_fg, rename_bg;
+
+  /* the bell mark in a pane's titlebar */
+  color_t bell;
 
   /* announcements */
   color_t toast_fg, toast_bg;

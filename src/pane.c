@@ -26,6 +26,7 @@ struct pane {
   uint16_t cols, rows_n;
   bool alive;
   bool dirty;
+  bool bell; /* rang, and not yet looked at */
   char title[256];
   /* A name the user typed. It shadows `title` rather than overwriting it, so
    * the program's own title keeps arriving underneath and clearing the name
@@ -180,6 +181,17 @@ static void on_notify(GhosttyTerminal t, void *ud,
   p->notify_cb(p, title, body, p->notify_ud);
 }
 
+/* A pane rang. It stays rung until the pane is looked at, because the whole
+ * point is to survive not being looked at — a bell that cleared itself after a
+ * moment would be an indicator you can only see if you were already watching
+ * the pane that did not need your attention. */
+static void on_bell(GhosttyTerminal t, void *ud) {
+  (void)t;
+  pane_t *p = ud;
+  p->bell = true;
+  p->dirty = true;
+}
+
 static void on_title_changed(GhosttyTerminal t, void *ud) {
   pane_t *p = ud;
   GhosttyString s = {0};
@@ -263,6 +275,8 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_USERDATA, p);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY,
                        (const void *)(uintptr_t)on_write_pty);
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_BELL,
+                       (const void *)(uintptr_t)on_bell);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED,
                        (const void *)(uintptr_t)on_title_changed);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
@@ -322,6 +336,14 @@ const char *pane_title(const pane_t *p) {
 }
 
 const char *pane_name(const pane_t *p) { return p->name; }
+
+bool pane_bell(const pane_t *p) { return p->bell; }
+
+void pane_clear_bell(pane_t *p) {
+  if (!p->bell) return;
+  p->bell = false;
+  p->dirty = true;
+}
 
 void pane_set_name(pane_t *p, const char *name) {
   if (!name) name = "";

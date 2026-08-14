@@ -92,6 +92,7 @@ bool app_reload_config(char *err, size_t errcap) {
 #define TOAST_BG (CFG.toast_bg)
 #define RENAME_FG (CFG.rename_fg)
 #define RENAME_BG (CFG.rename_bg)
+#define BELL_C (CFG.bell)
 
 static const color_t NO_COLOR = {0};
 
@@ -1656,6 +1657,12 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     screen_text(s, x1, y, vbar, fg, NO_COLOR, attrs);
   }
 
+  /* A pane that rang, marked just inside its corner: the same place on every
+   * pane, whatever its title is doing. */
+  if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4)
+    screen_text(s, (uint16_t)(r.x + 1), r.y, CFG.bell_mark, BELL_C, NO_COLOR,
+                ATTR_BOLD);
+
   /* The frame's top row is the drag handle. Registered before the split
    * button, which is painted after and therefore wins its own cell. */
   {
@@ -1817,6 +1824,12 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
     screen_text(s, x, r.y, "─", rule, NO_COLOR, 0);
   screen_text(s, r.x, r.y, tl, rule, NO_COLOR, 0);
   screen_text(s, x1, r.y, tr, rule, NO_COLOR, 0);
+
+  /* Just inside the corner, where it is in the same place on every pane
+   * whatever its title is doing. */
+  if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4)
+    screen_text(s, (uint16_t)(r.x + 1), r.y, CFG.bell_mark, BELL_C, NO_COLOR,
+                ATTR_BOLD);
 
   uint16_t tx = (uint16_t)(r.x + 1 + CFG.title_inset);
   if (tx < x1) {
@@ -1981,6 +1994,19 @@ static void draw_cb(node_t *n, void *ud) {
   draw_split_guide(d->a, d->s, n);
 }
 
+struct bellsearch {
+  bool found;
+};
+static void bell_cb(node_t *n, void *ud) {
+  struct bellsearch *b = ud;
+  if (pane_bell(n->pane)) b->found = true;
+}
+static bool tab_has_bell(tab_t *t) {
+  struct bellsearch b = {false};
+  walk(t->root, bell_cb, &b);
+  return b.found;
+}
+
 static void draw_tab_strip(app_t *a, screen_t *s) {
   uint16_t x = CFG.status_pad;
   uint16_t y = CFG.gap;
@@ -2007,8 +2033,14 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     tab_t *t = &a->tabs[i];
     char label[80];
     const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
-    if (nm[0]) snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
-    else snprintf(label, sizeof label, " %zu ", i + 1);
+    /* A pane that rang in a tab you are not looking at is invisible without
+     * this, and that is the case the whole indicator exists for. */
+    const char *bell = (CFG.bell_indicator && tab_has_bell(t)) ? CFG.bell_mark : "";
+    if (nm[0])
+      snprintf(label, sizeof label, " %zu:%s%s%s ", i + 1, nm,
+               bell[0] ? " " : "", bell);
+    else
+      snprintf(label, sizeof label, " %zu%s%s ", i + 1, bell[0] ? " " : "", bell);
 
     bool active = i == a->cur;
     uint16_t attrs = active ? ATTR_BOLD : 0;
@@ -2334,6 +2366,14 @@ void app_compose(app_t *a, screen_t *s) {
   s->cursor_visible = false;
   a->painted = s;
   if (!a->ntabs || !cur(a)->root) return;
+
+  /* Looking at a pane is the acknowledgement, and it happens before anything
+   * is drawn rather than while the pane itself is: the tab strip is painted
+   * first and would otherwise spend a frame reporting a bell that had just
+   * been answered. Done here so that every route to "this pane is focused"
+   * clears it, not only the ones that thought to. */
+  if (cur(a)->focus) pane_clear_bell(cur(a)->focus->pane);
+
   layout(a);
   if (CFG.status_bar) draw_tab_strip(a, s);
   draw_node(a, s, cur(a)->root);

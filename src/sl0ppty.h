@@ -156,6 +156,9 @@ void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total);
 bool pane_alt_screen(const pane_t *p);
 bool pane_wants_mouse(const pane_t *p);
 const char *pane_title(const pane_t *p);
+/* A BEL arrived and the pane has not been looked at since. */
+bool pane_bell(const pane_t *p);
+void pane_clear_bell(pane_t *p);
 /* The user-assigned name, "" when the program's title is showing through. */
 const char *pane_name(const pane_t *p);
 /* "" clears the name and gives the pane back to the program's title. */

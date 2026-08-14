@@ -169,6 +169,8 @@ void config_defaults(config_t *c) {
   c->rounded = true;
   c->title_align = ALIGN_CENTER;
   c->title_inset = 2;
+  c->bell_indicator = true;
+  snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
   c->min_split_cols = 32;
@@ -245,6 +247,8 @@ void config_defaults(config_t *c) {
   c->finder_bg = dim;
   c->finder_sel_fg = ink;
   c->finder_sel_bg = accent;
+
+  c->bell = accent;
 
   c->rename_fg = ink;
   c->rename_bg = accent;
@@ -358,6 +362,10 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
 
   c->title_inset =
       (uint16_t)kdl_arg_int(kdl_child(root, "title_inset"), 0, c->title_inset);
+  c->bell_indicator =
+      kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);
+  const char *bm = kdl_arg(kdl_child(root, "bell_mark"), 0, NULL);
+  if (bm) snprintf(c->bell_mark, sizeof c->bell_mark, "%s", bm);
 
   const kdl_node_t *mins = kdl_child(root, "min_split");
   if (mins) {
@@ -450,6 +458,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         {"finder_bg", &c->finder_bg},
         {"finder_sel_fg", &c->finder_sel_fg},
         {"finder_sel_bg", &c->finder_sel_bg},
+        {"bell", &c->bell},
         {"rename_fg", &c->rename_fg},
         {"rename_bg", &c->rename_bg},
         {"toast_fg", &c->toast_fg},

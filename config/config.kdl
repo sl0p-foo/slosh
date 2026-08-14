@@ -29,6 +29,22 @@ title_align "center"
 // of this, so it can never end up welded to the rule beside it.
 title_inset 2
 
+// ── the bell ────────────────────────────────────────────────────────────────
+//
+// A BEL from a program marks the pane it came from, and the tab that pane is
+// in -- a bell exists for the pane you are *not* looking at, and one that only
+// showed on screen would be useless in a background tab. Looking at the pane
+// is what puts it out. Off makes a bell silent *and* invisible, which is a
+// real choice rather than an oversight.
+bell_indicator true
+
+// What to draw. A short string rather than a fixed glyph, because the obvious
+// choice is an emoji bell and emoji are drawn two columns wide by many
+// terminals while chrome here is booked as one -- so the default is narrow and
+// anyone who knows their own terminal can say otherwise. (This file has no
+// \u escape, so put the character itself here.)
+bell_mark "•"
+
 // The one-row bar with tabs, the +tab button and the pane count.
 status_bar true
 
