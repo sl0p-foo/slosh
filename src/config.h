@@ -193,6 +193,9 @@ typedef struct {
   /* the frame's own buttons */
   color_t pane_button, pane_button_hover;
 
+  /* the row of minimised panes along the bottom */
+  color_t minbar, minbar_hover;
+
   /* announcements */
   color_t toast_fg, toast_bg;
 

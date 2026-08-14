@@ -78,14 +78,14 @@ rewrites its title cannot undo it; clear the name and the pane goes back to the
 program's title. The name is only the title *text*: the rest of the top border
 is still the top edge, and still splits upward when clicked.
 
-**Zoom a pane** with `C-a z` or the `□` button in its top-right corner, and it
+**Zoom a pane** with `C-a z` or the `[]` button in its top-right corner, and it
 fills the tab until you put it back; the other panes keep running, they are
-just not drawn. `×` beside it closes the pane. `pane_buttons false` takes both
+just not drawn. `x` beside it closes the pane. `pane_buttons false` takes both
 buttons off without touching the keybindings.
 
-**Minimise a pane** with `C-a m` or the `▁` button and it leaves the layout for
-a strip along the bottom, one row each, still running — the panes it leaves
-behind take the space back. Click its row to bring it back. Once a tab is too
+**Minimise a pane** with `C-a m` or the `_` button and it leaves the layout for
+a single row along the bottom listing everything put away, still running — the panes it leaves
+behind take the space back. Click its name to bring it back. Once a tab is too
 small and has flattened into a list, being minimised means nothing: every pane
 is a row down there already.
 

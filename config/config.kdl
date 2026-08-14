@@ -53,16 +53,17 @@ title_inset 2
 // the setting is about the affordance and not the verb.
 pane_buttons true
 
-// Emoji are drawn two columns wide by many terminals while chrome here is
-// booked as one, so these default to narrow glyphs. Pick marks of similar
-// visual weight: the buttons are evenly spaced, but a glyph that floats in a
-// mostly-empty cell donates that space to the gap and looks further off than
-// its neighbours. Put the character itself
+// Plain ASCII by default. The buttons are evenly spaced whatever is in them,
+// but how even they *look* depends on the glyphs: a light character floating
+// in a mostly-empty cell donates that space to the gap beside it, and emoji are
+// drawn two columns wide by many terminals while chrome here is booked as one.
+// ASCII has neither problem. A mark may be more than one character -- the
+// button is measured, not assumed -- so "[]" and "][" work. Put the character itself
 // here; this file has no \u escape.
-zoom_mark "□"
-zoom_on_mark "▣"
-close_mark "×"
-min_mark "▁"
+zoom_mark "[]"
+zoom_on_mark "]["
+close_mark "x"
+min_mark "_"
 
 bell_indicator true
 

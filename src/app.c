@@ -95,6 +95,8 @@ bool app_reload_config(char *err, size_t errcap) {
 #define BELL_C (CFG.bell)
 #define PANE_BTN (CFG.pane_button)
 #define PANE_BTN_HOVER (CFG.pane_button_hover)
+#define MINBAR (CFG.minbar)
+#define MINBAR_HOVER (CFG.minbar_hover)
 
 static const color_t NO_COLOR = {0};
 
@@ -144,6 +146,10 @@ struct node {
 typedef struct {
   node_t *root;
   node_t *focus;
+  /* Where the minimised panes are listed, or zero-sized when none are. Set by
+   * the layout and consumed by the drawing, rather than each working the
+   * geometry out for itself. */
+  rect_t min_bar;
   /* The pane filling this tab on its own, or 0. Intent rather than derived
    * state, like focus: nothing about the tree says a pane is zoomed, you said
    * so. Kept per tab so zooming one does not disturb another. */
@@ -321,7 +327,8 @@ size_t app_toast_count(app_t *a) {
   return a->ntoasts;
 }
 
-static size_t count_leaves(node_t *n); /* both defined with the layout */
+static size_t count_leaves(node_t *n); /* all defined with the layout */
+static size_t collect_minimized(node_t *n, node_t **out, size_t cap, size_t k);
 static size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k);
 
 /* The line along the bottom: what you are looking at, rather than what you
@@ -332,6 +339,42 @@ static size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k);
  * what it calls itself, and whether it is in a state worth knowing about —
  * scrolled back, on an alternate screen, or not started yet. Those last three
  * are the ones you can otherwise only discover by being surprised. */
+/* The minimised panes, listed along one row. Shaped like the tab strip because
+ * it is the same kind of thing: a row of names you click to go somewhere. */
+static void draw_min_bar(app_t *a, screen_t *s) {
+  if (!a->ntabs) return;
+  rect_t bar = cur(a)->min_bar;
+  if (!bar.w || !bar.h) return;
+
+  node_t *mins[64];
+  size_t nmin = collect_minimized(cur(a)->root, mins, 64, 0);
+  if (!nmin) return;
+
+  uint16_t x = bar.x;
+  uint16_t right = (uint16_t)(bar.x + bar.w);
+
+  /* A legend, so a row of bare names is not a mystery. */
+  x = (uint16_t)(x + screen_text(s, x, bar.y, CFG.min_mark, MINBAR, NO_COLOR, 0));
+  x = (uint16_t)(x + 1);
+
+  for (size_t i = 0; i < nmin && x < right; i++) {
+    const char *nm = pane_title(mins[i]->pane);
+    char label[64];
+    snprintf(label, sizeof label, " %s ", nm && *nm ? nm : "pane");
+    /* Drawn, measured, then redrawn lit if the pointer turns out to be on it:
+     * the same trick the tab strip uses, and for the same reason — the cells
+     * that light up are exactly the ones registered. */
+    uint16_t w = screen_text(s, x, bar.y, label, MINBAR, NO_COLOR, 0);
+    if ((uint16_t)(x + w) > right) break;
+    if (ptr_on(a, x, bar.y, w, 1))
+      screen_text(s, x, bar.y, label, MINBAR_HOVER, NO_COLOR, ATTR_BOLD);
+    char action[48];
+    snprintf(action, sizeof action, "focus:%u", mins[i]->id);
+    hit_add(&s->hits, x, bar.y, w, 1, action);
+    x = (uint16_t)(x + w);
+  }
+}
+
 static void draw_status_line(app_t *a, screen_t *s) {
   if (!CFG.status_line || s->rows < 3) return;
   uint16_t y = (uint16_t)(s->rows - CFG.gap - 1);
@@ -964,31 +1007,38 @@ static void layout(app_t *a) {
   /* Minimised panes come out of the layout and sit in a strip along the
    * bottom, one row each. The tree is then laid out in what is left, so a
    * minimised pane costs a row rather than a share. */
+  /* Minimised panes are listed on one row along the bottom, however many there
+   * are. A row each would let putting things away cost more room than having
+   * them out, which is the opposite of the point. */
   node_t *mins[64];
   size_t nmin = collect_minimized(root, mins, 64, 0);
   rect_t tree_r = r;
+  bool no_room = false;
+  cur(a)->min_bar = (rect_t){0, 0, 0, 0};
   if (nmin) {
-    /* If the strip would leave too little to be worth looking at, do not
-     * reserve it: the tab flattens instead, and down there a minimised pane is
-     * just another row, which is what it would have become anyway. */
-    if ((uint16_t)(r.h - nmin) >= (uint16_t)(MIN_PANE_ROWS + 2))
-      tree_r.h = (uint16_t)(r.h - nmin);
-    else
-      nmin = 0;
+    if (r.h >= (uint16_t)(MIN_PANE_ROWS + 3)) {
+      tree_r.h = (uint16_t)(r.h - 1);
+      cur(a)->min_bar = (rect_t){r.x, (uint16_t)(r.y + r.h - 1), r.w, 1};
+    } else {
+      no_room = true;
+    }
   }
 
   layout_ctx_t probe = {.focus = cur(a)->focus, .apply = false};
   layout_node(root, tree_r, &probe);
+  /* Nowhere to put the bar means nowhere to put anything: flatten, where every
+   * pane is a row and being minimised is not a different thing to be. */
+  if (no_room) probe.overflow = true;
 
   layout_ctx_t real = {.focus = cur(a)->focus, .apply = true};
   if (!probe.overflow) {
     layout_node(root, tree_r, &real);
-    /* The strip, under the layout it was taken out of. */
+    /* They are drawn by the bar, not as panes: no rect of their own. */
     for (size_t i = 0; i < nmin; i++)
-      collapse_leaf(mins[i], (rect_t){r.x, (uint16_t)(tree_r.y + tree_r.h + i),
-                                      r.w, 1});
+      collapse_leaf(mins[i], (rect_t){r.x, r.y, 0, 0});
     return;
   }
+  cur(a)->min_bar = (rect_t){0, 0, 0, 0}; /* a list has no separate bar */
   if (r.h >= (uint16_t)(count_leaves(root) + 2)) {
     /* One row per pane, plus a body worth opening into: a frame is two rows. */
     layout_stack(root, r, &real);
@@ -1841,7 +1891,15 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     for (size_t i = 0; i < sizeof btns / sizeof *btns; i++) {
       char cell[24];
       snprintf(cell, sizeof cell, " %s ", btns[i].mark);
-      uint16_t bw = 3;
+      /* Measured in cells rather than assumed: a mark is yours to choose and
+       * may be more than one character. Booking three cells for a
+       * two-character mark would draw it over its neighbour and hand the
+       * neighbour's hit a cell it does not own. */
+      uint16_t mw = 0;
+      for (const char *q = btns[i].mark; *q; q++)
+        if (((unsigned char)*q & 0xC0) != 0x80) mw++;
+      if (!mw) mw = 1;
+      uint16_t bw = (uint16_t)(mw + 2);
       if (bx < r.x + 4 + bw) break;
       uint16_t px = (uint16_t)(bx - bw + 1);
       bool hot = ptr_on(a, px, r.y, bw, 1);
@@ -2556,6 +2614,7 @@ void app_compose(app_t *a, screen_t *s) {
   layout(a);
   if (CFG.status_bar) draw_tab_strip(a, s);
   draw_node(a, s, cur(a)->root);
+  draw_min_bar(a, s);
   draw_status_line(a, s);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
   draw_toasts(a, s);                /* and above even that: it is transient */
