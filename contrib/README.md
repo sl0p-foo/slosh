@@ -57,9 +57,21 @@ what it will do in a pane. Anything reading `t` animates. Presets cover every
 built-in written as an expression, which is the equivalence the design rests
 on, and the config line to paste is printed underneath.
 
+The presets are grouped, and most of them are less "effect" than
+*instrument*: a cursor line, a crosshair, indent guides, a right margin, a
+torch that dims everything more than eight cells from where you are looking
+-- things that tell you where you are inside a program that has never heard
+of any of them. Then a CRT section (phosphor, amber, film grain, a rolling
+bar), a motion section (sonar pings from the cursor, ripples, matrix rain,
+plasma), and every built-in written as an expression, which is the
+equivalence the design rests on: `vignette` is `dim` with an argument.
+
 It reimplements `src/expr.c` in JavaScript, which is the obvious hazard: a
 preview that disagrees with the compiler is worse than no preview, and it
-would disagree quietly. So `tests/test_shadertoy.py` lifts the evaluator out
-of the page, runs a few hundred expression/environment pairs through both it
-and the real compiler, and fails if a single number differs. It found its
-first bug on its first run.
+would disagree quietly. So `tests/test_shadertoy.py` lifts the evaluator *and
+the presets* out of the page and runs them through both implementations --
+new presets are checked without anyone remembering to add them. It also
+evaluates every preset over a whole pane at four points in time and fails any
+that computes zero everywhere, because an example that does nothing reads as
+a broken shader system rather than a bad example. It found its first bug on
+its first run.

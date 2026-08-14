@@ -25,6 +25,7 @@ from harness import check, report
 HERE = os.path.dirname(os.path.abspath(__file__))
 HTML = os.path.join(HERE, "..", "contrib", "shadertoy.html")
 EVAL = os.path.join(HERE, "..", "build", "expr_eval")
+SCRIPT = open(HTML).read().split("<script>")[1].split("</script>")[0]
 
 # Environments to evaluate at: corners, the middle, and a moved cursor.
 ENVS = [
@@ -34,19 +35,23 @@ ENVS = [
     dict(x=40, y=12, cols=100, rows=40, curx=99, cury=39, cursor=1, focused=1, t=7),
 ]
 
+def page_presets():
+    """Every preset the page ships, lifted out of the page.
+
+    Read rather than listed, so a preset added later is checked without anyone
+    remembering to add it here -- which nobody would."""
+    prefix = SCRIPT[:SCRIPT.index("/* ---- the chain UI")]
+    out = subprocess.run(["node", "-e", prefix + "\nconsole.log(JSON.stringify(PRESETS));"],
+                         capture_output=True, text=True)
+    groups = json.loads(out.stdout)
+    return [(f"{group}/{name}", i, p["amount"])
+            for group, entries in groups.items()
+            for name, chain in entries.items()
+            for i, p in enumerate(chain)]
+
+
 EXPRS = [
-    # the presets the page ships, which are the ones people will actually copy
-    "(y % 2) * 40",
-    "(x > cols - 10) * 120",
-    "clamp(dist(x, y, curx, cury) * 9, 0, 200)",
-    "clamp(dist(x, y, cols / 2, rows / 2) * 4, 0, 190)",
-    "(x == 40) * 220",
-    "((y / 3) % 2) * 60",
-    "(((x / 8) + (y / 4)) % 2) * 45",
-    "clamp((t / 6) % 300 - 45, 0, 160)",
-    "clamp(abs(x - (t / 24) % cols) * 22, 0, 200)",
-    "180",
-    # and the corners of the language
+    # the corners of the language
     "1 + 2 * 3",
     "(1 + 2) * 3",
     "10 - 3 - 2",
@@ -146,7 +151,9 @@ def main():
         check("the expression evaluator is built", False, EVAL)
         return report()
 
-    exprs = EXPRS + rand_exprs(40)
+    presets = page_presets()
+    check("the page ships presets to check", len(presets) >= 20, str(len(presets)))
+    exprs = EXPRS + [e for _, _, e in presets] + rand_exprs(40)
     pairs = [(env, e) for e in exprs for env in ENVS]
 
     import tempfile
@@ -176,6 +183,24 @@ def main():
     check(f"the toy agrees with the compiler on all {len(pairs)} evaluations",
           not bad,
           "\n".join(f"    {e!r} at {env} -> C {w}, JS {g}" for e, env, w, g in bad[:8]))
+
+    # A preset that computes 0 everywhere is a preset that does nothing, which
+    # is a broken example rather than a subtle one: it looks like the shader
+    # system is not working. Checked over a whole pane and four points in time,
+    # cell by cell -- sampling every other row made three `y % 2` effects look
+    # dead when they were fine.
+    grid = [dict(x=x, y=y, cols=64, rows=24, curx=30, cury=12, cursor=1,
+                 focused=1, t=t)
+            for t in (0, 500, 1500, 4000) for y in range(24) for x in range(64)]
+    flat = [(env, e) for _, _, e in presets for env in grid]
+    vals = c_values(flat)
+    per = len(grid)
+    for idx, (label, i, expr) in enumerate(presets):
+        window = vals[idx * per:(idx + 1) * per]
+        nums = [int(v) for v in window if not v.startswith("error")]
+        check(f"{label} pass {i} does something",
+              nums and max(0, min(255, max(nums))) > 0,
+              f"{expr!r} is 0 everywhere")
 
     # And that a refusal is a refusal on both sides, since a page that quietly
     # accepts what the config rejects teaches the wrong language.
