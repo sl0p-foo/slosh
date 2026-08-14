@@ -179,10 +179,66 @@ def test_it_can_be_turned_off_and_the_mark_chosen():
     os.unlink(l)
 
 
+# ---- a pane you have put away ----------------------------------------------
+
+RINGER = ["/bin/sh", "-c",
+          'printf "\\033]2;ringer\\007"; sleep 1; printf "\\007"; '
+          'stty raw -echo; cat']
+
+
+def bar_row(s):
+    open_panes = [p for p in s.panes() if p["w"] > 1]
+    return max(p["y"] + p["h"] for p in open_panes)
+
+
+def test_a_minimised_pane_rings_on_the_bar():
+    """The pane is not on screen at all, which is the case a bell is for.
+
+    It has to ring itself on a delay: `raw` writes to the focused pane, and
+    focusing a minimised one is what restores it.
+    """
+    with Session(RINGER, cols=90, rows=20) as s:
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        gone = s.panes()[0]["id"]
+        s.api("focus", id=gone)
+        s.settle(10)
+        s.send(r"\x01m")           # put it away before it rings
+        s.settle(20)
+        check("it is on the bar and not on screen",
+              [p["w"] for p in s.panes() if p["id"] == gone] == [0],
+              str(s.panes()))
+        row = s.snapshot().text[bar_row(s)]
+        check("with no mark yet", MARK not in row, repr(row))
+
+        for _ in range(60):        # gate on the mark rather than guess at it
+            s.settle(30)
+            if MARK in s.snapshot().text[bar_row(s)]:
+                break
+        row = s.snapshot().text[bar_row(s)]
+        check("ringing while put away marks its entry", MARK in row, repr(row))
+        check("and the tab it lives in", MARK in s.snapshot().line(1),
+              repr(s.snapshot().line(1)))
+
+        entry = [h for h in s.snapshot().hits
+                 if h["action"] == f"focus:{gone}" and h["h"] == 1]
+        check("the entry is still one target", len(entry) == 1, str(entry))
+        if not entry:
+            return
+        s.click(entry[0]["x"] + 1, entry[0]["y"])
+        s.settle(30)
+        check("restoring it answers the bell everywhere",
+              MARK not in s.snapshot().line(1)
+              and [p["w"] for p in s.panes() if p["id"] == gone] != [0],
+              repr(s.snapshot().line(1)))
+
+
 if __name__ == "__main__":
     test_a_bel_marks_the_pane_that_rang()
     test_looking_at_it_is_what_puts_it_out()
     test_a_bell_in_another_tab_shows_on_the_strip()
     test_the_strip_and_the_pane_clear_together()
     test_it_can_be_turned_off_and_the_mark_chosen()
+    test_a_minimised_pane_rings_on_the_bar()
     sys.exit(report())

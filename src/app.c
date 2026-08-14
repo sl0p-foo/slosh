@@ -239,6 +239,16 @@ static tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
  * Always asked with the rect that is about to be registered as the hit, so a
  * thing that lights up and the thing that would be clicked cannot drift apart.
  * A pointer already carrying something is busy and lights nothing. */
+/* Display columns of a short chrome string. Counts codepoints, which is exact
+ * for what chrome draws: every glyph here is one column, and a mark wide
+ * enough not to be is the thing the config warns you about. */
+static uint16_t cells(const char *str) {
+  uint16_t n = 0;
+  for (const char *q = str; q && *q; q++)
+    if (((unsigned char)*q & 0xC0) != 0x80) n++;
+  return n;
+}
+
 static bool ptr_on(const app_t *a, uint16_t x, uint16_t y, uint16_t w,
                    uint16_t h) {
   return a->ptr_valid && a->drag.kind == DRAG_NONE && a->ptr_x >= x &&
@@ -359,19 +369,31 @@ static void draw_min_bar(app_t *a, screen_t *s) {
 
   for (size_t i = 0; i < nmin && x < right; i++) {
     const char *nm = pane_title(mins[i]->pane);
+    /* A pane you cannot see is exactly the one a bell is for, so the mark
+     * comes along and keeps its own colour rather than the row's. */
+    bool rang = CFG.bell_indicator && pane_bell(mins[i]->pane);
+
     char label[64];
-    snprintf(label, sizeof label, " %s ", nm && *nm ? nm : "pane");
-    /* Drawn, measured, then redrawn lit if the pointer turns out to be on it:
-     * the same trick the tab strip uses, and for the same reason — the cells
-     * that light up are exactly the ones registered. */
-    uint16_t w = screen_text(s, x, bar.y, label, MINBAR, NO_COLOR, 0);
-    if ((uint16_t)(x + w) > right) break;
-    if (ptr_on(a, x, bar.y, w, 1))
+    snprintf(label, sizeof label, " %s", nm && *nm ? nm : "pane");
+    uint16_t lw = cells(label);
+    uint16_t bw = rang ? (uint16_t)(1 + cells(CFG.bell_mark)) : 0;
+    uint16_t total = (uint16_t)(lw + bw + 1); /* and the gap to the next one */
+    if ((uint16_t)(x + total) > right) break;
+
+    screen_text(s, x, bar.y, label, MINBAR, NO_COLOR, 0);
+    /* Lit as one target, since the whole entry is one target. */
+    if (ptr_on(a, x, bar.y, total, 1))
       screen_text(s, x, bar.y, label, MINBAR_HOVER, NO_COLOR, ATTR_BOLD);
+    if (rang) {
+      char mark[24];
+      snprintf(mark, sizeof mark, " %s", CFG.bell_mark);
+      screen_text(s, (uint16_t)(x + lw), bar.y, mark, BELL_C, NO_COLOR,
+                  ATTR_BOLD);
+    }
     char action[48];
     snprintf(action, sizeof action, "focus:%u", mins[i]->id);
-    hit_add(&s->hits, x, bar.y, w, 1, action);
-    x = (uint16_t)(x + w);
+    hit_add(&s->hits, x, bar.y, total, 1, action);
+    x = (uint16_t)(x + total);
   }
 }
 
@@ -437,9 +459,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
     /* Columns, not bytes: the only non-ASCII here is the arrow, three bytes
      * wide and one column, and strlen would hold the whole indicator two
      * columns further from the edge than it needed to be. */
-    uint16_t iw = 0;
-    for (const char *q = ind; *q; q++)
-      if (((unsigned char)*q & 0xC0) != 0x80) iw++;
+    uint16_t iw = cells(ind);
     if (right > x + iw + 2) {
       screen_text(s, (uint16_t)(right - iw), y, ind, STATUS_STATE, NO_COLOR,
                   ATTR_BOLD);
@@ -1895,9 +1915,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
        * may be more than one character. Booking three cells for a
        * two-character mark would draw it over its neighbour and hand the
        * neighbour's hit a cell it does not own. */
-      uint16_t mw = 0;
-      for (const char *q = btns[i].mark; *q; q++)
-        if (((unsigned char)*q & 0xC0) != 0x80) mw++;
+      uint16_t mw = cells(btns[i].mark);
       if (!mw) mw = 1;
       uint16_t bw = (uint16_t)(mw + 2);
       if (bx < r.x + 4 + bw) break;
@@ -2272,12 +2290,9 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
     /* A pane that rang in a tab you are not looking at is invisible without
      * this, and that is the case the whole indicator exists for. */
-    const char *bell = (CFG.bell_indicator && tab_has_bell(t)) ? CFG.bell_mark : "";
-    if (nm[0])
-      snprintf(label, sizeof label, " %zu:%s%s%s ", i + 1, nm,
-               bell[0] ? " " : "", bell);
-    else
-      snprintf(label, sizeof label, " %zu%s%s ", i + 1, bell[0] ? " " : "", bell);
+    bool rang = CFG.bell_indicator && tab_has_bell(t);
+    if (nm[0]) snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+    else snprintf(label, sizeof label, " %zu ", i + 1);
 
     bool active = i == a->cur;
     uint16_t attrs = active ? ATTR_BOLD : 0;
@@ -2292,6 +2307,16 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     /* Hovering keeps the active tab's fill — it is still the tab you are in —
      * so its feedback lands on the text instead. An inactive tab has no fill
      * to keep, and brightens. */
+    /* The bell keeps its own colour here too, rather than taking the tab's —
+     * an indicator drawn in the same dim grey as the label it sits next to is
+     * an indicator you have to already be looking for. */
+    if (rang) {
+      char mark[24];
+      snprintf(mark, sizeof mark, "%s ", CFG.bell_mark);
+      w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), y, mark, BELL_C,
+                                     active ? TAB_ACTIVE_BG : NO_COLOR,
+                                     ATTR_BOLD));
+    }
     if (ptr_on(a, x, y, w, 1))
       screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
                   active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
