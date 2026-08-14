@@ -18,7 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SL0PPTY_SHADER_ABI 1
+#define SL0PPTY_SHADER_ABI 2
 
 enum {
   ATTR_BOLD = 1 << 0,
@@ -77,9 +77,16 @@ typedef struct {
 typedef struct shader shader_t;
 typedef void (*shade_fn)(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c);
 
+/* Opaque to a shader: a compiled amount expression, owned by the config. When
+ * one is attached the pass computes `amount` per cell before calling the
+ * shader, so an effect never has to know whether its strength was a number in
+ * a config file or a function of where the cell is. */
+typedef struct expr_prog expr_prog_t;
+
 struct shader {
   const char *kind; /* registry name, NULL for an empty slot */
   shade_fn fn;
+  expr_prog_t *amount_expr; /* NULL when `amount` is just a number */
   color_t color;  /* the target colour, for shaders that have one */
   uint8_t amount; /* strength, 0..255; 0 is identity, 255 is fully applied */
   /* One number whose meaning is the shader's own, because a second parameter

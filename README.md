@@ -122,6 +122,25 @@ states {
 The same mechanism draws a column ruler, a margin marker or a spotlight that
 follows the cursor, inside programs that have never heard of such things.
 
+**A shader's strength can be an expression**, so an effect nobody built in
+takes one line of config and no compiler:
+
+```kdl
+shaders {
+    dim  amount="(y % 2) * 40"                        // scanlines
+    dim  amount="(x > cols - 10) * 120"               // a right margin
+    tint amount="255 - dist(x, y, curx, cury) * 12" color="#ff5fd7"
+}
+```
+
+Integer arithmetic over `x y cols rows curx cury focused t`, with `min max abs
+clamp dist` and comparisons that give 0 or 1 — so `(x < 10) * 200` is how you
+write a rule. There are no loops, so a config cannot hang a session. The
+expression produces the *strength* and never the colour, which keeps the
+mixing in C and means the whole program can be worked out once into a per-cell
+map and reused: a shader you wrote in your config costs about what a compiled
+one does.
+
 **You can add your own** without rebuilding sl0ppty: a shader is a C function
 from one cell to that cell's colours, and any `*.so` in
 `~/.config/sl0ppty/shaders/` that exports one is loaded at startup and named

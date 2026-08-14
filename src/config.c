@@ -126,7 +126,33 @@ static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
     const kdl_node_t *k = node->kids[i];
     if (!k || !k->name) continue;
 
-    long amount = kdl_prop_int(k, "amount", 128);
+    /* `amount` is a number, or an expression that produces one per cell.
+     * Same key either way: `amount=90` and `amount="(y % 2) * 40"` are the
+     * same idea, one of them constant, and the compiler folds a constant
+     * expression back to a number so nothing downstream can tell. */
+    expr_prog_t *aexpr = NULL;
+    long amount = 128;
+    const char *as = kdl_prop(k, "amount", NULL);
+    if (as) {
+      char *end = NULL;
+      long v = strtol(as, &end, 10);
+      while (end && (*end == ' ' || *end == '\t')) end++;
+      if (end && !*end) {
+        amount = v;
+      } else {
+        char eerr[128] = {0};
+        aexpr = expr_compile(as, eerr, sizeof eerr);
+        if (!aexpr) {
+          /* The shader is dropped, not run at its default strength: an
+           * expression that did not compile leaves the strength *unknown*,
+           * and half-dimming a pane is a worse answer to that than doing
+           * nothing and saying why. */
+          if (err && !err[0])
+            snprintf(err, errcap, "bad amount for %s: %s", k->name, eerr);
+          continue;
+        }
+      }
+    }
     if (amount < 0) amount = 0;
     if (amount > 255) amount = 255;
     /* Every shader that takes a number calls it something different, so accept
@@ -146,7 +172,13 @@ static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
     if (!shader_make_p(&out[n], k->name, col, (uint8_t)amount,
                        (uint16_t)param)) {
       if (err && !err[0]) snprintf(err, errcap, "unknown shader: %s", k->name);
+      expr_free(aexpr);
       continue;
+    }
+    out[n].amount_expr = aexpr;
+    if (aexpr) {
+      c->exprs = realloc(c->exprs, (c->nexprs + 1) * sizeof *c->exprs);
+      c->exprs[c->nexprs++] = aexpr; /* the config owns every program */
     }
     n++;
   }
@@ -321,6 +353,8 @@ void config_defaults(config_t *c) {
 }
 
 void config_free(config_t *c) {
+  for (size_t i = 0; i < c->nexprs; i++) expr_free(c->exprs[i]);
+  free(c->exprs);
   free(c->binds);
   free(c->shell);
   free(c->shader_dir);

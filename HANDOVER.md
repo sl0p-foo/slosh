@@ -136,12 +136,32 @@ What they say, per cell per pass on this box:
   than per cell, which also lets each shader hoist its row-invariant work):
   measured at 4.7ns in a prototype. Not done, because it is a rewrite of every
   shader and nothing needs the 1.4ns yet.
-- an **interpreted** shader is 56ns against a compiled 8ns, which is the whole
-  argument for D15 loading native code instead of inventing a language.
+- an **interpreted** shader is 56ns against a compiled 8ns *per evaluation* --
+  which is why D16's expressions are memoised rather than run per frame. With
+  the map, a config-written positional shader is 5.2ns/cell against a compiled
+  vignette's 6.1ns; only a clock-reading one pays the interpreter every frame,
+  at 35ns/cell.
 
 All of this is 0.24ms per frame on a 200x50 pane, under 3% of a 120Hz frame.
 It has never been the bottleneck; do not spend a day here without a profile
 saying otherwise.
+
+## The expression memo, and the one thing wrong with it
+
+`expr_amount_map()` caches per *program*, keyed on everything the compiler
+says the program reads. Two panes of **different sizes** sharing one config
+shader therefore fight over that one buffer and rebuild it each time -- which
+costs what interpreting per cell would have cost, so it degrades to the slow
+path rather than going wrong. Same for one focused and one unfocused pane
+when the expression reads `cursor` or `focused`. The fix, if it ever matters,
+is to hang the map off the pane rather than the program; the key logic does
+not change, only where the buffer lives.
+
+The thing that must not change is *what* the key contains. It is derived from
+the source by the compiler (`expr_deps`), so it cannot drift from what the
+program actually reads -- the same reason the layout recomputes rather than
+remembers. If you add a variable to the language, add its dependency flag in
+the same table, and the cache stays correct for free.
 
 ## Things left on the table
 
@@ -163,6 +183,10 @@ saying otherwise.
   pane. Hot-swapping would need every shader reference to be indirected
   through the registry, which is a real change and not obviously worth it.
 - **Per-row shader dispatch** — see the numbers above.
+- **Expressions cannot make a colour**, only a strength (D16). `tint` takes a
+  fixed `color=`; a gradient *between* two colours needs either three
+  expressions (one per channel) or a plugin. Worth doing only if somebody
+  wants it; the one-byte result is what makes the memo a byte map.
 - **Corner crossings**: found for both nestings now, but if more turn up
   missing, ask *how the layout was built* — the split order decides the tree
   shape, and that is where any remaining blind spot will be.

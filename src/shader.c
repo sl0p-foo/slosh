@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "expr.h"
+
+static int clamp255(int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+
 /* Integer maths throughout: this runs per cell per pass per frame, and a float
  * here would buy nothing a byte channel can tell the difference between. */
 static uint8_t mix8(uint8_t from, uint8_t to, uint8_t amount) {
@@ -182,7 +186,7 @@ bool shader_make_p(shader_t *out, const char *kind, color_t color,
   if (!out || !kind) return false;
   const shader_def_t *d = find_kind(kind);
   if (!d) return false;
-  *out = (shader_t){d->name, d->fn, color, amount, param};
+  *out = (shader_t){d->name, d->fn, NULL, color, amount, param};
   return true;
 }
 
@@ -340,6 +344,38 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
     const shader_t *sh = &shaders[i];
     if (!sh->kind || !sh->fn) continue;
 
+    /* An expression's amount is computed here, not inside the shader, so no
+     * shader — built in or loaded — has to know that its strength might be a
+     * function of position. `local` carries the per-cell value; it is copied
+     * once per pass rather than per cell, because copying a shader_t for every
+     * cell would cost more than evaluating the expression. */
+    shader_t local = *sh;
+    const uint8_t *map = NULL;
+    expr_env_t env = {0};
+    bool per_cell = false;
+
+    if (sh->amount_expr) {
+      env.cols = w;
+      env.rows = h;
+      env.curx = ctx.has_cursor ? ctx.cursor_x : 0;
+      env.cury = ctx.has_cursor ? ctx.cursor_y : 0;
+      env.cursor = ctx.has_cursor;
+      env.focused = ctx.focused;
+      env.t = ctx.now_ms;
+      if (expr_deps(sh->amount_expr) == 0) {
+        local.amount = (uint8_t)clamp255(expr_constant(sh->amount_expr));
+      } else {
+        uint8_t *m = NULL;
+        /* The map is the whole reason an interpreter is affordable: a program
+         * that does not read the clock is evaluated once per cell and then
+         * reused for as long as nothing it reads has changed. One that does
+         * read the clock is evaluated per cell, per frame, which is what
+         * asking for animation costs. */
+        if (expr_amount_map(sh->amount_expr, &env, &m)) map = m;
+        else per_cell = true;
+      }
+    }
+
     for (uint16_t y = 0; y < h; y++) {
       cell_t *row = &s->cur[(size_t)(y0 + y) * s->cols + x0];
       ctx.y = y;
@@ -356,7 +392,14 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
         if (!c->bg.set) c->bg = ctx.default_bg;
 
         ctx.x = x;
-        sh->fn(sh, &ctx, c);
+        if (map) {
+          local.amount = map[(size_t)y * w + x];
+        } else if (per_cell) {
+          env.x = x;
+          env.y = y;
+          local.amount = (uint8_t)clamp255(expr_eval(sh->amount_expr, &env));
+        }
+        local.fn(&local, &ctx, c);
       }
     }
   }

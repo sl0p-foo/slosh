@@ -66,10 +66,15 @@ KDL_TEST := build/kdl_test
 $(KDL_TEST): tests/kdl_test.c src/kdl.c | build
 	$(CC) $(CFLAGS) tests/kdl_test.c src/kdl.c -o $@
 
+EXPR_TEST := build/expr_test
+
+$(EXPR_TEST): tests/expr_test.c src/expr.c | build
+	$(CC) $(CFLAGS) tests/expr_test.c src/expr.c -o $@
+
 SHADER_TEST := build/shader_test
 
-$(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) | build
-	$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c $(VT_LIB) -o $@
+$(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) | build
+	$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) -o $@
 
 # Shader plugins, for test_shader_plugin.py: a good one, one that announces an
 # ABI we do not speak, and the example we ship in contrib -- which is built
@@ -94,9 +99,10 @@ build/.pass-%: tests/%.py tests/harness.py $(BIN) | build
 	@printf '  ok   %-24s %s\n' "$(notdir $<)" "$$(grep -c '^ok' build/.log-$* 2>/dev/null || echo ?) checks"
 	@touch $@
 
-test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) ## unit + headless checks (fast)
+test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(EXPR_TEST) ## unit + headless checks (fast)
 	@./$(TEST_BIN) >/dev/null && ./$(KDL_TEST) >/dev/null && ./$(SHADER_TEST) >/dev/null \
-	  && printf '  ok   %-24s %s\n' "C unit tests" "3 binaries"
+	  && ./$(EXPR_TEST) >/dev/null \
+	  && printf '  ok   %-24s %s\n' "C unit tests" "4 binaries"
 	@$(MAKE) --no-print-directory -j$(JOBS) $(PY_STAMPS)
 	@printf '\nall green\n'
 

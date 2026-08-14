@@ -78,12 +78,27 @@ The four spellings are one field. `at` for a column, `radius` for a distance,
 `band` for a size, `direction` for a direction — whichever reads right for
 your effect.
 
+## Do you actually need one?
+
+A shader's `amount` can be an expression in the config
+(`dim amount="(y % 2) * 40"`), evaluated per cell and about as fast as
+compiled code. That covers every effect that is "a strength computed from
+where the cell is", which is most of them, with no compiler and no `.so`.
+
+Write a plugin when the *colour maths* is the point rather than the strength
+-- a palette mapping, a channel swap, a curve -- or when you want an effect
+under a name of its own.
+
 ## Compatibility
 
 The plugin declares which ABI it was built against, and the sizes of the three
 structs it shares with sl0ppty. A mismatch is refused at load with a line on
 stderr rather than trusted into a crash, so a plugin left over from an older
 version fails safely and everything else still loads.
+
+**The ABI is currently 2.** It went to 2 when `shader_t` gained the compiled
+expression that backs `amount`; a plugin built against 1 is refused with
+`shader ABI 1, we speak 2` and needs nothing but a rebuild.
 
 ## Trust
 

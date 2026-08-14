@@ -246,6 +246,42 @@ states {
 //   margin     amount at=100             everything from that column recedes
 //   spotlight  amount radius=12          brightness falls away from the cursor
 //
+// `amount` can also be an *expression* instead of a number, evaluated for
+// every cell. That is how you get an effect nobody built in, without building
+// anything:
+//
+//     shaders {
+//         dim  amount="(y % 2) * 40"                       // scanlines
+//         dim  amount="(x > cols - 10) * 120"              // the right margin
+//         tint amount="255 - dist(x, y, curx, cury) * 12" color="#ff5fd7"
+//     }
+//
+// The expression produces the *strength*, never the colour: the mixing stays
+// in C, so an expression cannot make an invalid cell, and its result is one
+// byte per cell -- which is what lets the whole program be evaluated once into
+// a per-cell map and then reused. A user-written positional shader therefore
+// costs about what a compiled one does. One that reads the clock cannot be
+// cached and is evaluated per cell per frame, which is the price of animation.
+//
+//   variables   x y            the cell, inside the pane's content rect
+//               cols rows      the size of that rect
+//               curx cury      the cursor, and `cursor` (0 or 1) for whether
+//                              this pane has it
+//               focused        0 or 1
+//               t              milliseconds, for animation
+//   operators   + - * / %      integer only; division by zero is 0, not a crash
+//               < > <= >= == != and && || !, which give 0 or 1 -- so
+//                              `(x < 10) * 200` is how you write a rule
+//               ? :            both sides are evaluated, then one is chosen
+//   functions   min(a,b) max(a,b) abs(a) clamp(v,lo,hi)
+//               dist(x1,y1,x2,y2)  counts a row double, because a cell is
+//                                  about twice as tall as it is wide
+//
+// There are no loops and no recursion, on purpose: a config cannot spin, and
+// there is nothing to sandbox. An expression that does not compile drops that
+// one shader with a warning -- never the config, and never a half-strength
+// version of what you asked for.
+//
 // Empty by default: these are yours to ask for, not opinions we hold.
 //
 // shaders {

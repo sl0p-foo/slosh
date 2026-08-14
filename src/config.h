@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "expr.h"
 #include "shader.h"
 #include "sl0ppty.h"
 
@@ -228,6 +229,13 @@ typedef struct {
   uint16_t prefix_mods;
   binding_t *binds;
   size_t nbinds;
+
+  /* Every amount expression this config compiled. A shader_t is copied by
+   * value all over the place and several copies can point at one program, so
+   * ownership lives here — with the config that parsed them, freed when it is
+   * replaced. */
+  expr_prog_t **exprs;
+  size_t nexprs;
 
   /* what a new pane runs; NULL means $SHELL */
   char *shell;
