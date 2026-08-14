@@ -26,6 +26,12 @@ struct pane {
   GhosttyMouseEncoder menc;
   GhosttyMouseEvent mev;
   uint16_t cols, rows_n;
+  /* The client's cell size in pixels. A default rather than a zero, because
+   * zero is what makes an image vanish: a placement given no explicit cell
+   * count is sized from the image's pixels and this, and 0 covers no cells.
+   * 8x16 is a plausible terminal cell, and any client that knows better says
+   * so the moment it attaches. */
+  uint16_t cell_w, cell_h;
   bool alive;
   /* How the program ended. `exit_known` is separate from `!alive` because the
    * two really are different: EOF on the master says the pane is over, and
@@ -225,7 +231,7 @@ bool pane_start(pane_t *p) {
   if (!p->suspended) return false;
   p->suspended = false;
   if (pty_spawn(&p->pty, (const char *const *)p->argv, p->cols, p->rows_n,
-                p->cwd) != 0) {
+                p->cwd, p->cell_w, p->cell_h) != 0) {
     p->alive = false;
     return false;
   }
@@ -263,6 +269,8 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   pane_t *p = calloc(1, sizeof *p);
   p->cols = cols;
   p->rows_n = rows;
+  p->cell_w = 8;
+  p->cell_h = 16;
   p->pty.fd = -1;
 
   if (ghostty_terminal_new(NULL, &p->term, cols, rows) != GHOSTTY_SUCCESS)
@@ -313,7 +321,8 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   p->argv = argv_dup(argv);
   p->cwd = cwd ? strdup(cwd) : NULL;
 
-  if (pty_spawn(&p->pty, argv, cols, rows, cwd) != 0) goto fail;
+  if (pty_spawn(&p->pty, argv, cols, rows, cwd, p->cell_w, p->cell_h) != 0)
+    goto fail;
   p->alive = true;
   p->dirty = true;
   return p;
@@ -423,7 +432,7 @@ bool pane_restart(pane_t *p) {
   p->exit_code = 0;
 
   if (pty_spawn(&p->pty, (const char *const *)p->argv, p->cols, p->rows_n,
-                p->cwd) != 0)
+                p->cwd, p->cell_w, p->cell_h) != 0)
     return false;
   /* The terminal is deliberately not cleared: the run that ended, and the
    * line saying it ended, stay above this one in the scrollback. That is the
@@ -789,8 +798,20 @@ void pane_resize(pane_t *p, uint16_t cols, uint16_t rows) {
   if (cols == p->cols && rows == p->rows_n) return;
   p->cols = cols;
   p->rows_n = rows;
-  ghostty_terminal_resize(p->term, cols, rows, 0, 0);
-  if (p->pty.fd >= 0) pty_resize(&p->pty, cols, rows);
+  /* The cell size goes in every time: it is what lets lib-vt work out how
+   * many cells an image covers when the program did not say. Passing 0 here
+   * is why kitty graphics looked implemented and drew nothing. */
+  ghostty_terminal_resize(p->term, cols, rows, p->cell_w, p->cell_h);
+  if (p->pty.fd >= 0) pty_resize(&p->pty, cols, rows, p->cell_w, p->cell_h);
+  p->dirty = true;
+}
+
+void pane_set_cell_px(pane_t *p, uint16_t w, uint16_t h) {
+  if (!w || !h || (w == p->cell_w && h == p->cell_h)) return;
+  p->cell_w = w;
+  p->cell_h = h;
+  ghostty_terminal_resize(p->term, p->cols, p->rows_n, w, h);
+  if (p->pty.fd >= 0) pty_resize(&p->pty, p->cols, p->rows_n, w, h);
   p->dirty = true;
 }
 

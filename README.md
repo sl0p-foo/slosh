@@ -91,7 +91,11 @@ mistyped command in a fresh session no longer closes the session.
 - **Select text to copy it.** Release the mouse and it is on your clipboard,
   sent to your terminal over ssh as well as locally. Middle click pastes.
 - **Images work.** Kitty graphics pass through to your terminal, which is the
-  thing other multiplexers drop. (Sixel does not.)
+  thing other multiplexers drop — including the useful half of the protocol,
+  where a program uploads an image once and then places it every frame. Your
+  terminal's cell size is carried through to each pane, so programs can size
+  images and place them without saying how many cells to cover. (Sixel is not
+  supported: the terminal core has no sixel decoder.)
 - **Small terminals degrade gracefully.** When panes no longer fit, the tab
   becomes a list of one-line headers with the focused pane open below them —
   and returns to exactly the layout you had when there is room again.

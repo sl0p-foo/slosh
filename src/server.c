@@ -346,6 +346,14 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
                 screen_resize(&s.screen, c, rr);
                 app_resize(s.app, c, rr);
               }
+              /* The cell size arrived with it, from a client new enough to
+               * send one and a terminal willing to say. Zero means neither,
+               * and app_set_cell_px leaves the default standing. */
+              if (m.len >= 8) {
+                uint16_t cw = (uint16_t)(m.data[4] << 8 | m.data[5]);
+                uint16_t ch = (uint16_t)(m.data[6] << 8 | m.data[7]);
+                app_set_cell_px(s.app, cw, ch);
+              }
             }
             s.screen.force_full = true; /* a fresh client knows nothing */
             app_graphics_reset(s.app);  /* including any image we had sent */

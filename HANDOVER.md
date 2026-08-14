@@ -163,6 +163,35 @@ program actually reads -- the same reason the layout recomputes rather than
 remembers. If you add a variable to the language, add its dependency flag in
 the same table, and the cache stays correct for free.
 
+## Kitty graphics: it looked done and was not
+
+The test suite was green and the feature did not work, because every test
+transmitted *and* placed in one command (`a=T`) with explicit `c=`/`r=`. Real
+programs use the other half of the protocol -- upload once with `a=t`, place
+per frame with `a=p`, no cell counts -- and every part of that was broken:
+
+- `pty_spawn`/`pty_resize` never set `ws_xpixel`/`ws_ypixel`, so a program
+  asking its tty how big a cell is got zeroes and guessed;
+- `ghostty_terminal_resize` was called with `0, 0` for the cell size, so
+  lib-vt could not size a placement that did not say how many cells it wanted
+  -- it computed zero cells, and we skipped it;
+- the vendored lib freed image *data* on `ED 2`, so a full-screen program lost
+  everything it had uploaded (`vendor/patches/0001`).
+
+Three layers, one symptom: nothing on screen. Worth knowing for next time --
+**the shape of the test decided what worked**. If you add a protocol here,
+write the test the way a program actually uses it, not the way that is easiest
+to write.
+
+The debugging that found it is worth repeating rather than reinventing:
+capture the real program's byte stream off a pty, replay it into a headless
+session (it reproduces exactly), then bisect the stream. `.scratch/capfile.py`
+and friends do this and are gitignored; the whole loop is about a minute.
+
+The 8x16 default matters. Where nobody knows the cell size -- headless, or a
+terminal that will not say -- a plausible cell means images appear at roughly
+the right size, and a zero means they do not appear at all.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.
@@ -183,6 +212,11 @@ the same table, and the cache stays correct for free.
   pane. Hot-swapping would need every shader reference to be indirected
   through the registry, which is a real change and not obviously worth it.
 - **Per-row shader dispatch** — see the numbers above.
+- **The cell size is not queried, only received.** If a client's terminal
+  reports no pixel size in `TIOCGWINSZ`, we keep the 8x16 default rather than
+  asking it with `CSI 14 t`/`CSI 16 t`. Doing that properly means the client
+  parsing a reply, and the client deliberately does not decode anything (D7).
+  The honest fix is a config key.
 - **Expressions cannot make a colour**, only a strength (D16). `tint` takes a
   fixed `color=`; a gradient *between* two colours needs either three
   expressions (one per channel) or a plugin. Worth doing only if somebody

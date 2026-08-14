@@ -11,10 +11,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* MSG_HELLO and MSG_RESIZE carry u16 cols, u16 rows, and since the graphics
+ * fix two more: u16 cell_w, u16 cell_h, the client's cell size in pixels.
+ * A four-byte payload is still accepted and means "I did not say", which is
+ * what an older client sends and what a terminal that reports no pixel size
+ * leads to. */
 enum {
-  MSG_HELLO = 1,  /* client -> server: u16 cols, u16 rows */
+  MSG_HELLO = 1,  /* client -> server: u16 cols, rows[, cell_w, cell_h] */
   MSG_INPUT = 2,  /* client -> server: raw bytes from the terminal */
-  MSG_RESIZE = 3, /* client -> server: u16 cols, u16 rows */
+  MSG_RESIZE = 3, /* client -> server: u16 cols, rows[, cell_w, cell_h] */
   MSG_DETACH = 4, /* client -> server: leave, but keep running */
   MSG_OUTPUT = 5, /* server -> client: bytes for the terminal */
   MSG_EXIT = 6,   /* server -> client: u8 reason */

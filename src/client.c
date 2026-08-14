@@ -41,20 +41,32 @@ static void restore(void) {
   (void)r;
 }
 
-static void term_size(uint16_t *cols, uint16_t *rows) {
+/* The terminal's size, in cells and — when it will say — in pixels per cell.
+ * Most terminals fill in the pixel fields; the ones that do not report zero,
+ * which is passed on as "I do not know" rather than as a size. */
+static void term_size(uint16_t *cols, uint16_t *rows, uint16_t *cell_w,
+                      uint16_t *cell_h) {
   struct winsize ws;
+  *cell_w = *cell_h = 0;
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col && ws.ws_row) {
     *cols = ws.ws_col;
     *rows = ws.ws_row;
+    if (ws.ws_xpixel && ws.ws_ypixel) {
+      *cell_w = (uint16_t)(ws.ws_xpixel / ws.ws_col);
+      *cell_h = (uint16_t)(ws.ws_ypixel / ws.ws_row);
+    }
   } else {
     *cols = 80;
     *rows = 24;
   }
 }
 
-static void send_size(int fd, uint8_t type, uint16_t cols, uint16_t rows) {
-  uint8_t b[4] = {(uint8_t)(cols >> 8), (uint8_t)cols, (uint8_t)(rows >> 8),
-                  (uint8_t)rows};
+static void send_size(int fd, uint8_t type, uint16_t cols, uint16_t rows,
+                      uint16_t cell_w, uint16_t cell_h) {
+  uint8_t b[8] = {(uint8_t)(cols >> 8),   (uint8_t)cols,
+                  (uint8_t)(rows >> 8),   (uint8_t)rows,
+                  (uint8_t)(cell_w >> 8), (uint8_t)cell_w,
+                  (uint8_t)(cell_h >> 8), (uint8_t)cell_h};
   msg_send(fd, type, b, sizeof b);
 }
 
@@ -71,8 +83,8 @@ static void write_all(int fd, const void *buf, size_t len) {
 }
 
 int client_run(int fd) {
-  uint16_t cols, rows;
-  term_size(&cols, &rows);
+  uint16_t cols, rows, cell_w, cell_h;
+  term_size(&cols, &rows, &cell_w, &cell_h);
 
   if (tcgetattr(STDIN_FILENO, &g_saved) != 0) {
     fprintf(stderr, "sl0ppty: not a terminal\n");
@@ -93,7 +105,7 @@ int client_run(int fd) {
   sigaction(SIGHUP, &sa, NULL);
   signal(SIGPIPE, SIG_IGN);
 
-  send_size(fd, MSG_HELLO, cols, rows);
+  send_size(fd, MSG_HELLO, cols, rows, cell_w, cell_h);
 
   msg_reader_t reader;
   msg_reader_init(&reader);
@@ -108,8 +120,10 @@ int client_run(int fd) {
 
     if (g_winch) {
       g_winch = 0;
-      term_size(&cols, &rows);
-      send_size(fd, MSG_RESIZE, cols, rows);
+      /* A resize can also be a move to another monitor, so the cell size is
+       * re-read rather than remembered from the first frame. */
+      term_size(&cols, &rows, &cell_w, &cell_h);
+      send_size(fd, MSG_RESIZE, cols, rows, cell_w, cell_h);
     }
     if (n < 0) {
       if (errno == EINTR) continue;

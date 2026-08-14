@@ -24,6 +24,16 @@ def places(s):
     return s.api("graphics")["placements"]
 
 
+def transmits_then_places(place_keys, before_place="", image_id=7):
+    """The other half of the protocol: upload once with `a=t`, place later
+    with `a=p`. Everything a program that draws repeatedly does."""
+    t = f"\\033_Ga=t,f=24,s=4,v=2,i={image_id},q=2;{PX}\\033\\\\"
+    p = f"\\033_Ga={place_keys}\\033\\\\"
+    return ["/bin/sh", "-c",
+            f'stty raw -echo; printf "{t}"; printf "{before_place}"; '
+            f'printf "{p}"; sleep 5']
+
+
 def test_a_pane_image_reaches_the_screen():
     with Session(sends_image(), cols=44, rows=10) as s:
         s.settle(200)
@@ -37,6 +47,77 @@ def test_a_pane_image_reaches_the_screen():
               f"{pl[0]} vs content {p['content_x']},{p['content_y']}")
         check("with the size the program asked for",
               (pl[0]["cols"], pl[0]["rows"]) == (6, 2), str(pl[0]))
+
+
+def test_a_placement_that_does_not_say_how_big_it_is():
+    """`c=`/`r=` are optional: without them the image covers as many cells as
+    its pixels need, which the terminal can only work out if it knows how big
+    a cell is. We were passing 0 -- so every such image covered no cells and
+    silently did not appear, which is most of what "kitty graphics works"
+    was worth."""
+    with Session(transmits_then_places("p,i=7,p=1,q=2"), cols=44, rows=10) as s:
+        s.settle(200)
+        pl = places(s)
+        check("it is placed", len(pl) == 1, str(pl))
+        if not pl:
+            return
+        # 4x2 pixels at the default 8x16 cell: one cell each way.
+        check("sized from its pixels and the cell size",
+              (pl[0]["cols"], pl[0]["rows"]) == (1, 1), str(pl[0]))
+
+
+def test_the_cell_size_a_client_reports_is_what_sizes_an_image():
+    with Session(transmits_then_places("p,i=7,p=1,q=2"), cols=44, rows=10) as s:
+        s.settle(200)
+        s.api("resize", cols=44, rows=10, cell_w=2, cell_h=1)
+        s.settle(150)
+        pl = places(s)
+        # The same 4x2 image against a 2x1 cell is 2 cells wide and 2 tall.
+        check("a different cell means a different number of cells",
+              pl and (pl[0]["cols"], pl[0]["rows"]) == (2, 2), str(pl))
+
+
+def test_a_program_can_read_the_pixel_size_from_its_pty():
+    """TIOCGWINSZ has pixel fields, and a program that draws images reads
+    them. Zeroes there are why dvd.py fell back to guessing 8x16."""
+    prog = ("import fcntl, termios, struct, sys, time;"
+            "r, c, xp, yp = struct.unpack('HHHH', "
+            "fcntl.ioctl(0, termios.TIOCGWINSZ, b'\\0' * 8));"
+            "print('WS', c, r, xp, yp); sys.stdout.flush(); time.sleep(5)")
+    with Session(["python3", "-c", prog], cols=50, rows=10) as s:
+        snap = s.until_text("WS ")
+        line = [l for l in snap.text if "WS " in l][0].strip()
+        cols, rows, xp, yp = (int(v) for v in line.split()[1:5])
+        check("the pty carries pixel dimensions", xp and yp, line)
+        check("consistent with the cell size we were told",
+              xp == cols * 8 and yp == rows * 16, line)
+
+
+def test_an_image_outlives_a_screen_clear():
+    """A program transmits once and places every frame, and full-screen
+    programs clear the screen. libghostty-vt freed the image data on ED(2),
+    so every placement after the first clear drew nothing -- see
+    vendor/patches. The placements go, the image stays."""
+    with Session(transmits_then_places("p,i=7,p=1,q=2,c=6,r=2",
+                                       before_place="\\033[2J"),
+                 cols=44, rows=10) as s:
+        s.settle(200)
+        check("a clear before the placement does not lose the image",
+              len(places(s)) == 1, str(places(s)))
+
+
+def test_a_screen_clear_still_removes_what_is_on_screen():
+    argv = ["/bin/sh", "-c",
+            f'stty raw -echo; printf "\\033_Ga=T,f=24,s=4,v=2,i=7,q=2,c=6,r=2;{PX}\\033\\\\"; '
+            f'sleep 0.2; printf "\\033[2J"; printf CLEARED; sleep 5']
+    with Session(argv, cols=44, rows=10) as s:
+        # Both waits are on something observable: the image arrives, then the
+        # clear that follows it. A settle would race the sleep between them.
+        s.until(lambda _: len(places(s)) == 1)
+        check("placed to begin with", len(places(s)) == 1, str(places(s)))
+        s.until_text("CLEARED")
+        check("the placement is gone with the screen it was on",
+              len(places(s)) == 0, str(places(s)))
 
 
 def test_ids_cannot_collide_between_panes():
@@ -140,6 +221,11 @@ def test_scrolled_away_placements_are_dropped():
 
 if __name__ == "__main__":
     test_a_pane_image_reaches_the_screen()
+    test_a_placement_that_does_not_say_how_big_it_is()
+    test_the_cell_size_a_client_reports_is_what_sizes_an_image()
+    test_a_program_can_read_the_pixel_size_from_its_pty()
+    test_an_image_outlives_a_screen_clear()
+    test_a_screen_clear_still_removes_what_is_on_screen()
     test_ids_cannot_collide_between_panes()
     test_placement_follows_the_layout()
     test_cropped_at_the_pane_edge()

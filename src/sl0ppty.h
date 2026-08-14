@@ -84,9 +84,13 @@ typedef struct {
   pid_t pid;
 } pty_t;
 
+/* `cell_w`/`cell_h` are the client's cell size in pixels, so the pty's
+ * winsize carries real pixel dimensions: a program that draws images asks the
+ * tty how big a cell is, and zeroes there mean it cannot size one. */
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
-              const char *cwd);
-int pty_resize(pty_t *p, uint16_t cols, uint16_t rows);
+              const char *cwd, uint16_t cell_w, uint16_t cell_h);
+int pty_resize(pty_t *p, uint16_t cols, uint16_t rows, uint16_t cell_w,
+               uint16_t cell_h);
 void pty_close(pty_t *p);
 
 /* ---- pane: a pty + a libghostty-vt terminal ---------------------------- */
@@ -144,6 +148,10 @@ void pane_send_key(pane_t *p, const input_event_t *ev);
 void pane_send_mouse(pane_t *p, const input_event_t *ev);
 void pane_send_paste(pane_t *p, const char *text, size_t len);
 void pane_resize(pane_t *p, uint16_t cols, uint16_t rows);
+/* The client's cell size in pixels. Everything about images depends on it:
+ * without it a placement that asks for its natural size covers zero cells and
+ * is dropped, which is a picture that silently does not appear. */
+void pane_set_cell_px(pane_t *p, uint16_t w, uint16_t h);
 bool pane_dirty(pane_t *p);
 /* Scrollback. Negative delta scrolls up (towards older output). */
 void pane_scroll(pane_t *p, int delta);

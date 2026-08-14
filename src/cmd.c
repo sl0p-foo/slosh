@@ -127,6 +127,12 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     if (!c || !r) return jerr("bad size");
     screen_resize(s, c, r);
     app_resize(a, c, r);
+    /* The cell size in pixels, which a real client reports when it attaches.
+     * Here so that a script -- and the test suite -- can be a client that
+     * knows its own metrics, since images are sized against these. */
+    uint16_t cw = (uint16_t)jv_geti(req, "cell_w", 0);
+    uint16_t ch = (uint16_t)jv_geti(req, "cell_h", 0);
+    app_set_cell_px(a, cw, ch);
     return jok_int(NULL, 0);
   }
   if (strcmp(cmd, "split") == 0) {

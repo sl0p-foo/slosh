@@ -180,6 +180,12 @@ struct app {
   uint32_t next_tab_id;
   uint32_t next_id;
   uint16_t cols, rows;
+  /* The client's cell size in pixels, as reported when it attached. Panes are
+   * told so that a program can size an image, and so lib-vt can work out how
+   * many cells an image covers when the program did not say. Defaulted rather
+   * than zeroed: 0 means "no image can be placed", which is not a good thing
+   * for a headless session or a terminal that will not say. */
+  uint16_t cell_w, cell_h;
   bool prefix;
   bool quit;
   bool detach;
@@ -675,6 +681,7 @@ static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
   pane_set_osc_handler(p, on_pane_osc, a);
   pane_set_clipboard_handler(p, on_pane_clipboard, a);
   pane_set_notify_handler(p, on_pane_notify, a);
+  pane_set_cell_px(p, a->cell_w, a->cell_h);
   return n;
 }
 
@@ -689,6 +696,7 @@ static node_t *leaf_new(app_t *a) {
   pane_set_osc_handler(p, on_pane_osc, a);
   pane_set_clipboard_handler(p, on_pane_clipboard, a);
   pane_set_notify_handler(p, on_pane_notify, a);
+  pane_set_cell_px(p, a->cell_w, a->cell_h);
   return n;
 }
 
@@ -735,6 +743,11 @@ app_t *app_new(const char *const argv[], uint16_t cols, uint16_t rows) {
   a->argv = argv;
   a->cols = cols;
   a->rows = rows;
+  /* A plausible cell until a client says otherwise, because zero is not a
+   * neutral default here: it is the value that makes every naturally-sized
+   * image cover no cells and quietly not appear. */
+  a->cell_w = 8;
+  a->cell_h = 16;
   a->gfx = gfx_new();
   tab_add(a, "");
   a->cur = 0;
@@ -1203,6 +1216,27 @@ void app_resize(app_t *a, uint16_t cols, uint16_t rows) {
   a->cols = cols;
   a->rows = rows;
   layout(a);
+}
+
+static void set_cell_px_cb(node_t *n, void *ud) {
+  const uint16_t *px = ud;
+  pane_set_cell_px(n->pane, px[0], px[1]);
+}
+
+void app_set_cell_px(app_t *a, uint16_t w, uint16_t h) {
+  if (!w || !h || (w == a->cell_w && h == a->cell_h)) return;
+  a->cell_w = w;
+  a->cell_h = h;
+  uint16_t px[2] = {w, h};
+  /* Every pane, not just the visible ones: a background tab's program may be
+   * drawing images too, and it should not have to be looked at to find out
+   * how big a cell is. */
+  walk_all(a, set_cell_px_cb, px);
+}
+
+void app_cell_px(const app_t *a, uint16_t *w, uint16_t *h) {
+  if (w) *w = a->cell_w;
+  if (h) *h = a->cell_h;
 }
 
 /* ---- tree edits --------------------------------------------------------- */

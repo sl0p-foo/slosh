@@ -42,6 +42,12 @@ char *app_take_clipboard(app_t *a);
 /* Re-read the config file. Keeps the working one if the new file is broken. */
 bool app_reload_config(char *err, size_t errcap);
 void app_resize(app_t *a, uint16_t cols, uint16_t rows);
+/* The attached client's cell size in pixels, passed on to every pane's pty and
+ * terminal. Images need it: a placement that does not say how many cells it
+ * covers is sized from the image's pixels and this. Ignored if either is 0,
+ * so a client that cannot find out leaves the default standing. */
+void app_set_cell_px(app_t *a, uint16_t w, uint16_t h);
+void app_cell_px(const app_t *a, uint16_t *w, uint16_t *h);
 
 /* Pump every pane that has data. Returns true if anything changed. */
 bool app_pump_fd(app_t *a, int fd);

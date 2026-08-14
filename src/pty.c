@@ -15,7 +15,7 @@
 #include <unistd.h>
 
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
-              const char *cwd) {
+              const char *cwd, uint16_t cell_w, uint16_t cell_h) {
   int master = posix_openpt(O_RDWR | O_NOCTTY);
   if (master < 0) return -1;
   if (grantpt(master) < 0 || unlockpt(master) < 0) {
@@ -29,7 +29,14 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
     return -1;
   }
 
-  struct winsize ws = {.ws_col = cols, .ws_row = rows};
+  /* The pixel fields matter: a program drawing images asks the tty how big a
+   * cell is, and a winsize that says zero is a program that cannot size an
+   * image. They are the *terminal's* pixels, so they are cols/rows times the
+   * cell size the client reported. */
+  struct winsize ws = {.ws_col = cols,
+                       .ws_row = rows,
+                       .ws_xpixel = (unsigned short)(cols * cell_w),
+                       .ws_ypixel = (unsigned short)(rows * cell_h)};
   ioctl(master, TIOCSWINSZ, &ws);
 
   pid_t pid = fork();
@@ -71,8 +78,12 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
   return 0;
 }
 
-int pty_resize(pty_t *p, uint16_t cols, uint16_t rows) {
-  struct winsize ws = {.ws_col = cols, .ws_row = rows};
+int pty_resize(pty_t *p, uint16_t cols, uint16_t rows, uint16_t cell_w,
+               uint16_t cell_h) {
+  struct winsize ws = {.ws_col = cols,
+                       .ws_row = rows,
+                       .ws_xpixel = (unsigned short)(cols * cell_w),
+                       .ws_ypixel = (unsigned short)(rows * cell_h)};
   return ioctl(p->fd, TIOCSWINSZ, &ws);
 }
 
