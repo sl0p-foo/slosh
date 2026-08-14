@@ -148,9 +148,10 @@ struct node {
  * meet there. Recomputed every frame with the layout it describes. */
 typedef struct {
   rect_t r;
-  uint32_t h_id;      /* the rows split: this one moves vertically */
-  size_t h_edge;
-  uint32_t v_id[2];   /* the cols splits above and below: horizontally */
+  uint32_t h_id[2];   /* row boundaries meeting here: these move vertically */
+  size_t h_edge[2];
+  size_t nh;
+  uint32_t v_id[2];   /* column boundaries: these move horizontally */
   size_t v_edge[2];
   size_t nv;
 } corner_t;
@@ -198,8 +199,9 @@ struct app {
      * the layout is the thing being changed. Halfway through a drag the
      * crossing you grabbed may be a different entry, or gone — an index would
      * quietly start moving somebody else's panes. */
-    uint32_t c_h;
-    size_t c_hedge;
+    uint32_t c_h[2];
+    size_t c_hedge[2];
+    size_t c_nh;
     uint32_t c_v[2];
     size_t c_vedge[2];
     size_t c_nv;
@@ -2297,8 +2299,9 @@ static void draw_corners(app_t *a, screen_t *s) {
     snprintf(action, sizeof action, "corner:%zu", i);
     hit_add(&s->hits, c->r.x, c->r.y, c->r.w, c->r.h, action);
 
-    bool active = a->drag.kind == DRAG_EDGE && a->drag.c_nv &&
-                  a->drag.c_h == c->h_id && a->drag.c_hedge == c->h_edge;
+    bool active = a->drag.kind == DRAG_EDGE && (a->drag.c_nh || a->drag.c_nv) &&
+                  a->drag.c_nh && c->nh && a->drag.c_h[0] == c->h_id[0] &&
+                  a->drag.c_hedge[0] == c->h_edge[0] && a->drag.c_v[0] == c->v_id[0];
     /* (C) The mark appears the moment the pointer is on it, before the dwell
      * that arms the two boundaries. A crossing is two cells wide and gives no
      * other sign it is anything: something has to say it is there, and the
@@ -2510,32 +2513,38 @@ static void find_corners(app_t *a) {
   struct gapinfo g[64];
   size_t n = collect_gaps(cur(a)->root, g, 64, 0);
 
-  /* Every place a column boundary runs into a row boundary is its own
-   * crossing. Two of them that happen to line up are one crossing with two
-   * boundaries to move; two that do not are two crossings, each moving its
-   * own. Grouping by the columns they occupy gets both, where taking the first
-   * and discarding anything unlike it only ever found the aligned case. */
+  /* Every place a column boundary meets a row boundary.
+   *
+   * They never overlap: whichever way the tree is nested, one of them stops
+   * where the other begins. Which one stops depends on the nesting — rows of
+   * columns give a full-width row boundary with column boundaries running into
+   * it from above and below, columns of rows give a full-height column
+   * boundary with row boundaries running into it from the sides — so the test
+   * is that the two touch at all, in either axis, rather than one particular
+   * arrangement of them.
+   *
+   * The crossing is always the column boundary's columns by the row
+   * boundary's rows, and boundaries are grouped by the crossing they land on.
+   * Two that line up are one crossing that moves both, because moving one of a
+   * matched pair would put a step in what reads as a single line; two that do
+   * not are separate crossings. */
   for (size_t i = 0; i < n; i++) {
     if (g[i].sp->dir != SPLIT_ROWS) continue;
     rect_t h = g[i].r;
-
     for (size_t j = 0; j < n; j++) {
       if (g[j].sp->dir != SPLIT_COLS) continue;
       rect_t v = g[j].r;
-      if ((uint16_t)(v.y + v.h) != h.y && (uint16_t)(h.y + h.h) != v.y) continue;
-      uint16_t x0 = v.x > h.x ? v.x : h.x;
-      uint16_t xe = (uint16_t)(v.x + v.w) < (uint16_t)(h.x + h.w)
-                        ? (uint16_t)(v.x + v.w)
-                        : (uint16_t)(h.x + h.w);
-      if (xe <= x0) continue;
-      uint16_t w = (uint16_t)(xe - x0);
 
+      bool touch_y = v.y <= (uint16_t)(h.y + h.h) && h.y <= (uint16_t)(v.y + v.h);
+      bool touch_x = h.x <= (uint16_t)(v.x + v.w) && v.x <= (uint16_t)(h.x + h.w);
+      if (!touch_y || !touch_x) continue;
+
+      rect_t cr = {v.x, h.y, v.w, h.h};
       corner_t *c = NULL;
       for (size_t k = 0; k < a->ncorners; k++) {
-        corner_t *e = &a->corners[k];
-        if (e->h_id == g[i].sp->id && e->h_edge == g[i].i && e->r.x == x0 &&
-            e->r.w == w) {
-          c = e;
+        rect_t e = a->corners[k].r;
+        if (e.x == cr.x && e.y == cr.y && e.w == cr.w && e.h == cr.h) {
+          c = &a->corners[k];
           break;
         }
       }
@@ -2543,11 +2552,21 @@ static void find_corners(app_t *a) {
         if (a->ncorners >= 16) break;
         c = &a->corners[a->ncorners++];
         *c = (corner_t){0};
-        c->r = (rect_t){x0, h.y, w, h.h};
-        c->h_id = g[i].sp->id;
-        c->h_edge = g[i].i;
+        c->r = cr;
       }
-      if (c->nv < 2) {
+
+      bool have = false;
+      for (size_t k = 0; k < c->nh; k++)
+        if (c->h_id[k] == g[i].sp->id && c->h_edge[k] == g[i].i) have = true;
+      if (!have && c->nh < 2) {
+        c->h_id[c->nh] = g[i].sp->id;
+        c->h_edge[c->nh] = g[i].i;
+        c->nh++;
+      }
+      have = false;
+      for (size_t k = 0; k < c->nv; k++)
+        if (c->v_id[k] == g[j].sp->id && c->v_edge[k] == g[j].i) have = true;
+      if (!have && c->nv < 2) {
         c->v_id[c->nv] = g[j].sp->id;
         c->v_edge[c->nv] = g[j].i;
         c->nv++;
@@ -2565,7 +2584,8 @@ static int corner_at(app_t *a, uint16_t x, uint16_t y) {
 }
 
 static bool corner_uses(const corner_t *c, uint32_t id, size_t edge) {
-  if (c->h_id == id && c->h_edge == edge) return true;
+  for (size_t i = 0; i < c->nh; i++)
+    if (c->h_id[i] == id && c->h_edge[i] == edge) return true;
   for (size_t i = 0; i < c->nv; i++)
     if (c->v_id[i] == id && c->v_edge[i] == edge) return true;
   return false;
@@ -2587,8 +2607,9 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
   /* A corner moves two boundaries, so resting on it arms both of them: the
    * hint has to show what is about to move, not where the pointer is. */
   int ci = -1;
-  if (a->drag.kind == DRAG_EDGE && a->drag.c_nv) {
-    if ((a->drag.c_h == split->id && a->drag.c_hedge == idx)) active = true;
+  if (a->drag.kind == DRAG_EDGE && (a->drag.c_nv || a->drag.c_nh)) {
+    for (size_t k = 0; k < a->drag.c_nh; k++)
+      if (a->drag.c_h[k] == split->id && a->drag.c_hedge[k] == idx) active = true;
     for (size_t k = 0; k < a->drag.c_nv; k++)
       if (a->drag.c_v[k] == split->id && a->drag.c_vedge[k] == idx) active = true;
   } else if (a->drag.kind == DRAG_NONE) {
@@ -3088,8 +3109,11 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     if (ci >= a->ncorners) return;
     corner_t *c = &a->corners[ci];
     a->drag.kind = DRAG_EDGE;
-    a->drag.c_h = c->h_id;
-    a->drag.c_hedge = c->h_edge;
+    a->drag.c_nh = c->nh;
+    for (size_t k = 0; k < c->nh; k++) {
+      a->drag.c_h[k] = c->h_id[k];
+      a->drag.c_hedge[k] = c->h_edge[k];
+    }
     a->drag.c_nv = c->nv;
     for (size_t k = 0; k < c->nv; k++) {
       a->drag.c_v[k] = c->v_id[k];
@@ -3104,6 +3128,7 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     if (ev->maction != MOUSE_PRESS) return;
     a->drag.kind = DRAG_EDGE;
     a->drag.c_nv = 0;
+    a->drag.c_nh = 0;
     a->drag.src = (uint32_t)strtoul(action + 5, NULL, 10);
     const char *colon = strchr(action + 5, ':');
     a->drag.edge = colon ? strtoul(colon + 1, NULL, 10) : 0;
@@ -3356,14 +3381,17 @@ void app_event(app_t *a, const input_event_t *ev) {
             if (n)
               pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
                                  (uint16_t)(ev->my - n->content.y));
-          } else if (a->drag.kind == DRAG_EDGE && a->drag.c_nv) {
+          } else if (a->drag.kind == DRAG_EDGE &&
+                     (a->drag.c_nv || a->drag.c_nh)) {
             /* One axis to each: the row boundary takes the vertical movement
              * and the column boundaries the horizontal, so the corner follows
              * the pointer in both at once. The column boundaries above and
              * below get the same delta, which is what keeps them one line. */
             int dx = (int)ev->mx - (int)a->drag.x;
             int dy = (int)ev->my - (int)a->drag.y;
-            drag_edge(a, split_by_id(a, a->drag.c_h), a->drag.c_hedge, dy);
+            for (size_t i = 0; i < a->drag.c_nh; i++)
+              drag_edge(a, split_by_id(a, a->drag.c_h[i]), a->drag.c_hedge[i],
+                        dy);
             for (size_t i = 0; i < a->drag.c_nv; i++)
               drag_edge(a, split_by_id(a, a->drag.c_v[i]), a->drag.c_vedge[i],
                         dx);

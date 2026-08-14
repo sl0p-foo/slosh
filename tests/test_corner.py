@@ -20,6 +20,11 @@ GRID = ('layout {\n tab name="t" {\n  pane split="rows" {\n'
         '   pane split="cols" { pane\n    pane }\n'
         '   pane split="cols" { pane\n    pane }\n  }\n }\n}\n')
 COLUMNS = 'layout {\n tab name="t" {\n  pane\n  pane\n }\n}\n'
+# The other nesting: a full-height column boundary with row boundaries running
+# into it from the sides, rather than the other way round.
+GRID2 = ('layout {\n tab name="t" {\n  pane split="cols" {\n'
+         '   pane split="rows" { pane\n    pane }\n'
+         '   pane split="rows" { pane\n    pane }\n  }\n }\n}\n')
 
 
 def lay(text):
@@ -223,6 +228,33 @@ def test_boundaries_out_of_line_are_two_crossings():
     os.unlink(l)
 
 
+def test_it_finds_the_crossing_whichever_way_the_tree_is_nested():
+    """Rows of columns stops the column boundary where the row one begins;
+    columns of rows stops the row boundary where the column one begins. The
+    crossing is in the same place on screen either way, and only one of the two
+    was being found."""
+    for name, kdl in (("rows of columns", GRID), ("columns of rows", GRID2)):
+        l = lay(kdl)
+        with Session(SH, cols=70, rows=22, layout=l) as s:
+            s.settle(30)
+            c = corners(s)
+            check(f"{name}: the crossing is found", len(c) == 1, str(c))
+            if not c:
+                os.unlink(l)
+                continue
+            before = rects(s)
+            x, y = c[0]["x"], c[0]["y"]
+            s.send(rf"\e[<0;{x + 1};{y + 1}M")
+            s.send(rf"\e[<32;{x + 5};{y + 3}M")
+            s.send(rf"\e[<0;{x + 5};{y + 3}m")
+            s.settle(30)
+            after = rects(s)
+            check(f"{name}: dragging it moves both ways",
+                  all(before[i] != after[i] for i in before),
+                  f"{before} -> {after}")
+        os.unlink(l)
+
+
 if __name__ == "__main__":
     test_a_grid_has_a_corner_where_the_boundaries_cross()
     test_a_layout_with_no_crossing_has_no_corner()
@@ -232,4 +264,5 @@ if __name__ == "__main__":
     test_a_drag_keeps_the_boundaries_it_grabbed()
     test_the_crossing_shows_itself_before_you_rest_on_it()
     test_boundaries_out_of_line_are_two_crossings()
+    test_it_finds_the_crossing_whichever_way_the_tree_is_nested()
     sys.exit(report())
