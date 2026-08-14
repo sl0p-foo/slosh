@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """M3: tabs, purposes and the JSON control API."""
+import os
 import sys
+import tempfile
 
 from harness import Session, check, report
 
@@ -170,6 +172,109 @@ def test_json_api():
               str(r))
 
 
+# ---- hovering the strip ----------------------------------------------------
+
+STRIP_HOT = "#ff5fd7"   # pointer is here
+STRIP_ON = "#ffffff"    # this is the tab you are in
+STRIP_OFF = "#45454a"
+
+
+def two_tab_layout():
+    f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    f.write('layout {\n tab name="api" {\n  pane\n }\n'
+            ' tab name="notes" {\n  pane\n }\n}\n')
+    f.close()
+    return f.name
+
+
+def strip_hits(snap):
+    return {h["action"]: h for h in snap.hits
+            if h["action"].startswith("tab:") or h["action"] == "newtab"}
+
+
+def hover(s, x, y):
+    s.send(rf"\e[<35;{x + 1};{y + 1}M")
+
+
+def fg_of(snap, h):
+    return (snap.style_at(h["x"] + 1, h["y"]) or {}).get("fg")
+
+
+def attrs_of(snap, h):
+    return (snap.style_at(h["x"] + 1, h["y"]) or {}).get("attrs", [])
+
+
+def test_hovering_the_strip_lights_what_is_under_the_pointer():
+    lay = two_tab_layout()
+    with Session(SH, cols=80, rows=14, layout=lay) as s:
+        s.settle(20)
+        hits = strip_hits(s.snapshot())
+        check("the strip has two tabs and a +tab", len(hits) == 3, str(hits))
+
+        for target, h in hits.items():
+            hover(s, h["x"] + 1, h["y"])
+            snap = s.snapshot()
+            check(f"hovering {target} lights it",
+                  fg_of(snap, h) == STRIP_HOT, str(fg_of(snap, h)))
+            others = [fg_of(snap, o) for k, o in hits.items() if k != target]
+            check(f"and nothing else on the strip",
+                  all(c != STRIP_HOT for c in others), str(others))
+    os.unlink(lay)
+
+
+def test_weight_says_active_and_colour_says_pointer():
+    """Two independent signals, so hovering the tab you are in does not make it
+    look like you left it."""
+    lay = two_tab_layout()
+    with Session(SH, cols=80, rows=14, layout=lay) as s:
+        s.settle(20)
+        hits = strip_hits(s.snapshot())
+        active = hits["tab:" + str(s.tabs()[0]["id"])]
+
+        snap = s.snapshot()
+        check("the active tab is bold and white while untouched",
+              fg_of(snap, active) == STRIP_ON and "bold" in attrs_of(snap, active),
+              f"{fg_of(snap, active)} {attrs_of(snap, active)}")
+
+        hover(s, active["x"] + 1, active["y"])
+        snap = s.snapshot()
+        check("hovering it changes its colour",
+              fg_of(snap, active) == STRIP_HOT, str(fg_of(snap, active)))
+        check("but it keeps the weight that says you are in it",
+              "bold" in attrs_of(snap, active), str(attrs_of(snap, active)))
+    os.unlink(lay)
+
+
+def test_leaving_the_strip_puts_it_out_and_hover_switches_nothing():
+    lay = two_tab_layout()
+    with Session(SH, cols=80, rows=14, layout=lay) as s:
+        s.settle(20)
+        before = s.tabs()
+        hits = strip_hits(s.snapshot())
+        other = [h for k, h in hits.items() if k.startswith("tab:")][1]
+
+        hover(s, other["x"] + 1, other["y"])
+        s.settle(20)
+        check("hovering a tab does not switch to it",
+              [t["active"] for t in s.tabs()] ==
+              [t["active"] for t in before], str(s.tabs()))
+
+        p = s.pane()
+        hover(s, p["content_x"] + 2, p["content_y"] + 1)
+        snap = s.snapshot()
+        check("nothing on the strip is lit once the pointer leaves it",
+              all(fg_of(snap, h) != STRIP_HOT for h in hits.values()),
+              str([fg_of(snap, h) for h in hits.values()]))
+
+        # ...but clicking still switches.
+        s.click(other["x"] + 1, other["y"])
+        s.settle(20)
+        check("clicking the tab you lit is what switches to it",
+              [t["active"] for t in s.tabs()] !=
+              [t["active"] for t in before], str(s.tabs()))
+    os.unlink(lay)
+
+
 if __name__ == "__main__":
     test_tabs()
     test_background_tabs_keep_running()
@@ -177,4 +282,7 @@ if __name__ == "__main__":
     test_closing_a_tab()
     test_purpose_trust_model()
     test_json_api()
+    test_hovering_the_strip_lights_what_is_under_the_pointer()
+    test_weight_says_active_and_colour_says_pointer()
+    test_leaving_the_strip_puts_it_out_and_hover_switches_nothing()
     sys.exit(report())

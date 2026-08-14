@@ -188,6 +188,17 @@ struct app {
 
 static tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
 
+/* Is the pointer sitting on this rect right now?
+ *
+ * Always asked with the rect that is about to be registered as the hit, so a
+ * thing that lights up and the thing that would be clicked cannot drift apart.
+ * A pointer already carrying something is busy and lights nothing. */
+static bool ptr_on(const app_t *a, uint16_t x, uint16_t y, uint16_t w,
+                   uint16_t h) {
+  return a->ptr_valid && a->drag.kind == DRAG_NONE && a->ptr_x >= x &&
+         a->ptr_x < x + w && a->ptr_y >= y && a->ptr_y < y + h;
+}
+
 typedef void (*leaf_fn_fwd)(node_t *, void *);
 static void walk_all(app_t *a, leaf_fn_fwd fn, void *ud);
 
@@ -1707,8 +1718,7 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
    * Tested against the rect registered as the hit two lines below, so the row
    * that lights up and the row that would be clicked are the same row by
    * construction. A drag already owns the pointer and says nothing here. */
-  bool hot = a->ptr_valid && a->drag.kind == DRAG_NONE && a->ptr_y == r.y &&
-             a->ptr_x >= r.x && a->ptr_x < r.x + r.w;
+  bool hot = ptr_on(a, r.x, r.y, r.w, 1);
 
   /* Foreground only. A filled bar is louder than the thing it is telling you,
    * and this row has to sit in a list of its own kind without shouting. */
@@ -1918,9 +1928,16 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     else snprintf(label, sizeof label, " %zu ", i + 1);
 
     bool active = i == a->cur;
-    uint16_t w = screen_text(s, x, CFG.gap, label,
-                             active ? TITLE_FOCUS : FRAME_IDLE, NO_COLOR,
-                             active ? ATTR_BOLD : 0);
+    uint16_t attrs = active ? ATTR_BOLD : 0;
+    /* Two independent signals: weight says which tab you are in, colour says
+     * where the pointer is. Drawn once to learn the width, then again in the
+     * hover colour if that width turns out to be under the pointer — which
+     * costs a repaint of a few cells and guarantees the lit cells are the
+     * registered ones. */
+    uint16_t w = screen_text(s, x, y, label,
+                             active ? TITLE_FOCUS : FRAME_IDLE, NO_COLOR, attrs);
+    if (ptr_on(a, x, y, w, 1))
+      screen_text(s, x, y, label, FRAME_FOCUS, NO_COLOR, attrs);
     char action[48];
     snprintf(action, sizeof action, "tab:%u", t->id);
     hit_add(&s->hits, x, y, w, 1, action);
@@ -1931,6 +1948,8 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
    * verbs that look identical is a UI bug the fork shipped and noticed. */
   if (x + 6 < right) {
     uint16_t w = screen_text(s, x, y, " +tab ", FRAME_IDLE, NO_COLOR, 0);
+    if (ptr_on(a, x, y, w, 1))
+      screen_text(s, x, y, " +tab ", FRAME_FOCUS, NO_COLOR, 0);
     hit_add(&s->hits, x, y, w, 1, "newtab");
   }
 }
