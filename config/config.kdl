@@ -40,10 +40,10 @@ title_inset 2
 // real choice rather than an oversight.
 // ── the frame's own buttons ─────────────────────────────────────────────────
 //
-// Minimise, zoom and close, in the top-right of every pane's frame. Three
-// columns each, because a one-column target is a thing you miss with a mouse.
-// They are drawn right to left and stop when they run out of room, so a narrow
-// pane keeps close and zoom and loses minimise first.
+// Minimise, zoom and close, in the top-right of every pane's frame: the mark
+// and one space each, seven columns for the three of them. They are drawn
+// right to left and stop when they run out of room, so a narrow pane keeps
+// close and zoom and loses minimise first.
 //
 // The split button was removed from this frame once already, on the grounds
 // that one glyph cannot mean four directions and the border can. These are two

@@ -1910,14 +1910,19 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     uint16_t bx = (uint16_t)(x1 - 1);
     for (size_t i = 0; i < sizeof btns / sizeof *btns; i++) {
       char cell[24];
-      snprintf(cell, sizeof cell, " %s ", btns[i].mark);
+      /* One space, not two. The gap between two marks is blank cells plus
+       * whatever blank each glyph carries inside its own cell, and that second
+       * part is not the same for a low underscore as for a square that fills
+       * its box. Two cells made the difference plain; one makes it small, and
+       * gives three columns of every frame back at the same time. */
+      snprintf(cell, sizeof cell, "%s ", btns[i].mark);
       /* Measured in cells rather than assumed: a mark is yours to choose and
        * may be more than one character. Booking three cells for a
        * two-character mark would draw it over its neighbour and hand the
        * neighbour's hit a cell it does not own. */
       uint16_t mw = cells(btns[i].mark);
       if (!mw) mw = 1;
-      uint16_t bw = (uint16_t)(mw + 2);
+      uint16_t bw = (uint16_t)(mw + 1);
       if (bx < r.x + 4 + bw) break;
       uint16_t px = (uint16_t)(bx - bw + 1);
       bool hot = ptr_on(a, px, r.y, bw, 1);
@@ -1930,6 +1935,13 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
       has_btn = true;
       btn_x = px;
       avail = (uint16_t)(avail > bw ? avail - bw : 0);
+    }
+    /* One blank between the rule and the first button, so the group is not
+     * welded to the frame the way a title without its space would be. */
+    if (has_btn && btn_x > (uint16_t)(r.x + 1)) {
+      screen_text(s, (uint16_t)(btn_x - 1), r.y, " ", PANE_BTN, NO_COLOR, 0);
+      btn_x = (uint16_t)(btn_x - 1);
+      avail = (uint16_t)(avail > 1 ? avail - 1 : 0);
     }
   }
 
