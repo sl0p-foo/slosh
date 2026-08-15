@@ -1144,15 +1144,21 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
   n->collapsed = false;
   if (n->kind == NODE_LEAF) n->hidden = false;
   if (n->kind == NODE_LEAF) {
-    /* content is the frame deflated by its border and padding; a rect too
-     * small for a frame gets none, and the pane takes the whole thing. */
-    uint16_t bx = r.w >= 3 && r.h >= 3 ? 1 + CFG.pad * CFG.gap_aspect : 0;
-    uint16_t by = r.w >= 3 && r.h >= 3 ? 1 + CFG.pad : 0;
+    /* content is the frame deflated by its border and its padding, per side; a
+     * rect too small for a frame gets neither, and the pane takes the whole
+     * thing. Horizontal padding is aspect-corrected, like the gap: the config's
+     * numbers are rows, so a square-looking ring is one number rather than an
+     * arithmetic problem. */
+    bool framed = r.w >= 3 && r.h >= 3;
+    uint16_t left = framed ? 1 + CFG.pad_left * CFG.gap_aspect : 0;
+    uint16_t right = framed ? 1 + CFG.pad_right * CFG.gap_aspect : 0;
+    uint16_t top = framed ? 1 + CFG.pad_top : 0;
+    uint16_t bottom = framed ? 1 + CFG.pad_bottom : 0;
     n->content = (rect_t){
-        .x = (uint16_t)(r.x + bx),
-        .y = (uint16_t)(r.y + by),
-        .w = (uint16_t)(r.w > 2 * bx ? r.w - 2 * bx : 1),
-        .h = (uint16_t)(r.h > 2 * by ? r.h - 2 * by : 1),
+        .x = (uint16_t)(r.x + left),
+        .y = (uint16_t)(r.y + top),
+        .w = (uint16_t)(r.w > left + right ? r.w - left - right : 1),
+        .h = (uint16_t)(r.h > top + bottom ? r.h - top - bottom : 1),
     };
     if (ctx->apply && !n->hidden)
       pane_resize(n->pane, n->content.w, n->content.h);

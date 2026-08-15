@@ -450,7 +450,7 @@ void config_defaults(config_t *c) {
   memset(c, 0, sizeof *c);
   c->gap = 1;
   c->gap_aspect = 2;
-  c->pad = 0;
+  c->pad_top = c->pad_right = c->pad_bottom = c->pad_left = 0;
   c->rounded = true;
   c->title_align = ALIGN_CENTER;
   c->title_inset = 2;
@@ -981,7 +981,16 @@ char *config_render(const config_t *c) {
   cb_add(&b, "gap %u\n", c->gap);
   cb_add(&b, "gap_aspect %u          // columns per row, so a gap looks square\n",
          c->gap_aspect);
-  cb_add(&b, "padding %u\n", c->pad);
+  /* The shortest form that means what is in force, because `padding 0` reads
+   * better than `padding 0 0 0 0` and round-trips to the same four numbers. */
+  if (c->pad_top == c->pad_right && c->pad_top == c->pad_bottom &&
+      c->pad_top == c->pad_left)
+    cb_add(&b, "padding %u\n", c->pad_top);
+  else if (c->pad_top == c->pad_bottom && c->pad_right == c->pad_left)
+    cb_add(&b, "padding %u %u\n", c->pad_top, c->pad_right);
+  else
+    cb_add(&b, "padding %u %u %u %u   // top right bottom left\n", c->pad_top,
+           c->pad_right, c->pad_bottom, c->pad_left);
   cb_add(&b, "rounded %s\n", yesno(c->rounded));
   cb_add(&b, "title_align \"%s\"\n",
          c->title_align == ALIGN_LEFT ? "left"
@@ -1287,7 +1296,35 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   c->gap = (uint16_t)kdl_arg_int(kdl_child(root, "gap"), 0, c->gap);
   c->gap_aspect =
       (uint16_t)kdl_arg_int(kdl_child(root, "gap_aspect"), 0, c->gap_aspect);
-  c->pad = (uint16_t)kdl_arg_int(kdl_child(root, "padding"), 0, c->pad);
+  /* `padding 1`, `padding 0 2`, or `padding 1 2 1 2` -- one value for every
+   * side, two for vertical and horizontal, four in CSS order (top, right,
+   * bottom, left), because that is the order everybody who has written a
+   * stylesheet already knows. Three is refused rather than guessed at: CSS says
+   * top/horizontal/bottom and a reader who has to look that up is a reader who
+   * cannot see what the line does. */
+  {
+    const kdl_node_t *pn = kdl_child(root, "padding");
+    if (pn) {
+      long v[4];
+      size_t n = pn->nargs < 4 ? pn->nargs : 4;
+      for (size_t i = 0; i < n; i++) v[i] = kdl_arg_int(pn, i, 0);
+      if (pn->nargs == 1) {
+        c->pad_top = c->pad_right = c->pad_bottom = c->pad_left = (uint16_t)v[0];
+      } else if (pn->nargs == 2) {
+        c->pad_top = c->pad_bottom = (uint16_t)v[0];
+        c->pad_right = c->pad_left = (uint16_t)v[1];
+      } else if (pn->nargs == 4) {
+        c->pad_top = (uint16_t)v[0];
+        c->pad_right = (uint16_t)v[1];
+        c->pad_bottom = (uint16_t)v[2];
+        c->pad_left = (uint16_t)v[3];
+      } else {
+        complain(c, err, errcap, pn->line,
+                 "padding takes 1, 2 or 4 values (all, vertical horizontal, or "
+                 "top right bottom left), not %zu", pn->nargs);
+      }
+    }
+  }
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
   c->status_line =

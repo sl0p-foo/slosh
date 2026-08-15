@@ -80,7 +80,20 @@ gap 1
 // a gap of 1 row and 2 columns looks square.
 gap_aspect 2
 
-// Cells between a pane's frame and its content.
+// Space between a pane's frame and its contents, in ROWS like `gap` -- a
+// horizontal one is multiplied by `gap_aspect`, so `padding 1` is a ring that
+// looks square rather than a squashed one. One number does every side; two are
+// vertical then horizontal; four are CSS order, top right bottom left:
+//
+//     padding 1              // all round
+//     padding 0 2            // none above or below, two either side
+//     padding 1 2 1 2        // the same thing, spelled out
+//     padding 2 0 0 1        // room for a title above, a gutter on the left
+//
+// A number means the same thing however many of them you write, which is why
+// the first three of those are two paddings rather than three. Three values is
+// refused: CSS reads it as top/horizontal/bottom, and a line whose meaning you
+// have to look up is a line nobody can read.
 padding 0
 
 // ╭╮╰╯ versus ┌┐└┘

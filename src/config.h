@@ -102,7 +102,13 @@ typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
 
 typedef struct {
   /* geometry */
-  uint16_t gap, gap_aspect, pad;
+  uint16_t gap, gap_aspect;
+  /* Space between a pane's frame and its contents, per side, in the same unit
+   * `gap` uses: ROWS. A horizontal one is multiplied by `gap_aspect` on the way
+   * out, so `padding 1` is a square-looking ring rather than a squashed one —
+   * and so a number means the same thing wherever it appears, however many of
+   * them were written. Written as 1, 2 or 4 values, CSS order. */
+  uint16_t pad_top, pad_right, pad_bottom, pad_left;
   bool rounded;
   align_t title_align;
   /* Cells between a frame's corner and the start of its title. The title

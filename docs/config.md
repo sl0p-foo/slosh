@@ -109,6 +109,25 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |
 
+Two of those take more than one value. `gap` is in **rows**, and `gap_aspect`
+says how many columns a row is worth (2 by default, because a cell is about
+twice as tall as it is wide) — so both `gap` and `padding` are written in rows
+and come out looking square.
+
+`padding` is the space between a pane's frame and its contents, written the way
+CSS does it:
+
+```kdl
+padding 1              // every side
+padding 0 2            // vertical, horizontal
+padding 2 0 0 1        // top, right, bottom, left
+```
+
+A number means the same thing however many of them you write, so `padding 1`,
+`padding 1 1` and `padding 1 1 1 1` are one padding rather than three. Three
+values is refused — CSS reads it as top/horizontal/bottom, and a line whose
+meaning you have to look up is a line nobody can read.
+
 ## Pane states
 
 A pane is tinted by what is *true* of it, which is the part you cannot discover

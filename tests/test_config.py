@@ -46,6 +46,67 @@ def test_geometry():
     os.unlink(path)
 
 
+def insets(pane):
+    """A pane's content rect as four insets from its frame: top, right, bottom,
+    left. What `padding` is actually about, and the only way to see it is to
+    measure both rects."""
+    return (pane["content_y"] - pane["y"],
+            (pane["x"] + pane["w"]) - (pane["content_x"] + pane["content_w"]),
+            (pane["y"] + pane["h"]) - (pane["content_y"] + pane["content_h"]),
+            pane["content_x"] - pane["x"])
+
+
+def pad_insets(text, cols=60, rows=16):
+    path = cfg(text)
+    with Session(SH, cols=cols, rows=rows, config=path) as s:
+        s.settle()
+        got = insets(s.pane())
+    os.unlink(path)
+    return got
+
+
+def test_padding_takes_one_two_or_four_values():
+    """One for every side, two for vertical and horizontal, four in CSS order.
+    A number means the same thing however many of them were written, which is
+    why all three of these are the same padding."""
+    check("no padding is just the border", pad_insets("padding 0\n") == (1, 1, 1, 1),
+          str(pad_insets("padding 0\n")))
+
+    one = pad_insets("padding 1\n")
+    check("one value pads every side", one == (2, 3, 2, 3), str(one))
+    check("...and two equal values say the same thing",
+          pad_insets("padding 1 1\n") == one, str(pad_insets("padding 1 1\n")))
+    check("...as do four", pad_insets("padding 1 1 1 1\n") == one,
+          str(pad_insets("padding 1 1 1 1\n")))
+
+    # Horizontal padding is aspect-corrected, like the gap: the numbers are rows,
+    # so a ring that looks square is one number rather than arithmetic.
+    two = pad_insets("padding 0 2\n")
+    check("two values are vertical then horizontal", two == (1, 5, 1, 5), str(two))
+    check("and gap_aspect 1 makes the units plain cells",
+          pad_insets("gap_aspect 1\npadding 0 2\n") == (1, 3, 1, 3),
+          str(pad_insets("gap_aspect 1\npadding 0 2\n")))
+
+    four = pad_insets("padding 2 0 0 1\n")
+    check("four values are top right bottom left", four == (3, 1, 1, 3), str(four))
+
+
+def test_a_padding_nobody_can_read_is_refused():
+    """Three values is CSS for top/horizontal/bottom, which a reader has to look
+    up -- so it is refused rather than guessed at, and the rest of the file still
+    applies."""
+    path = cfg("padding 1 2 3\ngap 2\n")
+    with Session(SH, cols=60, rows=16, config=path) as s:
+        s.settle()
+        check("the padding was not applied", insets(s.pane()) == (1, 1, 1, 1),
+              str(insets(s.pane())))
+        check("but the rest of the file was", s.pane()["y"] == 3, str(s.pane()))
+        reply = s.api("reload")
+        check("and it says what it wanted", "padding takes 1, 2 or 4" in
+              reply.get("warning", ""), str(reply))
+    os.unlink(path)
+
+
 def test_status_bar_off():
     path = cfg("status_bar false\n")
     with Session(SH, cols=50, rows=10, config=path) as s:
@@ -426,6 +487,9 @@ def test_an_unknown_theme_name_is_refused_not_ignored():
 if __name__ == "__main__":
     test_geometry()
     test_status_bar_off()
+    test_padding_takes_one_two_or_four_values()
+    test_a_padding_nobody_can_read_is_refused()
+    test_a_chord_can_be_written_the_way_the_cheatsheet_prints_it()
     test_theme()
     test_keys()
     test_min_pane_drives_collapse()
