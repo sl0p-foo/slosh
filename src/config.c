@@ -347,16 +347,31 @@ void config_defaults(config_t *c) {
   c->hints = true;
   c->version_banner = true;
   c->pane_buttons = true;
-  /* One family, four interiors: minus, plus, dot, times. The lesson that put
-   * ASCII here in the first place was about *evenness* -- a glyph that does not
-   * fill its own cell hands the slack to the gap beside it -- and four copies of
-   * the same box answer that better than four unrelated glyphs did, while still
-   * saying which verb is which. Single width, and not emoji: many terminals
-   * draw those two columns wide while chrome here is booked as one. */
-  snprintf(c->zoom_mark, sizeof c->zoom_mark, "\u229e");     /* ⊞ fill the tab */
-  snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "\u22a1"); /* ⊡ and put it back */
-  snprintf(c->close_mark, sizeof c->close_mark, "\u22a0");   /* ⊠ close */
-  snprintf(c->min_mark, sizeof c->min_mark, "\u229f");       /* ⊟ into the strip */
+  /* Geometric shapes and a dingbat, because those are the blocks a font draws
+   * at full cell size. The boxed operators these replaced (⊞ ⊟ ⊡ ⊠) were one
+   * tidy family and unreadable with it: they are *math* symbols, sized to sit
+   * beside x and y in an equation, so at a terminal's cell size the interior
+   * that carried the whole meaning was two or three pixels of it.
+   *
+   * Legibility beats uniformity here, so these are deliberately different
+   * shapes: a bar for away, an outline for "make it fill the tab", the same
+   * outline filled in for "it is filling it", a cross for gone. The evenness
+   * problem that put ASCII here originally is answered by picking glyphs that
+   * fill their cell rather than by picking one family -- a glyph that does not
+   * hands the slack to the gap beside it, by an amount the font decides.
+   *
+   * A *bar* for minimise rather than the obvious ▼, because the split guide
+   * already owns all four triangles (◄ ► ▲ ▼) and the scroll indicator owns ▲
+   * again: a glyph that means "split downward" on the border of a frame cannot
+   * also mean "put this pane away" in its corner. Found by the guide's own test
+   * failing, which is what that test is for.
+   *
+   * Single width, and not emoji: many terminals draw those two columns wide
+   * while chrome here is booked as one. */
+  snprintf(c->zoom_mark, sizeof c->zoom_mark, "\u25a1");       /* □ fill the tab */
+  snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "\u25a0"); /* ■ ...and back */
+  snprintf(c->close_mark, sizeof c->close_mark, "\u2715");     /* ✕ close */
+  snprintf(c->min_mark, sizeof c->min_mark, "\u25ac");         /* ▬ into the strip */
   snprintf(c->newtab_mark, sizeof c->newtab_mark, "+");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");

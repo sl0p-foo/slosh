@@ -144,12 +144,17 @@ version_banner true
 
 pane_buttons true
 
-// One family, four interiors: minus for away, plus for bigger, dot for back to
-// normal, times for gone. ASCII was here first, and for a good reason -- the
-// cells are even but a glyph that does not fill its own cell hands the slack to
-// the gap beside it, so box-drawing and block characters both looked unevenly
-// spaced. Four copies of the same box answer that better than four unrelated
-// glyphs did: whatever the font does with the box, it does four times.
+// Four shapes, one verb each: down for away, an outline for "make it fill the
+// tab", the same outline filled in for "it is filling it", a cross for gone.
+//
+// Deliberately not one tidy family. A set of boxed operators (⊞ ⊟ ⊡ ⊠) was
+// tried and read as four identical smudges: they are *math* symbols, sized to
+// sit beside x and y in an equation, so at a terminal's cell size the interior
+// carrying the whole meaning is two or three pixels of it. Geometric shapes and
+// dingbats are drawn at full cell size, which is what makes them readable at
+// all, and picking glyphs that fill their cell is also the answer to the
+// evenness that put plain ASCII here originally -- a glyph that does not fill
+// its cell hands the slack to the gap beside it, by an amount the font decides.
 //
 // Single width, and never emoji: many terminals draw those two columns wide
 // while chrome here is booked as one, which shifts everything after them.
@@ -157,10 +162,10 @@ pane_buttons true
 // A mark may be more than one character; the button is measured rather than
 // assumed, so "[]" and "][" work if you prefer them. Put the character itself
 // here; this file has no \u escape.
-zoom_mark "⊞"          // click to fill the tab with this pane
-zoom_on_mark "⊡"       // ...and this is what it says while it is filling it
-close_mark "⊠"
-min_mark "⊟"           // into the strip along the bottom, still running
+zoom_mark "□"          // click to fill the tab with this pane
+zoom_on_mark "■"       // ...and this is what it says while it is filling it
+close_mark "✕"
+min_mark "▼"           // into the strip along the bottom, still running
 
 // The new-tab button at the end of the tab strip. Drawn with a space on each
 // side, so a one-character mark is still a three-cell target -- a one-cell
