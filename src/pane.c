@@ -58,6 +58,7 @@ struct pane {
    * a dead pane needs exactly what it was started with, and by then the pane
    * is the only thing that still knows. */
   bool suspended;
+  bool ephemeral;
   char **argv;
   char *cwd;
   char label[128];
@@ -224,6 +225,8 @@ static void on_title_changed(GhosttyTerminal t, void *ud) {
 }
 
 bool pane_suspended(const pane_t *p) { return p->suspended; }
+void pane_set_ephemeral(pane_t *p, bool yes) { p->ephemeral = yes; }
+bool pane_ephemeral(const pane_t *p) { return p->ephemeral; }
 const char *pane_label(const pane_t *p) { return p->label; }
 
 /* Spawn what a suspended pane was created to run. */

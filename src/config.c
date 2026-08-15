@@ -30,6 +30,7 @@ static const struct {
     {"detach", ACT_DETACH},           {"quit", ACT_QUIT},
     {"literal-prefix", ACT_LITERAL_PREFIX},
     {"help", ACT_HELP},
+    {"edit-config", ACT_EDIT_CONFIG},
 };
 
 static const struct {
@@ -393,6 +394,7 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_SLASH, 0, ACT_HELP, false);
   bind_add(c, GHOSTTY_KEY_R, 0, ACT_RERUN, false);
   bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM, false);
+  bind_add(c, GHOSTTY_KEY_E, 0, ACT_EDIT_CONFIG, false);
   bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE, false);
   bind_add(c, GHOSTTY_KEY_H, 0, ACT_FOCUS_LEFT, false);
   bind_add(c, GHOSTTY_KEY_L, 0, ACT_FOCUS_RIGHT, false);
@@ -431,6 +433,7 @@ void config_free(config_t *c) {
   free(c->exprs);
   free(c->binds);
   free(c->shell);
+  free(c->editor);
   free(c->shader_dir);
   memset(c, 0, sizeof *c);
 }
@@ -478,6 +481,7 @@ static const struct {
     {ACT_SCROLL_BOTTOM, "scroll", "back to the present"},
 
     {ACT_HELP, "session", "this list"},
+    {ACT_EDIT_CONFIG, "session", "edit the config"},
     {ACT_DETACH, "session", "detach, leave it running"},
     {ACT_QUIT, "session", "quit the session"},
     {ACT_LITERAL_PREFIX, "session", "send the prefix itself"},
@@ -708,6 +712,11 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (sh) {
     free(c->shell);
     c->shell = strdup(sh);
+  }
+  const char *ed = kdl_arg(kdl_child(root, "editor"), 0, NULL);
+  if (ed) {
+    free(c->editor);
+    c->editor = strdup(ed);
   }
 
   /* Shader plugins, before any shader is named below: a `shaders` block may

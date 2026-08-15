@@ -119,6 +119,12 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
 pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
                     const char *cwd, bool suspended, const char *label);
 bool pane_suspended(const pane_t *p);
+/* A pane opened to do one thing, rather than one the session is made of: an
+ * editor you popped open, not the dev server a layout declared. It runs a
+ * command like any other, but when that command ends it is finished — so it
+ * keeps no corpse and is not written into a dumped layout. */
+void pane_set_ephemeral(pane_t *p, bool yes);
+bool pane_ephemeral(const pane_t *p);
 const char *pane_label(const pane_t *p);
 /* The pid of the program in the pane, or -1. Used to ask the kernel where a
  * shell has got to, which is the only honest answer to "what is this pane's

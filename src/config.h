@@ -64,6 +64,7 @@ typedef enum {
   ACT_DETACH,
   ACT_QUIT,
   ACT_HELP,
+  ACT_EDIT_CONFIG,
   ACT_LITERAL_PREFIX,
   ACT_SELECT_TAB_1, /* .. +8, so digits stay one entry each */
 } action_t;
@@ -282,6 +283,8 @@ typedef struct {
 
   /* what a new pane runs; NULL means $SHELL */
   char *shell;
+  /* What `edit-config` opens the file with; NULL means $EDITOR, then vi. */
+  char *editor;
 
   /* Where to look for shader plugins (`*.so`). NULL means the default: a
    * `shaders` directory beside the config file. Read before the `shaders` and

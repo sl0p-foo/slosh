@@ -1294,10 +1294,22 @@ static void replace_child(node_t *parent, node_t *old, node_t *new_) {
     }
 }
 
+/* The pane a split makes. NULL argv means "whatever this session runs", which
+ * is the ordinary case; a command makes it a task pane instead. */
+static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
+                               bool before, const char *const *argv,
+                               const char *label);
+
 static void split_node(app_t *a, node_t *leaf, split_dir_t dir, bool before) {
-  if (!leaf) return;
-  node_t *fresh = leaf_new(a);
-  if (!fresh) return;
+  split_node_with(a, leaf, dir, before, NULL, NULL);
+}
+
+static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
+                               bool before, const char *const *argv,
+                               const char *label) {
+  if (!leaf) return NULL;
+  node_t *fresh = argv ? leaf_new_ex(a, argv, NULL, false, label) : leaf_new(a);
+  if (!fresh) return NULL;
 
   /* Growing an existing split in the same direction keeps the tree flat, so
    * three vertical splits are three equal columns rather than 1/2 + 1/4 + 1/4. */
@@ -1332,6 +1344,7 @@ static void split_node(app_t *a, node_t *leaf, split_dir_t dir, bool before) {
 
   cur(a)->focus = fresh;
   layout(a);
+  return fresh;
 }
 
 /* Would splitting this pane produce two panes worth having?
@@ -1448,6 +1461,10 @@ struct reap {
  * empty for a pane that is just a shell -- which is the whole distinction, and
  * it happens to already be recorded. */
 static bool keep_corpse(const pane_t *p) {
+  /* A pane opened to do one thing is done when that thing ends, whatever the
+   * policy says about commands: you asked for an editor, not for a record of
+   * having had one. */
+  if (pane_ephemeral(p)) return false;
   switch (CFG.keep_dead) {
     case KEEP_DEAD_ALL: return true;
     case KEEP_DEAD_NONE: return false;
@@ -1690,6 +1707,40 @@ bool app_close_pane(app_t *a, uint32_t id) {
  * the run that ended stays above the new one in its scrollback. A suspended
  * pane is started rather than restarted, because "run the thing this pane is
  * for" is the same request either way. */
+/* Open the config in $EDITOR, in a pane of its own.
+ *
+ * The whole point is the loop: edit, save, watch the session change under you,
+ * edit again. Anything that makes you leave the session to do it -- another
+ * terminal, or remembering where the file lives -- is friction in the middle
+ * of the one workflow the config watcher exists for.
+ *
+ * The pane is ephemeral: quit the editor and it is gone. You asked for an
+ * editor, not for a record of having had one. */
+bool app_edit_config(app_t *a) {
+  node_t *n = a->ntabs ? cur(a)->focus : NULL;
+  if (!n) return false;
+
+  const char *editor = CFG.editor && *CFG.editor ? CFG.editor : getenv("EDITOR");
+  /* vi is the one editor a POSIX system is required to have. Better a wrong
+   * guess you can see and change than a pane that opens empty. */
+  if (!editor || !*editor) editor = "vi";
+
+  char cmd[1024];
+  snprintf(cmd, sizeof cmd, "%s '%s'", editor, config_default_path());
+  const char *argv[] = {"/bin/sh", "-c", cmd, NULL};
+
+  /* Down rather than across: a config file is lines, and half the width of a
+   * pane is a worse place to read them than half the height. */
+  if (!split_fits(n, SPLIT_ROWS)) {
+    app_toast(a, "no room to split down");
+    return false;
+  }
+  node_t *fresh = split_node_with(a, n, SPLIT_ROWS, false, argv, cmd);
+  if (!fresh) return false;
+  pane_set_ephemeral(fresh->pane, true);
+  return true;
+}
+
 bool app_rerun_pane(app_t *a, uint32_t id) {
   node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
   if (!n) return false;
@@ -4013,6 +4064,9 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
       a->query[0] = 0;
       a->sel = 0;
       return true;
+    case ACT_EDIT_CONFIG:
+      app_edit_config(a);
+      return true;
     case ACT_HELP:
       a->help = !a->help;
       return true;
@@ -4336,8 +4390,11 @@ static void dump_node(app_t *a, node_t *n, strbuf_t *b, int depth) {
   char cwdbuf[4096];
   sb_quoted(b, "cwd", live_cwd(n->pane, cwdbuf, sizeof cwdbuf));
   /* The label is the command a layout gave it; a pane running the session's
-   * default shell has none, and gets none back. */
-  sb_quoted(b, "command", pane_label(n->pane));
+   * default shell has none, and gets none back. An ephemeral pane is a task
+   * that happened to be open when the dump was taken — restoring it would
+   * reopen somebody's editor on a file they finished with. */
+  if (!pane_ephemeral(n->pane))
+    sb_quoted(b, "command", pane_label(n->pane));
   sb_quoted(b, "purpose", n->purpose);
   if (pane_suspended(n->pane)) sb_add(b, " suspended=true");
   if (n == cur(a)->focus) sb_add(b, " focus=true");

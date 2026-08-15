@@ -472,6 +472,16 @@ theme {
 // help detach quit
 // literal-prefix none
 
+// What C-a e opens this file with. Empty means $EDITOR, and then vi -- the
+// one editor a POSIX system is required to have, so a wrong guess you can see
+// beats a pane that opens empty.
+//
+// The pane it opens is *ephemeral*: quit the editor and the pane goes, with
+// no corpse to dismiss and no trace in a dumped layout. You asked for an
+// editor, not for a record of having had one.
+//
+// editor "nvim"
+
 keys {
     // The leader. Every binding below is this key, then the key on the line.
     // ctrl+a is a default and not a decision -- it is start-of-line to half

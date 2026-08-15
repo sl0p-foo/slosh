@@ -114,6 +114,9 @@ bool app_close_pane(app_t *a, uint32_t id);
 /* Run a dead (or not-yet-started) pane's command again, in the same pane and
  * on top of the same scrollback. 0 means the focused one. */
 bool app_rerun_pane(app_t *a, uint32_t id);
+/* Open the config file in $EDITOR, in a pane of its own, so the edit/save/
+ * watch loop happens without leaving the session. The pane is ephemeral. */
+bool app_edit_config(app_t *a);
 uint32_t app_focused_pane_id(app_t *a);
 uint32_t app_current_tab_id(app_t *a);
 
