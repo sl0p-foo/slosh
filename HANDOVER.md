@@ -243,6 +243,14 @@ The fix is `src/png.c`: `ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, ...)`
 over the `stb_image.h` that libghostty-vt already vendors and we already
 commit. See D18 for why that rather than a hand-rolled one.
 
+The same program found the other half: it asks `CSI 16 t` for the cell size in
+the same round trip as its graphics query, and we answered nothing, so it fell
+back to guessing 10x20 and would have drawn the picture stretched even once
+the png decoded. `GHOSTTY_TERMINAL_OPT_SIZE` answers 14/16/18 t now. If you
+add anything that a program can *ask* rather than be told, check both: the
+pty's pixel fields and the escape query are different code paths to the same
+number, and a program that has been through an ssh hop uses the second one.
+
 **A false lead worth not repeating.** The first bisect built its escape
 sequences with `sh printf`, and `printf` mangles adjacent backslash escapes:
 `\033\\` immediately followed by `\033` reaches the pty as a literal `\033`.

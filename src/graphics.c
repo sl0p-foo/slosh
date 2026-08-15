@@ -112,7 +112,16 @@ static gfx_image_t *img_find(graphics_t *g, uint32_t pane, uint32_t src_id) {
   return NULL;
 }
 
-/* a=t: transmit without placing, so the same bytes can be placed repeatedly */
+/* a=t: transmit without placing, so the same bytes can be placed repeatedly.
+ *
+ * What goes out is always *decoded* pixels, because that is the only form
+ * lib-vt keeps: a PNG is decoded on the way in (D18) and we never see the
+ * original bytes again. So a program that uploads an 819KB png costs 3.3MB of
+ * base64 on the wire here -- once per image, and again after a reattach,
+ * which calls gfx_reset() and clears `sent`. Fine for a splash screen, not
+ * fine for anything that uploads a stream of photographs; if that ever shows
+ * up, the fix is to keep the source bytes ourselves and pass f=100 straight
+ * through rather than to make this loop cleverer. Nobody has felt it yet. */
 static void transmit(graphics_t *g, gfx_image_t *img, uint32_t px_w,
                      uint32_t px_h, int format, int compression,
                      const uint8_t *data, size_t len) {

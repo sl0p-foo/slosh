@@ -113,6 +113,94 @@ def test_a_program_can_read_the_pixel_size_from_its_pty():
               xp == cols * 8 and yp == rows * 16, line)
 
 
+def asks_its_size():
+    """A child that asks the terminal how big it is (XTWINOPS) and prints what
+    came back, the way ida-tui's splash does before it draws.
+
+    It waits for a keystroke first so the test can change the cell size before
+    the question is asked -- the answer is the point, and a sleep would only be
+    a guess about when the resize landed.
+    """
+    prog = (
+        "import os, re, select, sys, termios, time, tty\n"
+        "fd = os.open('/dev/tty', os.O_RDWR | os.O_NOCTTY)\n"
+        "old = termios.tcgetattr(fd); tty.setraw(fd)\n"
+        "sys.stdout.write('READY\\r\\n'); sys.stdout.flush()\n"
+        "os.read(fd, 1)\n"
+        # 14t: text area in pixels, 16t: cell in pixels, 18t: area in cells.
+        # DA1 last, because everything answers it: it marks the end of the
+        # replies so nothing has to be timed.
+        "os.write(fd, b'\\033[14t\\033[16t\\033[18t\\033[c')\n"
+        "buf = b''\n"
+        "deadline = time.monotonic() + 2\n"
+        "while time.monotonic() < deadline:\n"
+        "    r, _, _ = select.select([fd], [], [], 0.1)\n"
+        "    if not r: continue\n"
+        "    buf += os.read(fd, 4096)\n"
+        "    if re.search(rb'\\033\\[\\?[0-9;]*c', buf): break\n"
+        "termios.tcsetattr(fd, termios.TCSANOW, old)\n"
+        "for m in re.finditer(rb'\\033\\[([0-9;]+)t', buf):\n"
+        "    sys.stdout.write('R' + m.group(1).decode() + '\\r\\n')\n"
+        "sys.stdout.write('END\\r\\n'); sys.stdout.flush()\n"
+        "time.sleep(5)\n")
+    return ["python3", "-c", prog]
+
+
+def size_replies(s):
+    """{leading number: [params]} from the XTWINOPS replies on screen.
+
+    Read from the pane's content area, not the composited screen: the screen
+    rows still have the pane border on them.
+    """
+    out = {}
+    snap = s.snapshot()
+    for line in snap.pane_text(s.pane()).split("\n"):
+        line = line.strip()
+        if not line.startswith("R"):
+            continue
+        parts = line[1:].split(";")
+        if all(p.isdigit() for p in parts) and parts:
+            out[int(parts[0])] = [int(p) for p in parts[1:]]
+    return out
+
+
+def test_a_program_can_ask_how_big_a_cell_is():
+    """XTWINOPS, the other way to ask what the pty's pixel fields carry.
+
+    A program that draws images needs the cell size to keep an aspect ratio,
+    and through a multiplexer over ssh the pty fields are often zeroed, so
+    this query is what it falls back to. We answered none of it: the query
+    timed out and the program guessed 10x20, which against a real 9x22 cell
+    is every image stretched by a fifth. ida-tui's splash asks exactly this,
+    in the same round trip as its graphics query.
+    """
+    with Session(asks_its_size(), cols=50, rows=12) as s:
+        s.until_text("READY")
+        s.send("x")
+        s.until_text("END")
+        r = size_replies(s)
+        check("the cell size query is answered (CSI 16 t)", 6 in r, str(r))
+        check("with the cell size we were told", r.get(6) == [16, 8], str(r))
+        check("the character size query is answered (CSI 18 t)", 8 in r, str(r))
+        check("the pixel size query is answered (CSI 14 t)", 4 in r, str(r))
+        if 8 in r and 4 in r:
+            rows, cols = r[8]
+            check("and the three answers agree",
+                  r[4] == [rows * 16, cols * 8], str(r))
+
+
+def test_the_cell_size_reported_is_the_client_s():
+    """Not a constant: whatever the attached terminal said its cell was."""
+    with Session(asks_its_size(), cols=50, rows=12) as s:
+        s.until_text("READY")
+        s.api("resize", cols=50, rows=12, cell_w=9, cell_h=22)
+        s.send("x")
+        s.until_text("END")
+        r = size_replies(s)
+        check("a different cell means a different answer", r.get(6) == [22, 9],
+              str(r))
+
+
 def test_an_image_outlives_a_screen_clear():
     """A program transmits once and places every frame, and full-screen
     programs clear the screen. libghostty-vt freed the image data on ED(2),
@@ -387,6 +475,8 @@ if __name__ == "__main__":
     test_a_placement_that_does_not_say_how_big_it_is()
     test_the_cell_size_a_client_reports_is_what_sizes_an_image()
     test_a_program_can_read_the_pixel_size_from_its_pty()
+    test_a_program_can_ask_how_big_a_cell_is()
+    test_the_cell_size_reported_is_the_client_s()
     test_an_image_outlives_a_screen_clear()
     test_a_screen_clear_still_removes_what_is_on_screen()
     test_sub_cell_offsets_survive_to_the_client()

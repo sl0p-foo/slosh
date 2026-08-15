@@ -149,6 +149,31 @@ static void on_osc5577(const char *verb, const char *payload, void *ud) {
   }
 }
 
+/* XTWINOPS size queries (CSI 14/16/18 t): how big is the text area in pixels,
+ * how big is a cell, how big is it in characters.
+ *
+ * A program that draws images has to know the cell size to keep an aspect
+ * ratio, and asking the terminal is the only way that works through a
+ * multiplexer -- `TIOCGWINSZ` carries pixels too (D17) but a program on the
+ * far side of an ssh hop often finds them zeroed. Unanswered, the query just
+ * times out and the program falls back to a guess like 10x20; against a real
+ * 9x22 cell that is a picture stretched by a fifth, which looks like a bug in
+ * the program rather than in us.
+ *
+ * lib-vt encodes and writes the reply itself once we say what the numbers
+ * are. Mode 2048 (in-band reports on resize) already worked, because that one
+ * is answered from the size passed to ghostty_terminal_resize. */
+static bool on_size_report(GhosttyTerminal t, void *ud,
+                           GhosttySizeReportSize *out) {
+  pane_t *p = ud;
+  if (!p || !out) return false;
+  *out = (GhosttySizeReportSize){.rows = p->rows_n,
+                                 .columns = p->cols,
+                                 .cell_width = p->cell_w,
+                                 .cell_height = p->cell_h};
+  return true;
+}
+
 /* Terminal replies (DA, cursor position, XTVERSION...) go back to the app. */
 static void on_write_pty(GhosttyTerminal t, void *ud, const uint8_t *data,
                          size_t len) {
@@ -297,6 +322,8 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_USERDATA, p);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY,
                        (const void *)(uintptr_t)on_write_pty);
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SIZE,
+                       (const void *)(uintptr_t)on_size_report);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_BELL,
                        (const void *)(uintptr_t)on_bell);
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED,
