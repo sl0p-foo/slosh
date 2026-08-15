@@ -26,6 +26,13 @@
  * look; `reload` re-reads it in place, which is why nothing caches a colour. */
 static config_t CFG;
 static bool CFG_LOADED = false;
+/* What the config in force complained about while loading, or "". A complaint
+ * is not a failure: an include that is not there, a shader nobody has heard of,
+ * a binding that does not parse — the rest of the file applied and the session
+ * is running (D9). But dropping it on the floor is how a mistyped theme name
+ * turns into ten minutes of wondering, so it is kept for whoever can say it out
+ * loud. The front end toasts it; the log gets it either way. */
+static char CFG_COMPLAINT[256];
 
 static void ensure_config(void) {
   if (CFG_LOADED) return;
@@ -35,12 +42,21 @@ static void ensure_config(void) {
   if (!config_load(&CFG, path, err, sizeof err)) {
     /* A missing file is the normal case; a broken one is worth a line in the
      * log, and in both the compiled-in defaults stand (fail open). */
-    if (access(path, R_OK) == 0)
+    if (access(path, R_OK) == 0) {
       fprintf(stderr, "sl0ppty: %s: %s\n", path, err[0] ? err : "parse error");
+      snprintf(CFG_COMPLAINT, sizeof CFG_COMPLAINT, "%s",
+               err[0] ? err : "config parse error");
+    }
   } else if (err[0]) {
     fprintf(stderr, "sl0ppty: %s: %s\n", path, err);
+    snprintf(CFG_COMPLAINT, sizeof CFG_COMPLAINT, "%s", err);
   }
   CFG_LOADED = true;
+}
+
+const char *app_config_complaint(void) {
+  ensure_config();
+  return CFG_COMPLAINT;
 }
 
 bool app_reload_config(char *err, size_t errcap) {
@@ -54,6 +70,8 @@ bool app_reload_config(char *err, size_t errcap) {
   config_free(&CFG);
   CFG = fresh;
   CFG_LOADED = true;
+  /* Whatever the new file had to say about itself, including nothing. */
+  snprintf(CFG_COMPLAINT, sizeof CFG_COMPLAINT, "%s", err && err[0] ? err : "");
   return true;
 }
 

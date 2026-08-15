@@ -62,8 +62,11 @@
 // or `states` block replaces the one it inherited, like every one of those.
 //
 // A file that will not load is skipped and the rest of the config still
-// applies. Losing your keybindings over a mistyped theme name would be the
-// worse answer.
+// applies -- losing your keybindings over a mistyped theme name would be the
+// worse answer -- and the session says which file it could not honour, in the
+// same place it says "config reloaded". That goes for anything a config
+// complains about: an unknown shader, a binding that does not parse, an include
+// that is not there. The file applied; one line of it did not; you get told.
 
 // ── geometry ────────────────────────────────────────────────────────────────
 

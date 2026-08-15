@@ -42,6 +42,10 @@ bool app_reload_config(char *err, size_t errcap);
 /* The files the config in force was read from: the one that was loaded and
  * everything it included, existing or not. What the watcher watches. */
 size_t app_config_files(const char **out, size_t max);
+/* What the config in force complained about while loading, or "". A complaint is
+ * not a failure -- an include that is not there, a shader nobody has heard of --
+ * so the session is running either way; this is for saying so. */
+const char *app_config_complaint(void);
 void app_resize(app_t *a, uint16_t cols, uint16_t rows);
 /* The attached client's cell size in pixels, passed on to every pane's pty and
  * terminal. Images need it: a placement that does not say how many cells it

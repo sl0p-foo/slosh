@@ -1018,7 +1018,12 @@ static void include_path(const char *base_file, const char *ref, char *out,
  *
  * A file that will not load is a line and no more (D9): the rest of the config
  * still applies, because losing your keybindings over a mistyped theme name
- * would be a worse answer than a session that says so. */
+ * would be a worse answer than a session that says so.
+ *
+ * The complaint travels up whether or not the include itself loaded. A file that
+ * applied while *its* include did not still has something to say, and the first
+ * version only looked at the return value — so a bad file two levels down was
+ * reported by nobody, because the file in the middle had parsed fine. */
 static void apply_includes(config_t *c, const kdl_node_t *root, const char *path,
                            int depth, char *err, size_t errcap) {
   for (size_t i = 0; i < root->nkids; i++) {
@@ -1034,10 +1039,9 @@ static void apply_includes(config_t *c, const kdl_node_t *root, const char *path
       /* Its own buffer: an include's failure must not overwrite a message the
        * file that included it has already produced. */
       char ierr[256] = {0};
-      if (!load_into(c, resolved, depth + 1, ierr, sizeof ierr) && err &&
-          !err[0])
-        snprintf(err, errcap, "line %d: %s", n->line,
-                 ierr[0] ? ierr : "cannot include it");
+      if (!load_into(c, resolved, depth + 1, ierr, sizeof ierr) && !ierr[0])
+        snprintf(ierr, sizeof ierr, "cannot include it");
+      if (ierr[0] && err && !err[0]) snprintf(err, errcap, "%s", ierr);
     }
   }
 }
@@ -1064,11 +1068,20 @@ size_t config_files(const config_t *c, const char **out, size_t max) {
   return n;
 }
 
+/* The name to put in front of a complaint: the file it happened in, without its
+ * directory. Enough to know which file to open when several are involved, and
+ * short enough to fit in a toast. */
+static const char *file_label(const char *path) {
+  const char *slash = strrchr(path, '/');
+  return slash ? slash + 1 : path;
+}
+
 static bool load_into(config_t *c, const char *path, int depth, char *err,
                       size_t errcap) {
   if (depth > INCLUDE_MAX_DEPTH) {
     if (err && errcap)
-      snprintf(err, errcap, "%s: includes nested too deep (a cycle?)", path);
+      snprintf(err, errcap, "%s: includes nested too deep (a cycle?)",
+               file_label(path));
     return false;
   }
   remember_file(c, path);
@@ -1076,6 +1089,13 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   if (!root) return false; /* defaults stand; the caller reports why */
 
   apply_includes(c, root, path, depth, err, errcap);
+
+  /* Whether the complaint below, if any, came from further down. What this file
+   * has to say about itself gets this file's name in front of it; what an
+   * include had to say already carries the name of the file it happened in, and
+   * prefixing it again would build a chain that truncates before the part that
+   * matters. */
+  bool inherited = err && err[0];
 
   c->gap = (uint16_t)kdl_arg_int(kdl_child(root, "gap"), 0, c->gap);
   c->gap_aspect =
@@ -1299,5 +1319,11 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   }
 
   kdl_free(root);
+
+  if (!inherited && err && err[0]) {
+    char own[256];
+    snprintf(own, sizeof own, "%s: %s", file_label(path), err);
+    snprintf(err, errcap, "%s", own);
+  }
   return true;
 }

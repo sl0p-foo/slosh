@@ -278,7 +278,20 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     }
     app_resize(a, s->cols, s->rows); /* geometry may have moved */
     s->force_full = true;
-    app_toast(a, "config reloaded");
+    /* A complaint is not a failure: the file applied and one line of it did
+     * not, so the reply is ok with a reason attached rather than an error. A
+     * script that cares can look; the session says it out loud either way. */
+    const char *why = app_config_complaint();
+    app_toast(a, why && *why ? why : "config reloaded");
+    if (why && *why) {
+      json_t j;
+      json_init(&j);
+      json_obj_open(&j, NULL);
+      json_bool(&j, "ok", true);
+      json_str(&j, "warning", why, strlen(why));
+      json_obj_close(&j);
+      return j.buf;
+    }
     return jok_int(NULL, 0);
   }
   if (strcmp(cmd, "alive") == 0) {

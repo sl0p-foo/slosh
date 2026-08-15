@@ -153,7 +153,9 @@ opens your config in a pane, writing that starting file first if you have
 none. [`config/config.kdl`](config/config.kdl) is the same list with the
 reasoning attached, if you want to know *why* a setting exists. **Saving
 it applies it to every running session immediately** — and a file with a
-mistake in it is refused rather than half-applied.
+mistake in it is refused rather than half-applied. Anything smaller than that —
+an unknown shader, a binding that does not parse, an include that is not there —
+applies the rest of the file and tells you which line it could not honour.
 
 Geometry, key bindings and every colour are configurable. Six ready-made
 themes are in [`contrib/themes`](contrib/themes), and a config can be made of

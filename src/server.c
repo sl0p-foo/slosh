@@ -275,6 +275,14 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
   app_compose(s.app, &s.screen); /* a click resolves against a painted frame */
 
+  /* A config that loaded with a complaint in it still started the session, so
+   * the complaint has nowhere to go but here. Once, at startup: the log line is
+   * written where nobody attached will see it. */
+  {
+    const char *why = app_config_complaint();
+    if (why && *why) app_toast(s.app, why);
+  }
+
   /* Watch the config's *directory*, not the file. Editors overwhelmingly save
    * by writing a temporary file and renaming it over the target, which swaps
    * the inode out from under a watch on the file itself: it fires once and
@@ -477,7 +485,11 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
         /* The set of files can have changed with the config that named them:
          * an include added, pointed somewhere else, or taken out. */
         watch_config(&watches);
-        app_toast(s.app, "config reloaded");
+        /* A complaint rather than "config reloaded": the file applied, and one
+         * line of it did not. Saying only the good half is how a mistyped
+         * include becomes ten minutes of wondering. */
+        const char *why = app_config_complaint();
+        app_toast(s.app, why && *why ? why : "config reloaded");
       } else {
         app_toast(s.app, err[0] ? err : "config reload failed");
       }

@@ -123,13 +123,31 @@ def test_anything_can_be_included_not_only_a_theme():
 
 def test_a_missing_include_costs_a_line_and_no_more():
     """Losing your keybindings over a mistyped theme name would be a worse
-    answer than a session that carries on without the theme (D9)."""
+    answer than a session that carries on without the theme (D9) -- but silence
+    would be its own kind of wrong, so it is a line and not nothing."""
     root = tree({"config.kdl": 'include "themes/nope.kdl"\ngap 2\n'})
     with Session(SH, cols=60, rows=14, config=root + "/config.kdl") as s:
         s.settle()
         check("the session is running", s.alive())
         check("and the rest of the file applied anyway", s.pane()["x"] == 4,
               str(s.pane()))
+
+        reply = s.api("reload")
+        check("the reload succeeds", reply.get("ok"), str(reply))
+        check("...and says which line it could not honour",
+              "nope.kdl" in reply.get("warning", ""), str(reply))
+        check("the session says it out loud too",
+              "nope.kdl" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-200:]))
+
+
+def test_a_cycle_says_so():
+    root = tree({"a.kdl": 'include "b.kdl"\n', "b.kdl": 'include "a.kdl"\n'})
+    with Session(SH, cols=70, rows=14, config=root + "/a.kdl") as s:
+        s.settle()
+        reply = s.api("reload")
+        check("a cycle is reported rather than followed",
+              "too deep" in reply.get("warning", ""), str(reply))
 
 
 def test_a_cycle_stops_rather_than_spinning():
@@ -195,6 +213,7 @@ if __name__ == "__main__":
     test_a_leading_tilde_is_a_home_directory()
     test_anything_can_be_included_not_only_a_theme()
     test_a_missing_include_costs_a_line_and_no_more()
+    test_a_cycle_says_so()
     test_a_cycle_stops_rather_than_spinning()
     test_an_include_is_picked_up_by_a_reload()
     test_every_contrib_theme_can_be_included()
