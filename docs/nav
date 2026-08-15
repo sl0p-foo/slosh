@@ -1,0 +1,24 @@
+# The order and grouping of the docs, and nothing else.
+#
+# A section is a line in column zero; a page is an indented filename. Titles
+# come from each file's own `# heading`, so they cannot drift from the page.
+# Read by contrib/gen-docs, which builds the static site.
+
+sl0ppty
+  index.md
+
+Using it
+  keys.md
+  panes.md
+
+Configuring it
+  config.md
+  shaders.md
+  chrome.md
+
+Driving it
+  layouts.md
+  scripting.md
+
+Inside
+  design.md

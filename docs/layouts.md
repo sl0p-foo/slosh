@@ -1,0 +1,75 @@
+# Layouts
+
+A session can be a file, so a project's window layout is checked in with the
+project.
+
+```kdl
+layout {
+    tab name="api" cwd="~/dev/api" {
+        pane command="nvim"
+        pane split="rows" {
+            pane command="npm run dev" suspended=true
+            pane
+        }
+    }
+}
+```
+
+```bash
+sl0ppty --layout session.kdl
+```
+
+## The shape
+
+- `tab` — one per tab, in strip order. `name=`, `cwd=`, `purpose=`,
+  `active=true` for the one you land in.
+- `pane` — a leaf, or a split when it has `pane` children. `split="cols"|"rows"`
+  says which way it divides; `weight=` is its share of the parent (even shares
+  are equal weights, so leaving it out means "even").
+- `command=` — what it runs. Without one, a pane runs your shell.
+- `cwd=` — where it starts. Inherited from the tab when the pane does not say.
+- `suspended=true` — laid out but running nothing until you touch it, so twelve
+  checked-out projects are not twelve running dev servers. The pane shows what it
+  *would* run.
+- `focus=true` — the pane you start in, within its tab.
+- `purpose=` — a label for tooling; see below.
+
+A full annotated example is
+`config/layout.example.kdl`.
+
+## Writing one back out
+
+```bash
+sl0ppty -s work cmd '{"cmd":"dump-layout"}'
+```
+
+writes the session as a layout file: tabs, splits, proportions, directories,
+commands, which pane you were in. So a session can be checked in, or put back
+after a restart.
+`contrib/sl0ppty-dev`
+is that loop, for when the thing you are rebuilding is sl0ppty itself.
+
+What a dump can honestly restore is the *shape*. What it cannot is the state
+inside a program — a shell's history, a running editor — and it does not pretend
+otherwise. A pane running the session's default shell is dumped as a pane with no
+command, so restoring gives you a fresh one.
+
+## Applying one to a running session
+
+```bash
+sl0ppty -s work cmd '{"cmd":"apply-layout","path":"session.kdl"}'
+sl0ppty -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","replace":true}'
+```
+
+Without `replace`, the tabs the file describes are added to what is already
+there.
+
+## Purposes
+
+A pane or tab can carry a `purpose=` label — `agent:main`, `logs`, `db` — for
+tooling to find it by. A purpose declared in a layout or over the control API is
+*locked*: a program inside the pane cannot overwrite it, so identity comes from
+the layout rather than from whatever the program decides to print.
+
+The [finder](panes.md#finding-a-pane) matches on purposes as well as titles, and
+`{"cmd":"panes"}` reports them.
