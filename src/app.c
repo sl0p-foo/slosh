@@ -3016,9 +3016,9 @@ static size_t finder_entries(app_t *a, find_entry_t *out, size_t max) {
  * row rather than nine.
  */
 typedef struct {
-  const char *group; /* NULL for a heading row */
+  const char *group; /* NULL for a heading, or for the blank row above one */
   char chord[40];
-  const char *label;
+  const char *label; /* NULL for the blank row */
 } help_row_t;
 
 static size_t help_rows(help_row_t *out, size_t cap) {
@@ -3056,6 +3056,10 @@ static size_t help_rows(help_row_t *out, size_t cap) {
       if (!chords[0]) continue; /* bound to nothing: do not advertise it */
 
       if (!titled) {
+        /* A blank line above every heading but the first: the caption at the
+         * top already separates that one, and a sheet whose sections run into
+         * each other is a wall of rows to scan rather than five short lists. */
+        if (n && n < cap) out[n++] = (help_row_t){NULL, {0}, NULL};
         out[n++] = (help_row_t){NULL, {0}, GROUPS[g]};
         titled = true;
         if (n >= cap) break;
@@ -3071,6 +3075,7 @@ static size_t help_rows(help_row_t *out, size_t cap) {
    * not true of. Listed in the order they were bound rather than by action:
    * they are a short, deliberate list somebody wrote by hand. */
   if (config_has_direct(&CFG) && n < cap) {
+    if (n && n < cap) out[n++] = (help_row_t){NULL, {0}, NULL};
     out[n++] = (help_row_t){NULL, {0}, "without the leader"};
     for (size_t i = 0; i < CFG.nbinds && n < cap; i++) {
       if (!CFG.binds[i].direct) continue;
@@ -3207,6 +3212,9 @@ static void draw_help(app_t *a, screen_t *s) {
     split = half;
     while (split < n && rows[split].group) split++;   /* to the next heading */
     if (split >= n) { split = half; while (split > 1 && rows[split].group) split--; }
+    /* Land on the heading itself, not on the blank row above it: a column
+     * that starts with a blank line looks like a mistake. */
+    if (split < n && !rows[split].group && !rows[split].label) split++;
   }
   for (size_t i = 0; i < n; i++) {
     uint16_t col = (two && i >= split) ? 1 : 0;
@@ -3214,6 +3222,7 @@ static void draw_help(app_t *a, screen_t *s) {
       kw[col] = cells(rows[i].chord);
   }
   for (size_t i = 0; i < n; i++) {
+    if (!rows[i].label) continue; /* the blank row wants nothing */
     uint16_t col = (two && i >= split) ? 1 : 0;
     uint16_t want = (uint16_t)(kw[col] + 2 + cells(rows[i].label));
     if (!rows[i].group) want = (uint16_t)cells(rows[i].label);
@@ -3222,6 +3231,11 @@ static void draw_help(app_t *a, screen_t *s) {
 
   uint16_t body = (uint16_t)(cw[0] + (two ? cw[1] + 4 : 0));
   size_t left_n = two ? split : n, right_n = two ? n - split : 0;
+  /* The fold falls on a heading, which leaves the blank row above it at the
+   * bottom of the first column: a row that draws nothing and would otherwise
+   * make the box a line taller than it needs to be. */
+  if (left_n && !rows[left_n - 1].label) left_n--;
+  if (right_n && !rows[n - 1].label) right_n--;
   uint16_t lines = (uint16_t)(left_n > right_n ? left_n : right_n);
 
   rect_t in = modal_frame(a, s, (uint16_t)(body + 6), (uint16_t)(lines + 6),
@@ -3241,6 +3255,7 @@ static void draw_help(app_t *a, screen_t *s) {
     size_t row = right ? i - split : i;
     uint16_t ry = (uint16_t)(in.y + 3 + row);
     if (ry >= in.y + in.h) continue;
+    if (!rows[i].label) continue; /* the blank row: it occupies, it draws not */
     uint16_t rx = (uint16_t)(in.x + 2 + (right ? cw[0] + 4 : 0));
 
     /* Everything is cut at the frame, and the left column additionally at the

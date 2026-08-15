@@ -60,6 +60,54 @@ def modal_top(snap):
     return None, None
 
 
+def test_sections_are_separated_by_a_blank_line():
+    """Five short lists rather than one wall of rows. The line above a heading
+    is blank -- except the first, which the caption already separates."""
+    with Session(SH, cols=56, rows=44) as s:   # narrow: one column, easy to read
+        s.settle()
+        snap = open_help(s)
+        text = [l for l in snap.text if "│" in l]
+
+        def row_of(needle):
+            for i, l in enumerate(snap.text):
+                if needle in l:
+                    return i
+            return None
+
+        for heading in ("focus", "size", "tabs", "scroll", "session"):
+            y = row_of("  " + heading + " ")
+            check(f"a blank line above {heading}",
+                  y is not None and heading not in snap.text[y - 1] and
+                  not snap.text[y - 1].strip("│╭╮╰╯─ "),
+                  repr(snap.text[y - 1]) if y else "not found")
+
+        first = row_of("  panes ")
+        check("but not above the first, which the caption already spaces",
+              first is not None and "C-a then:" in snap.text[first - 2],
+              repr(snap.text[first - 2]) if first else "not found")
+
+
+def test_the_box_is_not_taller_than_its_contents():
+    """The fold falls on a heading, which strands the blank row above it at the
+    bottom of the first column -- a row that draws nothing and made the box a
+    line taller than it needed to be."""
+    with Session(SH, cols=92, rows=34) as s:
+        s.settle()
+        snap = open_help(s)
+        bottom = None
+        for i, l in enumerate(snap.text):
+            if "any key closes this" in l:
+                bottom = i
+        check("the footer is on the bottom border", bottom is not None,
+              snap.screen())
+        above = snap.text[bottom - 1]
+        check("exactly one blank line above it",
+              not above.strip("│╭╮╰╯─ "), repr(above))
+        check("and content on the line above that",
+              snap.text[bottom - 2].strip("│╭╮╰╯─ ") != "",
+              repr(snap.text[bottom - 2]))
+
+
 def test_the_close_button_can_be_seen_without_hovering_it():
     """It was drawn in the pane button colour on the finder background, which
     are the same value: invisible until the pointer happened to land on it."""
