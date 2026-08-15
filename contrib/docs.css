@@ -1,0 +1,193 @@
+/* sl0ppty docs. One file, no build step, no framework.
+ *
+ * The colours are the session's own default theme, so the docs look like the
+ * thing they document. Dark by default; the light variant follows the reader's
+ * system preference rather than a toggle nobody would find. */
+
+:root {
+  --bg: #141418;
+  --panel: #17171c;
+  --line: #26262d;
+  --ink: #d8d8dd;
+  --dim: #8a8a95;
+  --accent: #ff5fd7;
+  --code-bg: #1c1c22;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fdfdfc; --panel: #f6f6f4; --line: #e3e3df;
+    --ink: #26262a; --dim: #6b6b72; --code-bg: #f1f1ee;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.65 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---- frame ---- */
+
+header {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; gap: 12px;
+  height: 48px; padding: 0 20px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+header > a { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+header .crumb { color: var(--dim); font-size: 13px; }
+header .crumb::before { content: "/ "; }
+
+.burger { display: none; cursor: pointer; color: var(--dim); font-size: 20px; }
+
+.wrap {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) 200px;
+  gap: 40px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 20px 96px;
+}
+
+/* ---- sidebar ---- */
+
+.side { position: sticky; top: 80px; align-self: start; font-size: 14.5px; }
+.side .brand { display: none; }
+.side h6 {
+  margin: 20px 0 6px;
+  font: 600 11px/1 var(--sans);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.side h6:first-of-type { margin-top: 0; }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side li { margin: 1px 0; }
+.side a {
+  display: block; padding: 4px 10px; border-radius: 6px;
+  color: var(--ink); opacity: .78;
+}
+.side a:hover { background: var(--panel); opacity: 1; text-decoration: none; }
+.side a.here {
+  background: var(--panel); opacity: 1; font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ---- on this page ---- */
+
+.toc { position: sticky; top: 80px; align-self: start; font-size: 13px; }
+.toc h6 {
+  margin: 0 0 8px; font: 600 11px/1 var(--sans);
+  letter-spacing: .09em; text-transform: uppercase; color: var(--dim);
+}
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc a { color: var(--dim); display: block; padding: 3px 0; }
+.toc a:hover { color: var(--ink); text-decoration: none; }
+.toc .l3 { padding-left: 12px; }
+
+/* ---- prose ---- */
+
+main { min-width: 0; }
+main > :first-child { margin-top: 0; }
+
+h1, h2, h3, h4 { line-height: 1.25; scroll-margin-top: 72px; }
+h1 { font-size: 30px; margin: 0 0 18px; letter-spacing: -.01em; }
+h2 {
+  font-size: 21px; margin: 40px 0 12px;
+  padding-top: 20px; border-top: 1px solid var(--line);
+}
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 22px 0 6px; color: var(--dim); }
+
+.anchor {
+  margin-left: 8px; color: var(--line);
+  font-weight: 400; opacity: 0; transition: opacity .1s;
+}
+h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity: 1; }
+.anchor:hover { color: var(--accent); text-decoration: none; }
+
+p, ul, ol, table, blockquote, pre { margin: 0 0 14px; }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+li > ul, li > ol { margin: 4px 0; }
+
+code {
+  font: .875em/1.4 var(--mono);
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: .1em .35em;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.55; }
+
+/* Terminal art: box-drawing joins only when the leading is tight and the font
+ * draws the pieces edge to edge. DejaVu first because it does, and because it
+ * is the monospace almost every Linux box already has. */
+pre.art code {
+  font-family: "DejaVu Sans Mono", Menlo, Consolas, var(--mono);
+  line-height: 1.05;
+  letter-spacing: 0;
+  font-size: 12.5px;
+}
+
+blockquote {
+  margin-left: 0; padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--accent);
+  color: var(--dim);
+}
+
+hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+tbody tr:hover { background: var(--panel); }
+td code { white-space: nowrap; }
+
+/* ---- prev/next ---- */
+
+.prevnext {
+  display: flex; justify-content: space-between; gap: 16px;
+  margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+  font-size: 14.5px;
+}
+.prevnext .next { margin-left: auto; }
+
+/* ---- narrow ---- */
+
+@media (max-width: 1040px) { .toc { display: none; } .wrap { grid-template-columns: 232px minmax(0, 1fr); } }
+
+@media (max-width: 760px) {
+  .burger { display: block; }
+  .wrap { grid-template-columns: minmax(0, 1fr); padding-top: 24px; }
+  .side {
+    display: none; position: fixed; top: 48px; left: 0; right: 0; z-index: 2;
+    /* An explicit height rather than `bottom: 0`. Taken out of flow it is still
+     * a grid child, and Chrome keeps its content height, which leaves the page
+     * showing through under the open menu. */
+    height: calc(100vh - 48px);
+    padding: 20px; overflow-y: auto; background: var(--bg);
+    border-right: 1px solid var(--line);
+  }
+  #menu:checked ~ .wrap .side { display: block; }
+}

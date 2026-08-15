@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""Render docs/ into a static site.
+
+    contrib/gen-docs [outdir]        default: build/docs
+    SL0PPTY_DOCS=dir contrib/gen-docs out    ...from another docs tree
+
+No dependencies and no toolchain: this is one file of stdlib Python and one
+stylesheet, for the same reason src/kdl.c is a hand-rolled KDL subset rather
+than a library — the input is ours, we know exactly which constructs it uses,
+and a docs build that needs a package manager is a docs build nobody runs.
+
+What it understands is what docs/ actually contains: headings, paragraphs,
+fenced code, pipe tables, lists (one level of nesting), blockquotes, rules,
+`code`, **bold**, *italic*, and links. Anything else is passed through as text,
+escaped. A construct nobody uses is not supported on purpose: it would be
+untested code pretending to be a feature.
+
+The nav — order, grouping — comes from docs/nav. Page titles come from each
+page's own `# heading`, so they cannot drift from the page.
+"""
+import html
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+# $SL0PPTY_DOCS points it at another tree, which is how the tests drive it over
+# fixtures -- including the trees that are supposed to be refused.
+DOCS = os.environ.get("SL0PPTY_DOCS") or os.path.join(ROOT, "docs")
+
+
+# ---- the markdown subset --------------------------------------------------
+
+INLINE_CODE = re.compile(r"`([^`]+)`")
+LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+BOLD = re.compile(r"\*\*([^*]+)\*\*")
+ITALIC = re.compile(r"(?<![*\w])\*([^*\n]+)\*(?!\*)")
+
+
+def inline(text):
+    """Inline markup, in one pass over the escaped text.
+
+    Code spans are pulled out first and put back last, because their contents
+    are not markup: `**` inside a code span is two asterisks, and a rule that
+    formats them is a rule that mangles every shader expression on the page.
+    """
+    spans = []
+
+    def stash(m):
+        spans.append(html.escape(m.group(1)))
+        return "\0%d\0" % (len(spans) - 1)
+
+    text = INLINE_CODE.sub(stash, text)
+    text = html.escape(text)
+    text = LINK.sub(lambda m: '<a href="%s">%s</a>' % (link_href(m.group(2)),
+                                                       m.group(1)), text)
+    text = BOLD.sub(r"<strong>\1</strong>", text)
+    text = ITALIC.sub(r"<em>\1</em>", text)
+    for i, code in enumerate(spans):
+        text = text.replace("\0%d\0" % i, "<code>%s</code>" % code)
+    return text
+
+
+def link_href(href):
+    """A link to another page becomes a link to its rendered page."""
+    if href.startswith(("http://", "https://", "#", "mailto:")):
+        return html.escape(href)
+    page, _, frag = href.partition("#")
+    if page.endswith(".md"):
+        page = page[:-3] + ".html"
+    return html.escape(page + ("#" + frag if frag else ""))
+
+
+def slug(text):
+    """A heading's anchor: what it says, lowercased, punctuation dropped."""
+    text = re.sub(r"`|\*\*|\*", "", text)
+    text = re.sub(r"[^\w\s-]", "", text).strip().lower()
+    return re.sub(r"[\s_]+", "-", text)
+
+
+def render(md):
+    """Markdown to (html, title, [(level, text, anchor)] for the page's own
+    table of contents)."""
+    out, toc, title = [], [], None
+    lines = md.split("\n")
+    i = 0
+
+    def close(stack):
+        while stack:
+            out.append("</%s>" % stack.pop())
+
+    stack = []          # open list elements, innermost last
+    while i < len(lines):
+        line = lines[i]
+
+        if line.startswith("```"):
+            lang = line[3:].strip()
+            i += 1
+            body = []
+            while i < len(lines) and not lines[i].startswith("```"):
+                body.append(lines[i])
+                i += 1
+            i += 1
+            close(stack)
+            text = "\n".join(body)
+            # A block of terminal art rather than a block of code: it is drawn
+            # with box characters, so it needs leading tight enough for the
+            # verticals to join and a font whose box drawing does. Detected
+            # rather than declared, because the alternative is a marker in every
+            # fence and one of them getting forgotten.
+            art = not lang and any(c in text for c in "─│╭╮╰╯├┤┬┴┼")
+            cls = ' class="art"' if art else (
+                ' class="lang-%s"' % html.escape(lang) if lang else "")
+            out.append("<pre%s><code>%s</code></pre>" % (cls, html.escape(text)))
+            continue
+
+        if re.match(r"^#{1,4} ", line):
+            close(stack)
+            level = len(line) - len(line.lstrip("#"))
+            text = line[level:].strip()
+            anchor = slug(text)
+            if level == 1 and title is None:
+                title = re.sub(r"`", "", text)
+            else:
+                toc.append((level, re.sub(r"`", "", text), anchor))
+            out.append('<h%d id="%s">%s<a class="anchor" href="#%s">#</a></h%d>'
+                       % (level, anchor, inline(text), anchor, level))
+            i += 1
+            continue
+
+        if line.startswith("|") and i + 1 < len(lines) and \
+                re.match(r"^\|[\s:|-]+\|$", lines[i + 1]):
+            close(stack)
+            head = [c.strip() for c in line.strip("|").split("|")]
+            i += 2
+            rows = []
+            while i < len(lines) and lines[i].startswith("|"):
+                rows.append([c.strip() for c in lines[i].strip("|").split("|")])
+                i += 1
+            out.append("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>"
+                       % ("".join("<th>%s</th>" % inline(c) for c in head),
+                          "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % inline(c)
+                                                          for c in r)
+                                  for r in rows)))
+            continue
+
+        bullet = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", line)
+        if bullet:
+            indent, marker, text = bullet.groups()
+            tag = "ul" if marker in ("-", "*") else "ol"
+            depth = 1 + (len(indent) >= 2)
+            while len(stack) > depth:
+                out.append("</%s>" % stack.pop())
+            if len(stack) < depth:
+                out.append("<%s>" % tag)
+                stack.append(tag)
+            # Continuation lines: an item wrapped across the source.
+            body = [text]
+            while i + 1 < len(lines) and re.match(r"^\s+\S", lines[i + 1]) and \
+                    not re.match(r"^(\s*)([-*]|\d+\.)\s+", lines[i + 1]):
+                i += 1
+                body.append(lines[i].strip())
+            out.append("<li>%s</li>" % inline(" ".join(body)))
+            i += 1
+            continue
+
+        if line.startswith("> "):
+            close(stack)
+            body = []
+            while i < len(lines) and lines[i].startswith(">"):
+                body.append(lines[i].lstrip("> ").rstrip())
+                i += 1
+            out.append("<blockquote>%s</blockquote>" % inline(" ".join(body)))
+            continue
+
+        if re.match(r"^---+$", line):
+            close(stack)
+            out.append("<hr>")
+            i += 1
+            continue
+
+        if not line.strip():
+            close(stack)
+            i += 1
+            continue
+
+        close(stack)
+        body = [line]
+        while i + 1 < len(lines) and lines[i + 1].strip() and \
+                not re.match(r"^(#{1,4} |```|\||>|---+$|\s*([-*]|\d+\.)\s)",
+                             lines[i + 1]):
+            i += 1
+            body.append(lines[i])
+        out.append("<p>%s</p>" % inline(" ".join(body)))
+        i += 1
+
+    close(stack)
+    return "\n".join(out), title or "sl0ppty", toc
+
+
+# ---- the site -------------------------------------------------------------
+
+def read_nav(path):
+    """docs/nav: sections in column zero, pages indented under them."""
+    sections = []
+    for raw in open(path):
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[0].isspace():
+            if not sections:
+                continue
+            sections[-1][1].append(line.strip())
+        else:
+            sections.append((line.strip(), []))
+    return sections
+
+
+def sidebar(sections, pages, current):
+    out = ['<nav class="side"><a class="brand" href="index.html">sl0ppty</a>']
+    for name, files in sections:
+        out.append("<h6>%s</h6><ul>" % html.escape(name))
+        for f in files:
+            href = f[:-3] + ".html"
+            cls = ' class="here"' if f == current else ""
+            out.append('<li><a%s href="%s">%s</a></li>'
+                       % (cls, href, html.escape(pages[f]["title"])))
+        out.append("</ul>")
+    out.append("</nav>")
+    return "\n".join(out)
+
+
+def page_toc(toc):
+    """On this page: the h2s, and the h3s under them."""
+    items = [(lvl, text, anchor) for lvl, text, anchor in toc if lvl in (2, 3)]
+    if len(items) < 2:
+        return ""
+    out = ['<nav class="toc"><h6>On this page</h6><ul>']
+    for lvl, text, anchor in items:
+        out.append('<li class="l%d"><a href="#%s">%s</a></li>'
+                   % (lvl, anchor, html.escape(text)))
+    out.append("</ul></nav>")
+    return "\n".join(out)
+
+
+SHELL = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<link rel="stylesheet" href="docs.css">
+</head><body>
+<input type="checkbox" id="menu" hidden>
+<header><label for="menu" class="burger" aria-label="Menu">≡</label>
+<a href="index.html">sl0ppty</a><span class="crumb">{crumb}</span></header>
+<div class="wrap">
+{sidebar}
+<main>
+{body}
+{prevnext}
+</main>
+{toc}
+</div>
+</body></html>
+"""
+
+
+def build(outdir):
+    sections = read_nav(os.path.join(DOCS, "nav"))
+    order = [f for _, files in sections for f in files]
+
+    pages = {}
+    for f in order:
+        path = os.path.join(DOCS, f)
+        if not os.path.exists(path):
+            sys.exit("gen-docs: %s is in docs/nav and not on disk" % f)
+        body, title, toc = render(open(path).read())
+        pages[f] = {"body": body, "title": title, "toc": toc}
+
+    stray = sorted(set(os.path.basename(p) for p in os.listdir(DOCS)
+                       if p.endswith(".md")) - set(order))
+    if stray:
+        sys.exit("gen-docs: not in docs/nav: %s" % ", ".join(stray))
+
+    os.makedirs(outdir, exist_ok=True)
+    for i, f in enumerate(order):
+        p = pages[f]
+        links = []
+        if i:
+            links.append('<a class="prev" href="%s">← %s</a>'
+                         % (order[i - 1][:-3] + ".html", html.escape(pages[order[i - 1]]["title"])))
+        if i + 1 < len(order):
+            links.append('<a class="next" href="%s">%s →</a>'
+                         % (order[i + 1][:-3] + ".html", html.escape(pages[order[i + 1]]["title"])))
+        section = next(name for name, files in sections if f in files)
+        out = SHELL.format(
+            title=html.escape(p["title"] + (" — sl0ppty" if f != "index.md" else "")),
+            crumb=html.escape(section),
+            sidebar=sidebar(sections, pages, f),
+            body=p["body"],
+            prevnext='<div class="prevnext">%s</div>' % "".join(links) if links else "",
+            toc=page_toc(p["toc"]))
+        with open(os.path.join(outdir, f[:-3] + ".html"), "w") as fh:
+            fh.write(out)
+
+    css = open(os.path.join(HERE, "docs.css")).read()
+    with open(os.path.join(outdir, "docs.css"), "w") as fh:
+        fh.write(css)
+
+    return [f[:-3] + ".html" for f in order]
+
+
+if __name__ == "__main__":
+    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "build", "docs")
+    written = build(out)
+    print("gen-docs: %d pages -> %s" % (len(written), out))

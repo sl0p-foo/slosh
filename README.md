@@ -4,12 +4,19 @@ A terminal multiplexer — panes, tabs, sessions you can detach from — written
 C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
 ```
-╭──────────── nvim ─────────── ▬ □ ✕ ╮  ╭──────── npm run dev ──────── ▬ □ ✕ ╮
-│                                     │  │                                    │
-│                                     │  ╰────────────────────────────────────╯
-│                                     │  ╭──────────── shell ───────── ▬ □ ✕ ╮
-│                                     │  │                                    │
-╰─────────────────────────────────────╯  ╰────────────────────────────────────╯
+╭────────── nvim ─────────── ▬ □ ✕ ╮  ╭─────── npm run dev ─────── ▬ □ ✕ ╮
+│                                  │  │                                  │
+│                                  │  │                                  │
+│                                  │  │                                  │
+│                                  │  │                                  │
+│                                  │  ╰──────────────────────────────────╯
+│                                  │
+│                                  │  ╭────────── shell ────────── ▬ □ ✕ ╮
+│                                  │  │                                  │
+│                                  │  │                                  │
+│                                  │  │                                  │
+│                                  │  │                                  │
+╰──────────────────────────────────╯  ╰──────────────────────────────────╯
 ```
 
 ## Install
@@ -40,6 +47,9 @@ split, `C-a ?` for the keys, `C-a p` for every command by name.
 [shaders](docs/shaders.md) · [chrome](docs/chrome.md) ·
 [layouts](docs/layouts.md) · [scripting](docs/scripting.md) ·
 [how it works](docs/design.md)
+
+`make docs` renders the same pages as a static site into `build/docs` — no
+dependencies, one file of Python and one stylesheet.
 
 ## What is different about it
 

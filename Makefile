@@ -39,7 +39,7 @@ PY_TESTS  := $(filter-out test_session.py,$(notdir $(wildcard tests/test_*.py)))
 PY_STAMPS := $(PY_TESTS:%.py=build/.pass-%)
 JOBS      ?= $(shell nproc 2>/dev/null || echo 4)
 
-.PHONY: all clean vendor run test retest test-live test-all smoke help coverage
+.PHONY: all clean vendor run test retest test-live test-all smoke help coverage docs
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -153,6 +153,9 @@ test-all: test test-live ## everything
 
 smoke: $(BIN) ## compose a screen headlessly and print it
 	./$(BIN) --headless --cols 40 --rows 12 -- /bin/sh -c 'printf "hello \033[1;32msl0ppty\033[0m\n"; echo "wide: 日本語"'
+
+docs: ## render docs/ into build/docs (no dependencies; open build/docs/index.html)
+	python3 contrib/gen-docs build/docs
 
 run: $(BIN) ## build and run
 	./$(BIN)
