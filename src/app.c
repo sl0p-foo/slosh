@@ -730,8 +730,24 @@ static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
   return n;
 }
 
+/* What a new pane runs when nobody said otherwise: whatever the session was
+ * started with, else the config's `shell`, else $SHELL, else /bin/sh.
+ *
+ * Resolved per pane rather than once at startup, so editing `shell` and
+ * saving affects the next pane you open instead of the next session you
+ * start. The array is static because pane_new copies what it is given before
+ * this could be called again. */
+static const char *const *default_argv(app_t *a) {
+  static const char *argv[2];
+  if (a->argv && a->argv[0]) return a->argv;
+  const char *sh = CFG.shell && *CFG.shell ? CFG.shell : getenv("SHELL");
+  argv[0] = sh && *sh ? sh : "/bin/sh";
+  argv[1] = NULL;
+  return argv;
+}
+
 static node_t *leaf_new(app_t *a) {
-  pane_t *p = pane_new(a->argv, 1, 1, NULL);
+  pane_t *p = pane_new(default_argv(a), 1, 1, NULL);
   if (!p) return NULL;
   node_t *n = calloc(1, sizeof *n);
   n->kind = NODE_LEAF;
@@ -1859,12 +1875,14 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
     argv[2] = command;
     argv[3] = NULL;
   } else {
-    argv[0] = a->argv[0];
+    const char *const *base = default_argv(a);
+    argv[0] = base[0];
     argv[1] = NULL;
-    for (size_t i = 1; a->argv[i] && i < 3; i++) argv[i] = a->argv[i];
+    for (size_t i = 1; base[i] && i < 3; i++) argv[i] = base[i];
   }
 
-  node_t *leaf = leaf_new_ex(a, command ? argv : a->argv, node_cwd, suspended,
+  node_t *leaf = leaf_new_ex(a, command ? argv : default_argv(a), node_cwd,
+                             suspended,
                              command ? command : "");
   if (!leaf) return NULL;
   leaf->weight = (int)kdl_prop_int(node, "weight", WEIGHT_UNIT);

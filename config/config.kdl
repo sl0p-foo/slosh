@@ -6,6 +6,25 @@
 // So if the two ever disagree, the dump is right and this file is stale;
 // tests/test_dump_config.py fails when a setting exists and is not rendered.
 //
+// ---- what reloads ----
+//
+// Saving this file applies it to every running session, and nearly everything
+// here takes effect on the next frame: colours, geometry, the status bar and
+// line, the marks, shader chains and their states, hints, and the keys --
+// including the leader itself.
+//
+// The exceptions, both because of *when* they are read rather than any
+// reluctance to reload:
+//
+//   shell        consulted when a pane is made, so it applies to the next
+//                pane you open rather than to the ones already running
+//   shader_dir   plugins are loaded on reload but never unloaded, so a new
+//                .so is picked up and a replaced one needs a new session
+//
+// A session started before this file existed still notices it appearing: the
+// watch is on the directory, and sl0ppty creates that directory at startup so
+// there is always something to watch.
+//
 // sl0ppty — every value here is also the compiled-in default, so this file is
 // documentation as much as configuration. Copy it to
 // ~/.config/sl0ppty/config.kdl (or point $SL0PPTY_CONFIG at it) and edit.

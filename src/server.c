@@ -239,6 +239,13 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
         snprintf(cfg_dir, sizeof cfg_dir, ".");
         snprintf(cfg_base, sizeof cfg_base, "%s", path);
       }
+      /* The watch is on the directory, not the file -- editors write a new
+       * file and rename it over the old one, so watching the file itself
+       * stops working the first time you save. But a directory that is not
+       * there cannot be watched at all, and then nothing is ever noticed for
+       * the life of the session: no config, no watch, and saving one later
+       * does nothing until a restart. Ours to create, so create it. */
+      path_mkdirs(cfg_dir);
       inofd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
       if (inofd >= 0) {
         inowd = inotify_add_watch(inofd, cfg_dir,

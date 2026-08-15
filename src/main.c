@@ -97,10 +97,10 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (cmd_n == 0) {
-    const char *shell = getenv("SHELL");
-    cmd_argv[cmd_n++] = shell && *shell ? shell : "/bin/sh";
-  }
+  /* No `--` command: leave it empty and let the session decide, so the
+   * config's `shell` is consulted when a pane is made rather than baked in
+   * here -- where it was not consulted at all, which made `shell` a setting
+   * that did nothing. */
   cmd_argv[cmd_n] = NULL;
 
   if (list) {
