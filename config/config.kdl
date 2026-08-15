@@ -55,9 +55,14 @@ title_inset 2
 // which way a border would split, what a one-character button does, that the
 // gap between two panes can be dragged. The frame's affordances are mostly one
 // character wide and a border that splits when clicked looks exactly like a
-// border, so this is where they say so. It gives way to the rest of the line
-// when there is no room between the two ends -- a hint that overwrites what it
-// is explaining is worse than no hint.
+// border, so this is where they say so.
+//
+// It sits in the middle of the *row*, not in the space the two ends leave
+// over: centred in the gap it moved every time a pane title changed length,
+// and a thing you glance at should be in the same place twice. When the row is
+// too full for it there it is not drawn at all -- the ends say which session
+// and pane you are in, and a hint you can get back by hovering is the part
+// that can afford to disappear.
 hints true
 
 // When there is no hint to show — which is most of the time, since a hint
@@ -68,7 +73,8 @@ hints true
 // on disk. When those disagree, that is the answer to whatever you were about
 // to debug. (contrib/sl0ppty-dev restarts into the new one.)
 //
-// It gives way to a hint, and both give way to the ends of the line.
+// It gives way to a hint, and both give way to the ends of the line -- they
+// are centred on the row and simply not drawn when that would overlap.
 version_banner true
 
 pane_buttons true

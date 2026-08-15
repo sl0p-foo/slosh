@@ -526,6 +526,9 @@ static void draw_status_line(app_t *a, screen_t *s) {
   if (right <= x) return;
 
   node_t *f = a->ntabs ? cur(a)->focus : NULL;
+  /* The leftmost column the right-hand block ends up occupying, so the middle
+   * can tell whether it would run into it. */
+  uint16_t right_used = right;
 
   /* Right side first, so a long name can never push the state off the end —
    * the same budgeting rule the tab strip and the pane frame both use.
@@ -554,6 +557,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
     uint16_t cw = (uint16_t)strlen(cnt);
     if (right > x + cw + 2) {
       screen_text(s, (uint16_t)(right - cw), y, cnt, STATUS_C, NO_COLOR, 0);
+      right_used = (uint16_t)(right - cw);
       right = (uint16_t)(right - cw - 2);
     }
   }
@@ -585,6 +589,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
     if (right > x + iw + 2) {
       screen_text(s, (uint16_t)(right - iw), y, ind, STATUS_STATE, NO_COLOR,
                   ATTR_BOLD);
+      right_used = (uint16_t)(right - iw);
       right = (uint16_t)(right - iw - 2);
     }
   }
@@ -616,9 +621,17 @@ static void draw_status_line(app_t *a, screen_t *s) {
    * about right now and the banner is about always; the banner takes the slot
    * back the moment the pointer moves off, which is most of the time.
    *
-   * Centred in what is *left* rather than in the row: centring it in the row
-   * would put it under the session name on a narrow screen, and either of
-   * these overwriting what it sits next to is worse than not being drawn. */
+   * Centred on the row, always, and not in whatever space the two ends have
+   * left over. Centring it in the gap meant it moved whenever a pane title or
+   * a state indicator changed length, so the one thing on the line you might
+   * want to glance at was never twice in the same place. A fixed position you
+   * can find without looking beats a tidy one you cannot.
+   *
+   * And when the row is too full for it there, it is not drawn. Not squeezed,
+   * not slid along, not written over the ends: those say what session and pane
+   * you are in, which is worth more than either a hint you can get again by
+   * hovering or a version you can get again by looking a moment later. The
+   * middle is the part that can afford to disappear. */
   const char *middle = NULL;
   color_t middle_fg = HINT_C;
   if (CFG.hints && a->painted && a->ptr_valid)
@@ -631,14 +644,14 @@ static void draw_status_line(app_t *a, screen_t *s) {
   }
   if (!middle) return;
 
-  uint16_t used = (uint16_t)(x + cells(line));
-  uint16_t from = (uint16_t)(used + 2);
-  if (right <= from) return;
-  uint16_t span = (uint16_t)(right - from);
   uint16_t hw = cells(middle);
-  if (hw + 2 > span) return;
-  screen_text(s, (uint16_t)(from + (span - hw) / 2), y, middle, middle_fg,
-              NO_COLOR, 0);
+  int from = ((int)s->cols - (int)hw) / 2;
+  uint16_t left_end = (uint16_t)(x + cells(line));
+  /* One blank column of clearance on each side, so "does not overlap" also
+   * means "does not look like it does". */
+  if (from < (int)left_end + 1) return;
+  if ((uint16_t)(from + hw) + 1 > right_used) return;
+  screen_text(s, (uint16_t)from, y, middle, middle_fg, NO_COLOR, 0);
 }
 
 static void draw_toasts(app_t *a, screen_t *s) {

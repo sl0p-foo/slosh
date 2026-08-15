@@ -107,7 +107,11 @@ def test_the_gap_and_the_strip_and_the_bar():
               "open this pane" in bar(s), repr(bar(s)))
 
 
-def test_the_hint_never_writes_over_the_line_it_shares():
+def test_the_middle_is_centred_on_the_row_not_on_the_gap():
+    """It used to be centred in whatever space the two ends left over, which
+    meant it moved whenever a pane title or a state indicator changed length —
+    the one thing on the line worth glancing at was never twice in the same
+    place. It is centred on the row now, and the ends give way."""
     with Session(SH, cols=96, rows=18) as s:
         s.settle(20)
         s.api("split", dir="cols")
@@ -115,16 +119,36 @@ def test_the_hint_never_writes_over_the_line_it_shares():
         h = hit(s, "close:")
         hover(s, h["x"], h["y"])
         row = bar(s)
-        left_end = len(row.rstrip()) and row.index("p")           # the pane name
-        hint_at = row.index("close this pane")
-        right_at = row.rindex("pane 1/2" if "pane 1/2" in row else "pane 2/2")
-        check("the pane index on the right survives", right_at > 0, repr(row))
-        check("and the hint sits between the two ends, touching neither",
-              left_end < hint_at
-              and hint_at + len("close this pane") < right_at, repr(row))
+        at = row.index("close this pane")
+        want = (96 - len("close this pane")) // 2
+        check("the hint is centred on the terminal", abs(at - want) <= 1,
+              f"at {at}, expected about {want}: {row!r}")
 
-    # A long name leaves no room between the ends, so the hint is dropped
-    # rather than drawn over the thing it would be explaining.
+
+def test_it_stays_put_when_the_ends_change_length():
+    """The whole point of the change: a fixed position you can find without
+    looking beats a tidy one you cannot."""
+    seen = set()
+    # Wide enough that all three names leave the middle room: this is about
+    # the banner not *moving*, and a narrower terminal would be testing the
+    # rule that drops it instead.
+    for name in ("s", "medium-name", "a-really-quite-long-session-name"):
+        with Session(SH, cols=120, rows=10) as s:
+            s.settle(20)
+            s.api("set-purpose", target="tab", id=s.tabs()[0]["id"],
+                  purpose=name)
+            s.settle(20)
+            row = bar(s)
+            check(f"the banner is up with {name!r}", "sl0ppty 0." in row, row)
+            seen.add(row.index("sl0ppty 0."))
+    check("and in the same column every time", len(seen) == 1, str(seen))
+
+
+def test_a_full_line_drops_the_middle_rather_than_overlapping():
+    """The trade, stated the other way round from where it started: the ends
+    say which session and pane you are in, and the middle is a hint you can
+    get again by hovering or a version you can read a moment later. So the
+    middle is the part that disappears."""
     wordy = ["/bin/sh", "-c",
              'printf "\\033]2;a-very-long-pane-title-indeed\\007"; '
              'stty raw -echo; cat']
@@ -133,10 +157,22 @@ def test_the_hint_never_writes_over_the_line_it_shares():
         h = hit(s, "close:")
         hover(s, h["x"], h["y"])
         row = bar(s)
-        check("with no room between them the hint gives way to the line",
-              "close this pane" not in row
-              and "a-very-long-pane-title-indeed" in row
-              and "pane 1/1" in row, repr(row))
+        check("the hint is dropped when it would not fit clear of the ends",
+              "close this pane" not in row, repr(row))
+        check("and both ends survive intact",
+              "a-very-long-pane-title-indeed" in row and "pane 1/1" in row,
+              repr(row))
+
+
+def test_it_keeps_a_blank_column_on_each_side():
+    """Not overlapping is not enough: touching reads as overlapping."""
+    with Session(SH, cols=96, rows=18) as s:
+        s.settle(20)
+        row = bar(s)
+        at = row.index("sl0ppty 0.")
+        end = at + len(row[at:].split("  ")[0])
+        check("a gap before it", row[at - 1] == " ", repr(row[at - 4:at + 4]))
+        check("a gap after it", row[end] == " ", repr(row[end - 4:end + 4]))
 
 
 def test_the_version_sits_in_the_slot_when_no_hint_does():
@@ -187,19 +223,6 @@ def test_the_banner_and_the_hints_are_separate_knobs():
     os.unlink(nohints)
 
 
-def test_the_banner_gives_way_when_there_is_no_room():
-    """Same rule as the hint: a thing in the middle that overwrites the ends is
-    worse than an empty middle."""
-    with Session(SH, cols=44, rows=10) as s:
-        s.settle(20)
-        s.api("set-purpose", target="tab", id=s.tabs()[0]["id"],
-              purpose="a-long-purpose-that-fills-the-line")
-        s.settle(20)
-        row = bar(s)
-        check("the ends win", "pane 1/1" in row and "sl0ppty 0." not in row,
-              repr(row))
-
-
 def test_hints_can_be_turned_off():
     conf = cfg("hints false\n")
     with Session(SH, cols=96, rows=18, config=conf) as s:
@@ -218,9 +241,11 @@ if __name__ == "__main__":
     test_the_zoom_hint_says_which_way_it_goes()
     test_a_border_names_the_direction_it_would_split()
     test_the_gap_and_the_strip_and_the_bar()
-    test_the_hint_never_writes_over_the_line_it_shares()
+    test_the_middle_is_centred_on_the_row_not_on_the_gap()
+    test_it_stays_put_when_the_ends_change_length()
+    test_a_full_line_drops_the_middle_rather_than_overlapping()
+    test_it_keeps_a_blank_column_on_each_side()
     test_hints_can_be_turned_off()
     test_the_version_sits_in_the_slot_when_no_hint_does()
     test_the_banner_and_the_hints_are_separate_knobs()
-    test_the_banner_gives_way_when_there_is_no_room()
     sys.exit(report())
