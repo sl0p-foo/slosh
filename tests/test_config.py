@@ -113,6 +113,56 @@ def test_keys():
     os.unlink(path)
 
 
+def test_a_chord_can_be_written_the_way_the_cheatsheet_prints_it():
+    """The sheet's whole claim is that what it shows is what you would write, and
+    `--dump-config` wrote in that notation for months while the parser refused
+    it. Both spellings are accepted now: `C-a` and `ctrl+a`, `S-tab` and
+    `shift+tab`, `?` and `shift+slash`, `H` and `shift+h`, `←` and `left`."""
+    path = cfg("""
+        keys {
+            prefix "C-b"
+            bind "?" "split-cols"
+            bind "S-tab" "split-rows"
+            bind "→" "close-pane"
+        }
+    """)
+    # Tall and wide enough for a column split and then a row split inside it:
+    # min_split is a real floor and a refused split would look like a refused
+    # binding.
+    with Session(SH, cols=100, rows=30, config=path) as s:
+        s.settle()
+        # `?` is shift+slash, which is what the key says on the keyboard.
+        s.send(r"\x02?")
+        s.settle()
+        check("`?` binds the key you press", len(s.panes()) == 2,
+              str(len(s.panes())))
+
+        s.send(r"\x02\e[Z")   # C-b shift+tab
+        s.settle()
+        check("`S-tab` is shift+tab", len(s.panes()) == 3, str(len(s.panes())))
+
+        s.send(r"\x02\e[C")   # C-b right arrow
+        s.settle()
+        check("an arrow glyph is that arrow", len(s.panes()) == 2,
+              str(len(s.panes())))
+    os.unlink(path)
+
+    # A capital letter is that letter with shift, not that letter: the sheet
+    # prints shift+h as "H" for exactly the reason a config should be able to.
+    path = cfg('keys {\n    bind "H" "split-cols"\n}\n')
+    with Session(SH, cols=100, rows=30, config=path) as s:
+        s.settle()
+        s.send(r"\x01h")       # plain h still moves focus, it does not split
+        s.settle()
+        check("a plain letter is left alone", len(s.panes()) == 1,
+              str(len(s.panes())))
+        s.send(r"\x01H")
+        s.settle()
+        check("and the capital is the shifted one", len(s.panes()) == 2,
+              str(len(s.panes())))
+    os.unlink(path)
+
+
 def test_min_pane_drives_collapse():
     # Split over the control API rather than the keyboard. This is about what
     # the *layout* does with a split that does not fit, and the keyboard now

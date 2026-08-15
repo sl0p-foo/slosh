@@ -54,9 +54,20 @@ static const struct {
     {"comma", GHOSTTY_KEY_COMMA},       {"period", GHOSTTY_KEY_PERIOD},
 };
 
-static int key_from_char(char c) {
+/* A character to a key, and whether typing it needs shift.
+ *
+ * `?` is shift+slash on the keyboard everybody writing a config has, so
+ * `bind "?"` means that -- the character is the thing you press, and the shift
+ * is not a separate fact about it. Same for a capital letter: the cheatsheet
+ * prints shift+h as "H" precisely because that is what you press, and a config
+ * has to be able to say the same thing. */
+static int key_from_char(char c, bool *shifted) {
+  if (shifted) *shifted = false;
   if (c >= 'a' && c <= 'z') return GHOSTTY_KEY_A + (c - 'a');
-  if (c >= 'A' && c <= 'Z') return GHOSTTY_KEY_A + (c - 'A');
+  if (c >= 'A' && c <= 'Z') {
+    if (shifted) *shifted = true;
+    return GHOSTTY_KEY_A + (c - 'A');
+  }
   if (c >= '0' && c <= '9') return GHOSTTY_KEY_DIGIT_0 + (c - '0');
   switch (c) {
     case '\\': return GHOSTTY_KEY_BACKSLASH;
@@ -71,18 +82,61 @@ static int key_from_char(char c) {
     case '/': return GHOSTTY_KEY_SLASH;
     case '`': return GHOSTTY_KEY_BACKQUOTE;
     case ' ': return GHOSTTY_KEY_SPACE;
-    default: return GHOSTTY_KEY_UNIDENTIFIED;
+    default: break;
   }
+  /* The shifted half of the same keys, which config.kdl has always said were
+   * writable and the parser has always refused: `bind "?" "help"` is in the
+   * file it ships and in every config `--dump-config` has ever written. */
+  if (shifted) *shifted = true;
+  switch (c) {
+    case '|': return GHOSTTY_KEY_BACKSLASH;
+    case '_': return GHOSTTY_KEY_MINUS;
+    case '+': return GHOSTTY_KEY_EQUAL;
+    case '{': return GHOSTTY_KEY_BRACKET_LEFT;
+    case '}': return GHOSTTY_KEY_BRACKET_RIGHT;
+    case ':': return GHOSTTY_KEY_SEMICOLON;
+    case '"': return GHOSTTY_KEY_QUOTE;
+    case '<': return GHOSTTY_KEY_COMMA;
+    case '>': return GHOSTTY_KEY_PERIOD;
+    case '?': return GHOSTTY_KEY_SLASH;
+    case '~': return GHOSTTY_KEY_BACKQUOTE;
+    default: break;
+  }
+  if (shifted) *shifted = false;
+  return GHOSTTY_KEY_UNIDENTIFIED;
 }
 
-bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods) {
+/* The arrows the cheatsheet draws, so a chord copied off the screen parses. */
+static const struct {
+  const char *glyph;
+  int key;
+} ARROW_GLYPHS[] = {
+    {"\u2190", GHOSTTY_KEY_ARROW_LEFT},  {"\u2192", GHOSTTY_KEY_ARROW_RIGHT},
+    {"\u2191", GHOSTTY_KEY_ARROW_UP},    {"\u2193", GHOSTTY_KEY_ARROW_DOWN},
+};
+
+/* `implied` comes back true when the shift in `out_mods` came from the character
+ * rather than from a modifier the config wrote: `?` is shift+slash, `H` is
+ * shift+h. It matters because a terminal without the kitty protocol reports a
+ * plain `?` byte with no modifier at all -- the character *is* the shift -- so a
+ * binding written that way has to answer both encodings. The shipped default
+ * binds `?` twice by hand for exactly this reason; this is that, done once. */
+static bool parse_chord_ex(const char *text, int *out_key, uint16_t *out_mods,
+                           bool *implied) {
   uint16_t mods = 0;
   const char *p = text;
+  if (implied) *implied = false;
   for (;;) {
     if (strncmp(p, "ctrl+", 5) == 0) { mods |= MOD_CTRL; p += 5; }
     else if (strncmp(p, "alt+", 4) == 0) { mods |= MOD_ALT; p += 4; }
     else if (strncmp(p, "shift+", 6) == 0) { mods |= MOD_SHIFT; p += 6; }
     else if (strncmp(p, "super+", 6) == 0) { mods |= MOD_SUPER; p += 6; }
+    /* The cheatsheet's own shorthand. It prints `C-a`, `M-x`, `S-tab`, and the
+     * whole claim of that sheet is that what it shows is what you would write
+     * -- which was false for every chord it printed with a modifier. */
+    else if (strncmp(p, "C-", 2) == 0) { mods |= MOD_CTRL; p += 2; }
+    else if (strncmp(p, "M-", 2) == 0) { mods |= MOD_ALT; p += 2; }
+    else if (strncmp(p, "S-", 2) == 0) { mods |= MOD_SHIFT; p += 2; }
     else break;
   }
   if (!*p) return false;
@@ -93,13 +147,28 @@ bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods) {
       *out_mods = mods;
       return true;
     }
+  for (size_t i = 0; i < sizeof ARROW_GLYPHS / sizeof *ARROW_GLYPHS; i++)
+    if (strcmp(p, ARROW_GLYPHS[i].glyph) == 0) {
+      *out_key = ARROW_GLYPHS[i].key;
+      *out_mods = mods;
+      return true;
+    }
 
   if (p[1] != 0) return false; /* not a name and not one character */
-  int key = key_from_char(*p);
+  bool shifted = false;
+  int key = key_from_char(*p, &shifted);
   if (key == GHOSTTY_KEY_UNIDENTIFIED) return false;
   *out_key = key;
-  *out_mods = mods;
+  *out_mods = (uint16_t)(mods | (shifted ? MOD_SHIFT : 0));
+  /* A capital letter is not in this category: the decoder does report `H` as
+   * shift+h on every terminal, so one binding is right. Punctuation is where
+   * they disagree. */
+  if (implied) *implied = shifted && !(*p >= 'A' && *p <= 'Z');
   return true;
+}
+
+bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods) {
+  return parse_chord_ex(text, out_key, out_mods, NULL);
 }
 
 static color_t rgb(uint8_t r, uint8_t g, uint8_t b) {
@@ -113,6 +182,48 @@ static bool parse_color(const char *text, color_t *out) {
   if (sscanf(text + 1, "%2x%2x%2x", &r, &g, &b) != 3) return false;
   *out = rgb((uint8_t)r, (uint8_t)g, (uint8_t)b);
   return true;
+}
+
+/* One complaint about the config being read.
+ *
+ * Every one of these is a line the loader could not honour while the rest of
+ * the file applied (D9), so they are collected rather than thrown: a session
+ * shows the first, because it has one status line, and `--check` shows all of
+ * them, because a linter that stops at the first mistake makes you run it once
+ * per mistake.
+ *
+ * `err` is the caller's out-parameter and keeps its old meaning -- the first
+ * message, or untouched when there is none. The file and line come from the
+ * loader rather than from each call site: a complaint that cannot say where it
+ * happened is a complaint you have to go looking for.
+ */
+static void complain(config_t *c, char *err, size_t errcap, int line,
+                     const char *fmt, ...) {
+  char text[192];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(text, sizeof text, fmt, ap);
+  va_end(ap);
+
+  char full[192];
+  const char *file = c && c->loading ? c->loading : NULL;
+  const char *base = file ? strrchr(file, '/') : NULL;
+  if (file && line > 0)
+    snprintf(full, sizeof full, "%s:%d: %s", base ? base + 1 : file, line, text);
+  else if (file)
+    snprintf(full, sizeof full, "%s: %s", base ? base + 1 : file, text);
+  else
+    snprintf(full, sizeof full, "%s", text);
+
+  if (c && c->nmsgs < CONFIG_MSGS_MAX)
+    snprintf(c->msgs[c->nmsgs++], sizeof c->msgs[0], "%s", full);
+  if (err && errcap && !err[0]) snprintf(err, errcap, "%s", full);
+}
+
+size_t config_messages(const config_t *c, const char **out, size_t max) {
+  size_t n = c->nmsgs < max ? c->nmsgs : max;
+  for (size_t i = 0; i < n; i++) out[i] = c->msgs[i];
+  return n;
 }
 
 static const char *const PSTATE_NAMES[PSTATE_COUNT] = {
@@ -147,9 +258,8 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
     const char *where = kdl_prop(k, "where", "content");
     bool on_chrome = strcmp(where, "chrome") == 0;
     if (!on_chrome && strcmp(where, "content") != 0) {
-      if (err && !err[0])
-        snprintf(err, errcap, "bad where for %s: %s (content or chrome)",
-                 k->name, where);
+      complain(c, err, errcap, k->line,
+               "bad where for %s: %s (content or chrome)", k->name, where);
       continue;
     }
     shader_t *out = on_chrome ? chrome : content;
@@ -166,9 +276,8 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
     if (strcmp(chan, "fg") == 0) channels = SHADE_FG;
     else if (strcmp(chan, "bg") == 0) channels = SHADE_BG;
     else if (strcmp(chan, "both") != 0) {
-      if (err && !err[0])
-        snprintf(err, errcap, "bad channel for %s: %s (fg, bg or both)",
-                 k->name, chan);
+      complain(c, err, errcap, k->line,
+               "bad channel for %s: %s (fg, bg or both)", k->name, chan);
       continue;
     }
 
@@ -193,8 +302,8 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
            * expression that did not compile leaves the strength *unknown*,
            * and half-dimming a pane is a worse answer to that than doing
            * nothing and saying why. */
-          if (err && !err[0])
-            snprintf(err, errcap, "bad amount for %s: %s", k->name, eerr);
+          complain(c, err, errcap, k->line, "bad amount for %s: %s",
+                   k->name, eerr);
           continue;
         }
       }
@@ -212,12 +321,13 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
 
     color_t col = c->frame_focus; /* a sensible default for `ruler` */
     const char *cs = kdl_prop(k, "color", NULL);
-    if (cs && !parse_color(cs, &col) && err && !err[0])
-      snprintf(err, errcap, "bad colour for shader %s: %s", k->name, cs);
+    if (cs && !parse_color(cs, &col))
+      complain(c, err, errcap, k->line, "bad colour for shader %s: %s",
+               k->name, cs);
 
     shader_t *slot = &out[*n];
     if (!shader_make_p(slot, k->name, col, (uint8_t)amount, (uint16_t)param)) {
-      if (err && !err[0]) snprintf(err, errcap, "unknown shader: %s", k->name);
+      complain(c, err, errcap, k->line, "unknown shader: %s", k->name);
       expr_free(aexpr);
       continue;
     }
@@ -776,13 +886,60 @@ static const char *yesno(bool v) { return v ? "true" : "false"; }
 /* A chord as a KDL string: `\` and `"` are both keys somebody may have bound
  * and both end or escape a string, so they have to be written escaped. The
  * dump has to *parse back*, and a bare backslash there does not. */
+/* A chord as a *config* writes it, which is not how the cheatsheet prints it.
+ *
+ * The dump used to use config_chord_name(), the display form -- so
+ * `--dump-config`, documented as "a file you could have written", wrote
+ * `prefix "C-a"` and `bind "S-←"` and eleven of its own lines came back as
+ * complaints the next time it was read. The two notations overlap and are not
+ * the same thing: the sheet is for a reader, this is for the parser.
+ *
+ * `shift+` is written out rather than folded into a capital or a shifted
+ * punctuation mark: both are accepted on the way in, and one canonical spelling
+ * on the way out means a dump of a dump is the same dump. */
 static void cb_chord(cfgbuf_t *b, int key, uint16_t mods) {
-  char chord[24];
-  config_chord_name(key, mods, chord, sizeof chord);
+  char chord[32] = {0};
+  size_t n = 0;
+  if (mods & MOD_CTRL) n += (size_t)snprintf(chord + n, sizeof chord - n, "ctrl+");
+  if (mods & MOD_ALT) n += (size_t)snprintf(chord + n, sizeof chord - n, "alt+");
+  if (mods & MOD_SHIFT) n += (size_t)snprintf(chord + n, sizeof chord - n, "shift+");
+  if (mods & MOD_SUPER) n += (size_t)snprintf(chord + n, sizeof chord - n, "super+");
+
+  const char *name = NULL;
+  for (size_t i = 0; i < sizeof NAMED_KEYS / sizeof *NAMED_KEYS; i++)
+    if (NAMED_KEYS[i].key == key) name = NAMED_KEYS[i].name;
+
+  if (name) {
+    snprintf(chord + n, sizeof chord - n, "%s", name);
+  } else if (key >= GHOSTTY_KEY_A && key <= GHOSTTY_KEY_Z) {
+    snprintf(chord + n, sizeof chord - n, "%c", (char)('a' + (key - GHOSTTY_KEY_A)));
+  } else if (key >= GHOSTTY_KEY_DIGIT_0 && key <= GHOSTTY_KEY_DIGIT_9) {
+    snprintf(chord + n, sizeof chord - n, "%c",
+             (char)('0' + (key - GHOSTTY_KEY_DIGIT_0)));
+  } else {
+    /* The punctuation the parser knows, by the character you press. */
+    static const struct { int key; char ch; } PUNCT[] = {
+        {GHOSTTY_KEY_EQUAL, '='},        {GHOSTTY_KEY_BRACKET_LEFT, '['},
+        {GHOSTTY_KEY_BRACKET_RIGHT, ']'}, {GHOSTTY_KEY_SEMICOLON, ';'},
+        {GHOSTTY_KEY_QUOTE, '\''},       {GHOSTTY_KEY_BACKQUOTE, '`'},
+    };
+    char ch = 0;
+    for (size_t i = 0; i < sizeof PUNCT / sizeof *PUNCT; i++)
+      if (PUNCT[i].key == key) ch = PUNCT[i].ch;
+    if (!ch) {
+      /* A key with no spelling the parser would accept. Writing the display
+       * form here is what caused this bug; writing nothing keeps the dump a
+       * file that loads. */
+      cb_add(b, "\"\"");
+      return;
+    }
+    snprintf(chord + n, sizeof chord - n, "%c", ch);
+  }
+
   cb_add(b, "\"");
-  for (const char *p = chord; *p; p++) {
-    if (*p == '"' || *p == '\\') cb_add(b, "\\%c", *p);
-    else cb_add(b, "%c", *p);
+  for (const char *q = chord; *q; q++) {
+    if (*q == '"' || *q == '\\') cb_add(b, "\\%c", *q);
+    else cb_add(b, "%c", *q);
   }
   cb_add(b, "\"");
 }
@@ -1050,8 +1207,8 @@ static void apply_includes(config_t *c, const kdl_node_t *root, const char *path
   for (size_t i = 0; i < root->nkids; i++) {
     const kdl_node_t *n = root->kids[i];
     if (!n || !n->name || strcmp(n->name, "include") != 0) continue;
-    if (!n->nargs && err && !err[0]) {
-      snprintf(err, errcap, "line %d: include needs a file", n->line);
+    if (!n->nargs) {
+      complain(c, err, errcap, n->line, "include needs a file");
       continue;
     }
     for (size_t j = 0; j < n->nargs; j++) {
@@ -1062,14 +1219,19 @@ static void apply_includes(config_t *c, const kdl_node_t *root, const char *path
       char ierr[256] = {0};
       if (!load_into(c, resolved, depth + 1, ierr, sizeof ierr) && !ierr[0])
         snprintf(ierr, sizeof ierr, "cannot include it");
-      if (ierr[0] && err && !err[0]) snprintf(err, errcap, "%s", ierr);
+      /* Already carries its own file and line: it was produced by the file
+       * that has the problem, not by this one. */
+      if (ierr[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", ierr);
     }
   }
 }
 
 bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (err && errcap) err[0] = 0;
-  return load_into(c, path, 0, err, errcap);
+  c->nmsgs = 0;
+  bool ok = load_into(c, path, 0, err, errcap);
+  c->loading = NULL; /* loader scratch: nothing may read it afterwards */
+  return ok;
 }
 
 /* Remembered before the parse, not after: a file that is not there yet is
@@ -1100,23 +1262,27 @@ static const char *file_label(const char *path) {
 static bool load_into(config_t *c, const char *path, int depth, char *err,
                       size_t errcap) {
   if (depth > INCLUDE_MAX_DEPTH) {
-    if (err && errcap)
-      snprintf(err, errcap, "%s: includes nested too deep (a cycle?)",
-               file_label(path));
+    complain(c, err, errcap, 0, "%s: includes nested too deep (a cycle?)",
+             file_label(path));
     return false;
   }
   remember_file(c, path);
-  kdl_node_t *root = kdl_parse_file(path, err, errcap);
-  if (!root) return false; /* defaults stand; the caller reports why */
+  char kerr[192] = {0};
+  kdl_node_t *root = kdl_parse_file(path, kerr, sizeof kerr);
+  if (!root) {
+    /* Its own message: kdl reports the path itself, so this one is not given a
+     * file prefix. Defaults stand; the caller reports why. */
+    const char *was = c->loading;
+    c->loading = NULL;
+    complain(c, err, errcap, 0, "%s", kerr[0] ? kerr : "cannot read it");
+    c->loading = was;
+    return false;
+  }
 
   apply_includes(c, root, path, depth, err, errcap);
-
-  /* Whether the complaint below, if any, came from further down. What this file
-   * has to say about itself gets this file's name in front of it; what an
-   * include had to say already carries the name of the file it happened in, and
-   * prefixing it again would build a chain that truncates before the part that
-   * matters. */
-  bool inherited = err && err[0];
+  /* After the includes, because each of those set it to its own file while it
+   * was being read. From here the complaints belong to this file. */
+  c->loading = path;
 
   c->gap = (uint16_t)kdl_arg_int(kdl_child(root, "gap"), 0, c->gap);
   c->gap_aspect =
@@ -1166,8 +1332,9 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       else if (!strcmp(kd, "none") || !strcmp(kd, "false"))
         c->keep_dead = KEEP_DEAD_NONE;
       else if (!strcmp(kd, "commands")) c->keep_dead = KEEP_DEAD_COMMANDS;
-      else if (err && !err[0])
-        snprintf(err, errcap, "keep_dead: %s (want commands, all or none)", kd);
+      else
+        complain(c, err, errcap, kdl_child(root, "keep_dead")->line,
+                 "keep_dead: %s (want commands, all or none)", kd);
     }
   }
   {
@@ -1244,7 +1411,7 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
     shader_load_dir(dir, lerr, sizeof lerr);
     /* A plugin that will not load is worth a line, and worth nothing more:
      * the config it came with still works, minus that effect (D9). */
-    if (lerr[0] && err && !err[0]) snprintf(err, errcap, "%s", lerr);
+    if (lerr[0]) complain(c, err, errcap, 0, "%s", lerr);
   }
 
   /* One node per pass, in the order written, because a chain is a sequence.
@@ -1269,7 +1436,7 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
         if (strcmp(pane_state_name((pane_state_t)j), k->name) == 0)
           st = (pane_state_t)j;
       if (st == PSTATE_COUNT) {
-        if (err && !err[0]) snprintf(err, errcap, "unknown pane state: %s", k->name);
+        complain(c, err, errcap, k->line, "unknown pane state: %s", k->name);
         continue;
       }
       if (st == PSTATE_UNFOCUSED) unfocused_declared = true;
@@ -1287,8 +1454,9 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
     for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++) {
       const char *v = kdl_arg(kdl_child(theme, THEME_COLORS[i].name), 0, NULL);
       if (!v) continue;
-      if (!parse_color(v, THEME_COLOR(c, i)) && err && !err[0])
-        snprintf(err, errcap, "bad colour for %s: %s", THEME_COLORS[i].name, v);
+      if (!parse_color(v, THEME_COLOR(c, i)))
+        complain(c, err, errcap, kdl_child(theme, THEME_COLORS[i].name)->line,
+                 "bad colour for %s: %s", THEME_COLORS[i].name, v);
     }
   }
 
@@ -1301,8 +1469,9 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       if (config_parse_chord(pfx, &k, &m)) {
         c->prefix_key = k;
         c->prefix_mods = m;
-      } else if (err && !err[0]) {
-        snprintf(err, errcap, "bad prefix: %s", pfx);
+      } else {
+        complain(c, err, errcap, kdl_child(keys, "prefix")->line,
+                 "bad prefix: %s", pfx);
       }
     }
     /* `bind` under `keys` needs the leader; `bind` under `keys { direct { } }`
@@ -1323,28 +1492,29 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
         const char *act = kdl_arg(b, 1, NULL);
         int k;
         uint16_t m;
-        if (!chord || !act || !config_parse_chord(chord, &k, &m)) {
-          if (err && !err[0])
-            snprintf(err, errcap, "line %d: bad binding", b->line);
+        bool implied = false;
+        if (!chord || !act || !parse_chord_ex(chord, &k, &m, &implied)) {
+          /* Naming the chord, because "bad binding" on line 14 of a file you
+           * did not write by hand is a hunt rather than a message. */
+          complain(c, err, errcap, b->line, "bad key: %s",
+                   chord ? chord : "(none)");
           continue;
         }
         action_t a = action_by_name(act);
         if (a == ACT_NONE && strcmp(act, "none") != 0) {
-          if (err && !err[0])
-            snprintf(err, errcap, "line %d: unknown action %s", b->line, act);
+          complain(c, err, errcap, b->line, "unknown action: %s", act);
           continue;
         }
         bind_add(c, k, m, a, direct);
+        /* ...and the same key without it, because whether `?` arrives as
+         * shift+slash or as a bare slash depends on the terminal, not on what
+         * the config meant. */
+        if (implied) bind_add(c, k, (uint16_t)(m & ~MOD_SHIFT), a, direct);
       }
     }
   }
 
   kdl_free(root);
 
-  if (!inherited && err && err[0]) {
-    char own[256];
-    snprintf(own, sizeof own, "%s: %s", file_label(path), err);
-    snprintf(err, errcap, "%s", own);
-  }
   return true;
 }

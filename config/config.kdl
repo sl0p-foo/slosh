@@ -67,6 +67,9 @@
 // same place it says "config reloaded". That goes for anything a config
 // complains about: an unknown shader, a binding that does not parse, an include
 // that is not there. The file applied; one line of it did not; you get told.
+//
+// `sl0ppty --check` says all of them at once, with a file and line each, and
+// exits non-zero if there were any. A session only has room for the first.
 
 // ── geometry ────────────────────────────────────────────────────────────────
 
@@ -634,6 +637,12 @@ theme {
 // prefix itself to the pane. Modifiers are ctrl+ alt+ shift+ super+, and named
 // keys are left/right/up/down/enter/tab/escape/space/backspace/home/end/
 // pageup/pagedown/delete/insert/backslash/minus/slash/comma/period.
+//
+// The cheatsheet's shorthand also parses -- C- M- S-, and ← → ↑ ↓ -- so a chord
+// copied off C-a ? is a chord you can paste in here. Anything else is the
+// character you press, shift included: "?" is shift+slash, "H" is shift+h.
+//
+// `sl0ppty --check` reads this file and says what it could not honour.
 //
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down equalize

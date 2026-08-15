@@ -96,6 +96,10 @@ typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
  * thing nobody can read. */
 #define CONFIG_FILES_MAX 16
 
+/* How many complaints one load keeps. A config with more than this many
+ * problems in it has one problem, and the list is long enough to say so. */
+#define CONFIG_MSGS_MAX 32
+
 typedef struct {
   /* geometry */
   uint16_t gap, gap_aspect, pad;
@@ -335,6 +339,18 @@ typedef struct {
    * appearing. */
   char *files[CONFIG_FILES_MAX];
   size_t nfiles;
+
+  /* Everything this load had to complain about, in the order it found them,
+   * each already carrying the file and line it happened at. A session shows the
+   * first (there is one status line); `--check` shows them all, which is the
+   * whole difference between a warning and a linter. */
+  char msgs[CONFIG_MSGS_MAX][192];
+  size_t nmsgs;
+
+  /* Loader scratch: the file being read right now, so a complaint can say which
+   * one it came from without every call site being handed the path. Meaningless
+   * once loading has finished. */
+  const char *loading;
 } config_t;
 
 /* Defaults, then <config dir>/config.kdl on top. Never fails: on a bad file
@@ -343,6 +359,9 @@ void config_defaults(config_t *c);
 bool config_load(config_t *c, const char *path, char *err, size_t errcap);
 /* $SL0PPTY_CONFIG, else $XDG_CONFIG_HOME/sl0ppty/config.kdl, else ~/.config/… */
 const char *config_default_path(void);
+/* Every complaint from the last load, oldest first: "config.kdl:12: ...".
+ * Returns how many were written. */
+size_t config_messages(const config_t *c, const char **out, size_t max);
 void config_free(config_t *c);
 /* The files this config was read from, oldest first: `files[0]` is the one that
  * was loaded, the rest are what it included. Returns how many were written. */

@@ -55,10 +55,21 @@ keys {
 }
 ```
 
-Modifiers are `ctrl+ alt+ shift+ super+`. Named keys are
-`left right up down enter tab escape space backspace home end pageup pagedown
-delete insert backslash minus slash comma period`; anything else is the
-character you press, so `"?"` and `"S-slash"` are the same binding.
+Modifiers are `ctrl+ alt+ shift+ super+`, or the shorthand the cheatsheet
+prints: `C-` `M-` `S-`. Named keys are `left right up down enter tab escape
+space backspace home end pageup pagedown delete insert backslash minus slash
+comma period`, and the arrows can be written as `←` `→` `↑` `↓` too — so a chord
+copied off the cheatsheet is a chord you can paste into a config.
+
+Anything else is the character you press. That includes the shifted ones, which
+carry their own shift: `"?"` is `"shift+slash"`, `"H"` is `"shift+h"`, `"|"` is
+`"shift+backslash"`. A punctuation binding written that way answers both
+encodings, because whether your terminal reports `?` with a shift modifier or as
+a bare byte is up to your terminal and not to what you meant.
+
+`sl0ppty --check` reads a config and says what it could not honour, one problem
+per line with a file and a line number. Worth running after editing bindings by
+hand.
 
 ## Without the leader
 

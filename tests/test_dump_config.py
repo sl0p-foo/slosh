@@ -92,6 +92,18 @@ def test_the_dump_is_a_working_config():
     check("a session run from the dump looks like one run from nothing",
           with_dump == with_none,
           "\n--- from the dump\n%s\n--- from nothing\n%s" % (with_dump, with_none))
+
+    # ...and it loads without a word of complaint, which the screen alone could
+    # not tell you: for a long time the dump wrote every chord in the
+    # cheatsheet's notation (`prefix "C-a"`, `bind "S-←"`) and the parser only
+    # spoke the config's, so eleven of its own lines came back as complaints and
+    # the session ran on the defaults those lines were describing. Two sessions
+    # looked identical for the worst possible reason.
+    with Session(sh, cols=70, rows=14, config=f.name) as s:
+        s.settle(20)
+        reply = s.api("reload")
+        check("and it loads with nothing to complain about",
+              reply.get("ok") and "warning" not in reply, str(reply))
     os.unlink(f.name)
 
 
