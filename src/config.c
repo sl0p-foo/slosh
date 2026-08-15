@@ -978,10 +978,85 @@ const char *config_default_path(void) {
   return path;
 }
 
+/* How deep a chain of includes may go. A depth limit rather than a set of files
+ * already seen, because the two failures it has to stop are the same failure:
+ * a config that includes itself and a config eleven files deep are both a
+ * mistake, and the message says which one you have. */
+#define INCLUDE_MAX_DEPTH 8
+
+static bool load_into(config_t *c, const char *path, int depth, char *err,
+                      size_t errcap);
+
+/* Where `include "themes/nord.kdl"` points, given the file doing the
+ * including. Relative to *that file*, not to the working directory: a config is
+ * a thing on disk that refers to its neighbours, and where you happened to be
+ * standing when you started the session is not part of what it means. */
+static void include_path(const char *base_file, const char *ref, char *out,
+                         size_t cap) {
+  char buf[512];
+  const char *r = path_expand(ref, buf, sizeof buf);
+  if (r[0] == '/') {
+    snprintf(out, cap, "%s", r);
+    return;
+  }
+  char dir[512];
+  snprintf(dir, sizeof dir, "%s", base_file);
+  char *slash = strrchr(dir, '/');
+  if (slash) *slash = 0;
+  else snprintf(dir, sizeof dir, ".");
+  snprintf(out, cap, "%s/%s", dir, r);
+}
+
+/* Every `include` at the top level of this file, in order, applied *before* the
+ * file's own settings — wherever the line happens to sit. The loader reads a
+ * document by asking it for the keys it knows rather than walking it in order,
+ * so "here" is not a position it could honour; and the useful rule is the
+ * simple one anyway: what you include is the base, what you write beside the
+ * include wins. Later includes win over earlier ones, which is the one bit of
+ * order that survives.
+ *
+ * A file that will not load is a line and no more (D9): the rest of the config
+ * still applies, because losing your keybindings over a mistyped theme name
+ * would be a worse answer than a session that says so. */
+static void apply_includes(config_t *c, const kdl_node_t *root, const char *path,
+                           int depth, char *err, size_t errcap) {
+  for (size_t i = 0; i < root->nkids; i++) {
+    const kdl_node_t *n = root->kids[i];
+    if (!n || !n->name || strcmp(n->name, "include") != 0) continue;
+    if (!n->nargs && err && !err[0]) {
+      snprintf(err, errcap, "line %d: include needs a file", n->line);
+      continue;
+    }
+    for (size_t j = 0; j < n->nargs; j++) {
+      char resolved[512];
+      include_path(path, n->args[j], resolved, sizeof resolved);
+      /* Its own buffer: an include's failure must not overwrite a message the
+       * file that included it has already produced. */
+      char ierr[256] = {0};
+      if (!load_into(c, resolved, depth + 1, ierr, sizeof ierr) && err &&
+          !err[0])
+        snprintf(err, errcap, "line %d: %s", n->line,
+                 ierr[0] ? ierr : "cannot include it");
+    }
+  }
+}
+
 bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (err && errcap) err[0] = 0;
+  return load_into(c, path, 0, err, errcap);
+}
+
+static bool load_into(config_t *c, const char *path, int depth, char *err,
+                      size_t errcap) {
+  if (depth > INCLUDE_MAX_DEPTH) {
+    if (err && errcap)
+      snprintf(err, errcap, "%s: includes nested too deep (a cycle?)", path);
+    return false;
+  }
   kdl_node_t *root = kdl_parse_file(path, err, errcap);
   if (!root) return false; /* defaults stand; the caller reports why */
+
+  apply_includes(c, root, path, depth, err, errcap);
 
   c->gap = (uint16_t)kdl_arg_int(kdl_child(root, "gap"), 0, c->gap);
   c->gap_aspect =

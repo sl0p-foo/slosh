@@ -35,6 +35,36 @@
 // `sl0ppty cmd '{"cmd":"reload"}'` asks for a re-read explicitly. And
 // refuses a file it cannot parse rather than half-applying it.
 
+// ── include ─────────────────────────────────────────────────────────────────
+//
+// A config can be made of files:
+//
+//     include "themes/amber.kdl"        // contrib/themes has six
+//     include "keys/vim.kdl" "shaders/crt.kdl"
+//
+// which is how you switch a theme by editing one line instead of pasting one.
+// Nothing about it is theme-specific: an include is another config file applied
+// here, so the same line composes keys, shader chains, states or geometry.
+//
+// A relative path is relative to *the file doing the including*, never to the
+// directory you happened to start the session from -- a config is a thing on
+// disk that refers to its neighbours. A leading `~` is your home directory, and
+// an absolute path is itself. Included files may include others.
+//
+// What you include is the *base*: the file with the `include` line in it wins
+// wherever they disagree, and a later include wins over an earlier one. That is
+// true wherever the line sits in the file, because the loader reads a document
+// by asking it for the keys it knows rather than walking it top to bottom -- so
+// "here" is not a position it could honour, and "the file you are editing wins"
+// is the rule worth having anyway.
+//
+// `keys` blocks *add* to what came before, like every keys block; a `shaders`
+// or `states` block replaces the one it inherited, like every one of those.
+//
+// A file that will not load is skipped and the rest of the config still
+// applies. Losing your keybindings over a mistyped theme name would be the
+// worse answer.
+
 // ── geometry ────────────────────────────────────────────────────────────────
 
 // Blank cells between panes and around the screen edge, in ROWS.

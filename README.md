@@ -156,7 +156,18 @@ it applies it to every running session immediately** — and a file with a
 mistake in it is refused rather than half-applied.
 
 Geometry, key bindings and every colour are configurable. Six ready-made
-themes are in [`contrib/themes`](contrib/themes).
+themes are in [`contrib/themes`](contrib/themes), and a config can be made of
+files rather than pasted together:
+
+```kdl
+include "themes/amber.kdl"          // switching theme is editing one line
+include "keys/vim.kdl" "shaders/crt.kdl"
+```
+
+A relative path is relative to *the file doing the including*, not to wherever
+you started the session; `~` is your home directory. What you include is the
+base, so the file with the `include` line in it wins wherever they disagree —
+which is what makes a theme something you can put two lines on top of.
 
 Panes are tinted by *state*. Out of the box: the panes you are **not in** are
 gently pushed back (`dim_unfocused 60`, or `0` if you hate it), and so is any
