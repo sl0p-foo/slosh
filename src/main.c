@@ -21,6 +21,7 @@
 #include "proto.h"
 #include "server.h"
 #include "config.h"
+#include "png.h"
 #include "version.h"
 
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
@@ -45,6 +46,12 @@ static void usage(void) {
 }
 
 int main(int argc, char **argv) {
+  /* Process-global and required before any terminal exists, so it happens
+   * here rather than in whichever mode we turn out to be: server, headless
+   * and the script driver all create panes, and a pane created without this
+   * silently drops every PNG a program sends it. */
+  png_init();
+
   bool headless = false, script = false, server = false;
   uint16_t cols = 80, rows = 24;
   int idle_ms = 300;

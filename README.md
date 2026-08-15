@@ -121,8 +121,10 @@ mistyped command in a fresh session no longer closes the session.
   thing other multiplexers drop — including the useful half of the protocol,
   where a program uploads an image once and then places it every frame. Your
   terminal's cell size is carried through to each pane, so programs can size
-  images and place them without saying how many cells to cover. (Sixel is not
-  supported: the terminal core has no sixel decoder.)
+  images and place them without saying how many cells to cover. PNG uploads
+  are decoded here and handed to your terminal as pixels, because the terminal
+  core ships no image decoder of its own. (Sixel is not supported: there is no
+  sixel decoder either, and unlike PNG nobody has asked.)
 - **Small terminals degrade gracefully.** When panes no longer fit, the tab
   becomes a list of one-line headers with the focused pane open below them —
   and returns to exactly the layout you had when there is room again.

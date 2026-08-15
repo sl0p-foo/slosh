@@ -53,6 +53,12 @@ $(BIN): $(OBJ) $(VT_LIB)
 build/%.o: src/%.c build/version.h $(VT_LIB) | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# stb_image comes with the vendored libghostty-vt, which is where the include
+# path points. It is third-party and does not build clean under our warnings,
+# so it gets its own rule rather than every file paying for it.
+build/png.o: src/png.c build/version.h $(VT_LIB) | build
+	$(CC) $(CFLAGS) -I$(VT)/src/stb -Wno-unused-function -c $< -o $@
+
 # Rewritten only when the value actually changes, so `make` after a commit
 # rebuilds, and `make` twice in a row does not.
 .PHONY: FORCE

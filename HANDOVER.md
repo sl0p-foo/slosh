@@ -227,6 +227,32 @@ it answers with the escape sequences the client is actually sent, so a test
 can assert on the bytes rather than on the model that produced them. If you
 touch graphics, assert on the bytes.
 
+### And then a PNG arrived
+
+Same feature, same shape of bug, a year of confidence later: kitty graphics
+were green and a real program still drew nothing. lib-vt ships **no image
+codec** — built as a library it sets `sys.decode_png` to null, and a null hook
+rejects every `f=100` transmission outright, so no image is stored, no
+placement exists, and the re-emission layer is never even reached. Raw RGB
+worked, which is why it looked fine here for as long as it did: every test in
+this file sent raw pixels, because that is what is easy to write in a test.
+That is the *same* lesson as the section above, learned again — write the test
+the way a program actually behaves. A program with a picture has a PNG.
+
+The fix is `src/png.c`: `ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, ...)`
+over the `stb_image.h` that libghostty-vt already vendors and we already
+commit. See D18 for why that rather than a hand-rolled one.
+
+**A false lead worth not repeating.** The first bisect built its escape
+sequences with `sh printf`, and `printf` mangles adjacent backslash escapes:
+`\033\\` immediately followed by `\033` reaches the pty as a literal `\033`.
+So the pane never received the second escape, and the evidence pointed
+convincingly at "two APC sequences back to back are dropped by the parser" —
+a bug in the vendored lib that did not exist. What killed it was dumping the
+bytes at `pane_pump`, where the pty read shows what *actually* arrived. If a
+repro's conclusion implicates the parser, check the pty bytes before you
+believe it, and build test streams in python where a byte is a byte.
+
 **Anything written after the frame must leave the cursor where the frame put
 it.** Images go out after the cell diff on purpose (a repainted cell must not
 land on top of a placement), and placing an image parks the cursor on its

@@ -7,12 +7,32 @@ cannot collide between panes. That collision is the whole reason tmux and
 zellij drop images instead, and it is the first thing tested here.
 """
 import base64
+import struct
 import sys
+import zlib
 
 from harness import Session, check, report
 
 # a 4x2 RGB image
 PX = base64.b64encode(bytes([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0] * 2)).decode()
+
+
+def png(w=4, h=2, color_type=2):
+    """A minimal PNG, built here so the suite needs no binary fixtures.
+
+    `color_type` 2 is RGB and 6 is RGBA; both are worth sending, because the
+    decoder is asked to normalise whatever the file is into RGBA.
+    """
+    def chunk(tag, body):
+        c = tag + body
+        return struct.pack(">I", len(body)) + c + struct.pack(">I", zlib.crc32(c))
+
+    px = [255, 0, 0] if color_type == 2 else [255, 0, 0, 255]
+    raw = b"".join(b"\x00" + bytes(px * w) for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" +
+            chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, color_type, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw)) +
+            chunk(b"IEND", b""))
 
 
 def sends_image(image_id=7, cols=6, rows=2, after="sleep 5"):
@@ -287,6 +307,68 @@ def test_partial_visibility_crops_rather_than_squashes():
               f"{pl[0]} vs {p['content_h']}")
 
 
+def sends_png(data, place="c=6,r=2", image_id=7):
+    """Upload with `a=t,f=100` and place it: what a program with a picture on
+    disk does, and what ida-tui's splash does.
+
+    The child is python rather than sh because `printf` mangles adjacent
+    backslash escapes -- `\\033\\\\` followed by `\\033` arrives as a literal
+    `\\033` -- so a shell-built sequence does not reliably reach the pty as the
+    bytes you wrote. That cost an afternoon and a wrong diagnosis.
+    """
+    b64 = base64.b64encode(data).decode()
+    prog = ("import sys, time\n"
+            f"sys.stdout.write('\\033_Ga=t,f=100,t=d,i={image_id},q=2;{b64}\\033\\\\')\n"
+            f"sys.stdout.write('\\033_Ga=p,i={image_id},p=1,{place},q=2\\033\\\\')\n"
+            "sys.stdout.write('DONE')\n"
+            "sys.stdout.flush()\n"
+            "time.sleep(5)\n")
+    return ["python3", "-c", prog]
+
+
+def test_a_png_is_decoded_and_placed():
+    """libghostty-vt ships no image codec: built as a library its `decode_png`
+    hook is null, and a null hook rejects every `f=100` transmission outright.
+    No image was stored, so no placement existed and there was nothing to
+    re-emit -- a program that uploaded a PNG drew nothing at all, silently,
+    while raw RGB worked. Found because ida-tui's startup logo never appeared."""
+    for color_type, what in ((2, "RGB"), (6, "RGBA")):
+        with Session(sends_png(png(color_type=color_type)), cols=44, rows=10) as s:
+            s.until_text("DONE")
+            s.settle(200)
+            pl = places(s)
+            check(f"a {what} png is placed", len(pl) == 1, str(pl))
+            if pl:
+                check("at the size it asked for",
+                      (pl[0]["cols"], pl[0]["rows"]) == (6, 2), str(pl[0]))
+
+
+def test_a_decoded_png_reaches_the_client_as_raw_pixels():
+    """The client is told `f=32`: decoding is the point, and the terminal we
+    are re-emitting to should not have to decode it a second time."""
+    with Session(sends_png(png()), cols=44, rows=10) as s:
+        s.until_text("DONE")
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        tx = [c for c in raw.split("\x1b") if c.startswith("_Ga=t")]
+        check("the image is transmitted to the client", tx != [], repr(raw[:120]))
+        if tx:
+            check("as RGBA, not as the png we were given",
+                  "f=32" in tx[0] and "f=100" not in tx[0], tx[0][:80])
+
+
+def test_a_png_that_is_not_one_places_nothing():
+    """The bytes come off a pane's pty, so the decoder is fed whatever a
+    program feels like sending. Refusing it is all that is asked; the pane
+    must still be there afterwards."""
+    junk = b"\x89PNG\r\n\x1a\n" + b"\xde\xad\xbe\xef" * 32
+    with Session(sends_png(junk), cols=44, rows=10) as s:
+        s.until_text("DONE")
+        s.settle(200)
+        check("nothing is placed", places(s) == [], str(places(s)))
+        check("and the session survived it", s.pane() is not None)
+
+
 def test_scrolled_away_placements_are_dropped():
     prog = ("stty raw -echo; "
             f'printf "\\033_Ga=T,f=24,s=4,v=2,i=7,q=2,c=6,r=2;{PX}\\033\\\\"; '
@@ -299,6 +381,9 @@ def test_scrolled_away_placements_are_dropped():
 
 if __name__ == "__main__":
     test_a_pane_image_reaches_the_screen()
+    test_a_png_is_decoded_and_placed()
+    test_a_decoded_png_reaches_the_client_as_raw_pixels()
+    test_a_png_that_is_not_one_places_nothing()
     test_a_placement_that_does_not_say_how_big_it_is()
     test_the_cell_size_a_client_reports_is_what_sizes_an_image()
     test_a_program_can_read_the_pixel_size_from_its_pty()
