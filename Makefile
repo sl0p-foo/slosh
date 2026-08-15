@@ -39,25 +39,42 @@ PY_TESTS  := $(filter-out test_session.py,$(notdir $(wildcard tests/test_*.py)))
 PY_STAMPS := $(PY_TESTS:%.py=build/.pass-%)
 JOBS      ?= $(shell nproc 2>/dev/null || echo 4)
 
+# Quiet by default: `[CC] src/app.c` rather than a screenful of flags, which is
+# what you want for the twenty seconds a build takes and never after. `make V=1`
+# prints the command lines instead, which is what you want the moment one of
+# them is wrong -- so the information is one flag away rather than gone.
+V ?= 0
+ifeq ($(V),0)
+  Q   := @
+  say  = @printf '  %-5s %s\n' '$(1)' '$(2)'
+else
+  Q   :=
+  say  = @:
+endif
+
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage docs
 .DEFAULT_GOAL := help
 
 help: ## show this
 	@grep -hE '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | expand -t20
+	@printf '\n%-19s %s\n' 'V=1' 'show the command lines rather than [CC] src/app.c'
 
 all: $(BIN) ## build sl0ppty
 
 $(BIN): $(OBJ) $(VT_LIB)
-	$(CC) $(OBJ) $(VT_LIB) -o $@ $(LDFLAGS)
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(OBJ) $(VT_LIB) -o $@ $(LDFLAGS)
 
 build/%.o: src/%.c build/version.h $(VT_LIB) | build
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(call say,[CC],$<)
+	$(Q)$(CC) $(CFLAGS) -c $< -o $@
 
 # stb_image comes with the vendored libghostty-vt, which is where the include
 # path points. It is third-party and does not build clean under our warnings,
 # so it gets its own rule rather than every file paying for it.
 build/png.o: src/png.c build/version.h $(VT_LIB) | build
-	$(CC) $(CFLAGS) -I$(VT)/src/stb -Wno-unused-function -c $< -o $@
+	$(call say,[CC],$<)
+	$(Q)$(CC) $(CFLAGS) -I$(VT)/src/stb -Wno-unused-function -c $< -o $@
 
 # Rewritten only when the value actually changes, so `make` after a commit
 # rebuilds, and `make` twice in a row does not.
@@ -80,29 +97,34 @@ vendor: ## build the vendored libghostty-vt (needs zig 0.16)
 TEST_BIN := build/input_test
 
 $(TEST_BIN): tests/input_test.c src/input.c $(VT_LIB) | build
-	$(CC) $(CFLAGS) tests/input_test.c src/input.c $(VT_LIB) -o $@
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/input_test.c src/input.c $(VT_LIB) -o $@
 
 KDL_TEST := build/kdl_test
 
 $(KDL_TEST): tests/kdl_test.c src/kdl.c | build
-	$(CC) $(CFLAGS) tests/kdl_test.c src/kdl.c -o $@
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/kdl_test.c src/kdl.c -o $@
 
 EXPR_TEST := build/expr_test
 
 $(EXPR_TEST): tests/expr_test.c src/expr.c | build
-	$(CC) $(CFLAGS) tests/expr_test.c src/expr.c -o $@
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/expr_test.c src/expr.c -o $@
 
 # The real expression evaluator as a filter, so test_shadertoy.py can hold
 # contrib/shadertoy.html's JavaScript to what the compiler actually does.
 EXPR_EVAL := build/expr_eval
 
 $(EXPR_EVAL): tests/expr_eval.c src/expr.c | build
-	$(CC) $(CFLAGS) tests/expr_eval.c src/expr.c -o $@
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/expr_eval.c src/expr.c -o $@
 
 SHADER_TEST := build/shader_test
 
 $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) | build
-	$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) -o $@
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) -o $@
 
 # Shader plugins, for test_shader_plugin.py: a good one, one that announces an
 # ABI we do not speak, and the example we ship in contrib -- which is built
@@ -110,13 +132,16 @@ $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/exp
 PLUGIN_CFLAGS := -std=c23 -O1 -fPIC -shared -Isrc
 
 build/testshader.so: tests/shader_plugin_test.c src/shader_abi.h | build
-	$(CC) $(PLUGIN_CFLAGS) $< -o $@
+	$(call say,[SO],$@)
+	$(Q)$(CC) $(PLUGIN_CFLAGS) $< -o $@
 
 build/badshader.so: tests/shader_plugin_test.c src/shader_abi.h | build
-	$(CC) $(PLUGIN_CFLAGS) -DBAD_ABI $< -o $@
+	$(call say,[SO],$@)
+	$(Q)$(CC) $(PLUGIN_CFLAGS) -DBAD_ABI $< -o $@
 
 build/exampleshader.so: contrib/shader-plugin/example.c src/shader_abi.h | build
-	$(CC) $(PLUGIN_CFLAGS) $< -o $@
+	$(call say,[SO],$@)
+	$(Q)$(CC) $(PLUGIN_CFLAGS) $< -o $@
 
 build/.pass-test_shader_plugin: build/testshader.so build/badshader.so \
                                 build/exampleshader.so
@@ -155,7 +180,7 @@ smoke: $(BIN) ## compose a screen headlessly and print it
 	./$(BIN) --headless --cols 40 --rows 12 -- /bin/sh -c 'printf "hello \033[1;32msl0ppty\033[0m\n"; echo "wide: 日本語"'
 
 docs: ## render docs/ into build/docs (no dependencies; open build/docs/index.html)
-	python3 contrib/gen-docs build/docs
+	$(Q)python3 contrib/gen-docs build/docs
 
 run: $(BIN) ## build and run
 	./$(BIN)
@@ -173,13 +198,15 @@ COV_CC   ?= gcc
 COV_FLAGS := -std=c23 -O0 -g --coverage -I$(VT_INC) -Isrc -Ibuild
 
 $(COV_DIR)/%.o: src/%.c build/version.h | $(COV_DIR)
-	@$(COV_CC) $(COV_FLAGS) -c $< -o $@
+	$(call say,[COV],$<)
+	$(Q)$(COV_CC) $(COV_FLAGS) -c $< -o $@
 
 $(COV_DIR):
 	@mkdir -p $(COV_DIR)
 
 $(COV_DIR)/sl0ppty: $(COV_OBJ) $(VT_LIB)
-	@$(COV_CC) --coverage $(COV_OBJ) $(VT_LIB) -o $@
+	$(call say,[LD],$@)
+	$(Q)$(COV_CC) --coverage $(COV_OBJ) $(VT_LIB) -o $@
 
 # The C unit tests link the *same* coverage objects, so their counters land in
 # the same place and input.c/kdl.c/shader.c/expr.c are credited for the tests
@@ -189,14 +216,18 @@ COV_UNITS := $(COV_DIR)/input_test $(COV_DIR)/kdl_test $(COV_DIR)/shader_test \
              $(COV_DIR)/expr_test
 
 $(COV_DIR)/input_test: tests/input_test.c $(COV_DIR)/input.o $(VT_LIB)
-	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+	$(call say,[LD],$@)
+	$(Q)$(COV_CC) $(COV_FLAGS) $^ -o $@
 $(COV_DIR)/kdl_test: tests/kdl_test.c $(COV_DIR)/kdl.o
-	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+	$(call say,[LD],$@)
+	$(Q)$(COV_CC) $(COV_FLAGS) $^ -o $@
 $(COV_DIR)/shader_test: tests/shader_test.c $(COV_DIR)/shader.o $(COV_DIR)/screen.o \
                         $(COV_DIR)/json.o $(COV_DIR)/expr.o $(VT_LIB)
-	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+	$(call say,[LD],$@)
+	$(Q)$(COV_CC) $(COV_FLAGS) $^ -o $@
 $(COV_DIR)/expr_test: tests/expr_test.c $(COV_DIR)/expr.o
-	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+	$(call say,[LD],$@)
+	$(Q)$(COV_CC) $(COV_FLAGS) $^ -o $@
 
 coverage: $(COV_DIR)/sl0ppty $(COV_UNITS) ## how much of the code the tests run
 	@rm -f $(COV_DIR)/*.gcda
