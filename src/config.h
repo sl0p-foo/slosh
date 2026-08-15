@@ -317,6 +317,15 @@ void config_chord_name(int key, uint16_t mods, char *out, size_t cap);
 /* A phrase for the cheatsheet, and which group it belongs under. `group` is
  * one of a fixed set, in the order they should be shown. */
 const char *config_action_label(action_t a);
+/* The name this action is written as in a config file. */
+const char *config_action_name(action_t a);
+/* The whole config as a file you could have written, with the values it
+ * currently holds. Generated rather than kept on disk, because a checked-in
+ * copy of the defaults is a second source of truth and drifts. Caller frees. */
+char *config_render(const config_t *c);
+/* The same, for a config nobody has edited: what a fresh install would do.
+ * Caller frees. */
+char *config_dump_defaults(void);
 const char *config_action_group(action_t a);
 /* "ctrl+a", "alt+left", "\\", "f" -> key + mods. False if unparseable. */
 bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods);

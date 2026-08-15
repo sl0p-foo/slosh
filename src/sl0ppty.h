@@ -76,6 +76,8 @@ char *screen_dump_json(screen_t *s);
 /* Expand a leading `~`, using `buf` when it has to. Returns `path` itself when
  * there is nothing to do, so `buf` only has to outlive the result's use. */
 const char *path_expand(const char *path, char *buf, size_t cap);
+/* mkdir -p, for the directory a config or a session socket wants to live in. */
+bool path_mkdirs(const char *dir);
 
 /* ---- pty --------------------------------------------------------------- */
 

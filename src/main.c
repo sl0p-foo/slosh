@@ -20,6 +20,7 @@
 
 #include "proto.h"
 #include "server.h"
+#include "config.h"
 #include "version.h"
 
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
@@ -38,7 +39,8 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
 
 static void usage(void) {
   fputs("usage: sl0ppty [-s NAME] [--layout FILE] [--no-reload]\n"
-        "                [--version] [ls | cmd LINE | -- CMD...]\n",
+        "                [--version] [--dump-config]\n"
+        "                [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
 
@@ -62,6 +64,15 @@ int main(int argc, char **argv) {
     else if (strcmp(a, "-s") == 0 && i + 1 < argc) name = argv[++i];
     else if (strcmp(a, "--layout") == 0 && i + 1 < argc) layout = argv[++i];
     else if (strcmp(a, "--no-reload") == 0) watch = false;
+    else if (strcmp(a, "--dump-config") == 0) {
+      /* Every setting with the value it currently has, as a file you could
+       * have written. `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl`
+       * is a supported way to start one. */
+      char *text = config_dump_defaults();
+      fputs(text, stdout);
+      free(text);
+      return 0;
+    }
     else if (strcmp(a, "--version") == 0) {
       /* The same string the status line shows, so "which build is this" has
        * one answer whether you ask the binary or the session. */

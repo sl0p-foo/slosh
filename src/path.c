@@ -8,6 +8,9 @@
  */
 #include "sl0ppty.h"
 
+#include <sys/stat.h>
+
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,4 +25,21 @@ const char *path_expand(const char *path, char *buf, size_t cap) {
   if (!home || !*home) return path;
   snprintf(buf, cap, "%s%s", home, path + 1);
   return buf;
+}
+
+/* Create a directory and everything above it. `mkdir` of one level is enough
+ * on a machine where ~/.config already exists, which is most of them and not
+ * all of them -- a fresh container has neither, and "could not write your
+ * config" is a poor first impression. Existing directories are not an error. */
+bool path_mkdirs(const char *dir) {
+  if (!dir || !*dir) return false;
+  char buf[1024];
+  snprintf(buf, sizeof buf, "%s", dir);
+  for (char *p = buf + 1; *p; p++) {
+    if (*p != '/') continue;
+    *p = 0;
+    if (mkdir(buf, 0700) != 0 && errno != EEXIST) return false;
+    *p = '/';
+  }
+  return mkdir(buf, 0700) == 0 || errno == EEXIST;
 }

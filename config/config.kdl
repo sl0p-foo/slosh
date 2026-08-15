@@ -1,3 +1,11 @@
+// This file is the *reasoning*: what each setting is for, what it cost to
+// get right, and which ones are opinions. The values themselves come out of
+// the code -- `sl0ppty --dump-config` writes every knob with the value it
+// actually holds, and `C-a e` seeds a missing config with exactly that.
+//
+// So if the two ever disagree, the dump is right and this file is stale;
+// tests/test_dump_config.py fails when a setting exists and is not rendered.
+//
 // sl0ppty — every value here is also the compiled-in default, so this file is
 // documentation as much as configuration. Copy it to
 // ~/.config/sl0ppty/config.kdl (or point $SL0PPTY_CONFIG at it) and edit.

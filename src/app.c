@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1720,13 +1721,38 @@ bool app_edit_config(app_t *a) {
   node_t *n = a->ntabs ? cur(a)->focus : NULL;
   if (!n) return false;
 
+  const char *path = config_default_path();
+
+  /* An editor opened on a file that is not there is a blank buffer, and a
+   * blank buffer does not tell you what you can set. So write the defaults
+   * out first: every knob with the value it currently has, generated from the
+   * code rather than from a copy of it. Only when there is nothing there --
+   * this must never touch a config somebody has written. */
+  if (access(path, F_OK) != 0) {
+    char dir[1024];
+    snprintf(dir, sizeof dir, "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (slash) {
+      *slash = 0;
+      path_mkdirs(dir);
+    }
+    FILE *f = fopen(path, "wx"); /* x: lose the race rather than an edit */
+    if (f) {
+      char *text = config_dump_defaults();
+      fputs(text, f);
+      free(text);
+      fclose(f);
+      app_toast(a, "wrote a starting config");
+    }
+  }
+
   const char *editor = CFG.editor && *CFG.editor ? CFG.editor : getenv("EDITOR");
   /* vi is the one editor a POSIX system is required to have. Better a wrong
    * guess you can see and change than a pane that opens empty. */
   if (!editor || !*editor) editor = "vi";
 
   char cmd[1024];
-  snprintf(cmd, sizeof cmd, "%s '%s'", editor, config_default_path());
+  snprintf(cmd, sizeof cmd, "%s '%s'", editor, path);
   const char *argv[] = {"/bin/sh", "-c", cmd, NULL};
 
   /* Down rather than across: a config file is lines, and half the width of a

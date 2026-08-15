@@ -131,8 +131,11 @@ mistyped command in a fresh session no longer closes the session.
 
 ## Configuration
 
-[`config/config.kdl`](config/config.kdl) is the complete list of settings and
-also the defaults; copy it to `~/.config/sl0ppty/config.kdl` and edit. **Saving
+`sl0ppty --dump-config` writes every setting with the value it currently has —
+generated from the code, so it cannot drift from the defaults — and `C-a e`
+opens your config in a pane, writing that starting file first if you have
+none. [`config/config.kdl`](config/config.kdl) is the same list with the
+reasoning attached, if you want to know *why* a setting exists. **Saving
 it applies it to every running session immediately** — and a file with a
 mistake in it is refused rather than half-applied.
 

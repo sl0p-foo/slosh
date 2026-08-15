@@ -4,6 +4,8 @@
 #include <ghostty/vt.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "input.h"
@@ -190,6 +192,66 @@ static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
 /* `direct` is part of the identity, not a property of it: `x` after the leader
  * and `x` on its own are two different bindings, and binding one must not
  * silently redefine the other. */
+/* Every colour the theme knows, once. The parser walks it and so does the
+ * renderer, so a colour cannot exist in one and not the other -- which is
+ * exactly how config.kdl drifted from the code before this. */
+static const struct {
+  const char *name;
+  size_t off;
+} THEME_COLORS[] = {
+    {"default_fg", offsetof(config_t, default_fg)},
+    {"default_bg", offsetof(config_t, default_bg)},
+    {"frame_focus", offsetof(config_t, frame_focus)},
+    {"frame_idle", offsetof(config_t, frame_idle)},
+    {"title", offsetof(config_t, title_focus)},
+    {"title_idle", offsetof(config_t, title_idle)},
+    {"button_fg", offsetof(config_t, button_fg)},
+    {"button_bg", offsetof(config_t, button_bg)},
+    {"button_bg_idle", offsetof(config_t, button_bg_idle)},
+    {"guide", offsetof(config_t, guide)},
+    {"resize", offsetof(config_t, resize)},
+    {"drop_target", offsetof(config_t, drop_target)},
+    {"scroll_fg", offsetof(config_t, scroll_fg)},
+    {"scroll_bg", offsetof(config_t, scroll_bg)},
+    {"header", offsetof(config_t, header)},
+    {"header_hover", offsetof(config_t, header_hover)},
+    {"header_hover_title", offsetof(config_t, header_hover_title)},
+    {"tab_active_fg", offsetof(config_t, tab_active_fg)},
+    {"tab_active_bg", offsetof(config_t, tab_active_bg)},
+    {"tab_active_hover_fg", offsetof(config_t, tab_active_hover_fg)},
+    {"tab_idle", offsetof(config_t, tab_idle)},
+    {"tab_hover", offsetof(config_t, tab_hover)},
+    {"prefix_fg", offsetof(config_t, prefix_fg)},
+    {"prefix_bg", offsetof(config_t, prefix_bg)},
+    {"tab_count", offsetof(config_t, tab_count)},
+    {"status", offsetof(config_t, status)},
+    {"status_state", offsetof(config_t, status_state)},
+    {"finder_fg", offsetof(config_t, finder_fg)},
+    {"finder_bg", offsetof(config_t, finder_bg)},
+    {"finder_sel_fg", offsetof(config_t, finder_sel_fg)},
+    {"finder_sel_bg", offsetof(config_t, finder_sel_bg)},
+    {"bell", offsetof(config_t, bell)},
+    {"modal_fg", offsetof(config_t, modal_fg)},
+    {"modal_bg", offsetof(config_t, modal_bg)},
+    {"modal_border", offsetof(config_t, modal_border)},
+    {"modal_title", offsetof(config_t, modal_title)},
+    {"modal_button", offsetof(config_t, modal_button)},
+    {"modal_button_hover", offsetof(config_t, modal_button_hover)},
+    {"dead", offsetof(config_t, dead)},
+    {"hint", offsetof(config_t, hint)},
+    {"minbar", offsetof(config_t, minbar)},
+    {"minbar_hover", offsetof(config_t, minbar_hover)},
+    {"pane_button", offsetof(config_t, pane_button)},
+    {"pane_button_hover", offsetof(config_t, pane_button_hover)},
+    {"rename_fg", offsetof(config_t, rename_fg)},
+    {"rename_bg", offsetof(config_t, rename_bg)},
+    {"toast_fg", offsetof(config_t, toast_fg)},
+    {"toast_bg", offsetof(config_t, toast_bg)},
+};
+
+#define THEME_COLOR(c, i) \
+  ((color_t *)((char *)(c) + THEME_COLORS[i].off))
+
 static void bind_add(config_t *c, int key, uint16_t mods, action_t action,
                      bool direct) {
   for (size_t i = 0; i < c->nbinds; i++)
@@ -487,6 +549,18 @@ static const struct {
     {ACT_LITERAL_PREFIX, "session", "send the prefix itself"},
 };
 
+const char *config_action_name(action_t a) {
+  for (size_t i = 0; i < sizeof ACTIONS / sizeof *ACTIONS; i++)
+    if (ACTIONS[i].action == a) return ACTIONS[i].name;
+  /* select-tab-N is nine actions from one row of the table. */
+  static char buf[24];
+  if (a >= ACT_SELECT_TAB_1 && a <= ACT_SELECT_TAB_1 + 8) {
+    snprintf(buf, sizeof buf, "select-tab-%d", (int)(a - ACT_SELECT_TAB_1) + 1);
+    return buf;
+  }
+  return NULL;
+}
+
 const char *config_action_label(action_t a) {
   for (size_t i = 0; i < sizeof ACTION_HELP / sizeof *ACTION_HELP; i++)
     if (ACTION_HELP[i].action == a) return ACTION_HELP[i].label;
@@ -559,6 +633,206 @@ void config_chord_name(int key, uint16_t mods, char *out, size_t cap) {
 
   snprintf(out, cap, "%s%s%s%s", mods & MOD_CTRL ? "C-" : "",
            mods & MOD_ALT ? "M-" : "", mods & MOD_SHIFT ? "S-" : "", base);
+}
+
+
+/* ---- rendering a config back out ----------------------------------------
+ *
+ * Every knob with the value it currently has, as a file you could have
+ * written. Generated rather than kept as a copy on disk: a checked-in
+ * "defaults" file is a second source of truth, and it drifts -- ours had
+ * already lost four colours by the time anyone noticed.
+ *
+ * The comments here are one line each and say what a setting *is*. The long
+ * form -- why a setting exists, what it cost to get right -- lives in
+ * config/config.kdl, which is prose and belongs with the prose. Values are
+ * generated; essays are written.
+ */
+
+typedef struct {
+  char *buf;
+  size_t len, cap;
+} cfgbuf_t;
+
+static void cb_add(cfgbuf_t *b, const char *fmt, ...) {
+  va_list ap;
+  for (;;) {
+    va_start(ap, fmt);
+    int n = vsnprintf(b->buf + b->len, b->cap - b->len, fmt, ap);
+    va_end(ap);
+    if (n < 0) return;
+    if ((size_t)n < b->cap - b->len) {
+      b->len += (size_t)n;
+      return;
+    }
+    b->cap = b->cap ? b->cap * 2 : 4096;
+    while (b->cap - b->len <= (size_t)n) b->cap *= 2;
+    b->buf = realloc(b->buf, b->cap);
+  }
+}
+
+static const char *yesno(bool v) { return v ? "true" : "false"; }
+
+/* A chord as a KDL string: `\` and `"` are both keys somebody may have bound
+ * and both end or escape a string, so they have to be written escaped. The
+ * dump has to *parse back*, and a bare backslash there does not. */
+static void cb_chord(cfgbuf_t *b, int key, uint16_t mods) {
+  char chord[24];
+  config_chord_name(key, mods, chord, sizeof chord);
+  cb_add(b, "\"");
+  for (const char *p = chord; *p; p++) {
+    if (*p == '"' || *p == '\\') cb_add(b, "\\%c", *p);
+    else cb_add(b, "%c", *p);
+  }
+  cb_add(b, "\"");
+}
+
+static void cb_color(cfgbuf_t *b, const char *name, color_t c) {
+  cb_add(b, "    %-22s \"#%02x%02x%02x\"\n", name, c.r, c.g, c.b);
+}
+
+static void cb_chain(cfgbuf_t *b, const char *indent, const shader_t *sh,
+                     size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    if (!sh[i].kind) continue;
+    cb_add(b, "%s%s amount=%u", indent, sh[i].kind, sh[i].amount);
+    if (sh[i].color.set)
+      cb_add(b, " color=\"#%02x%02x%02x\"", sh[i].color.r, sh[i].color.g,
+             sh[i].color.b);
+    if (sh[i].param) cb_add(b, " at=%u", sh[i].param);
+    cb_add(b, "\n");
+  }
+}
+
+char *config_render(const config_t *c) {
+  cfgbuf_t b = {0};
+
+  cb_add(&b, "// sl0ppty config, as it currently stands.\n");
+  cb_add(&b, "//\n");
+  cb_add(&b, "// Written by `sl0ppty --dump-config`, so every value here is\n");
+  cb_add(&b, "// the one in force rather than one somebody typed up. Delete\n");
+  cb_add(&b, "// anything you do not want to pin; what is missing is a\n");
+  cb_add(&b, "// default, and defaults are allowed to improve.\n");
+  cb_add(&b, "//\n");
+  cb_add(&b, "// The commented reference -- what each setting is for, and why\n");
+  cb_add(&b, "// it exists -- is config/config.kdl in the source tree.\n\n");
+
+  cb_add(&b, "// ---- geometry ----\n");
+  cb_add(&b, "gap %u\n", c->gap);
+  cb_add(&b, "gap_aspect %u          // columns per row, so a gap looks square\n",
+         c->gap_aspect);
+  cb_add(&b, "padding %u\n", c->pad);
+  cb_add(&b, "rounded %s\n", yesno(c->rounded));
+  cb_add(&b, "title_align \"%s\"\n",
+         c->title_align == ALIGN_LEFT ? "left"
+             : c->title_align == ALIGN_RIGHT ? "right" : "center");
+  cb_add(&b, "title_inset %u\n", c->title_inset);
+  cb_add(&b, "min_pane cols=%u rows=%u   // below this a pane collapses\n",
+         c->min_pane_cols, c->min_pane_rows);
+  cb_add(&b, "min_split cols=%u rows=%u  // below this a split is not offered\n",
+         c->min_split_cols, c->min_split_rows);
+
+  cb_add(&b, "\n// ---- what is on screen ----\n");
+  cb_add(&b, "status_bar %s          // the strip along the top\n",
+         yesno(c->status_bar));
+  cb_add(&b, "status_line %s         // the line along the bottom\n",
+         yesno(c->status_line));
+  cb_add(&b, "status_pad %u\n", c->status_pad);
+  cb_add(&b, "hints %s               // what the pointer is on, in the middle\n",
+         yesno(c->hints));
+  cb_add(&b, "version_banner %s      // ...and which build this is, when idle\n",
+         yesno(c->version_banner));
+  cb_add(&b, "pane_buttons %s        // the marks in a frame's top-right\n",
+         yesno(c->pane_buttons));
+  cb_add(&b, "bell_indicator %s\n", yesno(c->bell_indicator));
+  cb_add(&b, "zoom_mark \"%s\"\n", c->zoom_mark);
+  cb_add(&b, "zoom_on_mark \"%s\"\n", c->zoom_on_mark);
+  cb_add(&b, "close_mark \"%s\"\n", c->close_mark);
+  cb_add(&b, "min_mark \"%s\"\n", c->min_mark);
+  cb_add(&b, "newtab_mark \"%s\"\n", c->newtab_mark);
+  cb_add(&b, "bell_mark \"%s\"\n", c->bell_mark);
+
+  cb_add(&b, "\n// ---- behaviour ----\n");
+  cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
+  cb_add(&b, "scroll_lines %u\n", c->scroll_lines);
+  cb_add(&b, "toast_ms %u\n", c->toast_ms);
+  cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
+  cb_add(&b, "double_click_ms %u\n", c->double_click_ms);
+  cb_add(&b, "modal_scrim %u         // how far a modal pushes the rest back\n",
+         c->modal_scrim);
+  cb_add(&b, "dim_unfocused %u       // ...and how far the panes you are not in\n",
+         c->dim_unfocused);
+  cb_add(&b, "keep_dead \"%s\"  // which dead panes stay: commands, all, none\n",
+         c->keep_dead == KEEP_DEAD_ALL ? "all"
+             : c->keep_dead == KEEP_DEAD_NONE ? "none" : "commands");
+  if (c->shell) cb_add(&b, "shell \"%s\"\n", c->shell);
+  else cb_add(&b, "// shell \"/bin/zsh\"     // unset: $SHELL\n");
+  if (c->editor) cb_add(&b, "editor \"%s\"\n", c->editor);
+  else cb_add(&b, "// editor \"nvim\"        // unset: $EDITOR, then vi\n");
+  if (c->shader_dir) cb_add(&b, "shader_dir \"%s\"\n", c->shader_dir);
+  else cb_add(&b, "// shader_dir \"~/.config/sl0ppty/shaders\"\n");
+
+  cb_add(&b, "\n// ---- colour ----\ntheme {\n");
+  for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)
+    cb_color(&b, THEME_COLORS[i].name, *THEME_COLOR((config_t *)c, i));
+  cb_add(&b, "}\n");
+
+  /* Written even when empty: an empty block says "this exists and you have
+   * none", where nothing at all says "we forgot to tell you". */
+  cb_add(&b, "\n// ---- colour passes over every pane's contents ----\n");
+  cb_add(&b, "// (contrib/shaders has thirty-odd to paste; contrib/shadertoy.html\n");
+  cb_add(&b, "//  previews them)\nshaders {\n");
+  cb_chain(&b, "    ", c->shaders, c->nshaders);
+  cb_add(&b, "}\n");
+
+  cb_add(&b, "\n// ---- what a pane looks like in a given state ----\nstates {\n");
+  for (int st = 0; st < PSTATE_COUNT; st++) {
+    cb_add(&b, "    %s {\n", pane_state_name((pane_state_t)st));
+    cb_chain(&b, "        ", c->state_shaders[st], c->state_n[st]);
+    cb_add(&b, "    }\n");
+  }
+  cb_add(&b, "}\n");
+
+  cb_add(&b, "\n// ---- keys ----\nkeys {\n");
+  cb_add(&b, "    prefix ");
+  cb_chord(&b, c->prefix_key, c->prefix_mods);
+  cb_add(&b, "\n\n");
+  for (size_t i = 0; i < c->nbinds; i++) {
+    if (c->binds[i].direct) continue;
+    const char *act = config_action_name(c->binds[i].action);
+    if (!act) continue;
+    cb_add(&b, "    bind ");
+    cb_chord(&b, c->binds[i].key, c->binds[i].mods);
+    cb_add(&b, " \"%s\"\n", act);
+  }
+  bool any_direct = false;
+  for (size_t i = 0; i < c->nbinds; i++)
+    if (c->binds[i].direct && config_action_name(c->binds[i].action))
+      any_direct = true;
+  if (any_direct) {
+    cb_add(&b, "\n    // these fire with no leader, and are gone from every\n");
+    cb_add(&b, "    // program in every pane\n    direct {\n");
+    for (size_t i = 0; i < c->nbinds; i++) {
+      if (!c->binds[i].direct) continue;
+      const char *act = config_action_name(c->binds[i].action);
+      if (!act) continue;
+      cb_add(&b, "        bind ");
+      cb_chord(&b, c->binds[i].key, c->binds[i].mods);
+      cb_add(&b, " \"%s\"\n", act);
+    }
+    cb_add(&b, "    }\n");
+  }
+  cb_add(&b, "}\n");
+
+  return b.buf;
+}
+
+char *config_dump_defaults(void) {
+  config_t fresh;
+  config_defaults(&fresh);
+  char *text = config_render(&fresh);
+  config_free(&fresh);
+  return text;
 }
 
 action_t config_lookup(const config_t *c, int key, uint16_t mods) {
@@ -781,63 +1055,11 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
 
   const kdl_node_t *theme = kdl_child(root, "theme");
   if (theme) {
-    struct {
-      const char *name;
-      color_t *slot;
-    } colors[] = {
-        {"default_fg", &c->default_fg},
-        {"default_bg", &c->default_bg},
-        {"frame_focus", &c->frame_focus},
-        {"frame_idle", &c->frame_idle},
-        {"title", &c->title_focus},
-        {"title_idle", &c->title_idle},
-        {"button_fg", &c->button_fg},
-        {"button_bg", &c->button_bg},
-        {"button_bg_idle", &c->button_bg_idle},
-        {"guide", &c->guide},
-        {"resize", &c->resize},
-        {"drop_target", &c->drop_target},
-        {"scroll_fg", &c->scroll_fg},
-        {"scroll_bg", &c->scroll_bg},
-        {"header", &c->header},
-        {"header_hover", &c->header_hover},
-        {"header_hover_title", &c->header_hover_title},
-        {"tab_active_fg", &c->tab_active_fg},
-        {"tab_active_bg", &c->tab_active_bg},
-        {"tab_active_hover_fg", &c->tab_active_hover_fg},
-        {"tab_idle", &c->tab_idle},
-        {"tab_hover", &c->tab_hover},
-        {"prefix_fg", &c->prefix_fg},
-        {"prefix_bg", &c->prefix_bg},
-        {"tab_count", &c->tab_count},
-        {"status", &c->status},
-        {"status_state", &c->status_state},
-        {"finder_fg", &c->finder_fg},
-        {"finder_bg", &c->finder_bg},
-        {"finder_sel_fg", &c->finder_sel_fg},
-        {"finder_sel_bg", &c->finder_sel_bg},
-        {"bell", &c->bell},
-        {"modal_fg", &c->modal_fg},
-        {"modal_bg", &c->modal_bg},
-        {"modal_border", &c->modal_border},
-        {"modal_title", &c->modal_title},
-        {"modal_button", &c->modal_button},
-        {"modal_button_hover", &c->modal_button_hover},
-        {"dead", &c->dead},
-        {"hint", &c->hint},
-        {"minbar", &c->minbar},
-        {"minbar_hover", &c->minbar_hover},
-        {"pane_button", &c->pane_button},
-        {"pane_button_hover", &c->pane_button_hover},
-        {"rename_fg", &c->rename_fg},
-        {"rename_bg", &c->rename_bg},
-        {"toast_fg", &c->toast_fg},
-        {"toast_bg", &c->toast_bg},
-    };
-    for (size_t i = 0; i < sizeof colors / sizeof *colors; i++) {
-      const char *v = kdl_arg(kdl_child(theme, colors[i].name), 0, NULL);
-      if (v && !parse_color(v, colors[i].slot) && err && !err[0])
-        snprintf(err, errcap, "bad colour for %s: %s", colors[i].name, v);
+    for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++) {
+      const char *v = kdl_arg(kdl_child(theme, THEME_COLORS[i].name), 0, NULL);
+      if (!v) continue;
+      if (!parse_color(v, THEME_COLOR(c, i)) && err && !err[0])
+        snprintf(err, errcap, "bad colour for %s: %s", THEME_COLORS[i].name, v);
     }
   }
 

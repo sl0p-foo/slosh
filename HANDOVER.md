@@ -301,6 +301,28 @@ Two things about the numbers, both worth knowing before anyone acts on them:
   54% when its decoder has a dedicated unit test -- a lie about where the
   tests are.
 
+## The config file, and the two places it lives
+
+`sl0ppty --dump-config` renders every setting from the live values -- there is
+no checked-in copy of the defaults to drift, which was the actual problem:
+config/config.kdl had already lost four theme colours before anyone noticed.
+That file is now explicitly the *prose* (why a setting exists), and the values
+are generated.
+
+Three things keep it honest, and the third is the one that matters:
+
+- the theme colours are a single file-scope table that the parser *and* the
+  renderer walk, so a colour cannot exist in one and not the other;
+- the dump has to parse back to itself byte-for-byte, which is what caught
+  `bind \ split-cols` being rendered unquoted;
+- a test scans config.c for `kdl_child(root, "...")` -- the parser's own
+  vocabulary -- and fails if any of those keys is missing from the dump. Add a
+  knob, forget to render it, and the suite says so.
+
+`C-a e` writes that dump when you have no config at all, directories included.
+It never touches a file that exists (`fopen(..., "wx")`), which is the one
+thing it must never get wrong.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.
