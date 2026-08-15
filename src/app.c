@@ -245,6 +245,10 @@ struct app {
   char *clipboard;
   char *clipboard_pending;
 
+  /* The cheatsheet. An overlay like the finder, but a *modal*: it reads and
+   * is dismissed, it never navigates, so anything you press puts it away. */
+  bool help;
+
   /* the pane finder overlay: tabs stop being navigation past about six */
   bool finder;
   char query[64];
@@ -2987,6 +2991,203 @@ static size_t finder_entries(app_t *a, find_entry_t *out, size_t max) {
   return c.n;
 }
 
+/* The cheatsheet: every binding the config has, drawn as a pane that happens
+ * to float.
+ *
+ * Built from CFG.binds rather than from a list of what the defaults are, so a
+ * rebound key shows the key you actually bound and a key you removed is not
+ * advertised. Bindings that share an action are merged onto one row — `h` and
+ * `left` are one thing to learn, not two — and the nine tab digits are one
+ * row rather than nine.
+ */
+typedef struct {
+  const char *group; /* NULL for a heading row */
+  char chord[40];
+  const char *label;
+} help_row_t;
+
+static size_t help_rows(help_row_t *out, size_t cap) {
+  static const char *const GROUPS[] = {"panes", "focus", "size", "tabs",
+                                       "scroll", "session"};
+  size_t n = 0;
+  for (size_t g = 0; g < sizeof GROUPS / sizeof *GROUPS && n < cap; g++) {
+    bool titled = false;
+    /* Actions in the order the label table lists them, so the sheet reads the
+     * same whatever order a config happened to bind things in. */
+    for (int act = ACT_NONE + 1; act <= ACT_SELECT_TAB_1 && n < cap; act++) {
+      const char *group = config_action_group((action_t)act);
+      const char *label = config_action_label((action_t)act);
+      if (!group || !label || strcmp(group, GROUPS[g]) != 0) continue;
+
+      char chords[40] = {0};
+      size_t used = 0;
+      for (size_t i = 0; i < CFG.nbinds; i++) {
+        action_t bound = CFG.binds[i].action;
+        /* The nine tab digits are one row: nine of them is a table, not a
+         * thing to learn. */
+        bool tabish = act == ACT_SELECT_TAB_1 && bound >= ACT_SELECT_TAB_1;
+        if (bound != (action_t)act && !tabish) continue;
+        if (tabish && bound != ACT_SELECT_TAB_1 && bound != ACT_SELECT_TAB_1 + 8)
+          continue; /* first and last, shown as a range */
+
+        char one[24];
+        config_chord_name(CFG.binds[i].key, CFG.binds[i].mods, one, sizeof one);
+        int wrote = snprintf(chords + used, sizeof chords - used, "%s%s",
+                             used ? (tabish ? "\u2026" : " ") : "", one);
+        if (wrote > 0) used += (size_t)wrote;
+        if (used >= sizeof chords - 8) break;
+      }
+      if (!chords[0]) continue; /* bound to nothing: do not advertise it */
+
+      if (!titled) {
+        out[n++] = (help_row_t){NULL, {0}, GROUPS[g]};
+        titled = true;
+        if (n >= cap) break;
+      }
+      out[n] = (help_row_t){GROUPS[g], {0}, label};
+      snprintf(out[n].chord, sizeof out[n].chord, "%s", chords);
+      n++;
+    }
+  }
+  return n;
+}
+
+/* Draw at most `limit` columns of `text`, cut on a character boundary.
+ *
+ * The box is clamped to the screen, so on a small terminal the rows are wider
+ * than what is left of it -- and a label that runs on writes straight over
+ * the frame it is supposed to be inside. */
+static uint16_t help_text(screen_t *s, uint16_t x, uint16_t y, const char *text,
+                          uint16_t limit, color_t fg, color_t bg,
+                          uint16_t attrs) {
+  if (!limit) return 0;
+  char buf[256];
+  size_t n = 0, seen = 0;
+  for (const char *p = text; *p && n < sizeof buf - 1; p++) {
+    if (((unsigned char)*p & 0xC0) != 0x80) { /* a new character starts here */
+      if (seen == limit) break;
+      seen++;
+    }
+    buf[n++] = *p;
+  }
+  buf[n] = 0;
+  return screen_text(s, x, y, buf, fg, bg, attrs);
+}
+
+static void draw_help(app_t *a, screen_t *s) {
+  help_row_t rows[64];
+  size_t n = help_rows(rows, 64);
+  if (!n) return;
+
+  /* Two columns, split at a group boundary so a heading never ends a column
+   * with nothing under it. One column when the screen is too narrow. */
+  uint16_t cw[2] = {0, 0};
+  uint16_t kw[2] = {0, 0}; /* the chord column, padded so labels line up */
+  size_t split = n;
+  bool two = s->cols >= 78;
+  if (two) {
+    size_t half = (n + 1) / 2;
+    split = half;
+    while (split < n && rows[split].group) split++;   /* to the next heading */
+    if (split >= n) { split = half; while (split > 1 && rows[split].group) split--; }
+  }
+  for (size_t i = 0; i < n; i++) {
+    uint16_t col = (two && i >= split) ? 1 : 0;
+    if (rows[i].group && cells(rows[i].chord) > kw[col])
+      kw[col] = cells(rows[i].chord);
+  }
+  for (size_t i = 0; i < n; i++) {
+    uint16_t col = (two && i >= split) ? 1 : 0;
+    uint16_t want = (uint16_t)(kw[col] + 2 + cells(rows[i].label));
+    if (!rows[i].group) want = (uint16_t)cells(rows[i].label);
+    if (want > cw[col]) cw[col] = want;
+  }
+
+  uint16_t body = (uint16_t)(cw[0] + (two ? cw[1] + 4 : 0));
+  uint16_t w = (uint16_t)(body + 6);
+  size_t left_n = two ? split : n, right_n = two ? n - split : 0;
+  uint16_t lines = (uint16_t)(left_n > right_n ? left_n : right_n);
+  uint16_t h = (uint16_t)(lines + 6);
+  if (w > s->cols) w = s->cols;
+  if (h > s->rows) h = s->rows;
+  uint16_t x = (uint16_t)((s->cols - w) / 2), y = (uint16_t)((s->rows - h) / 2);
+
+  /* Opaque, or the panes underneath read through it: a modal that you can see
+   * a shell prompt through is a modal nobody trusts. */
+  for (uint16_t yy = y; yy < y + h; yy++)
+    for (uint16_t xx = x; xx < x + w; xx++)
+      screen_text(s, xx, yy, " ", NO_COLOR, FINDER_BG, 0);
+
+  /* The same frame a pane wears, for the same reason a dialog wears the
+   * window chrome of its platform: it belongs to this program. */
+  const char *tl = CFG.rounded ? "\u256d" : "\u250c", *tr = CFG.rounded ? "\u256e" : "\u2510";
+  const char *bl = CFG.rounded ? "\u2570" : "\u2514", *br = CFG.rounded ? "\u256f" : "\u2518";
+  uint16_t x1 = (uint16_t)(x + w - 1), y1 = (uint16_t)(y + h - 1);
+  screen_text(s, x, y, tl, FRAME_FOCUS, FINDER_BG, 0);
+  screen_text(s, x1, y, tr, FRAME_FOCUS, FINDER_BG, 0);
+  screen_text(s, x, y1, bl, FRAME_FOCUS, FINDER_BG, 0);
+  screen_text(s, x1, y1, br, FRAME_FOCUS, FINDER_BG, 0);
+  for (uint16_t xx = (uint16_t)(x + 1); xx < x1; xx++) {
+    screen_text(s, xx, y, "\u2500", FRAME_FOCUS, FINDER_BG, 0);
+    screen_text(s, xx, y1, "\u2500", FRAME_FOCUS, FINDER_BG, 0);
+  }
+  for (uint16_t yy = (uint16_t)(y + 1); yy < y1; yy++) {
+    screen_text(s, x, yy, "\u2502", FRAME_FOCUS, FINDER_BG, 0);
+    screen_text(s, x1, yy, "\u2502", FRAME_FOCUS, FINDER_BG, 0);
+  }
+
+  const char *title = " keys ";
+  uint16_t tx = (uint16_t)(x + (w - cells(title)) / 2);
+  screen_text(s, tx, y, title, TITLE_FOCUS, FINDER_BG, ATTR_BOLD);
+
+  /* The close button a pane has, in the place a pane has it. */
+  if (w > 10) {
+    uint16_t bx = (uint16_t)(x1 - 2);
+    bool hot = ptr_on(a, bx, y, 2, 1);
+    screen_text(s, bx, y, CFG.close_mark, hot ? PANE_BTN_HOVER : PANE_BTN,
+                FINDER_BG, hot ? ATTR_BOLD : 0);
+    hit_add(&s->hits, bx, y, 2, 1, "closehelp");
+  }
+
+  /* Everything here is prefix-then-key, and saying so once beats repeating
+   * the prefix on thirty rows. */
+  char lead[80];
+  char pfx[24];
+  config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
+  snprintf(lead, sizeof lead, "%s then:", pfx);
+  help_text(s, (uint16_t)(x + 3), (uint16_t)(y + 2), lead,
+            (uint16_t)(w > 6 ? w - 6 : 0), HINT_C, FINDER_BG, 0);
+
+  for (size_t i = 0; i < n; i++) {
+    bool right = two && i >= split;
+    size_t row = right ? i - split : i;
+    if ((uint16_t)(row + 4) >= h - 1) continue;
+    uint16_t rx = (uint16_t)(x + 3 + (right ? cw[0] + 4 : 0));
+    uint16_t ry = (uint16_t)(y + 4 + row);
+
+    /* Everything is cut at the frame, and the left column additionally at the
+     * right one, so a clamped box loses words rather than its border. */
+    uint16_t room = (uint16_t)(x1 > rx + 1 ? x1 - rx - 1 : 0);
+    if (two && !right && cw[0] + 4 < room) room = (uint16_t)(cw[0] + 2);
+
+    if (!rows[i].group) {
+      help_text(s, rx, ry, rows[i].label, room, TITLE_FOCUS, FINDER_BG,
+                ATTR_BOLD);
+      continue;
+    }
+    help_text(s, rx, ry, rows[i].chord, room, TITLE_FOCUS, FINDER_BG, 0);
+    uint16_t lx = (uint16_t)(rx + kw[right ? 1 : 0] + 2);
+    help_text(s, lx, ry, rows[i].label,
+              (uint16_t)(x1 > lx + 1 ? x1 - lx - 1 : 0), FINDER_FG, FINDER_BG,
+              0);
+  }
+
+  const char *foot = " any key closes this ";
+  if (w > cells(foot) + 4)
+    screen_text(s, (uint16_t)(x + (w - cells(foot)) / 2), y1, foot, HINT_C,
+                FINDER_BG, 0);
+}
+
 static void draw_finder(app_t *a, screen_t *s) {
   find_entry_t entries[64];
   size_t n = finder_entries(a, entries, 64);
@@ -3182,6 +3383,9 @@ void app_compose(app_t *a, screen_t *s) {
   draw_min_bar(a, s);
   draw_status_line(a, s);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
+  /* And the modal on top of even that: it is the only thing that can be
+   * interacted with while it is up, so it owns the topmost hits. */
+  if (a->help) draw_help(a, s);
   draw_toasts(a, s);                /* and above even that: it is transient */
 }
 
@@ -3638,6 +3842,9 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
       a->query[0] = 0;
       a->sel = 0;
       return true;
+    case ACT_HELP:
+      a->help = !a->help;
+      return true;
     case ACT_DETACH: a->detach = true; return true;
     case ACT_QUIT: a->quit = true; return true;
     default: return false;
@@ -3662,6 +3869,13 @@ void app_event(app_t *a, const input_event_t *ev) {
   }
   if (a->finder && ev->kind == EV_KEY) {
     finder_key(a, ev);
+    return;
+  }
+  /* A cheatsheet is read, not driven: any key puts it away, and that key does
+   * nothing else. Swallowing it is the point -- dismissing a modal should not
+   * also run the thing you happened to press. */
+  if (a->help && ev->kind == EV_KEY) {
+    if (ev->action != KEY_RELEASE) a->help = false;
     return;
   }
 
@@ -3827,6 +4041,14 @@ void app_event(app_t *a, const input_event_t *ev) {
           a->drag.src = a->drag.target = 0;
         }
         break; /* a drag owns the mouse until the button comes up */
+      }
+
+      /* Any press dismisses the cheatsheet, wherever it lands -- including on
+       * its own close button, which is there because a modal without a way
+       * out that you can *see* is a modal people hunt for the way out of. */
+      if (a->help) {
+        if (ev->maction == MOUSE_PRESS) a->help = false;
+        break;
       }
 
       if (action) do_action(a, action, ev);

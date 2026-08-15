@@ -407,7 +407,8 @@ theme {
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
-// scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder detach quit
+// scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder
+// help detach quit
 // literal-prefix none
 
 keys {
@@ -447,6 +448,12 @@ keys {
     bind "3" "select-tab-3"
 
     bind "f" "finder"
+
+    // The cheatsheet, built from whatever is bound below rather than from a
+    // list of what the defaults were -- rebind something and it says so.
+    // Bound twice because a terminal may or may not tell us `?` was shifted.
+    bind "?" "help"
+    bind "/" "help"
 
     // Scrollback. The wheel does this too, unless the program in the pane
     // wants the mouse itself, or is a full-screen program with no scrollback

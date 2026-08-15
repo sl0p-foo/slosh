@@ -29,6 +29,7 @@ static const struct {
     {"prev-tab", ACT_PREV_TAB},       {"finder", ACT_FINDER},
     {"detach", ACT_DETACH},           {"quit", ACT_QUIT},
     {"literal-prefix", ACT_LITERAL_PREFIX},
+    {"help", ACT_HELP},
 };
 
 static const struct {
@@ -344,6 +345,12 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_BACKSLASH, 0, ACT_SPLIT_COLS);
   bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS);
   bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE);
+  /* `?` twice, because whether it arrives with shift depends on the outer
+   * terminal: as a plain byte there is no modifier to be had, and under the
+   * kitty keyboard protocol (which the client asks for) there is. Binding one
+   * of them is a binding that works on the author's machine. */
+  bind_add(c, GHOSTTY_KEY_SLASH, MOD_SHIFT, ACT_HELP);
+  bind_add(c, GHOSTTY_KEY_SLASH, 0, ACT_HELP);
   bind_add(c, GHOSTTY_KEY_R, 0, ACT_RERUN);
   bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM);
   bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE);
@@ -385,6 +392,128 @@ void config_free(config_t *c) {
   free(c->shell);
   free(c->shader_dir);
   memset(c, 0, sizeof *c);
+}
+
+
+/* ---- naming things, for the cheatsheet ---------------------------------- */
+
+/* Phrases rather than the config's names: `split-cols` is what you write,
+ * "split into columns" is what you are looking for when you have forgotten
+ * which key does it. The order here is the order the list is drawn in. */
+static const struct {
+  action_t action;
+  const char *group;
+  const char *label;
+} ACTION_HELP[] = {
+    {ACT_SPLIT_COLS, "panes", "split into columns"},
+    {ACT_SPLIT_ROWS, "panes", "split into rows"},
+    {ACT_CLOSE_PANE, "panes", "close this pane"},
+    {ACT_RERUN, "panes", "run a finished pane again"},
+    {ACT_ZOOM, "panes", "fill the tab with it"},
+    {ACT_MINIMIZE, "panes", "put it away in the strip"},
+
+    {ACT_FOCUS_LEFT, "focus", "go left"},
+    {ACT_FOCUS_RIGHT, "focus", "go right"},
+    {ACT_FOCUS_UP, "focus", "go up"},
+    {ACT_FOCUS_DOWN, "focus", "go down"},
+    {ACT_FOCUS_NEXT, "focus", "the next pane"},
+    {ACT_FINDER, "focus", "find a pane by name"},
+
+    {ACT_RESIZE_LEFT, "size", "move the boundary left"},
+    {ACT_RESIZE_RIGHT, "size", "move the boundary right"},
+    {ACT_RESIZE_UP, "size", "move the boundary up"},
+    {ACT_RESIZE_DOWN, "size", "move the boundary down"},
+
+    {ACT_NEW_TAB, "tabs", "new tab"},
+    {ACT_NEXT_TAB, "tabs", "next tab"},
+    {ACT_PREV_TAB, "tabs", "previous tab"},
+    {ACT_SELECT_TAB_1, "tabs", "go to that tab"},
+
+    {ACT_SCROLL_UP, "scroll", "up a line"},
+    {ACT_SCROLL_DOWN, "scroll", "down a line"},
+    {ACT_SCROLL_PAGE_UP, "scroll", "up a page"},
+    {ACT_SCROLL_PAGE_DOWN, "scroll", "down a page"},
+    {ACT_SCROLL_TOP, "scroll", "to the oldest line"},
+    {ACT_SCROLL_BOTTOM, "scroll", "back to the present"},
+
+    {ACT_HELP, "session", "this list"},
+    {ACT_DETACH, "session", "detach, leave it running"},
+    {ACT_QUIT, "session", "quit the session"},
+    {ACT_LITERAL_PREFIX, "session", "send the prefix itself"},
+};
+
+const char *config_action_label(action_t a) {
+  for (size_t i = 0; i < sizeof ACTION_HELP / sizeof *ACTION_HELP; i++)
+    if (ACTION_HELP[i].action == a) return ACTION_HELP[i].label;
+  return NULL;
+}
+
+const char *config_action_group(action_t a) {
+  for (size_t i = 0; i < sizeof ACTION_HELP / sizeof *ACTION_HELP; i++)
+    if (ACTION_HELP[i].action == a) return ACTION_HELP[i].group;
+  return NULL;
+}
+
+void config_chord_name(int key, uint16_t mods, char *out, size_t cap) {
+  char base[24] = {0};
+
+  /* Punctuation is written as the character you press, shifted or not: `?` is
+   * a key on the keyboard and "S-slash" is a description of one. Both forms
+   * are still valid in a config, so the sheet stays copyable. */
+  static const struct {
+    int key;
+    const char *plain, *shifted;
+  } PUNCT[] = {
+      {GHOSTTY_KEY_SLASH, "/", "?"},      {GHOSTTY_KEY_BACKSLASH, "\\", "|"},
+      {GHOSTTY_KEY_MINUS, "-", "_"},      {GHOSTTY_KEY_EQUAL, "=", "+"},
+      {GHOSTTY_KEY_COMMA, ",", "<"},      {GHOSTTY_KEY_PERIOD, ".", ">"},
+      {GHOSTTY_KEY_SEMICOLON, ";", ":"},  {GHOSTTY_KEY_QUOTE, "'", "\""},
+      {GHOSTTY_KEY_BRACKET_LEFT, "[", "{"},
+      {GHOSTTY_KEY_BRACKET_RIGHT, "]", "}"},
+      {GHOSTTY_KEY_BACKQUOTE, "`", "~"},
+  };
+  /* Arrows as arrows. The cheatsheet is about the keyboard, and four words
+   * where four glyphs will do costs a column of width on every row. */
+  static const struct {
+    int key;
+    const char *glyph;
+  } ARROWS[] = {
+      {GHOSTTY_KEY_ARROW_LEFT, "\u2190"},  {GHOSTTY_KEY_ARROW_RIGHT, "\u2192"},
+      {GHOSTTY_KEY_ARROW_UP, "\u2191"},    {GHOSTTY_KEY_ARROW_DOWN, "\u2193"},
+  };
+
+  for (size_t i = 0; i < sizeof PUNCT / sizeof *PUNCT; i++)
+    if (PUNCT[i].key == key) {
+      bool shifted = (mods & MOD_SHIFT) != 0;
+      snprintf(base, sizeof base, "%s",
+               shifted ? PUNCT[i].shifted : PUNCT[i].plain);
+      if (shifted) mods &= (uint16_t)~MOD_SHIFT; /* spent on the glyph */
+    }
+  for (size_t i = 0; i < sizeof ARROWS / sizeof *ARROWS; i++)
+    if (ARROWS[i].key == key) snprintf(base, sizeof base, "%s", ARROWS[i].glyph);
+
+  if (!base[0])
+    for (size_t i = 0; i < sizeof NAMED_KEYS / sizeof *NAMED_KEYS; i++)
+      if (NAMED_KEYS[i].key == key)
+        snprintf(base, sizeof base, "%s", NAMED_KEYS[i].name);
+
+  if (!base[0] && key >= GHOSTTY_KEY_A && key <= GHOSTTY_KEY_Z) {
+    char c = (char)('a' + (key - GHOSTTY_KEY_A));
+    /* A shifted letter is written as the capital, because that is the key you
+     * press. The modifier is spent here and not printed again below. */
+    if (mods & MOD_SHIFT) {
+      snprintf(base, sizeof base, "%c", (char)(c - 32));
+      mods &= (uint16_t)~MOD_SHIFT;
+    } else {
+      snprintf(base, sizeof base, "%c", c);
+    }
+  }
+  if (!base[0] && key >= GHOSTTY_KEY_DIGIT_0 && key <= GHOSTTY_KEY_DIGIT_9)
+    snprintf(base, sizeof base, "%c", (char)('0' + (key - GHOSTTY_KEY_DIGIT_0)));
+  if (!base[0]) snprintf(base, sizeof base, "?");
+
+  snprintf(out, cap, "%s%s%s%s", mods & MOD_CTRL ? "C-" : "",
+           mods & MOD_ALT ? "M-" : "", mods & MOD_SHIFT ? "S-" : "", base);
 }
 
 action_t config_lookup(const config_t *c, int key, uint16_t mods) {

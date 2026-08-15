@@ -63,6 +63,7 @@ typedef enum {
   ACT_RESIZE_DOWN,
   ACT_DETACH,
   ACT_QUIT,
+  ACT_HELP,
   ACT_LITERAL_PREFIX,
   ACT_SELECT_TAB_1, /* .. +8, so digits stay one entry each */
 } action_t;
@@ -256,6 +257,14 @@ const char *config_default_path(void);
 void config_free(config_t *c);
 
 action_t config_lookup(const config_t *c, int key, uint16_t mods);
+/* The reverse of config_parse_chord: what to call a binding on screen. A
+ * shifted letter is written the way you would type it ("H"), because "S-h" is
+ * a description of a keystroke rather than a keystroke. */
+void config_chord_name(int key, uint16_t mods, char *out, size_t cap);
+/* A phrase for the cheatsheet, and which group it belongs under. `group` is
+ * one of a fixed set, in the order they should be shown. */
+const char *config_action_label(action_t a);
+const char *config_action_group(action_t a);
 /* "ctrl+a", "alt+left", "\\", "f" -> key + mods. False if unparseable. */
 bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods);
 
