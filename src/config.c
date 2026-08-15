@@ -347,10 +347,16 @@ void config_defaults(config_t *c) {
   c->hints = true;
   c->version_banner = true;
   c->pane_buttons = true;
-  snprintf(c->zoom_mark, sizeof c->zoom_mark, "#");
-  snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "*");
-  snprintf(c->close_mark, sizeof c->close_mark, "x");
-  snprintf(c->min_mark, sizeof c->min_mark, "_");
+  /* One family, four interiors: minus, plus, dot, times. The lesson that put
+   * ASCII here in the first place was about *evenness* -- a glyph that does not
+   * fill its own cell hands the slack to the gap beside it -- and four copies of
+   * the same box answer that better than four unrelated glyphs did, while still
+   * saying which verb is which. Single width, and not emoji: many terminals
+   * draw those two columns wide while chrome here is booked as one. */
+  snprintf(c->zoom_mark, sizeof c->zoom_mark, "\u229e");     /* ⊞ fill the tab */
+  snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "\u22a1"); /* ⊡ and put it back */
+  snprintf(c->close_mark, sizeof c->close_mark, "\u22a0");   /* ⊠ close */
+  snprintf(c->min_mark, sizeof c->min_mark, "\u229f");       /* ⊟ into the strip */
   snprintf(c->newtab_mark, sizeof c->newtab_mark, "+");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");

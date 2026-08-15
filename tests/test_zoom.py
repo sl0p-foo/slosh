@@ -7,12 +7,28 @@ layout being recomputed, that it cannot outlive the pane it names, and that it
 is per tab.
 """
 import os
+import re
+import subprocess
 import sys
 import tempfile
 
-from harness import Session, check, report
+from harness import BIN, Session, check, report
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; stty raw -echo; cat']
+
+
+def mark(name):
+    """A chrome mark as the binary currently draws it. Read from
+    `--dump-config`, which is generated from the code, rather than written down
+    here -- a test that pins a glyph starts failing the day somebody picks a
+    nicer one, and says nothing useful when it does."""
+    out = subprocess.run([BIN, "--dump-config"], capture_output=True,
+                         text=True).stdout
+    m = re.search(name + r' "(.+)"', out)
+    return m.group(1) if m else "?"
+
+
+ZOOM, ZOOM_ON = mark("zoom_mark"), mark("zoom_on_mark")
 
 
 def cfg(text):
@@ -76,7 +92,7 @@ def test_the_button_toggles_and_says_which_way():
         s.click(b["x"] + 1, b["y"])
         s.settle(20)
         check("clicking it zooms", len(visible(s)) == 1, str(s.panes()))
-        check("and the mark says so", "*" in s.snapshot().line(2),
+        check("and the mark says so", ZOOM_ON in s.snapshot().line(2),
               repr(s.snapshot().line(2)[-14:]))
 
         # The button moved: the pane it belongs to just became the whole tab.
@@ -85,7 +101,7 @@ def test_the_button_toggles_and_says_which_way():
         s.settle(20)
         check("clicking it again puts it back", len(visible(s)) == 2,
               str(s.panes()))
-        check("and the mark goes back too", "#" in s.snapshot().line(2),
+        check("and the mark goes back too", ZOOM in s.snapshot().line(2),
               repr(s.snapshot().line(2)[-14:]))
 
 

@@ -5,10 +5,12 @@ It is built from the bindings the config actually has, not from a list of what
 the defaults are — a cheatsheet that can disagree with the keyboard is worse
 than none, and it would disagree the first time somebody rebound a key.
 """
+import re
+import subprocess
 import sys
 import tempfile
 
-from harness import Session, check, report
+from harness import BIN, Session, check, report
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; stty raw -echo; cat']
 
@@ -18,6 +20,19 @@ def cfg(text):
     f.write(text)
     f.close()
     return f.name
+
+
+def close_mark():
+    """The mark the close button is drawn with, read from the binary rather than
+    written down here: `--dump-config` is generated from the code, so changing
+    the default cannot leave this test asserting a glyph nothing draws."""
+    out = subprocess.run([BIN, "--dump-config"], capture_output=True,
+                         text=True).stdout
+    m = re.search(r'close_mark "(.+)"', out)
+    return m.group(1) if m else "x"
+
+
+MARK = close_mark()
 
 
 def open_help(s):
@@ -116,7 +131,7 @@ def test_the_close_button_can_be_seen_without_hovering_it():
         snap = open_help(s)
         y, line = modal_top(snap)
         check("the modal has a top border", y is not None, snap.screen())
-        x = line.rindex("x")
+        x = line.rindex(MARK)
         fg, bg = style(snap, x, y)
         check("the close button is not its own background", fg != bg,
               f"fg {fg} bg {bg}")
@@ -129,7 +144,7 @@ def test_the_close_button_closes_it():
         s.settle()
         snap = open_help(s)
         y, line = modal_top(snap)
-        s.click(line.rindex("x"), y)
+        s.click(line.rindex(MARK), y)
         s.settle()
         check("clicking the button puts it away",
               "split into columns" not in s.snapshot().screen())
