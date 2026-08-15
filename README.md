@@ -56,6 +56,15 @@ connection goes away. Reattach with the same command.
 | `C-a d` / `C-a q` | detach / quit |
 | `C-a C-a` | send a literal `C-a` |
 
+**`C-a` is a default, not a decision.** If you want it back for start-of-line —
+and plenty of people do — take one line of config and it is yours; everything
+that names the prefix, the badge in the status bar and the cheatsheet
+included, follows what you bound:
+
+```kdl
+keys { prefix "ctrl+b" }        // or ctrl+space, or alt+x, or ...
+```
+
 ### The mouse works properly
 
 - **Click a pane's border to split toward it** — the side you click is the side

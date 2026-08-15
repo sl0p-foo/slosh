@@ -435,6 +435,13 @@ theme {
 // literal-prefix none
 
 keys {
+    // The leader. Every binding below is this key, then the key on the line.
+    // ctrl+a is a default and not a decision -- it is start-of-line to half
+    // the world, and if that is you, change it here and nothing else: the
+    // badge in the status bar and the cheatsheet (C-a ?) both name whatever
+    // is bound, and the old key goes straight through to your shell.
+    //
+    // Pressing it twice always sends the key itself, whichever key it is.
     prefix "ctrl+a"
 
     bind "\\" "split-cols"

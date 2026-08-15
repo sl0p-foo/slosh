@@ -2623,10 +2623,19 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     screen_text(s, (uint16_t)(right - iw), y, info, TAB_COUNT, NO_COLOR, 0);
     right = (uint16_t)(right - iw - 1);
   }
-  if (a->prefix && right > 5) { /* the prefix is a mode: say so */
-    screen_text(s, (uint16_t)(right - 3), y, "C-a", PREFIX_FG, PREFIX_BG,
-                ATTR_BOLD);
-    right = (uint16_t)(right - 4);
+  if (a->prefix) { /* the prefix is a mode: say so, and say which key */
+    /* Rendered from the binding rather than written out, because it was
+     * written out: the badge said "C-a" whatever you had configured, which is
+     * the one place a rebound prefix could still lie to you. Measured too --
+     * a prefix is not always three columns wide (`C-space`, `M-\``). */
+    char pfx[24];
+    config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
+    uint16_t pw = cells(pfx);
+    if (right > pw + 2) {
+      screen_text(s, (uint16_t)(right - pw), y, pfx, PREFIX_FG, PREFIX_BG,
+                  ATTR_BOLD);
+      right = (uint16_t)(right - pw - 1);
+    }
   }
 
   for (size_t i = 0; i < a->ntabs && x < right; i++) {
