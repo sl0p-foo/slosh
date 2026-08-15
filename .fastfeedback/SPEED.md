@@ -14,6 +14,7 @@ structural changes.
 | fast suite, one test touched | `make test` | ~1.1s |
 | force re-run everything | `make retest` | ~5.5s |
 | live suite (real ptys) | `make test-live` | ~5.7s |
+| coverage (second build, gcc) | `make coverage` | ~50s |
 
 ## Notes
 

@@ -16,7 +16,7 @@ import termios
 import time
 import uuid
 
-BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty")
+BIN = os.environ.get("SL0PPTY_BIN", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"))
 
 fails = 0
 

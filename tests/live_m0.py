@@ -6,7 +6,7 @@ raw mode, the diff emitter, SIGWINCH, and the quit path.
 """
 import os, pty, uuid, re, select, signal, struct, subprocess, sys, termios, time, fcntl
 
-BIN = os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty")
+BIN = os.environ.get("SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty"))
 
 
 # A unique session per run. Without this the tests attach to whatever "main"

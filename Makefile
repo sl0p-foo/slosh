@@ -39,7 +39,7 @@ PY_TESTS  := $(filter-out test_session.py,$(notdir $(wildcard tests/test_*.py)))
 PY_STAMPS := $(PY_TESTS:%.py=build/.pass-%)
 JOBS      ?= $(shell nproc 2>/dev/null || echo 4)
 
-.PHONY: all clean vendor run test retest test-live test-all smoke help
+.PHONY: all clean vendor run test retest test-live test-all smoke help coverage
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -150,6 +150,58 @@ smoke: $(BIN) ## compose a screen headlessly and print it
 
 run: $(BIN) ## build and run
 	./$(BIN)
+
+# ── coverage ────────────────────────────────────────────────────────────────
+#
+# A second build, with gcc instead of zig, because the counters need a gcov
+# that matches the compiler and gcov is what this machine has. It lives in
+# build/cov and touches nothing else; $SL0PPTY_BIN is how the same suite drives
+# it. `-O0` because optimised line counts are a work of fiction.
+COV_DIR  := build/cov
+COV_SRC  := $(wildcard src/*.c)
+COV_OBJ  := $(COV_SRC:src/%.c=$(COV_DIR)/%.o)
+COV_CC   ?= gcc
+COV_FLAGS := -std=c23 -O0 -g --coverage -I$(VT_INC) -Isrc -Ibuild
+
+$(COV_DIR)/%.o: src/%.c build/version.h | $(COV_DIR)
+	@$(COV_CC) $(COV_FLAGS) -c $< -o $@
+
+$(COV_DIR):
+	@mkdir -p $(COV_DIR)
+
+$(COV_DIR)/sl0ppty: $(COV_OBJ) $(VT_LIB)
+	@$(COV_CC) --coverage $(COV_OBJ) $(VT_LIB) -o $@
+
+# The C unit tests link the *same* coverage objects, so their counters land in
+# the same place and input.c/kdl.c/shader.c/expr.c are credited for the tests
+# that actually exercise them. Without this they read as half-tested, which is
+# a lie about where the tests are.
+COV_UNITS := $(COV_DIR)/input_test $(COV_DIR)/kdl_test $(COV_DIR)/shader_test \
+             $(COV_DIR)/expr_test
+
+$(COV_DIR)/input_test: tests/input_test.c $(COV_DIR)/input.o $(VT_LIB)
+	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+$(COV_DIR)/kdl_test: tests/kdl_test.c $(COV_DIR)/kdl.o
+	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+$(COV_DIR)/shader_test: tests/shader_test.c $(COV_DIR)/shader.o $(COV_DIR)/screen.o \
+                        $(COV_DIR)/json.o $(COV_DIR)/expr.o $(VT_LIB)
+	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+$(COV_DIR)/expr_test: tests/expr_test.c $(COV_DIR)/expr.o
+	@$(COV_CC) $(COV_FLAGS) $^ -o $@
+
+coverage: $(COV_DIR)/sl0ppty $(COV_UNITS) ## how much of the code the tests run
+	@rm -f $(COV_DIR)/*.gcda
+	@for u in $(COV_UNITS); do ./$$u >/dev/null || echo "  (failed: $$u)"; done
+	@echo "running the suite against the coverage build..."
+	@for t in $(PY_TESTS); do \
+	  (cd tests && SL0PPTY_BIN=../$(COV_DIR)/sl0ppty timeout 300 python3 $$t >/dev/null 2>&1) \
+	    || echo "  (failed: $$t)"; \
+	done
+	@for t in test_session.py live_m0.py live_input.py live_reload.py; do \
+	  (cd tests && SL0PPTY_BIN=../$(COV_DIR)/sl0ppty timeout 300 python3 $$t >/dev/null 2>&1) \
+	    || echo "  (failed: $$t)"; \
+	done
+	@contrib/coverage
 
 clean: ## remove our build output (not the vendor lib)
 	rm -rf build

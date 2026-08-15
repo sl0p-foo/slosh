@@ -8,7 +8,7 @@ mode, reading stdin, and the prefix key.
 """
 import os, pty, uuid, select, struct, sys, termios, time, fcntl, signal
 
-BIN = os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty")
+BIN = os.environ.get("SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty"))
 INNER = ["--", "/bin/sh", "-c", "stty raw -echo; cat -v"]
 
 fails = 0

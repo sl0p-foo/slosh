@@ -134,3 +134,23 @@ evaluates every preset over a whole pane at four points in time and fails any
 that computes zero everywhere, because an example that does nothing reads as
 a broken shader system rather than a bad example. It found its first bug on
 its first run.
+
+## coverage
+
+```sh
+make coverage
+```
+
+Builds a second binary with gcc's `--coverage` into `build/cov`, runs every
+suite against it (`$SL0PPTY_BIN` is how the same tests drive a different
+build), and reads the counters back with gcov. Nothing is installed, the
+normal zig build is untouched, and it takes about a minute.
+
+It is a number to look at, not a number to chase. A line no test executes is
+worth knowing about; a line executed by a test that asserts nothing is worth
+nothing, and no coverage tool can tell those apart.
+
+The C unit tests link the same instrumented objects, so `input.c`, `kdl.c`,
+`shader.c` and `expr.c` get credit for the tests that actually exercise them —
+without that they read as half-tested, which is a lie about where the tests
+are rather than about the code.

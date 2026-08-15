@@ -13,7 +13,11 @@ import os
 import subprocess
 import time
 
-BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty")
+# $SL0PPTY_BIN lets the same suite drive a differently-built binary — the
+# coverage build, say — without a second copy of the harness.
+BIN = os.environ.get(
+    "SL0PPTY_BIN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"))
 
 
 class Snapshot:

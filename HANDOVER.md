@@ -282,6 +282,25 @@ The test that matters is the round trip, and specifically that a dump of a
 reload is byte-identical to the first dump. Anything the dumper loses shows up
 there immediately, where "does it look right" would not.
 
+## Coverage, and what its numbers mean
+
+`make coverage` builds a gcc `--coverage` binary into build/cov, runs every
+suite against it through `$SL0PPTY_BIN`, and prints a per-file table. About a
+minute, nothing installed, the zig build untouched. Currently ~85%.
+
+Two things about the numbers, both worth knowing before anyone acts on them:
+
+- **server.c reads ~8% and is not untested.** The session server is a
+  daemonised child that ends with `_exit()`, which is correct there and skips
+  the flush gcov's counters rely on. test_session.py and the live suite drive
+  that code; their counts are simply lost. The report says so in its own
+  output, because an unexplained low number invites someone to "fix" working
+  code.
+- **The C unit tests link the same instrumented objects**, so input.c and
+  friends are credited properly. Building them separately made input.c read
+  54% when its decoder has a dedicated unit test -- a lie about where the
+  tests are.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.

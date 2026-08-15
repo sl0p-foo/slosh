@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""How much of sl0ppty the test suite actually runs.
+
+    make coverage
+
+Builds a second binary with gcc's `--coverage`, points the suite at it with
+$SL0PPTY_BIN, and reads the counters back with gcov. Nothing is installed and
+nothing else changes: the normal build is still zig, and this one lives
+entirely in build/cov.
+
+It is a number to look at, not a number to chase. A line that no test executes
+is worth knowing about; a line executed by a test that asserts nothing is
+worth nothing, and no coverage tool can tell the two apart.
+"""
+import os
+import re
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+COV = os.path.join(ROOT, "build", "cov")
+
+
+def gcov_one(src):
+    """gcov prints a summary per file; the counters are in build/cov."""
+    out = subprocess.run(
+        ["gcov", "-o", COV, "-n", os.path.join("src", src)],
+        capture_output=True, text=True, cwd=ROOT).stdout
+    # File 'src/app.c'
+    # Lines executed:62.34% of 1234
+    pct = lines = None
+    seen = False
+    for line in out.split("\n"):
+        if line.startswith("File '") and line.endswith("src/%s'" % src):
+            seen = True
+        elif seen and line.startswith("Lines executed:"):
+            m = re.match(r"Lines executed:([\d.]+)% of (\d+)", line)
+            if m:
+                pct, lines = float(m.group(1)), int(m.group(2))
+            break
+    return pct, lines
+
+
+def main():
+    if not os.path.isdir(COV):
+        print("no coverage build: run `make coverage`", file=sys.stderr)
+        return 1
+
+    rows = []
+    for src in sorted(os.listdir(os.path.join(ROOT, "src"))):
+        if not src.endswith(".c"):
+            continue
+        pct, lines = gcov_one(src)
+        if pct is None:
+            continue
+        rows.append((src, pct, lines))
+
+    if not rows:
+        print("no counters: did the suite run against build/cov/sl0ppty?",
+              file=sys.stderr)
+        return 1
+
+    total = sum(l for _, _, l in rows)
+    hit = sum(round(p * l / 100) for _, p, l in rows)
+
+    print(f"{'file':<16} {'lines':>7} {'covered':>8}")
+    print("-" * 34)
+    for src, pct, lines in sorted(rows, key=lambda r: -r[2]):
+        bar = "#" * int(pct / 5)
+        print(f"{src:<16} {lines:>7} {pct:>7.1f}%  {bar}")
+    print("-" * 34)
+    print(f"{'total':<16} {total:>7} {100.0 * hit / total:>7.1f}%")
+
+    # One number here is a lie for a mechanical reason, and an unexplained low
+    # number is worse than none: it invites someone to "fix" tested code.
+    print()
+    print("server.c reads low because the session server is a daemonised")
+    print("child that ends with _exit(), which skips the flush gcov relies")
+    print("on. Its counters are lost, not its tests -- test_session.py and")
+    print("the live suite drive that path.")
+    return 0
+
+
+sys.exit(main())
