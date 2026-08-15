@@ -51,6 +51,7 @@ connection goes away. Reattach with the same command.
 | `C-a z` / `C-a m` | zoom a pane to fill the tab / minimise it |
 | `C-a c` · `C-a n` `C-a p` · `C-a 1..9` | new tab · cycle · select |
 | `C-a f` | find a pane by name |
+| `C-a shift+p` | the command palette: every action by name |
 | `C-a PgUp` `C-a PgDn` `C-a Home` `C-a End` | scrollback (the wheel works too) |
 | `C-a x` / `C-a r` | close a pane / re-run a finished one |
 | `C-a d` / `C-a q` | detach / quit |
@@ -115,6 +116,11 @@ mistyped command in a fresh session no longer closes the session.
 
 ### The rest of it
 
+- **Run a command without knowing its key.** `C-a shift+p` opens a palette of
+  every action there is, by phrase ("split into columns") or by the name a
+  config file uses (`split-cols`). It shows the chord beside each one, so
+  using it teaches the key that would have skipped it — and it lists actions
+  that have *no* key, which is the only way to reach those at all.
 - **Find a pane instead of remembering where it is.** `C-a f` opens a picker
   over the whole session — every tab, including panes a small window has
   collapsed out of sight. Type to narrow it by pane title, tab name or

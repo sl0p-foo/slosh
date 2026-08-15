@@ -29,6 +29,7 @@ static const struct {
     {"scroll-top", ACT_SCROLL_TOP},   {"scroll-bottom", ACT_SCROLL_BOTTOM},
     {"new-tab", ACT_NEW_TAB},         {"next-tab", ACT_NEXT_TAB},
     {"prev-tab", ACT_PREV_TAB},       {"finder", ACT_FINDER},
+    {"palette", ACT_PALETTE},
     {"detach", ACT_DETACH},           {"quit", ACT_QUIT},
     {"literal-prefix", ACT_LITERAL_PREFIX},
     {"help", ACT_HELP},
@@ -494,6 +495,7 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_N, 0, ACT_NEXT_TAB, false);
   bind_add(c, GHOSTTY_KEY_P, 0, ACT_PREV_TAB, false);
   bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER, false);
+  bind_add(c, GHOSTTY_KEY_P, MOD_SHIFT, ACT_PALETTE, false);
   bind_add(c, GHOSTTY_KEY_PAGE_UP, 0, ACT_SCROLL_PAGE_UP, false);
   bind_add(c, GHOSTTY_KEY_PAGE_DOWN, 0, ACT_SCROLL_PAGE_DOWN, false);
   bind_add(c, GHOSTTY_KEY_HOME, 0, ACT_SCROLL_TOP, false);
@@ -557,6 +559,7 @@ static const struct {
     {ACT_SCROLL_TOP, "scroll", "to the oldest line"},
     {ACT_SCROLL_BOTTOM, "scroll", "back to the present"},
 
+    {ACT_PALETTE, "session", "run a command"},
     {ACT_HELP, "session", "this list"},
     {ACT_EDIT_CONFIG, "session", "edit the config"},
     {ACT_DETACH, "session", "detach, leave it running"},

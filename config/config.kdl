@@ -500,7 +500,7 @@ theme {
 // focus-down focus-next resize-left resize-right resize-up resize-down
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
 // scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder
-// help detach quit
+// palette help detach quit
 // literal-prefix none
 
 // What C-a e opens this file with. Empty means $EDITOR, and then vi -- the
@@ -557,6 +557,10 @@ keys {
     bind "3" "select-tab-3"
 
     bind "f" "finder"
+
+    // Every action by name, including the ones nothing is bound to -- which
+    // is the whole point of it, since an unbound action has no other way in.
+    bind "shift+p" "palette"
 
     // The cheatsheet, built from whatever is bound below rather than from a
     // list of what the defaults were -- rebind something and it says so.

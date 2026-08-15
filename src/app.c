@@ -258,8 +258,13 @@ struct app {
    * is dismissed, it never navigates, so anything you press puts it away. */
   bool help;
 
-  /* the pane finder overlay: tabs stop being navigation past about six */
-  bool finder;
+  /* The modal picker: a query, a filtered list, one selection. Two things
+   * wear it -- the pane finder (tabs stop being navigation past about six)
+   * and the command palette -- and they are one machine with a subject
+   * rather than two that would drift apart, for the same reason the rename
+   * editor is. Only one can be open, which is what makes sharing the query
+   * and the selection honest rather than a saving. */
+  enum { PICK_NONE = 0, PICK_FINDER, PICK_PALETTE } picker;
   char query[64];
   size_t sel;
 
@@ -3448,8 +3453,22 @@ static void draw_help(app_t *a, screen_t *s) {
 }
 
 /* How many rows of results the box shows at once. Past this it scrolls, and
- * the point of the finder is that you narrow rather than scroll. */
+ * the point of a picker is that you narrow rather than scroll. */
 #define FINDER_ROWS 10
+
+/* One row of a picker.
+ *
+ * Three columns, because both pickers turned out to want the same three: a
+ * dim thing on the left that says where it belongs (a tab, a group), the
+ * thing itself in the middle, and a dim tail on the right that says something
+ * useful about it (a purpose, the chord that would run it). */
+typedef struct {
+  char left[24];
+  char mid[80];
+  char right[80];
+  bool here;        /* mark this row: the pane you are already in */
+  char action[48];  /* what a click on it does */
+} pick_row_t;
 
 /* A band of background, for a row that is selected or under the pointer. The
  * whole width, not just the text: a highlight that stops where the words stop
@@ -3460,20 +3479,119 @@ static void fill_row(screen_t *s, uint16_t x, uint16_t y, uint16_t w,
     screen_text(s, (uint16_t)(x + i), y, " ", NO_COLOR, bg, 0);
 }
 
-/* The finder is a modal, like the cheatsheet: scrim behind it, a pane's frame
- * around it, a title and a close button in the places a pane keeps them. It
- * used to be a bare coloured rectangle painted over whatever pane it landed
- * on, which read as output from the program underneath rather than as a
- * window in front of it -- and gave it no title, no way out you could see,
+/* Fill `out` with the panes matching the query. */
+static size_t finder_rows(app_t *a, pick_row_t *out, size_t max) {
+  find_entry_t entries[64];
+  size_t n = finder_entries(a, entries, max < 64 ? max : 64);
+  for (size_t i = 0; i < n; i++) {
+    find_entry_t *e = &entries[i];
+    pick_row_t *r = &out[i];
+    memset(r, 0, sizeof *r);
+    /* A tab with no name is its number alone: "1:" with nothing after it
+     * looks like something failed to load. */
+    const char *tname = e->tab == (size_t)-1 ? "" : a->tabs[e->tab].name;
+    if (tname && *tname)
+      snprintf(r->left, sizeof r->left, "%zu:%.10s", e->tab + 1, tname);
+    else
+      snprintf(r->left, sizeof r->left, "%zu", e->tab + 1);
+    const char *title = pane_title(e->node->pane);
+    snprintf(r->mid, sizeof r->mid, "%s", title && *title ? title : "pane");
+    snprintf(r->right, sizeof r->right, "%s", e->node->purpose);
+    r->here = e->node == cur(a)->focus && e->tab == a->cur;
+    snprintf(r->action, sizeof r->action, "find:%u", e->node->id);
+  }
+  return n;
+}
+
+/* ---- the command palette -------------------------------------------------
+ *
+ * Every action, by name, without having to know its key. The cheatsheet
+ * answers "what is the key for this?" and needs you to then press it; this
+ * answers "just do the thing", which is the question you have when you cannot
+ * remember there was a key at all.
+ *
+ * It lists actions that are *not* bound too, which the cheatsheet cannot --
+ * an unbound action is exactly the one you have no other way to reach. Where
+ * a binding does exist it is shown on the row, so using the palette teaches
+ * the key that would have skipped it.
+ */
+static size_t palette_rows(app_t *a, pick_row_t *out, size_t max) {
+  size_t n = 0;
+  for (int act = ACT_NONE + 1; act < ACT_SELECT_TAB_1 && n < max; act++) {
+    const char *label = config_action_label((action_t)act);
+    const char *group = config_action_group((action_t)act);
+    const char *name = config_action_name((action_t)act);
+    if (!label || !group || !name) continue;
+    /* "send the prefix itself" means "type this key", which is not a command
+     * you can ask for by name -- picking it from a list would send the prefix
+     * to a pane you cannot see behind the list. */
+    if (act == ACT_LITERAL_PREFIX) continue;
+
+    /* The chord, if it has one, and the prefix it needs. A direct binding
+     * carries no prefix, so saying so would be a lie about how to press it. */
+    /* Every chord for it, the way the cheatsheet lists them: binding a key
+     * in a config adds to the defaults rather than replacing them, so showing
+     * only the first would name a key the user did not choose and hide the
+     * one they did. A direct binding carries no prefix, and saying otherwise
+     * would be a lie about how to press it. */
+    char chord[48] = "";
+    size_t used = 0;
+    for (size_t i = 0; i < CFG.nbinds && used < sizeof chord - 12; i++) {
+      if (CFG.binds[i].action != (action_t)act) continue;
+      char c[24], pfx[24] = "";
+      config_chord_name(CFG.binds[i].key, CFG.binds[i].mods, c, sizeof c);
+      if (!CFG.binds[i].direct)
+        config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
+      int wrote = snprintf(chord + used, sizeof chord - used, "%s%s%s%s",
+                           used ? " \u00b7 " : "", pfx, *pfx ? " " : "", c);
+      if (wrote > 0) used += (size_t)wrote;
+    }
+
+    /* Matched on everything the row shows *and* on the name it has in a
+     * config file, so "split-cols" finds it for someone who has been editing
+     * the config and "split into columns" for someone who has not. */
+    char hay[256];
+    snprintf(hay, sizeof hay, "%s %s %s %s", label, group, name, chord);
+    if (!ci_contains(hay, a->query)) continue;
+
+    pick_row_t *r = &out[n++];
+    memset(r, 0, sizeof *r);
+    snprintf(r->left, sizeof r->left, "%s", group);
+    snprintf(r->mid, sizeof r->mid, "%s", label);
+    snprintf(r->right, sizeof r->right, "%s", chord);
+    snprintf(r->action, sizeof r->action, "run:%d", act);
+  }
+  return n;
+}
+
+static size_t picker_rows(app_t *a, pick_row_t *out, size_t max) {
+  if (a->picker == PICK_PALETTE) return palette_rows(a, out, max);
+  return finder_rows(a, out, max);
+}
+
+static size_t picker_count(app_t *a) {
+  pick_row_t rows[128];
+  return picker_rows(a, rows, 128);
+}
+
+/* A picker is a modal, like the cheatsheet: scrim behind it, a pane's frame
+ * around it, a title and a close button in the places a pane keeps them. The
+ * finder used to be a bare coloured rectangle painted over whatever pane it
+ * landed on, which read as output from the program underneath rather than as
+ * a window in front of it -- and gave it no title, no way out you could see,
  * and no edge to tell you where it ended.
  *
  * It differs from the cheatsheet in the one way that matters: the cheatsheet
  * is *read*, so any key dismisses it, while this one is *used*, so it keeps
  * the keyboard until it is answered. */
-static void draw_finder(app_t *a, screen_t *s) {
-  find_entry_t entries[64];
-  size_t n = finder_entries(a, entries, 64);
+static void draw_picker(app_t *a, screen_t *s) {
+  pick_row_t rows[128];
+  size_t n = picker_rows(a, rows, 128);
   if (a->sel >= n) a->sel = n ? n - 1 : 0;
+
+  bool palette = a->picker == PICK_PALETTE;
+  const char *title = palette ? "commands" : "find";
+  const char *close = palette ? "closepalette" : "closefind";
 
   /* The window of results on screen. Kept around the selection rather than
    * anchored at the top, so arrowing past the bottom scrolls instead of
@@ -3488,7 +3606,7 @@ static void draw_finder(app_t *a, screen_t *s) {
   uint16_t h = (uint16_t)(list + 5);
   if (h > s->rows) h = s->rows;
 
-  rect_t in = modal_frame(a, s, w, h, "find", "closefind");
+  rect_t in = modal_frame(a, s, w, h, title, close);
 
   /* The query, in a field that looks like one: a program you type into should
    * show you where the typing goes even when you have not typed anything. */
@@ -3504,8 +3622,9 @@ static void draw_finder(app_t *a, screen_t *s) {
   uint16_t ly = (uint16_t)(in.y + 3); /* the first result row */
 
   if (!n) {
-    /* An empty box says the finder is broken; this says the query is. */
-    const char *none = a->query[0] ? "no pane matches that" : "no panes";
+    /* An empty box says the picker is broken; this says the query is. */
+    const char *none = palette ? "no command matches that"
+                               : (a->query[0] ? "no pane matches that" : "no panes");
     help_text(s, (uint16_t)(in.x + 2), ly, none, (uint16_t)(in.w - 2), HINT_C,
               MODAL_BG, 0);
     return;
@@ -3514,13 +3633,11 @@ static void draw_finder(app_t *a, screen_t *s) {
   for (size_t i = 0; i < shown; i++) {
     size_t idx = first + i;
     if (idx >= n) break;
-    find_entry_t *e = &entries[idx];
+    pick_row_t *e = &rows[idx];
     uint16_t yy = (uint16_t)(ly + i);
     if (yy >= in.y + in.h) break;
 
-    char action[48];
-    snprintf(action, sizeof action, "find:%u", e->node->id);
-    hit_add(&s->hits, in.x, yy, in.w, 1, action);
+    hit_add(&s->hits, in.x, yy, in.w, 1, e->action);
 
     /* Selected wins over hovered: the pointer may be resting anywhere, and
      * the row Enter would take is the one that has to be unambiguous. */
@@ -3534,35 +3651,26 @@ static void draw_finder(app_t *a, screen_t *s) {
      * where you could go. A different mark from the query prompt: two rows
      * that both begin with the same glyph invite you to read one as the
      * other. */
-    bool here = e->node == cur(a)->focus && e->tab == a->cur;
     uint16_t cx = (uint16_t)(in.x + 1);
-    cx += help_text(s, cx, yy, here ? "\u2022" : " ", 1, fg, bg, 0);
+    cx += help_text(s, cx, yy, e->here ? "\u2022" : " ", 1, fg, bg, 0);
     cx++;
 
-    /* Tab, then title, then purpose, in columns -- and drawn as three pieces
-     * rather than one printf so the parts that matter can be told apart by
-     * weight. A tab with no name is its number alone: "1:" with nothing after
-     * it looks like something failed to load. */
-    char tab[24];
-    const char *tname = e->tab == (size_t)-1 ? "" : a->tabs[e->tab].name;
-    if (tname && *tname)
-      snprintf(tab, sizeof tab, "%zu:%.10s", e->tab + 1, tname);
-    else
-      snprintf(tab, sizeof tab, "%zu", e->tab + 1);
-    uint16_t tw = 13;
-    if (in.w > 40) help_text(s, cx, yy, tab, tw, on ? fg : HINT_C, bg, 0);
-    if (in.w > 40) cx = (uint16_t)(cx + tw);
+    /* Three columns, drawn as three pieces rather than one printf, so the
+     * part that matters can be told from the parts that qualify it. */
+    uint16_t lw = 13;
+    if (in.w > 40) {
+      help_text(s, cx, yy, e->left, lw, on ? fg : HINT_C, bg, 0);
+      cx = (uint16_t)(cx + lw);
+    }
 
-    const char *title = pane_title(e->node->pane);
-    if (!title || !*title) title = "pane";
     uint16_t room = (uint16_t)(in.x + in.w > cx ? in.x + in.w - cx - 1 : 0);
-    uint16_t tcol = (uint16_t)(room > 20 ? 18 : room);
-    uint16_t drew = help_text(s, cx, yy, title, tcol, fg, bg, ATTR_BOLD);
-    cx = (uint16_t)(cx + (drew > tcol ? drew : tcol) + 1);
+    uint16_t mid_w = (uint16_t)(room > 20 ? (in.w > 56 ? 26 : 18) : room);
+    uint16_t drew = help_text(s, cx, yy, e->mid, mid_w, fg, bg, ATTR_BOLD);
+    cx = (uint16_t)(cx + (drew > mid_w ? drew : mid_w) + 1);
 
-    if (*e->node->purpose && cx < in.x + in.w)
-      help_text(s, cx, yy, e->node->purpose,
-                (uint16_t)(in.x + in.w - cx - 1), on ? fg : HINT_C, bg, 0);
+    if (*e->right && cx < in.x + in.w)
+      help_text(s, cx, yy, e->right, (uint16_t)(in.x + in.w - cx - 1),
+                on ? fg : HINT_C, bg, 0);
   }
 
   /* What is off the top and bottom of the window. Without this a list that
@@ -3582,9 +3690,17 @@ static void draw_finder(app_t *a, screen_t *s) {
                 (uint16_t)(in.y + in.h), foot, HINT_C, MODAL_BG, 0);
 }
 
-static size_t finder_count(app_t *a) {
-  find_entry_t entries[64];
-  return finder_entries(a, entries, 64);
+/* Defined with the other action handling, further down: a picker row that
+ * says "run:" means one of these, and running it is that code's business. */
+static bool run_action(app_t *a, action_t act);
+
+/* Do what a row says it does. One entry point for the keyboard and the mouse,
+ * so a picker cannot choose one way with Enter and another with a click. */
+static void picker_accept(app_t *a, const char *action) {
+  if (strncmp(action, "find:", 5) == 0)
+    app_focus_pane(a, (uint32_t)strtoul(action + 5, NULL, 10));
+  else if (strncmp(action, "run:", 4) == 0)
+    run_action(a, (action_t)strtol(action + 4, NULL, 10));
 }
 
 /* Move the selection by `d`, wrapping.
@@ -3592,8 +3708,8 @@ static size_t finder_count(app_t *a) {
  * Wrapping because the list is short and the selection starts at the top: one
  * press of Up to reach the last entry is worth more here than the protection
  * against overshooting that a long list wants. */
-static void finder_move(app_t *a, int d) {
-  size_t n = finder_count(a);
+static void picker_move(app_t *a, int d) {
+  size_t n = picker_count(a);
   if (!n) {
     a->sel = 0;
     return;
@@ -3605,13 +3721,13 @@ static void finder_move(app_t *a, int d) {
   a->sel = (size_t)sel;
 }
 
-/* Returns true when the finder consumed the event.
+/* Returns true when the picker consumed the event.
  *
  * It consumes *everything* while it is open, including keys it does nothing
  * with: it is a text field, and a text field that lets an unrecognised key
  * fall through to the pane behind it types into that pane. */
-static bool finder_key(app_t *a, const input_event_t *ev) {
-  if (!a->finder) return false;
+static bool picker_key(app_t *a, const input_event_t *ev) {
+  if (!a->picker) return false;
   if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
 
   bool ctrl = (ev->mods & MOD_CTRL) != 0;
@@ -3620,14 +3736,14 @@ static bool finder_key(app_t *a, const input_event_t *ev) {
   /* The emacs pair every picker in this shape answers to, and which the hands
    * of anyone who has used one reach for before the arrows. */
   if (ctrl && (ev->key == GHOSTTY_KEY_N || ev->unshifted == 'n')) {
-    finder_move(a, 1);
+    picker_move(a, 1);
     return true;
   }
   if (ctrl && (ev->key == GHOSTTY_KEY_P || ev->unshifted == 'p')) {
-    finder_move(a, -1);
+    picker_move(a, -1);
     return true;
   }
-  /* Clear the query rather than the whole finder: the shell's own C-u, and
+  /* Clear the query rather than the whole picker: the shell's own C-u, and
    * the alternative is backspacing a long wrong guess out one key at a time. */
   if (ctrl && (ev->key == GHOSTTY_KEY_U || ev->unshifted == 'u')) {
     a->query[0] = 0;
@@ -3637,35 +3753,40 @@ static bool finder_key(app_t *a, const input_event_t *ev) {
 
   switch (ev->key) {
     case GHOSTTY_KEY_ESCAPE:
-      a->finder = false;
+      a->picker = PICK_NONE;
       return true;
     case GHOSTTY_KEY_ENTER: {
-      find_entry_t entries[64];
-      size_t n = finder_entries(a, entries, 64);
-      if (a->sel < n) app_focus_pane(a, entries[a->sel].node->id);
-      a->finder = false;
+      pick_row_t rows[128];
+      size_t n = picker_rows(a, rows, 128);
+      /* The row's own action, the one a click on it would run: a picker that
+       * chose by keyboard down one path and by mouse down another would be
+       * two pickers wearing one box. */
+      char action[48] = "";
+      if (a->sel < n) snprintf(action, sizeof action, "%s", rows[a->sel].action);
+      a->picker = PICK_NONE;
+      if (*action) picker_accept(a, action);
       return true;
     }
     case GHOSTTY_KEY_TAB:
-      finder_move(a, shift ? -1 : 1);
+      picker_move(a, shift ? -1 : 1);
       return true;
     case GHOSTTY_KEY_ARROW_DOWN:
-      finder_move(a, 1);
+      picker_move(a, 1);
       return true;
     case GHOSTTY_KEY_ARROW_UP:
-      finder_move(a, -1);
+      picker_move(a, -1);
       return true;
     case GHOSTTY_KEY_PAGE_DOWN:
-      finder_move(a, FINDER_ROWS);
+      picker_move(a, FINDER_ROWS);
       return true;
     case GHOSTTY_KEY_PAGE_UP:
-      finder_move(a, -FINDER_ROWS);
+      picker_move(a, -FINDER_ROWS);
       return true;
     case GHOSTTY_KEY_HOME:
       a->sel = 0;
       return true;
     case GHOSTTY_KEY_END: {
-      size_t n = finder_count(a);
+      size_t n = picker_count(a);
       a->sel = n ? n - 1 : 0;
       return true;
     }
@@ -3808,8 +3929,8 @@ void app_compose(app_t *a, screen_t *s) {
    * interacted with while it is up, so it owns the topmost hits. The scrim
    * goes down first, over everything already painted, and once for both —
    * dimming twice would make the second one darker for no reason. */
-  if (a->finder || a->help) draw_scrim(a, s);
-  if (a->finder) draw_finder(a, s);
+  if (a->picker || a->help) draw_scrim(a, s);
+  if (a->picker) draw_picker(a, s);
   if (a->help) draw_help(a, s);
   draw_toasts(a, s);                /* and above even that: it is transient */
 }
@@ -3991,7 +4112,7 @@ static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
  * pointer crossed its header — which is why only `pane:` and `title:` targets
  * count, and the frame rect's `focus:` does not. */
 static bool hover_focus_allowed(const app_t *a) {
-  return CFG.focus_follows_mouse && !a->prefix && !a->finder && !a->renaming &&
+  return CFG.focus_follows_mouse && !a->prefix && !a->picker && !a->renaming &&
          a->drag.kind == DRAG_NONE;
 }
 
@@ -4095,14 +4216,16 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     if (ev->maction == MOUSE_PRESS) app_new_tab(a, "");
     return;
   }
-  if (strncmp(action, "find:", 5) == 0) {
+  if (strncmp(action, "find:", 5) == 0 || strncmp(action, "run:", 4) == 0) {
     if (ev->maction != MOUSE_PRESS) return;
-    app_focus_pane(a, (uint32_t)strtoul(action + 5, NULL, 10));
-    a->finder = false;
+    /* Closed first, so an action that opens something else -- the cheatsheet,
+     * or the palette again -- is not shut by the picker it came from. */
+    a->picker = PICK_NONE;
+    picker_accept(a, action);
     return;
   }
-  if (strcmp(action, "closefind") == 0) {
-    if (ev->maction == MOUSE_PRESS) a->finder = false;
+  if (strcmp(action, "closefind") == 0 || strcmp(action, "closepalette") == 0) {
+    if (ev->maction == MOUSE_PRESS) a->picker = PICK_NONE;
     return;
   }
   if (strncmp(action, "tab:", 4) == 0) {
@@ -4218,7 +4341,13 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
 }
 
 static bool prefix_command(app_t *a, const input_event_t *ev) {
-  action_t act = config_lookup(&CFG, ev->key, ev->mods);
+  return run_action(a, config_lookup(&CFG, ev->key, ev->mods));
+}
+
+/* What an action does, given the action rather than the key that asked for it
+ * -- because the command palette asks for actions by name, and a palette that
+ * had to synthesise a keystroke to run one would be inventing input. */
+static bool run_action(app_t *a, action_t act) {
   if (act >= ACT_SELECT_TAB_1) {
     app_select_tab(a, (size_t)(act - ACT_SELECT_TAB_1));
     return true;
@@ -4267,7 +4396,8 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
     case ACT_SCROLL_TOP: pane_scroll_edge(cur(a)->focus->pane, true); return true;
     case ACT_SCROLL_BOTTOM: pane_scroll_edge(cur(a)->focus->pane, false); return true;
     case ACT_FINDER:
-      a->finder = true;
+    case ACT_PALETTE:
+      a->picker = act == ACT_PALETTE ? PICK_PALETTE : PICK_FINDER;
       a->query[0] = 0;
       a->sel = 0;
       return true;
@@ -4292,15 +4422,15 @@ void app_event(app_t *a, const input_event_t *ev) {
   if (a->renaming == RENAME_TAB && !tab_by_id(a, a->rename_id))
     rename_end(a, false);
 
-  /* The rename editor and the finder each own the keyboard while open; the
+  /* The rename editor and the picker each own the keyboard while open; the
    * mouse still routes through the hit list, whose topmost entries are the
-   * finder's own rows. */
+   * picker's own rows. */
   if (a->renaming && ev->kind == EV_KEY) {
     rename_key(a, ev);
     return;
   }
-  if (a->finder && ev->kind == EV_KEY) {
-    finder_key(a, ev);
+  if (a->picker && ev->kind == EV_KEY) {
+    picker_key(a, ev);
     return;
   }
   /* A cheatsheet is read, not driven: any key puts it away, and that key does
@@ -4503,11 +4633,13 @@ void app_event(app_t *a, const input_event_t *ev) {
        * layout behind it, which is how you end up focusing a pane you were
        * trying to click *away* from. Motion still falls through, so rows
        * light up under the pointer. */
-      if (a->finder && ev->maction != MOUSE_MOTION) {
+      if (a->picker && ev->maction != MOUSE_MOTION) {
         bool own = action && (strncmp(action, "find:", 5) == 0 ||
-                              strcmp(action, "closefind") == 0);
+                              strncmp(action, "run:", 4) == 0 ||
+                              strcmp(action, "closefind") == 0 ||
+                              strcmp(action, "closepalette") == 0);
         if (!own) {
-          if (ev->maction == MOUSE_PRESS) a->finder = false;
+          if (ev->maction == MOUSE_PRESS) a->picker = PICK_NONE;
           break;
         }
       }
