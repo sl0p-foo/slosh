@@ -48,6 +48,82 @@ def test_it_opens_and_lists_the_bindings():
         check("shows arrows as arrows", "←" in screen and "→" in screen, screen)
 
 
+def style(snap, x, y):
+    run = snap.style_at(x, y)
+    return (run or {}).get("fg"), (run or {}).get("bg")
+
+
+def modal_top(snap):
+    for y, line in enumerate(snap.text):
+        if "keys" in line and "\u256d" in line:
+            return y, line
+    return None, None
+
+
+def test_the_close_button_can_be_seen_without_hovering_it():
+    """It was drawn in the pane button colour on the finder background, which
+    are the same value: invisible until the pointer happened to land on it."""
+    with Session(SH, cols=92, rows=28) as s:
+        s.settle()
+        snap = open_help(s)
+        y, line = modal_top(snap)
+        check("the modal has a top border", y is not None, snap.screen())
+        x = line.rindex("x")
+        fg, bg = style(snap, x, y)
+        check("the close button is not its own background", fg != bg,
+              f"fg {fg} bg {bg}")
+        check("and it is registered as a target",
+              snap.hit_at(x, y) == "closehelp", str(snap.hit_at(x, y)))
+
+
+def test_the_close_button_closes_it():
+    with Session(SH, cols=92, rows=28) as s:
+        s.settle()
+        snap = open_help(s)
+        y, line = modal_top(snap)
+        s.click(line.rindex("x"), y)
+        s.settle()
+        check("clicking the button puts it away",
+              "split into columns" not in s.snapshot().screen())
+
+
+def test_what_is_behind_is_pushed_back():
+    with Session(SH, cols=100, rows=30) as s:
+        s.settle()
+        before = s.snapshot()
+        pos = before.find("pane 1/1")
+        check("the status line is there", pos is not None, before.screen())
+        x, y = pos[0] + 1, pos[1]
+        lit = style(before, x, y)
+
+        after = open_help(s)
+        dimmed = style(after, x, y)
+        check("the screen behind the modal is dimmed", dimmed != lit,
+              f"{lit} -> {dimmed}")
+
+        # And the modal itself is not: it is drawn after the scrim, which is
+        # the whole point of the ordering. Sampled on the title rather than on
+        # a corner, because the modal's top row can sit on a pane's border row
+        # and then the line has two of those.
+        my, line = modal_top(after)
+        tx = line.index("keys")
+        check("the modal is not dimmed with it",
+              style(after, tx, my)[0] == "#ffffff", str(style(after, tx, my)))
+
+
+def test_the_scrim_can_be_turned_off():
+    conf = cfg("modal_scrim 0\n")
+    with Session(SH, cols=100, rows=30, config=conf) as s:
+        s.settle()
+        before = s.snapshot()
+        x, y = before.find("pane 1/1")[0] + 1, before.find("pane 1/1")[1]
+        lit = style(before, x, y)
+        after = open_help(s)
+        check("nothing behind it changes", style(after, x, y) == lit,
+              f"{lit} -> {style(after, x, y)}")
+        check("but the modal is still up", "split into columns" in after.screen())
+
+
 def test_any_key_dismisses_it_and_does_nothing_else():
     with Session(SH, cols=92, rows=28) as s:
         s.settle()

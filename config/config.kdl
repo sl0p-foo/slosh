@@ -163,6 +163,16 @@ hover_delay_ms 250
 // program calls itself.
 double_click_ms 400
 
+// How far everything behind a modal (the cheatsheet, C-a ?) is pushed back,
+// 0..255, and 0 for not at all. A modal floating over a screen as bright as
+// it is reads as another pane rather than as something in front.
+//
+// It is the shader pass aimed at the whole screen, so the same caveat applies
+// as for shaders: cells with no colour of their own are resolved through
+// theme's default_fg/default_bg first, and if those do not match your
+// terminal's real colours the screen will shift slightly while a modal is up.
+modal_scrim 120
+
 // Extra shaders can be loaded from shared libraries: any `*.so` in the
 // directory below that exports a sl0ppty shader plugin. Once loaded they are
 // named here exactly like a built-in. Default: a `shaders` directory beside
@@ -381,6 +391,19 @@ theme {
     // ── the row of minimised panes ──────────────────────────────────────────
     minbar "#45454a"
     minbar_hover "#ff5fd7"
+
+    // ── modals: a surface that floats over the layout ───────────────────────
+    // Named apart from the pane colours they resemble because a modal is a
+    // different surface: opaque, on top of everything, and legible against a
+    // background that has been dimmed underneath it. (The first version drew
+    // the close button in the pane button colour on the finder background,
+    // which are the same value — an invisible button until you hovered it.)
+    modal_bg "#1c1c22"          // a shade lighter than the dimmed screen
+    modal_fg "#e8e8ea"
+    modal_border "#ff5fd7"
+    modal_title "#ffffff"
+    modal_button "#8a8a95"      // visible *without* the pointer on it
+    modal_button_hover "#ff5fd7"
 
     // ── the pane finder ─────────────────────────────────────────────────────
     finder_fg "#ffffff"

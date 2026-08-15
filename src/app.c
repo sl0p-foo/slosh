@@ -99,6 +99,12 @@ bool app_reload_config(char *err, size_t errcap) {
 #define MINBAR_HOVER (CFG.minbar_hover)
 #define HINT_C (CFG.hint)
 #define DEAD_C (CFG.dead)
+#define MODAL_FG (CFG.modal_fg)
+#define MODAL_BG (CFG.modal_bg)
+#define MODAL_BORDER (CFG.modal_border)
+#define MODAL_TITLE (CFG.modal_title)
+#define MODAL_BTN (CFG.modal_button)
+#define MODAL_BTN_HOVER (CFG.modal_button_hover)
 
 static const color_t NO_COLOR = {0};
 
@@ -3052,6 +3058,90 @@ static size_t help_rows(help_row_t *out, size_t cap) {
   return n;
 }
 
+/* ---- modals -------------------------------------------------------------
+ *
+ * A surface that floats over the layout: everything behind it is pushed back,
+ * it is opaque, it wears a pane's frame so it plainly belongs to this program,
+ * and it owns the topmost hits while it is up. The cheatsheet is the first
+ * one; the shape is here rather than inside it so the second one costs a
+ * function call and looks the same.
+ */
+
+/* Push the whole screen back, so what floats reads as being in front.
+ *
+ * This is the shader pass, aimed at the screen instead of a pane: the same
+ * dim, the same materialisation of "terminal default" colours (without which
+ * the chrome would not darken at all, since most of it has no colour of its
+ * own). Nothing about it is special-cased, which is the nice part -- a scrim
+ * is just a colour pass with everything in its rect. */
+static void draw_scrim(app_t *a, screen_t *s) {
+  if (!CFG.modal_scrim) return;
+  shader_t dim;
+  if (!shader_make(&dim, "dim", (color_t){0}, CFG.modal_scrim)) return;
+  shade_ctx_t base = {
+      .now_ms = now_ms_(),
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  shade_apply(s, &dim, 1, 0, 0, s->cols, s->rows, &base);
+}
+
+/* The frame every modal wears: an opaque box with a pane's corners, a title
+ * in the top rule and a close button where a pane keeps one. Returns the rect
+ * *inside* it, which is all a caller should care about. */
+static rect_t modal_frame(app_t *a, screen_t *s, uint16_t w, uint16_t h,
+                          const char *title, const char *close_action) {
+  if (w > s->cols) w = s->cols;
+  if (h > s->rows) h = s->rows;
+  uint16_t x = (uint16_t)((s->cols - w) / 2), y = (uint16_t)((s->rows - h) / 2);
+  uint16_t x1 = (uint16_t)(x + w - 1), y1 = (uint16_t)(y + h - 1);
+
+  /* Opaque, or the panes underneath read through it: a modal you can see a
+   * shell prompt through is a modal nobody trusts. */
+  for (uint16_t yy = y; yy < y + h; yy++)
+    for (uint16_t xx = x; xx < x + w; xx++)
+      screen_text(s, xx, yy, " ", NO_COLOR, MODAL_BG, 0);
+
+  const char *tl = CFG.rounded ? "\u256d" : "\u250c", *tr = CFG.rounded ? "\u256e" : "\u2510";
+  const char *bl = CFG.rounded ? "\u2570" : "\u2514", *br = CFG.rounded ? "\u256f" : "\u2518";
+  screen_text(s, x, y, tl, MODAL_BORDER, MODAL_BG, 0);
+  screen_text(s, x1, y, tr, MODAL_BORDER, MODAL_BG, 0);
+  screen_text(s, x, y1, bl, MODAL_BORDER, MODAL_BG, 0);
+  screen_text(s, x1, y1, br, MODAL_BORDER, MODAL_BG, 0);
+  for (uint16_t xx = (uint16_t)(x + 1); xx < x1; xx++) {
+    screen_text(s, xx, y, "\u2500", MODAL_BORDER, MODAL_BG, 0);
+    screen_text(s, xx, y1, "\u2500", MODAL_BORDER, MODAL_BG, 0);
+  }
+  for (uint16_t yy = (uint16_t)(y + 1); yy < y1; yy++) {
+    screen_text(s, x, yy, "\u2502", MODAL_BORDER, MODAL_BG, 0);
+    screen_text(s, x1, yy, "\u2502", MODAL_BORDER, MODAL_BG, 0);
+  }
+
+  if (title && *title && w > cells(title) + 4) {
+    char buf[80];
+    snprintf(buf, sizeof buf, " %s ", title);
+    screen_text(s, (uint16_t)(x + (w - cells(buf)) / 2), y, buf, MODAL_TITLE,
+                MODAL_BG, ATTR_BOLD);
+  }
+
+  /* The close button a pane has, in the place a pane keeps it. Two cells of
+   * target for a one-cell mark, for the reason the frame's own buttons are
+   * three: a one-cell target is a thing you miss with a mouse. */
+  if (close_action && w > 10) {
+    uint16_t bw = (uint16_t)(cells(CFG.close_mark) + 1);
+    uint16_t bx = (uint16_t)(x1 - bw);
+    bool hot = ptr_on(a, bx, y, bw, 1);
+    char cell[24];
+    snprintf(cell, sizeof cell, "%s ", CFG.close_mark);
+    screen_text(s, bx, y, cell, hot ? MODAL_BTN_HOVER : MODAL_BTN, MODAL_BG,
+                hot ? ATTR_BOLD : 0);
+    hit_add(&s->hits, bx, y, bw, 1, close_action);
+  }
+
+  return (rect_t){(uint16_t)(x + 1), (uint16_t)(y + 1), (uint16_t)(w - 2),
+                  (uint16_t)(h - 2)};
+}
+
 /* Draw at most `limit` columns of `text`, cut on a character boundary.
  *
  * The box is clamped to the screen, so on a small terminal the rows are wider
@@ -3104,88 +3194,48 @@ static void draw_help(app_t *a, screen_t *s) {
   }
 
   uint16_t body = (uint16_t)(cw[0] + (two ? cw[1] + 4 : 0));
-  uint16_t w = (uint16_t)(body + 6);
   size_t left_n = two ? split : n, right_n = two ? n - split : 0;
   uint16_t lines = (uint16_t)(left_n > right_n ? left_n : right_n);
-  uint16_t h = (uint16_t)(lines + 6);
-  if (w > s->cols) w = s->cols;
-  if (h > s->rows) h = s->rows;
-  uint16_t x = (uint16_t)((s->cols - w) / 2), y = (uint16_t)((s->rows - h) / 2);
 
-  /* Opaque, or the panes underneath read through it: a modal that you can see
-   * a shell prompt through is a modal nobody trusts. */
-  for (uint16_t yy = y; yy < y + h; yy++)
-    for (uint16_t xx = x; xx < x + w; xx++)
-      screen_text(s, xx, yy, " ", NO_COLOR, FINDER_BG, 0);
-
-  /* The same frame a pane wears, for the same reason a dialog wears the
-   * window chrome of its platform: it belongs to this program. */
-  const char *tl = CFG.rounded ? "\u256d" : "\u250c", *tr = CFG.rounded ? "\u256e" : "\u2510";
-  const char *bl = CFG.rounded ? "\u2570" : "\u2514", *br = CFG.rounded ? "\u256f" : "\u2518";
-  uint16_t x1 = (uint16_t)(x + w - 1), y1 = (uint16_t)(y + h - 1);
-  screen_text(s, x, y, tl, FRAME_FOCUS, FINDER_BG, 0);
-  screen_text(s, x1, y, tr, FRAME_FOCUS, FINDER_BG, 0);
-  screen_text(s, x, y1, bl, FRAME_FOCUS, FINDER_BG, 0);
-  screen_text(s, x1, y1, br, FRAME_FOCUS, FINDER_BG, 0);
-  for (uint16_t xx = (uint16_t)(x + 1); xx < x1; xx++) {
-    screen_text(s, xx, y, "\u2500", FRAME_FOCUS, FINDER_BG, 0);
-    screen_text(s, xx, y1, "\u2500", FRAME_FOCUS, FINDER_BG, 0);
-  }
-  for (uint16_t yy = (uint16_t)(y + 1); yy < y1; yy++) {
-    screen_text(s, x, yy, "\u2502", FRAME_FOCUS, FINDER_BG, 0);
-    screen_text(s, x1, yy, "\u2502", FRAME_FOCUS, FINDER_BG, 0);
-  }
-
-  const char *title = " keys ";
-  uint16_t tx = (uint16_t)(x + (w - cells(title)) / 2);
-  screen_text(s, tx, y, title, TITLE_FOCUS, FINDER_BG, ATTR_BOLD);
-
-  /* The close button a pane has, in the place a pane has it. */
-  if (w > 10) {
-    uint16_t bx = (uint16_t)(x1 - 2);
-    bool hot = ptr_on(a, bx, y, 2, 1);
-    screen_text(s, bx, y, CFG.close_mark, hot ? PANE_BTN_HOVER : PANE_BTN,
-                FINDER_BG, hot ? ATTR_BOLD : 0);
-    hit_add(&s->hits, bx, y, 2, 1, "closehelp");
-  }
+  rect_t in = modal_frame(a, s, (uint16_t)(body + 6), (uint16_t)(lines + 6),
+                          "keys", "closehelp");
+  uint16_t x1 = (uint16_t)(in.x + in.w); /* the right border */
 
   /* Everything here is prefix-then-key, and saying so once beats repeating
    * the prefix on thirty rows. */
-  char lead[80];
-  char pfx[24];
+  char lead[80], pfx[24];
   config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
   snprintf(lead, sizeof lead, "%s then:", pfx);
-  help_text(s, (uint16_t)(x + 3), (uint16_t)(y + 2), lead,
-            (uint16_t)(w > 6 ? w - 6 : 0), HINT_C, FINDER_BG, 0);
+  help_text(s, (uint16_t)(in.x + 2), (uint16_t)(in.y + 1), lead, in.w, HINT_C,
+            MODAL_BG, 0);
 
   for (size_t i = 0; i < n; i++) {
     bool right = two && i >= split;
     size_t row = right ? i - split : i;
-    if ((uint16_t)(row + 4) >= h - 1) continue;
-    uint16_t rx = (uint16_t)(x + 3 + (right ? cw[0] + 4 : 0));
-    uint16_t ry = (uint16_t)(y + 4 + row);
+    uint16_t ry = (uint16_t)(in.y + 3 + row);
+    if (ry >= in.y + in.h) continue;
+    uint16_t rx = (uint16_t)(in.x + 2 + (right ? cw[0] + 4 : 0));
 
     /* Everything is cut at the frame, and the left column additionally at the
      * right one, so a clamped box loses words rather than its border. */
-    uint16_t room = (uint16_t)(x1 > rx + 1 ? x1 - rx - 1 : 0);
-    if (two && !right && cw[0] + 4 < room) room = (uint16_t)(cw[0] + 2);
+    uint16_t room = (uint16_t)(x1 > rx ? x1 - rx : 0);
+    if (two && !right && cw[0] + 2 < room) room = (uint16_t)(cw[0] + 2);
 
     if (!rows[i].group) {
-      help_text(s, rx, ry, rows[i].label, room, TITLE_FOCUS, FINDER_BG,
+      help_text(s, rx, ry, rows[i].label, room, MODAL_TITLE, MODAL_BG,
                 ATTR_BOLD);
       continue;
     }
-    help_text(s, rx, ry, rows[i].chord, room, TITLE_FOCUS, FINDER_BG, 0);
+    help_text(s, rx, ry, rows[i].chord, room, MODAL_TITLE, MODAL_BG, 0);
     uint16_t lx = (uint16_t)(rx + kw[right ? 1 : 0] + 2);
-    help_text(s, lx, ry, rows[i].label,
-              (uint16_t)(x1 > lx + 1 ? x1 - lx - 1 : 0), FINDER_FG, FINDER_BG,
-              0);
+    help_text(s, lx, ry, rows[i].label, (uint16_t)(x1 > lx ? x1 - lx : 0),
+              MODAL_FG, MODAL_BG, 0);
   }
 
   const char *foot = " any key closes this ";
-  if (w > cells(foot) + 4)
-    screen_text(s, (uint16_t)(x + (w - cells(foot)) / 2), y1, foot, HINT_C,
-                FINDER_BG, 0);
+  if (in.w > cells(foot))
+    screen_text(s, (uint16_t)(in.x + (in.w - cells(foot)) / 2),
+                (uint16_t)(in.y + in.h), foot, HINT_C, MODAL_BG, 0);
 }
 
 static void draw_finder(app_t *a, screen_t *s) {
@@ -3384,8 +3434,13 @@ void app_compose(app_t *a, screen_t *s) {
   draw_status_line(a, s);
   if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
   /* And the modal on top of even that: it is the only thing that can be
-   * interacted with while it is up, so it owns the topmost hits. */
-  if (a->help) draw_help(a, s);
+   * interacted with while it is up, so it owns the topmost hits. The scrim
+   * goes down first, over everything already painted — including the finder,
+   * if that happened to be open. */
+  if (a->help) {
+    draw_scrim(a, s);
+    draw_help(a, s);
+  }
   draw_toasts(a, s);                /* and above even that: it is transient */
 }
 

@@ -64,4 +64,12 @@ theme {
     pane_button_hover "#ffb000"
     minbar "#6b4a00"
     minbar_hover "#ffb000"
+
+    // a modal floating over the layout (the cheatsheet, C-a ?)
+    modal_bg "#1e1200"
+    modal_fg "#ffe0a0"
+    modal_border "#ffb000"
+    modal_title "#fff2d6"
+    modal_button "#9a7526"
+    modal_button_hover "#ffb000"
 }

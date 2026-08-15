@@ -216,6 +216,25 @@ no cursor". The graphics stream now opens with DECSC and closes with DECRC,
 and emits nothing at all when there is nothing to say. Any future
 after-the-frame output owes the same debt.
 
+## Modals
+
+`modal_frame()` draws the surface and `draw_scrim()` pushes back what is
+behind it; the cheatsheet is the first thing to use them and is meant to be
+the shape the next one copies. Two things it got wrong first, both worth not
+repeating:
+
+- **it borrowed colours from another surface.** The close button was the pane
+  button colour on the finder background, which are the same value in the
+  default theme, so it was invisible until hovered. A modal is its own
+  surface and now has its own `modal_*` names. When you add a surface, give
+  it names; when you reuse names, check what they resolve to *together*.
+- **the scrim is the shader pass, aimed at the screen.** Nothing about it is
+  special-cased, which is why it dims chrome as happily as contents — but it
+  also means the whole screen's unset colours get materialised through
+  `default_fg`/`default_bg` while a modal is up, so a terminal whose real
+  background differs from the configured one shifts slightly. Documented next
+  to `modal_scrim` rather than hidden.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.
@@ -238,6 +257,10 @@ after-the-frame output owes the same debt.
   pane. Hot-swapping would need every shader reference to be indirected
   through the registry, which is a real change and not obviously worth it.
 - **Per-row shader dispatch** — see the numbers above.
+- **The finder is not a modal** and predates `modal_frame()`. It keeps its own
+  `finder_*` colours and its own box. Moving it over would unify two overlay
+  looks into one; it was left alone because it is a picker rather than a
+  modal — it navigates, and modals here dismiss on any key.
 - **The cell size is not queried, only received.** If a client's terminal
   reports no pixel size in `TIOCGWINSZ`, we keep the 8x16 default rather than
   asking it with `CSI 14 t`/`CSI 16 t`. Doing that properly means the client

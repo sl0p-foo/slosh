@@ -126,6 +126,10 @@ typedef struct {
   uint16_t toast_ms;
   uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
+  /* How far everything behind a modal is pushed back, 0..255, 0 being off.
+   * A modal that floats over a screen as bright as it is reads as another
+   * pane rather than as something in front. */
+  uint8_t modal_scrim;
   /* Shader strengths, 0..255, 0 being off. Ambient dimming is a taste and is
    * off by default; the drag greying is transient and on. */
   /* Colour passes every pane gets, in the order they were written. Ordinary
@@ -221,6 +225,16 @@ typedef struct {
 
   /* the hint in the middle of the status line */
   color_t hint;
+
+  /* Modals: a surface that floats over the layout, with its own frame. Named
+   * separately from the pane colours it resembles because it is a different
+   * *surface* — it sits on top of everything, it is opaque, and it has to
+   * stay legible against a background that has been dimmed underneath it.
+   * Borrowing the pane button colour here is what made the close button
+   * invisible: dim on dim. */
+  color_t modal_fg, modal_bg;
+  color_t modal_border, modal_title;
+  color_t modal_button, modal_button_hover;
 
   /* announcements */
   color_t toast_fg, toast_bg;

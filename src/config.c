@@ -222,6 +222,7 @@ void config_defaults(config_t *c) {
   c->toast_ms = 2500;
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
+  c->modal_scrim = 120;
   c->status_bar = true;
   c->status_line = true;
   /* Deliberately wider than the panes' own margin (gap * gap_aspect = 2), so
@@ -327,6 +328,18 @@ void config_defaults(config_t *c) {
 
   c->bell = accent;
   c->dead = rgb(0xff, 0x87, 0x5f);
+
+  /* A surface, not a hole: lighter than the dimmed screen behind it, with a
+   * border in the accent so the edge is never in doubt. The button is a grey
+   * that is *visible* on that surface — the first version used the pane
+   * button colour, which is the same value as the old background it was drawn
+   * on, so it only appeared when you hovered it. */
+  c->modal_bg = rgb(0x1c, 0x1c, 0x22);
+  c->modal_fg = rgb(0xe8, 0xe8, 0xea);
+  c->modal_border = accent;
+  c->modal_title = bright;
+  c->modal_button = rgb(0x8a, 0x8a, 0x95);
+  c->modal_button_hover = accent;
   c->hint = bright;
   c->minbar = dim;
   c->minbar_hover = accent;
@@ -618,6 +631,10 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
                                             c->hover_delay_ms);
   c->double_click_ms = (uint16_t)kdl_arg_int(kdl_child(root, "double_click_ms"),
                                              0, c->double_click_ms);
+  {
+    long v = kdl_arg_int(kdl_child(root, "modal_scrim"), 0, c->modal_scrim);
+    c->modal_scrim = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+  }
 
 
   const char *sh = kdl_arg(kdl_child(root, "shell"), 0, NULL);
@@ -719,6 +736,12 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         {"finder_sel_fg", &c->finder_sel_fg},
         {"finder_sel_bg", &c->finder_sel_bg},
         {"bell", &c->bell},
+        {"modal_fg", &c->modal_fg},
+        {"modal_bg", &c->modal_bg},
+        {"modal_border", &c->modal_border},
+        {"modal_title", &c->modal_title},
+        {"modal_button", &c->modal_button},
+        {"modal_button_hover", &c->modal_button_hover},
         {"dead", &c->dead},
         {"hint", &c->hint},
         {"minbar", &c->minbar},
