@@ -101,17 +101,25 @@ min_mark "_"
 // the border became the button. Try "[+]" or "new" if you prefer a word.
 newtab_mark "+"
 
-// A pane whose program exits stays where it is, keeping everything it
-// printed, with a line in its own backlog saying why it ended and two buttons
-// in its frame: [re-run] to run the same command again in the same pane and
-// on top of the same scrollback, and [close] to let it go. `sl0ppty` closes
-// with the last pane, so a session no longer disappears the instant the shell
-// in it exits.
+// Which dead panes stay, and which just go.
 //
-// false is the old behaviour: the pane is closed on the next paint, and with
-// the last pane the session. That suits a one-shot layout, and costs you the
-// last thing a failing command printed.
-keep_dead true
+//   commands   panes that were *given* a command -- from a layout, or the
+//              control API. Default. Their death is news: the pane keeps what
+//              it printed, says in its own backlog why it ended, and offers
+//              [re-run] and [close] in its frame.
+//   all        shells too. A pane you split off and typed `exit` in stays
+//              until you dismiss it.
+//   none       nothing stays; the pane is closed on the next paint, and with
+//              the last pane, the session.
+//
+// The line is the command, not who made the pane: a shell is a shell whether
+// it came from a layout or from C-a \, and when you type `exit` in one you
+// are done with it. A pane running `npm run dev` is a different thing -- you
+// want the error it left, and the button that runs it again.
+//
+// (`true` and `false` are still read, as `all` and `none`, because they used
+// to be the spelling.)
+keep_dead "commands"
 
 // How far the panes you are *not* in are pushed back, 0..255, and 0 for not
 // at all. On by default and gently: at 60 white text lands on #c3c3c3, which

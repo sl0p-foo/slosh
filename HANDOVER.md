@@ -98,6 +98,12 @@ so a script written against one works against the other.
 
 ## Dead panes (D14), and what it changed
 
+Since the first version: **only panes that were given a command keep their
+corpse.** The distinguishing mark is `pane_label()`, which already held the
+command a layout gave it and is empty for a plain shell -- so the rule needed
+no new state, only a policy. `keep_dead` is `commands` (default), `all` or
+`none`.
+
 A pane now outlives its program: it keeps its contents, writes
 `[process exited: status 3]` into its own backlog, and offers `[re-run]` and
 `[close]` in its bottom frame row. Three things about it are worth knowing

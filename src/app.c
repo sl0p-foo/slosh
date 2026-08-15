@@ -1444,18 +1444,30 @@ struct reap {
   app_t *a;
   node_t *dead;
 };
-static void reap_cb(node_t *n, void *ud) {
-  struct reap *r = ud;
-  if (!r->dead && !pane_alive(n->pane)) r->dead = n;
+/* Does this pane's corpse stay? The label is the command it was given, and is
+ * empty for a pane that is just a shell -- which is the whole distinction, and
+ * it happens to already be recorded. */
+static bool keep_corpse(const pane_t *p) {
+  switch (CFG.keep_dead) {
+    case KEEP_DEAD_ALL: return true;
+    case KEEP_DEAD_NONE: return false;
+    default: return pane_label(p)[0] != 0;
+  }
 }
 
-/* Closing a pane whose program exited is a *policy*, not bookkeeping — which
- * is the whole of this feature. By default a dead pane stays: it keeps what
- * it printed, says why it is over, and offers to run the command again. Under
- * `keep_dead false` this reverts to the old behaviour and the pane goes. */
+static void reap_cb(node_t *n, void *ud) {
+  struct reap *r = ud;
+  if (!r->dead && !pane_alive(n->pane) && !keep_corpse(n->pane)) r->dead = n;
+}
+
+/* Closing a pane whose program exited is a *policy*, not bookkeeping.
+ *
+ * A pane that was given a command keeps its corpse: the error is worth
+ * reading and [re-run] is worth having. A pane that is a shell goes when you
+ * type `exit`, because that is what typing `exit` means. `keep_dead` moves
+ * the line either way. */
 void app_reap(app_t *a) {
   ensure_config();
-  if (CFG.keep_dead) return;
   for (;;) {
     struct reap r = {a, NULL};
     walk_all(a, reap_cb, &r);

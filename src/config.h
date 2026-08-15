@@ -119,13 +119,21 @@ typedef struct {
    * terminals while chrome here is booked as one — so the default is narrow
    * and anyone who knows their terminal can say otherwise. */
   char bell_mark[16];
-  /* A pane whose program exits stays, showing what it printed and offering to
-   * run it again, until it is closed. Off restores the old behaviour: the
-   * pane vanishes on the next paint, and with the last pane so does the
-   * session. That is a real choice — a one-shot layout wants it — but it is
-   * not the default, because a pane that disappears takes its own error
-   * message with it. */
-  bool keep_dead;
+  /* Which dead panes stay, showing what they printed and offering to run
+   * again, and which just go.
+   *
+   * The line is whether the pane was given a *command*. A pane told to run
+   * `npm run dev` is part of the session's shape and its death is news: you
+   * want the error, and you want the button that runs it again. A pane that
+   * is a shell -- one you split off to do something in -- is finished when
+   * you type `exit`, and leaving its corpse on screen to be dismissed is
+   * exactly the fussiness a terminal should not have.
+   *
+   * Not *who made it*: a shell is a shell whether it came from a layout file
+   * or from C-a \. That also means a session restored from dump-layout
+   * behaves like the one it was dumped from, since the dump writes `command=`
+   * only for panes that had one. */
+  enum { KEEP_DEAD_NONE, KEEP_DEAD_COMMANDS, KEEP_DEAD_ALL } keep_dead;
   uint16_t min_pane_cols, min_pane_rows;
   /* The smallest pane a split is allowed to *produce*. min_pane is the point
    * below which the layout gives up and collapses a pane; this is the point

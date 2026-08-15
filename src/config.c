@@ -234,7 +234,7 @@ void config_defaults(config_t *c) {
   snprintf(c->newtab_mark, sizeof c->newtab_mark, "+");
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
-  c->keep_dead = true;
+  c->keep_dead = KEEP_DEAD_COMMANDS;
   /* Gentle: an unfocused pane is one you are still reading half the time.
    * At 60 white text lands on #c3c3c3, which reads as "not this one" without
    * reading as "not available". */
@@ -654,7 +654,21 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   if (mm) snprintf(c->min_mark, sizeof c->min_mark, "%s", mm);
   const char *nt = kdl_arg(kdl_child(root, "newtab_mark"), 0, NULL);
   if (nt) snprintf(c->newtab_mark, sizeof c->newtab_mark, "%s", nt);
-  c->keep_dead = kdl_arg_bool(kdl_child(root, "keep_dead"), 0, c->keep_dead);
+  {
+    /* `commands` (the default), `all`, or `none`. `true`/`false` are taken as
+     * `all`/`none`, because that is what they used to mean here and a config
+     * that still says so should keep working rather than silently changing
+     * behaviour. */
+    const char *kd = kdl_arg(kdl_child(root, "keep_dead"), 0, NULL);
+    if (kd) {
+      if (!strcmp(kd, "all") || !strcmp(kd, "true")) c->keep_dead = KEEP_DEAD_ALL;
+      else if (!strcmp(kd, "none") || !strcmp(kd, "false"))
+        c->keep_dead = KEEP_DEAD_NONE;
+      else if (!strcmp(kd, "commands")) c->keep_dead = KEEP_DEAD_COMMANDS;
+      else if (err && !err[0])
+        snprintf(err, errcap, "keep_dead: %s (want commands, all or none)", kd);
+    }
+  }
   {
     long v = kdl_arg_int(kdl_child(root, "dim_unfocused"), 0, c->dim_unfocused);
     c->dim_unfocused = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);

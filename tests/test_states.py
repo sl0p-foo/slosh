@@ -44,11 +44,18 @@ def fg(snap, pane, row=0, col=0):
 
 
 def test_a_dead_pane_is_coloured_by_default():
-    with Session(["/bin/sh", "-c", 'printf "\\033]2;p\\007"; echo DONE; exit 3'],
-                 cols=50, rows=10, config=cfg()) as s:
+    # A *commanded* pane: only those keep their corpse by default, which is
+    # the only kind there is to colour.
+    lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    lay.write('layout {\n  tab {\n'
+              '    pane command="printf \'\\\\033]2;p\\\\007\'; echo DONE; exit 3"\n'
+              '  }\n}\n')
+    lay.close()
+    with Session(SH, cols=50, rows=10, config=cfg(), layout=lay.name) as s:
         snap = s.until_text("[process exited")
         check("its contents are not left looking live",
               fg(snap, s.pane()) not in (None, "#ffffff"), str(fg(snap, s.pane())))
+    os.unlink(lay.name)
 
 
 def test_a_suspended_pane_is_coloured_by_default():

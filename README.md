@@ -97,10 +97,12 @@ yours; the cheatsheet lists them apart, under "without the leader", so the
 - Click a tab to switch, `+` to open one, a pane to focus it.
 - Hovering anything says what it does, in a word at the bottom of the screen.
 
-### Panes do not vanish when a command ends
+### Panes that were given a command do not vanish when it ends
 
-When the program in a pane exits, the pane stays — with everything it printed
-still on screen, a line saying how it ended, and two buttons:
+Split off a shell, do something, type `exit`: it closes, like a terminal
+should. But a pane that was *told to run something* — from a layout file or
+the control API — keeps what it printed when that something exits, with a line
+saying how it ended and two buttons:
 
 ```
 ╰ exited: status 3 ───────────────────────────────[re-run]─[close]─╯
