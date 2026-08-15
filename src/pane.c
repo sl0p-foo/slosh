@@ -352,6 +352,8 @@ void pane_free(pane_t *p) {
 }
 
 int pane_fd(const pane_t *p) { return p->pty.fd; }
+pid_t pane_pid(const pane_t *p) { return p->pty.pid; }
+const char *pane_start_cwd(const pane_t *p) { return p->cwd; }
 bool pane_alive(const pane_t *p) { return p->alive; }
 bool pane_dirty(pane_t *p) { return p->dirty; }
 const char *pane_title(const pane_t *p) {

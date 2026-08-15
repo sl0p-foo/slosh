@@ -255,6 +255,27 @@ code:
 The cheatsheet lists them in their own section, because the caption at the top
 says "<prefix> then:" and these are exactly the ones that is not true of.
 
+## Restarting into the same screen
+
+`dump-layout` is the inverse of `--layout`, and `contrib/sl0ppty-dev` is the
+loop that uses it: dump, quit, come back on the new binary with the same
+shape. Three things it got wrong first, all of the same kind -- a dump that
+loads without complaint and rebuilds something subtly different:
+
+- **`split=` belongs on the node that has the children**, not on the children.
+  Written the other way it parses fine and gives you the wrong tree.
+- **a split node's weight was not being restored**, because the edit that was
+  supposed to read it never applied -- a string replacement that silently
+  matched nothing. The round-trip test caught it; nothing else would have.
+- **`active=true` pointed at the wrong tab.** The index is recorded while the
+  new tabs sit *after* the old ones, and `replace` then moves them to the
+  front, so it has to shift by the number dropped. Off by that, the restore
+  looks like it half-works.
+
+The test that matters is the round trip, and specifically that a dump of a
+reload is byte-identical to the first dump. Anything the dumper loses shows up
+there immediately, where "does it look right" would not.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.
@@ -272,6 +293,9 @@ says "<prefix> then:" and these are exactly the ones that is not true of.
   something you are looking at; less fine once you have six of them put away.
 - **Nothing re-runs a whole tab**, which is the obvious next want once one
   pane can be re-run.
+- **A dump does not record minimised or zoomed panes.** Both are intent and
+  both would restore cleanly; they were left out because the layout parser
+  has no word for either yet.
 - **Shader plugins cannot be replaced without a new session** (D15): loading
   is additive on purpose, because a `shade_fn` may be live in a config or on a
   pane. Hot-swapping would need every shader reference to be indirected

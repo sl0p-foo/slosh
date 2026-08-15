@@ -126,6 +126,14 @@ bool app_shade_add(app_t *a, uint32_t pane_id, const char *kind, color_t color,
 void app_shade_clear(app_t *a, uint32_t pane_id);
 size_t app_shade_count(app_t *a, uint32_t pane_id);
 
+/* The session written back out as a layout file: tabs, splits, proportions,
+ * directories and commands. The inverse of app_apply_layout_text(), and what
+ * makes "quit, rebuild, come back to the same screen" possible. Caller frees.
+ *
+ * The shape is restorable; what is running inside a program is not, and this
+ * does not pretend otherwise. */
+char *app_dump_layout(app_t *a);
+
 /* State as JSON, for the control API and the harness. Caller frees. */
 char *app_panes_json(app_t *a);
 char *app_tabs_json(app_t *a);

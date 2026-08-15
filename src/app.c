@@ -4,6 +4,7 @@
 
 #include <ghostty/vt.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include <time.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -276,6 +277,13 @@ struct app {
   int64_t name_click_ms;
   uint32_t name_click_id;
   int name_click_kind;
+  /* Set while a layout is being built, by a `focus=true` pane, and consumed
+   * by the tab that contains it: focus belongs to a tab, and the tab does not
+   * exist yet when the pane declaring it is made. */
+  node_t *restore_focus;
+  /* Which tab a layout said was active, resolved after every tab exists --
+   * the index is only meaningful once the array has stopped growing. */
+  size_t restore_tab;
   const char *const *argv;
   /* What this session is called. The server knows it because it opened the
    * socket under that name; the app only knows it because it is worth saying
@@ -1699,7 +1707,10 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
     node_t *sp = calloc(1, sizeof *sp);
     sp->kind = NODE_SPLIT;
     sp->id = ++a->next_id;
-    sp->weight = WEIGHT_UNIT;
+    /* A dumped layout carries the proportions it had; a hand-written one says
+     * nothing and means "even", which is what WEIGHT_UNIT is. */
+    sp->weight = (int)kdl_prop_int(node, "weight", WEIGHT_UNIT);
+    if (sp->weight < WEIGHT_MIN) sp->weight = WEIGHT_UNIT;
     sp->dir = strcmp(kdl_prop(node, "split", "cols"), "rows") == 0 ? SPLIT_ROWS
                                                                    : SPLIT_COLS;
     for (size_t i = 0; i < node->nkids; i++) {
@@ -1741,6 +1752,11 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
   node_t *leaf = leaf_new_ex(a, command ? argv : a->argv, node_cwd, suspended,
                              command ? command : "");
   if (!leaf) return NULL;
+  leaf->weight = (int)kdl_prop_int(node, "weight", WEIGHT_UNIT);
+  if (leaf->weight < WEIGHT_MIN) leaf->weight = WEIGHT_UNIT;
+  /* `focus=true` restores which pane you were in. Recorded on the node and
+   * resolved once the tab exists, because focus belongs to the tab. */
+  if (kdl_prop_bool(node, "focus", false)) a->restore_focus = leaf;
   const char *purpose = kdl_prop(node, "purpose", NULL);
   if (purpose) {
     sanitise_purpose(purpose, leaf->purpose, sizeof leaf->purpose);
@@ -1751,6 +1767,7 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
 
 bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
                       size_t errcap) {
+  a->restore_tab = (size_t)-1;
   const kdl_node_t *lay = kdl_child(root, "layout");
   if (!lay) lay = root; /* allow a bare list of tabs */
 
@@ -1761,6 +1778,7 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
     if (strcmp(t->name, "tab") != 0) continue;
 
     tab_t *tab = tab_add(a, kdl_prop(t, "name", ""));
+    bool active = kdl_prop_bool(t, "active", false);
     const char *purpose = kdl_prop(t, "purpose", NULL);
     if (purpose) {
       sanitise_purpose(purpose, tab->purpose, sizeof tab->purpose);
@@ -1779,7 +1797,11 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
       return false;
     }
     tab->root = tree;
-    tab->focus = first_leaf_of(tree);
+    tab->focus = a->restore_focus ? a->restore_focus : first_leaf_of(tree);
+    a->restore_focus = NULL;
+    /* `active=true` restores which tab you were looking at. Resolved by index
+     * because the tab was appended to whatever was already there. */
+    if (active) a->restore_tab = (size_t)(tab - a->tabs);
     made++;
   }
 
@@ -1793,7 +1815,21 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
     memmove(&a->tabs[0], &a->tabs[before], made * sizeof *a->tabs);
     a->ntabs = made;
   }
-  a->cur = replace ? 0 : before;
+  /* Which tab to land on: the one a dump marked `active`, if it named one,
+   * and otherwise the first of what was just built. Setting it unconditionally
+   * here is what quietly undid the restore.
+   *
+   * The index was recorded while the new tabs sat *after* the old ones, and
+   * `replace` has just moved them to the front -- so it shifts by exactly the
+   * number that were dropped. Off by that, it lands on the wrong tab, which
+   * looks like the restore working badly rather than not at all. */
+  if (a->restore_tab != (size_t)-1 && replace && a->restore_tab >= before)
+    a->restore_tab -= before;
+  if (a->restore_tab != (size_t)-1 && a->restore_tab < a->ntabs)
+    a->cur = a->restore_tab;
+  else
+    a->cur = replace ? 0 : before;
+  a->restore_tab = (size_t)-1;
   layout(a);
   return true;
 }
@@ -4171,6 +4207,132 @@ void app_event(app_t *a, const input_event_t *ev) {
     default:
       break;
   }
+}
+
+
+/* ---- dumping a session back out as a layout ------------------------------
+ *
+ * The inverse of apply-layout, and the thing that makes a restart survivable:
+ * build a fresh binary, dump what you have, quit, come back with `--layout`.
+ * contrib/sl0ppty-dev wraps exactly that.
+ *
+ * What can honestly be restored is the *shape*: tabs, their names and
+ * purposes, how the panes are split, in what proportion, in which directory,
+ * running what they were started with. What cannot is the state inside a
+ * program -- a shell's history, a running vim -- and this does not pretend
+ * otherwise. A pane running the session's default shell is dumped as a pane
+ * with no command, so it comes back as a shell rather than as a re-run of one.
+ */
+
+typedef struct {
+  char *buf;
+  size_t len, cap;
+} strbuf_t;
+
+static void sb_add(strbuf_t *b, const char *fmt, ...) {
+  va_list ap;
+  for (;;) {
+    va_start(ap, fmt);
+    int n = vsnprintf(b->buf + b->len, b->cap - b->len, fmt, ap);
+    va_end(ap);
+    if (n < 0) return;
+    if ((size_t)n < b->cap - b->len) {
+      b->len += (size_t)n;
+      return;
+    }
+    b->cap = b->cap ? b->cap * 2 : 1024;
+    while (b->cap - b->len <= (size_t)n) b->cap *= 2;
+    b->buf = realloc(b->buf, b->cap);
+  }
+}
+
+/* KDL strings are double-quoted, so the two characters that end or escape one
+ * have to be escaped themselves. A path can contain both. */
+static void sb_quoted(strbuf_t *b, const char *key, const char *val) {
+  if (!val || !*val) return;
+  sb_add(b, " %s=\"", key);
+  for (const char *p = val; *p; p++) {
+    if (*p == '"' || *p == '\\') sb_add(b, "\\%c", *p);
+    else if ((unsigned char)*p >= 0x20) sb_add(b, "%c", *p);
+  }
+  sb_add(b, "\"");
+}
+
+/* Where the program in the pane is *now*, which after any amount of `cd` is
+ * not where it was started. The kernel knows; nothing else does. */
+static const char *live_cwd(const pane_t *p, char *buf, size_t cap) {
+  pid_t pid = pane_pid(p);
+  if (pid > 0) {
+    char link[64];
+    snprintf(link, sizeof link, "/proc/%d/cwd", (int)pid);
+    ssize_t n = readlink(link, buf, cap - 1);
+    if (n > 0) {
+      buf[n] = 0;
+      return buf;
+    }
+  }
+  return pane_start_cwd(p); /* not running, or not Linux: what it was given */
+}
+
+/* `split=` belongs on the node that *has* the children -- that is where
+ * build_pane() reads it -- and a tab's own props are the props of its root,
+ * so a root split says so on the tab. Getting this backwards produces a file
+ * that loads without complaint and rebuilds the wrong tree. */
+static void dump_node(app_t *a, node_t *n, strbuf_t *b, int depth) {
+  char pad[64];
+  int p = depth * 4 < 60 ? depth * 4 : 60;
+  memset(pad, ' ', (size_t)p);
+  pad[p] = 0;
+
+  sb_add(b, "%spane", pad);
+  /* A weight is a share of the parent, so the root of a tab has none. */
+  if (n->parent) sb_add(b, " weight=%d", n->weight);
+
+  if (n->kind == NODE_SPLIT) {
+    sb_add(b, " split=\"%s\" {\n", n->dir == SPLIT_ROWS ? "rows" : "cols");
+    for (size_t i = 0; i < n->nkids; i++) dump_node(a, n->kids[i], b, depth + 1);
+    sb_add(b, "%s}\n", pad);
+    return;
+  }
+
+  char cwdbuf[4096];
+  sb_quoted(b, "cwd", live_cwd(n->pane, cwdbuf, sizeof cwdbuf));
+  /* The label is the command a layout gave it; a pane running the session's
+   * default shell has none, and gets none back. */
+  sb_quoted(b, "command", pane_label(n->pane));
+  sb_quoted(b, "purpose", n->purpose);
+  if (pane_suspended(n->pane)) sb_add(b, " suspended=true");
+  if (n == cur(a)->focus) sb_add(b, " focus=true");
+  sb_add(b, "\n");
+}
+
+char *app_dump_layout(app_t *a) {
+  strbuf_t b = {0};
+  sb_add(&b, "// sl0ppty session, dumped %s", "");
+  b.len = 0; /* no timestamp: a layout that differs every time is a bad diff */
+  sb_add(&b, "layout {\n");
+  for (size_t i = 0; i < a->ntabs; i++) {
+    tab_t *t = &a->tabs[i];
+    sb_add(&b, "    tab");
+    sb_quoted(&b, "name", t->name);
+    sb_quoted(&b, "purpose", t->purpose);
+    if (i == a->cur) sb_add(&b, " active=true");
+    /* The tab's props are its root's props, so a root that is a split says
+     * which way it goes here rather than on a `pane` node of its own. */
+    if (t->root && t->root->kind == NODE_SPLIT)
+      sb_add(&b, " split=\"%s\"", t->root->dir == SPLIT_ROWS ? "rows" : "cols");
+    sb_add(&b, " {\n");
+    if (t->root) {
+      if (t->root->kind == NODE_SPLIT)
+        for (size_t k = 0; k < t->root->nkids; k++)
+          dump_node(a, t->root->kids[k], &b, 2);
+      else
+        dump_node(a, t->root, &b, 2);
+    }
+    sb_add(&b, "    }\n");
+  }
+  sb_add(&b, "}\n");
+  return b.buf;
 }
 
 /* ---- introspection ------------------------------------------------------ */

@@ -219,6 +219,11 @@ layout {
 sl0ppty --layout session.kdl
 ```
 
+`{"cmd":"dump-layout"}` writes one back out — tabs, splits, proportions,
+directories, which pane you were in — so a session can be checked in, or put
+back after a restart. [`contrib/sl0ppty-dev`](contrib/sl0ppty-dev) is that
+loop, for when the thing you are rebuilding is sl0ppty itself.
+
 `suspended` panes are laid out but run nothing until you touch them, so twelve
 checked-out projects are not twelve running dev servers. Panes and tabs can
 also carry a `purpose=` label for tooling to find them by, which a program

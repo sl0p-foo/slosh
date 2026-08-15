@@ -120,6 +120,12 @@ pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
                     const char *cwd, bool suspended, const char *label);
 bool pane_suspended(const pane_t *p);
 const char *pane_label(const pane_t *p);
+/* The pid of the program in the pane, or -1. Used to ask the kernel where a
+ * shell has got to, which is the only honest answer to "what is this pane's
+ * directory" once somebody has typed `cd`. */
+pid_t pane_pid(const pane_t *p);
+/* Where it was started, which is not where it *is*: see pane_pid(). */
+const char *pane_start_cwd(const pane_t *p);
 bool pane_start(pane_t *p);
 void pane_free(pane_t *p);
 int pane_fd(const pane_t *p);

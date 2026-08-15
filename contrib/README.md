@@ -34,6 +34,33 @@ It works by writing the theme over the file the session was started with and
 letting the config watcher notice, which is also a fair demonstration of the
 watcher.
 
+## sl0ppty-dev
+
+For working *on* sl0ppty: build a new binary and pick it up without losing
+your screen.
+
+```sh
+contrib/sl0ppty-dev              # start, or reattach to, the dev session
+contrib/sl0ppty-dev restart      # from inside it, after a build
+```
+
+A running session keeps the binary it started with — `reload` re-reads the
+config, it cannot re-read the code — so a new build needs a new server. The
+only thing worth carrying across is the layout, and sl0ppty can write its own:
+`{"cmd":"dump-layout"}` is the inverse of `--layout`, so `restart` dumps,
+quits, and the loop outside comes back with the same tabs, splits,
+proportions, directories, and the same tab and pane focused.
+
+What it cannot bring back is what was running *inside* a program. A shell
+comes back as a shell, in the right directory, with an empty history. That is
+the honest limit of restoring a layout rather than a session, and the script
+says so rather than pretending.
+
+`restart` has to be two halves for a reason worth knowing: it runs inside the
+session, so it cannot do the restarting — the moment the session ends, so does
+the shell it was typed in. It leaves the layout and a note; the loop, which is
+outside, picks both up.
+
 ## shaders/ and shader-tour
 
 Thirty-two ready-made shaders, one file each, generated from the presets in

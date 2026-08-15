@@ -199,6 +199,17 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                   : app_set_pane_purpose(a, id, purpose, declared);
     return ok ? jok_int(NULL, 0) : jerr("refused");
   }
+  if (strcmp(cmd, "dump-layout") == 0) {
+    char *kdl = app_dump_layout(a);
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_str(&j, "kdl", kdl, strlen(kdl));
+    json_obj_close(&j);
+    free(kdl);
+    return j.buf;
+  }
   if (strcmp(cmd, "apply-layout") == 0) {
     const char *path = jv_gets(req, "path", NULL);
     const char *text = jv_gets(req, "kdl", NULL);
@@ -326,6 +337,10 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
   if (strcmp(verb, "tabs") == 0) {
     app_compose(a, s);
     return app_tabs_json(a);
+  }
+  if (strcmp(verb, "dump-layout") == 0) {
+    app_compose(a, s); /* the layout is a function of the frame: compose first */
+    return app_dump_layout(a);
   }
   if (strcmp(verb, "reload") == 0) {
     char err[256] = {0};

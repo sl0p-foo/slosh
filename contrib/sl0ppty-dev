@@ -1,0 +1,59 @@
+#!/bin/sh
+# Run sl0ppty the way you want it while you are *working on* sl0ppty: build a
+# new binary, and pick it up without losing your screen.
+#
+#   contrib/sl0ppty-dev                start (or reattach to) the dev session
+#   contrib/sl0ppty-dev restart        from inside it: come back on the new build
+#   SESSION=work contrib/sl0ppty-dev   a different session name
+#
+# A running session keeps the binary it started with -- `reload` re-reads the
+# config, it cannot re-read the code -- so a new build needs a new server. The
+# only thing worth saving across that is the layout, and sl0ppty can write its
+# own: `dump-layout` is the inverse of `--layout`.
+#
+# So this is a loop. It attaches; when the session ends *because you asked it
+# to restart*, it rebuilds nothing, waits for nothing, and comes straight back
+# with the layout you had -- same tabs, same splits, same proportions, same
+# directories, same tab and pane focused. What it cannot bring back is what
+# was running inside a program: a shell comes back as a shell, in the right
+# directory, with an empty history.
+set -e
+
+here=$(cd "$(dirname "$0")" && pwd)
+bin="$here/../build/sl0ppty"
+SESSION=${SESSION:-dev}
+state="${XDG_RUNTIME_DIR:-/tmp}/sl0ppty-dev-$SESSION"
+layout="$state/layout.kdl"
+flag="$state/restart"
+mkdir -p "$state"
+
+# `restart` runs *inside* the session, so it cannot do the restarting: the
+# moment the session ends, so does the shell it was typed in. It leaves the
+# layout and a note, and the loop below -- which is outside -- picks both up.
+if [ "$1" = "restart" ]; then
+  [ -n "$SL0PPTY" ] || { echo "sl0ppty-dev restart: run this inside the session"; exit 1; }
+  "$bin" -s "$SESSION" cmd '{"cmd":"dump-layout"}' \
+    | sed -n 's/.*"kdl":"\(.*\)"}/\1/p' \
+    | sed -e 's/\\n/\n/g' -e 's/\\"/"/g' -e 's/\\\\/\\/g' > "$layout"
+  [ -s "$layout" ] || { echo "sl0ppty-dev restart: could not dump the layout"; exit 1; }
+  : > "$flag"
+  "$bin" -s "$SESSION" cmd '{"cmd":"quit"}' >/dev/null
+  exit 0
+fi
+
+# Anything else is the loop.
+while :; do
+  if [ -s "$layout" ]; then
+    "$bin" -s "$SESSION" --layout "$layout" -- "${SHELL:-/bin/sh}" || true
+  else
+    "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" || true
+  fi
+
+  # Detached, quit, or the last pane closed: all of those are you leaving. Only
+  # the flag means "put it back".
+  [ -f "$flag" ] || break
+  rm -f "$flag"
+  printf '\033[2J\033[H'
+  echo "restarting $SESSION on $(cd "$here/.." && git rev-parse --short HEAD 2>/dev/null || echo 'the new build')..."
+  sleep 0.2
+done
