@@ -235,12 +235,108 @@ const char *pane_state_name(pane_state_t s) {
   return s < PSTATE_COUNT ? PSTATE_NAMES[s] : "";
 }
 
-/* Reads the children of `node` as shader chains: the ones that run over a
- * pane's contents and the ones that run over its frame, routed by each entry's
- * `where` (default "content"). One parser, because a chrome pass is not a
- * different kind of shader — it is the same chain run over a different rect,
- * and a second parser would be a second place for `amount` to mean something
- * slightly else. Counts are set, not added to: naming a block replaces it. */
+/* One shader entry -- `dim amount=90 where="chrome" channel="fg"` -- into a
+ * shader_t, whatever is asking. The config asks about the children of a
+ * `shaders` block; a pane asks about a line a program sent it in-band. Same
+ * function, because "what does this entry mean" has to have one answer: a
+ * second parser is a second place for `amount` to drift.
+ *
+ * `*expr` comes back set when the entry compiled an expression, and belongs to
+ * the caller: the config owns the ones a file produced, and a pane owns the ones
+ * it was sent, because those live exactly as long as that pane's chain. `why`
+ * gets a reason when the entry cannot be honoured, and the entry is dropped
+ * rather than run at some guessed strength. */
+static bool parse_shader_entry(const kdl_node_t *k, color_t default_color,
+                               bool default_chrome, bool *on_chrome,
+                               shader_t *out,
+                               expr_prog_t **expr, char *why, size_t whycap) {
+  *expr = NULL;
+
+  /* Where this pass runs. Dropped rather than defaulted when the word is not
+   * one we know, for the same reason a bad `amount` is: the entry says what it
+   * wants and we cannot do it, and running it over the contents because "chrom"
+   * was a typo would be a surprise nobody asked for. */
+  const char *where = kdl_prop(k, "where", default_chrome ? "chrome" : "content");
+  *on_chrome = strcmp(where, "chrome") == 0;
+  if (!*on_chrome && strcmp(where, "content") != 0) {
+    snprintf(why, whycap, "bad where for %s: %s (content or chrome)", k->name,
+             where);
+    return false;
+  }
+
+  /* Which of the cell's two colours it may touch. `fg` is what a *border* flash
+   * wants: a frame's background is usually the terminal's own default, and
+   * mixing that towards a colour turns a recoloured glyph into a painted
+   * rectangle. Refused the same way a bad `where` is, and for the same reason. */
+  const char *chan = kdl_prop(k, "channel", "both");
+  uint8_t channels = SHADE_BOTH;
+  if (strcmp(chan, "fg") == 0) channels = SHADE_FG;
+  else if (strcmp(chan, "bg") == 0) channels = SHADE_BG;
+  else if (strcmp(chan, "both") != 0) {
+    snprintf(why, whycap, "bad channel for %s: %s (fg, bg or both)", k->name,
+             chan);
+    return false;
+  }
+
+  /* `amount` is a number, or an expression that produces one per cell. Same key
+   * either way: `amount=90` and `amount="(y % 2) * 40"` are the same idea, one
+   * of them constant, and the compiler folds a constant expression back to a
+   * number so nothing downstream can tell. */
+  expr_prog_t *aexpr = NULL;
+  long amount = 128;
+  const char *as = kdl_prop(k, "amount", NULL);
+  if (as) {
+    char *endp = NULL;
+    long v = strtol(as, &endp, 10);
+    while (endp && (*endp == ' ' || *endp == '\t')) endp++;
+    if (endp && !*endp) {
+      amount = v;
+    } else {
+      char eerr[128] = {0};
+      aexpr = expr_compile(as, eerr, sizeof eerr);
+      if (!aexpr) {
+        /* Dropped, not run at its default strength: an expression that did not
+         * compile leaves the strength *unknown*, and half-dimming a pane is a
+         * worse answer to that than doing nothing and saying why. */
+        snprintf(why, whycap, "bad amount for %s: %s", k->name, eerr);
+        return false;
+      }
+    }
+  }
+  if (amount < 0) amount = 0;
+  if (amount > 255) amount = 255;
+
+  /* Every shader that takes a number calls it something different, so accept
+   * each name rather than making you remember which belongs to which. */
+  long param = kdl_prop_int(k, "at", -1);
+  if (param < 0) param = kdl_prop_int(k, "radius", -1);
+  if (param < 0) param = kdl_prop_int(k, "band", -1);
+  if (param < 0) param = kdl_prop_int(k, "direction", -1);
+  if (param < 0) param = 0;
+  if (param > 65535) param = 65535;
+
+  color_t col = default_color; /* a sensible default for `ruler` */
+  const char *cs = kdl_prop(k, "color", NULL);
+  bool bad_colour = cs && !parse_color(cs, &col);
+
+  if (!shader_make_p(out, k->name, col, (uint8_t)amount, (uint16_t)param)) {
+    snprintf(why, whycap, "unknown shader: %s", k->name);
+    expr_free(aexpr);
+    return false;
+  }
+  out->channels = channels;
+  out->amount_expr = aexpr;
+  *expr = aexpr;
+  /* A bad colour is worth saying and not worth dropping the pass over: the
+   * shader runs at the default colour, which is visible, rather than not at
+   * all, which is not. */
+  if (bad_colour) snprintf(why, whycap, "bad colour for shader %s: %s", k->name, cs);
+  return true;
+}
+
+/* Reads the children of `node` as shader chains: the ones that run over a pane's
+ * contents and the ones that run over its frame, routed by each entry's `where`.
+ * Counts are set, not added to: naming a block replaces it. */
 static void parse_shader_list(config_t *c, const kdl_node_t *node,
                               shader_t *content, size_t *ncontent,
                               shader_t *chrome, size_t *nchrome, char *err,
@@ -251,94 +347,78 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
     const kdl_node_t *k = node->kids[i];
     if (!k || !k->name) continue;
 
-    /* Where this pass runs. Dropped rather than defaulted when the word is not
-     * one we know, for the same reason a bad `amount` is: the entry says what
-     * it wants and we cannot do it, and running it over the contents because
-     * "chrom" was a typo would be a surprise nobody asked for. */
-    const char *where = kdl_prop(k, "where", "content");
-    bool on_chrome = strcmp(where, "chrome") == 0;
-    if (!on_chrome && strcmp(where, "content") != 0) {
-      complain(c, err, errcap, k->line,
-               "bad where for %s: %s (content or chrome)", k->name, where);
-      continue;
-    }
+    bool on_chrome = false;
+    shader_t made;
+    expr_prog_t *aexpr = NULL;
+    char why[160] = {0};
+    bool ok = parse_shader_entry(k, c->frame_focus, false, &on_chrome, &made,
+                                 &aexpr, why, sizeof why);
+    if (why[0]) complain(c, err, errcap, k->line, "%s", why);
+    if (!ok) continue;
+
     shader_t *out = on_chrome ? chrome : content;
     size_t *n = on_chrome ? nchrome : ncontent;
-    if (*n >= SHADE_MAX) continue;
-
-    /* Which of the cell's two colours it may touch. `fg` is what a *border*
-     * flash wants: a frame's background is usually the terminal's own default,
-     * and mixing that towards a colour turns a recoloured glyph into a painted
-     * rectangle. Refused the same way a bad `where` is, and for the same
-     * reason. */
-    const char *chan = kdl_prop(k, "channel", "both");
-    uint8_t channels = SHADE_BOTH;
-    if (strcmp(chan, "fg") == 0) channels = SHADE_FG;
-    else if (strcmp(chan, "bg") == 0) channels = SHADE_BG;
-    else if (strcmp(chan, "both") != 0) {
-      complain(c, err, errcap, k->line,
-               "bad channel for %s: %s (fg, bg or both)", k->name, chan);
-      continue;
-    }
-
-    /* `amount` is a number, or an expression that produces one per cell.
-     * Same key either way: `amount=90` and `amount="(y % 2) * 40"` are the
-     * same idea, one of them constant, and the compiler folds a constant
-     * expression back to a number so nothing downstream can tell. */
-    expr_prog_t *aexpr = NULL;
-    long amount = 128;
-    const char *as = kdl_prop(k, "amount", NULL);
-    if (as) {
-      char *end = NULL;
-      long v = strtol(as, &end, 10);
-      while (end && (*end == ' ' || *end == '\t')) end++;
-      if (end && !*end) {
-        amount = v;
-      } else {
-        char eerr[128] = {0};
-        aexpr = expr_compile(as, eerr, sizeof eerr);
-        if (!aexpr) {
-          /* The shader is dropped, not run at its default strength: an
-           * expression that did not compile leaves the strength *unknown*,
-           * and half-dimming a pane is a worse answer to that than doing
-           * nothing and saying why. */
-          complain(c, err, errcap, k->line, "bad amount for %s: %s",
-                   k->name, eerr);
-          continue;
-        }
-      }
-    }
-    if (amount < 0) amount = 0;
-    if (amount > 255) amount = 255;
-    /* Every shader that takes a number calls it something different, so accept
-     * each name rather than making you remember which belongs to which. */
-    long param = kdl_prop_int(k, "at", -1);
-    if (param < 0) param = kdl_prop_int(k, "radius", -1);
-    if (param < 0) param = kdl_prop_int(k, "band", -1);
-    if (param < 0) param = kdl_prop_int(k, "direction", -1);
-    if (param < 0) param = 0;
-    if (param > 65535) param = 65535;
-
-    color_t col = c->frame_focus; /* a sensible default for `ruler` */
-    const char *cs = kdl_prop(k, "color", NULL);
-    if (cs && !parse_color(cs, &col))
-      complain(c, err, errcap, k->line, "bad colour for shader %s: %s",
-               k->name, cs);
-
-    shader_t *slot = &out[*n];
-    if (!shader_make_p(slot, k->name, col, (uint8_t)amount, (uint16_t)param)) {
-      complain(c, err, errcap, k->line, "unknown shader: %s", k->name);
+    if (*n >= SHADE_MAX) {
       expr_free(aexpr);
       continue;
     }
-    slot->channels = channels;
-    slot->amount_expr = aexpr;
+    out[(*n)++] = made;
     if (aexpr) {
       c->exprs = realloc(c->exprs, (c->nexprs + 1) * sizeof *c->exprs);
       c->exprs[c->nexprs++] = aexpr; /* the config owns every program */
     }
-    (*n)++;
   }
+}
+
+/* A chain from text, for whoever is not a config file: `dim amount=90` or
+ * `tint where="chrome" channel="fg" amount="(since<250)*255"`, several separated
+ * by `;` or newlines. The same entries a `shaders { }` block holds, parsed by
+ * the same function, so what you prototype in a pane is what you can paste into
+ * a config.
+ *
+ * Expressions come back in `exprs` for the caller to free. Returns how many
+ * shaders were understood; `err` gets the first reason one was not. */
+size_t config_parse_chain(const char *text, color_t default_color, bool chrome,
+                          shader_t *out, size_t max, expr_prog_t **exprs,
+                          size_t *nexprs, char *err, size_t errcap) {
+  *nexprs = 0;
+  if (err && errcap) err[0] = 0;
+  if (!text) return 0;
+
+  char perr[192] = {0};
+  kdl_node_t *root = kdl_parse(text, perr, sizeof perr);
+  if (!root) {
+    if (err && errcap) snprintf(err, errcap, "%s", perr[0] ? perr : "bad chain");
+    return 0;
+  }
+
+  size_t n = 0;
+  for (size_t i = 0; i < root->nkids && n < max; i++) {
+    const kdl_node_t *k = root->kids[i];
+    if (!k || !k->name) continue;
+    bool on_chrome = false;
+    shader_t made;
+    expr_prog_t *aexpr = NULL;
+    char why[160] = {0};
+    bool ok = parse_shader_entry(k, default_color, chrome, &on_chrome, &made,
+                                 &aexpr, why, sizeof why);
+    if (why[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", why);
+    if (!ok) continue;
+    /* One chain, one rect. The caller's rect is the *default*, so a line lifted
+     * out of a config still means what it meant there, and an explicit `where=`
+     * naming the other one is refused rather than quietly moved. */
+    if (on_chrome != chrome) {
+      if (err && errcap && !err[0])
+        snprintf(err, errcap, "%s: this chain is %s", k->name,
+                 chrome ? "chrome" : "content");
+      expr_free(aexpr);
+      continue;
+    }
+    out[n++] = made;
+    if (aexpr) exprs[(*nexprs)++] = aexpr;
+  }
+  kdl_free(root);
+  return n;
 }
 
 /* `direct` is part of the identity, not a property of it: `x` after the leader

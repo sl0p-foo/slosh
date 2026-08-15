@@ -373,6 +373,20 @@ void config_free(config_t *c);
  * was loaded, the rest are what it included. Returns how many were written. */
 size_t config_files(const config_t *c, const char **out, size_t max);
 
+/* One shader chain from text rather than from a file: the same entries a
+ * `shaders { }` block holds, separated by `;` or newlines. `chrome` says which
+ * rect the chain is for, and is the default an entry's `where=` starts from.
+ *
+ * Here because the parser belongs with the config -- a chain typed at a running
+ * pane and a chain in a config file have to mean the same thing, or prototyping
+ * teaches you something that then does not work. Compiled expressions come back
+ * in `exprs` (room for `max`) and belong to the caller, since a pane's chain
+ * outlives no load in particular. Returns how many shaders were understood,
+ * writing the first refusal to `err`. */
+size_t config_parse_chain(const char *text, color_t default_color, bool chrome,
+                          shader_t *out, size_t max, expr_prog_t **exprs,
+                          size_t *nexprs, char *err, size_t errcap);
+
 /* What a chord does after the leader. Direct bindings answer here too, so
  * pressing the leader first never makes a binding stop working. */
 action_t config_lookup(const config_t *c, int key, uint16_t mods);
