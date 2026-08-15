@@ -590,6 +590,7 @@ void config_defaults(config_t *c) {
    * than as another row of it. */
   c->status_pad = 4;
   c->focus_follows_mouse = true;
+  c->in_band_shaders = false;
 
   c->default_fg = rgb(0xff, 0xff, 0xff);
   c->default_bg = rgb(0x00, 0x00, 0x00);
@@ -1103,6 +1104,7 @@ char *config_render(const config_t *c) {
 
   cb_add(&b, "\n// ---- behaviour ----\n");
   cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
+  cb_add(&b, "in_band_shaders %s\n", yesno(c->in_band_shaders));
   cb_add(&b, "scroll_lines %u\n", c->scroll_lines);
   cb_add(&b, "toast_ms %u\n", c->toast_ms);
   cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
@@ -1413,6 +1415,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       (uint16_t)kdl_arg_int(kdl_child(root, "status_pad"), 0, c->status_pad);
   c->focus_follows_mouse = kdl_arg_bool(kdl_child(root, "focus_follows_mouse"), 0,
                                         c->focus_follows_mouse);
+  c->in_band_shaders = kdl_arg_bool(kdl_child(root, "in_band_shaders"), 0,
+                                    c->in_band_shaders);
 
   const char *align = kdl_arg(kdl_child(root, "title_align"), 0, NULL);
   if (align) {

@@ -233,6 +233,16 @@ typedef struct {
   uint16_t status_pad;
   bool focus_follows_mouse;
 
+  /* Whether the program running in a pane may set that pane's shader chains
+   * over OSC 5577. Off, because a program restyling the session it happens to
+   * be running in is a hazard and not a feature (D13) -- and on for anyone
+   * prototyping a chain, because the alternative is edit, save, look, and the
+   * whole point of a colour pass is that you can see it.
+   *
+   * Scoped to the pane that asked: it cannot touch another pane, the chrome
+   * outside itself, or anything the config said about everybody else. */
+  bool in_band_shaders;
+
   /* What a cell's "terminal default" colour resolves to when a shader has to
    * compute on it. We cannot know the client's real default, and most text is
    * default-coloured, so a shader would otherwise leave nearly everything

@@ -104,7 +104,7 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 |---|---|
 | geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
 | chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
-| behaviour | `focus_follows_mouse` `scroll_lines` `toast_ms` `hover_delay_ms` `double_click_ms` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `shell` `editor` `shader_dir` |
+| behaviour | `focus_follows_mouse` `scroll_lines` `toast_ms` `hover_delay_ms` `double_click_ms` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
 | colour | `theme { }` |
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |

@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""A prompt for prototyping shader chains, run inside the pane it repaints.
+
+    $ contrib/shader-repl
+    chrome> tint color="#ff5fd7" amount="abs(t / 8 % 510 - 255)"
+    ok
+    chrome> :paste
+
+The line you type is a chain in exactly the syntax `config.kdl` uses, sent to the
+session with OSC 5577 and applied to *this* pane. Nothing is written anywhere, so
+a chain you like has to be copied out -- which `:paste` does, in the form a config
+file wants.
+
+Needs `in_band_shaders true` in your config. Without it the session answers "off"
+rather than doing it, which is the answer this asks for: a program restyling the
+session it happens to be running in is a hazard, and prototyping is worth one line
+of consent (D13).
+
+Commands:
+    :chrome     aim the next chain at the frame (the default)
+    :content    aim it at the pane's contents
+    :clear      take this pane's chain away
+    :both       clear both chains
+    :paste      print what you have as a `shaders { }` block
+    :quit       leave (the chain stays until the pane closes)
+
+Python 3, standard library only.
+"""
+import os
+import select
+import sys
+import termios
+import time
+import tty
+
+OSC = "\033]5577;1;"
+ST = "\033\\"
+TIMEOUT = 2.0
+
+
+def send(payload):
+    sys.stdout.write(OSC + payload + ST)
+    sys.stdout.flush()
+
+
+def reply(fd, timeout=TIMEOUT):
+    """One answer, read raw off the terminal.
+
+    Replies carry no newline -- they are escape sequences, not lines -- so this
+    reads bytes until the terminator rather than calling readline() and hanging.
+    """
+    out = ""
+    deadline = time.monotonic() + timeout
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            break
+        out += os.read(fd, 256).decode("utf-8", "replace")
+        if out.endswith(ST) or out.endswith("\a"):
+            break
+    if OSC + "shader-reply;" not in out:
+        return None
+    body = out.split(OSC + "shader-reply;", 1)[1]
+    return body.rstrip(ST).rstrip("\a")
+
+
+def ask(fd, where, chain):
+    send("shader;%s;%s" % (where, chain))
+    answer = reply(fd)
+    if answer is None:
+        return ("no answer -- is this pane inside sl0ppty?", False)
+    if answer == "ok":
+        return ("ok", True)
+    return (answer.replace("error;", "", 1), False)
+
+
+def paste(chains):
+    """What a config file would say. Two `where=` entries rather than two blocks,
+    because one `shaders { }` holds both and that is the shape to copy."""
+    if not any(chains.values()):
+        return "shaders { }  // nothing set"
+    lines = ["shaders {"]
+    for where, chain in chains.items():
+        for entry in [e.strip() for e in chain.split(";") if e.strip()]:
+            if "where=" in entry:
+                lines.append("    %s" % entry)
+            else:
+                head, _, rest = entry.partition(" ")
+                lines.append('    %s where="%s"%s'
+                             % (head, where, (" " + rest) if rest else ""))
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def main():
+    if not sys.stdin.isatty():
+        sys.exit("shader-repl: needs a terminal (run it in a pane)")
+    fd = sys.stdin.fileno()
+    saved = termios.tcgetattr(fd)
+    where = "chrome"
+    chains = {"chrome": "", "content": ""}
+
+    print("shader-repl: a chain in config syntax, applied to this pane.")
+    print("  :chrome  :content  :clear  :both  :paste  :quit")
+    try:
+        while True:
+            try:
+                line = input("%s> " % where)
+            except EOFError:
+                break
+            line = line.strip()
+            if not line:
+                continue
+
+            if line in (":quit", ":q"):
+                break
+            if line in (":chrome", ":content"):
+                where = line[1:]
+                continue
+            if line == ":paste":
+                print(paste(chains))
+                continue
+            if line in (":clear", ":both"):
+                targets = ["chrome", "content"] if line == ":both" else [where]
+                for target in targets:
+                    tty.setraw(fd)
+                    try:
+                        msg, ok = ask(fd, target, "")
+                    finally:
+                        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+                    if ok:
+                        chains[target] = ""
+                    print("%s: %s" % (target, msg))
+                continue
+
+            # raw only around the exchange, so the prompt keeps its line editing
+            tty.setraw(fd)
+            try:
+                msg, ok = ask(fd, where, line)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+            if ok:
+                chains[where] = line
+            print(msg)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+
+if __name__ == "__main__":
+    main()

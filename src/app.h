@@ -137,14 +137,16 @@ bool app_edit_config(app_t *a);
 uint32_t app_focused_pane_id(app_t *a);
 uint32_t app_current_tab_id(app_t *a);
 
-/* Colour passes over a pane's contents (shader.h). Policy-only for now: these
- * are called from inside the app, not reachable over the control API or from
- * a program in a pane. False if the pane or the shader kind is unknown, or if
- * the pane already has SHADE_MAX of them. */
-bool app_shade_add(app_t *a, uint32_t pane_id, const char *kind, color_t color,
-                   uint8_t amount);
-void app_shade_clear(app_t *a, uint32_t pane_id);
-size_t app_shade_count(app_t *a, uint32_t pane_id);
+/* Colour passes over one pane (shader.h), set by the program running in it over
+ * OSC 5577 -- `chrome` picks the chain that runs over its frame rather than its
+ * contents, and empty text clears that chain.
+ *
+ * `text` is what a config's `shaders { }` block holds, one or more entries
+ * separated by `;` or newlines, so a chain you arrive at by prototyping is a
+ * chain you can paste. Refused with a reason in `err`: `in_band_shaders` off,
+ * no such pane, or a chain that does not read. */
+bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
+                          const char *text, char *err, size_t errcap);
 
 /* The session written back out as a layout file: tabs, splits, proportions,
  * directories and commands. The inverse of app_apply_layout_text(), and what

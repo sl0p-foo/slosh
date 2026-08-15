@@ -141,6 +141,17 @@ static const color_t NO_COLOR = {0};
 
 /* ---- tree --------------------------------------------------------------- */
 
+/* A chain attached to one pane, with the programs its expressions compiled to
+ * kept beside it. Together because they are one lifetime: freeing the chain
+ * without the programs leaks, and freeing the programs without the chain leaves
+ * shaders pointing at freed code. */
+typedef struct {
+  shader_t sh[SHADE_MAX];
+  size_t n;
+  expr_prog_t *exprs[SHADE_MAX];
+  size_t nexprs;
+} inband_chain_t;
+
 struct node {
   enum { NODE_LEAF, NODE_SPLIT } kind;
   node_t *parent;
@@ -161,11 +172,17 @@ struct node {
   uint32_t id;
   rect_t content; /* where the pane's cells go */
 
-  /* Colour passes over this pane's contents, applied in order. Attached by
-   * policy inside this file; nothing in-band or over the control API can set
-   * them yet, so a program cannot restyle itself by accident. */
-  shader_t shaders[SHADE_MAX];
-  size_t nshaders;
+  /* Colour passes over this pane, applied in order: one chain for its contents
+   * and one for its frame, because those are two rects and not one list with a
+   * sort key. Sent in-band by the program inside the pane, which `shaders.md`
+   * calls prototyping and D13 called a hazard -- both are true, so it takes
+   * `in_band_shaders true` to be possible at all.
+   *
+   * Each chain owns the programs its expressions compiled to. The config owns
+   * the ones a file produced and frees them on reload; these live exactly as
+   * long as the chain that was sent, which is until the next one replaces it or
+   * the pane goes away, and that is nobody else's schedule. */
+  inband_chain_t content_chain, chrome_chain;
   char purpose[64];
   bool purpose_locked; /* declared by a layout: in-band cannot override */
 
@@ -398,9 +415,52 @@ static void bypane_cb(node_t *n, void *ud) {
 /* OSC 5577 verbs pane.c does not own. `purpose` arrives from a pane's own
  * output, so it is in-band by definition and can never be declared: a pane
  * that prints one is asking, not telling (D8). */
+/* `shader;<where>;<chain>` from the program in the pane: `where` is `content` or
+ * `chrome`, and the chain is the rest of the payload *verbatim*, `;` and all,
+ * because a chain is several entries separated by `;` and escaping the one
+ * character the syntax uses would make a pasteable line unpasteable.
+ *
+ * Answered either way, on the pane's own stdin: `shader;ok` or
+ * `shader;error;<why>`. A prototyping loop that gets no answer cannot tell "you
+ * typed it wrong" from "this build does not have it", and a program asking for
+ * something the session refuses deserves to hear so rather than watch nothing
+ * happen. */
+static void on_pane_shader(app_t *a, pane_t *p, const char *payload) {
+  const char *semi = strchr(payload, ';');
+  size_t wlen = semi ? (size_t)(semi - payload) : strlen(payload);
+  bool chrome = wlen == 6 && memcmp(payload, "chrome", 6) == 0;
+  bool content = wlen == 7 && memcmp(payload, "content", 7) == 0;
+
+  char reply[256];
+  if (!chrome && !content) {
+    snprintf(reply, sizeof reply,
+             "\033]5577;1;shader-reply;error;where must be content or chrome\033\\");
+    pane_write(p, reply, strlen(reply));
+    return;
+  }
+
+  struct bypane b = {p, NULL};
+  walk_all(a, bypane_cb, &b);
+  if (!b.found) return;
+
+  char err[192] = {0};
+  const char *text = semi ? semi + 1 : "";
+  bool ok = app_set_pane_shaders(a, b.found->id, chrome, text, err, sizeof err);
+  if (ok)
+    snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;ok\033\\");
+  else
+    snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;error;%s\033\\",
+             err[0] ? err : "refused");
+  pane_write(p, reply, strlen(reply));
+}
+
 static void on_pane_osc(pane_t *p, const char *verb, const char *payload,
                         void *ud) {
   app_t *a = ud;
+  if (strcmp(verb, "shader") == 0) {
+    on_pane_shader(a, p, payload);
+    return;
+  }
   if (strcmp(verb, "purpose") != 0) return;
   struct bypane b = {p, NULL};
   walk_all(a, bypane_cb, &b);
@@ -824,9 +884,18 @@ static node_t *leaf_new(app_t *a) {
   return n;
 }
 
+/* Empty a chain, freeing the programs it owned. */
+static void chain_clear(inband_chain_t *c) {
+  for (size_t i = 0; i < c->nexprs; i++) expr_free(c->exprs[i]);
+  c->nexprs = 0;
+  c->n = 0;
+}
+
 static void node_free(node_t *n) {
   if (!n) return;
   if (n->kind == NODE_LEAF) {
+    chain_clear(&n->content_chain);
+    chain_clear(&n->chrome_chain);
     pane_free(n->pane);
   } else {
     for (size_t i = 0; i < n->nkids; i++) node_free(n->kids[i]);
@@ -2809,24 +2878,41 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
 
 /* ---- shaders ------------------------------------------------------------ */
 
-bool app_shade_add(app_t *a, uint32_t pane_id, const char *kind, color_t color,
-                   uint8_t amount) {
+/* A chain the program in the pane asked for, in the config's own syntax so that
+ * what you prototype is what you can paste (D13, revisited). Replaces that
+ * chain: empty text clears it, which is how a program puts a pane back.
+ *
+ * Refused, with a reason, when `in_band_shaders` is off -- a program restyling
+ * itself by accident is exactly what that decision was about, and the answer is
+ * a line of config rather than a rule nobody can lift. */
+bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
+                          const char *text, char *err, size_t errcap) {
+  if (err && errcap) err[0] = 0;
+  if (!CFG.in_band_shaders) {
+    if (err && errcap) snprintf(err, errcap, "in_band_shaders is off");
+    return false;
+  }
   node_t *n = pane_by_id(a, pane_id);
-  if (!n || n->nshaders >= SHADE_MAX) return false;
-  shader_t sh;
-  if (!shader_make(&sh, kind, color, amount)) return false;
-  n->shaders[n->nshaders++] = sh;
+  if (!n) {
+    if (err && errcap) snprintf(err, errcap, "no such pane");
+    return false;
+  }
+
+  /* Parsed into a fresh chain and swapped in, so a chain that turns out to be
+   * unreadable leaves the pane looking like it did rather than half-restyled. */
+  inband_chain_t next = {0};
+  next.n = config_parse_chain(text, CFG.frame_focus, chrome, next.sh, SHADE_MAX,
+                              next.exprs, &next.nexprs, err, errcap);
+  if (err && errcap && err[0]) {
+    for (size_t i = 0; i < next.nexprs; i++) expr_free(next.exprs[i]);
+    return false;
+  }
+
+  inband_chain_t *slot = chrome ? &n->chrome_chain : &n->content_chain;
+  chain_clear(slot);
+  *slot = next;
+  pane_touch(n->pane);
   return true;
-}
-
-void app_shade_clear(app_t *a, uint32_t pane_id) {
-  node_t *n = pane_by_id(a, pane_id);
-  if (n) n->nshaders = 0;
-}
-
-size_t app_shade_count(app_t *a, uint32_t pane_id) {
-  node_t *n = pane_by_id(a, pane_id);
-  return n ? n->nshaders : 0;
 }
 
 /* The session's opinion about this pane at this moment, as a shader.
@@ -2925,8 +3011,8 @@ static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
    * whatever the other two produced. */
   for (size_t i = 0; i < CFG.nshaders && nc < SHADE_CHAIN_MAX; i++)
     chain[nc++] = CFG.shaders[i];
-  for (size_t i = 0; i < n->nshaders && nc < SHADE_CHAIN_MAX; i++)
-    chain[nc++] = n->shaders[i];
+  for (size_t i = 0; i < n->content_chain.n && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = n->content_chain.sh[i];
   nc += policy_shaders(a, n, &chain[nc], SHADE_CHAIN_MAX - nc);
 
   if (!nc) return;
@@ -2974,8 +3060,13 @@ static void shade_chrome(app_t *a, screen_t *s, node_t *n, rect_t r,
   shader_t chain[SHADE_CHAIN_MAX];
   size_t nc = 0;
 
+  /* Configured, then this pane's own, then policy -- the same order the
+   * contents use, and for the same reason: the session's opinion about this
+   * moment has to be able to grey out whatever the other two produced. */
   for (size_t i = 0; i < CFG.nchrome_shaders && nc < SHADE_CHAIN_MAX; i++)
     chain[nc++] = CFG.chrome_shaders[i];
+  for (size_t i = 0; i < n->chrome_chain.n && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = n->chrome_chain.sh[i];
   nc += chrome_policy_shaders(a, n, &chain[nc], SHADE_CHAIN_MAX - nc);
   if (!nc) return;
 

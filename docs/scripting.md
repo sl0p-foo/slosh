@@ -58,6 +58,17 @@ printing a prompt and hoping.
 `purpose` is the other verb: `printf '\033]5577;1;purpose;logs\033\\'`. A purpose
 declared by a layout or the control API wins and cannot be overwritten this way.
 
+`shader` is the third, and the only one the session can refuse: it sets the
+shader chain for the pane that asked, in the config's own syntax, and needs
+`in_band_shaders true` because a program restyling your session is a hazard
+before it is a convenience. See [shaders](shaders.md#prototyping-in-a-pane).
+
+Anything the session sends *back* to a program ends its verb in `-reply` --
+`hello-reply`, `shader-reply` -- and no request verb may. A pane that echoes what
+it is sent (`cat`, a shell with echo on, a REPL waiting for a line) would
+otherwise be answered into a loop, which is exactly what `hello` used to do:
+4 MB of hellos in a second and a half.
+
 ## Headless
 
 `sl0ppty --script` is the whole program without a terminal: commands on stdin,

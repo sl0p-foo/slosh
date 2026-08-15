@@ -88,6 +88,34 @@ your cursor. Each is a file you can paste into your config or `include`.
 `contrib/shadertoy.html` previews the language in a browser (a test cross-checks
 that preview against the real compiler, so it cannot lie to you).
 
+## Prototyping in a pane
+
+Edit, save, look, guess again is a slow way to arrive at a colour. A program can
+set the chains for the pane it is running in, in the same syntax the config uses:
+
+```bash
+printf '\033]5577;1;shader;chrome;tint color="#ff5fd7" amount="abs(t / 8 %% 510 - 255)"\033\\'
+printf '\033]5577;1;shader;content;dim amount=90\033\\'
+printf '\033]5577;1;shader;chrome;\033\\'   # nothing: back to normal
+```
+
+The field after `shader` is which rect (`content` or `chrome`), and the rest of
+the payload is the chain, verbatim -- `;` separates entries, so several passes fit
+on one line. The session answers on the program's stdin, `\033]5577;1;shader-reply;ok\033\\`
+or `shader-reply;error;bad amount for tint: ...`, so a typo says so instead of
+looking like a shader that does nothing.
+
+`contrib/shader-repl` is that loop with a prompt on it: type a chain, see the
+pane change, and `:paste` prints what you have as a `shaders { }` block for your
+config. What you prototype and what you paste are parsed by the same code, which
+is the point of using the config's syntax for a thing typed at a terminal.
+
+**Off by default.** It needs `in_band_shaders true`, because a program that can
+restyle the session it happens to be running in is a hazard first and a
+convenience second: `cat` the wrong file and your panes go dark. With it on, a
+pane can only paint *itself* -- not its neighbour, and not anything the config
+said about anybody else.
+
 ## Your own, compiled
 
 A shader is a C function from one cell to that cell's colours. Any `*.so` in

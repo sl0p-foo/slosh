@@ -366,7 +366,7 @@ M4 landed: the pi extensions' exact byte patterns are an acceptance test
 no payload — answer-picker's way of dropping buttons while keeping the status
 text — and a click report that satisfies the extension's own `CLICK_RE`.
 
-Two protocol details worth keeping in mind, both found by testing:
+Three protocol details worth keeping in mind, all found by testing:
 
 - **An over-long button id must be rejected, not truncated.** Unescaping a
   40-character id into a 33-byte buffer produced a *valid* 32-character id, so
@@ -376,6 +376,27 @@ Two protocol details worth keeping in mind, both found by testing:
 - **BEL terminates an OSC just as ST does**, which matters more than it looks:
   a trailing `ESC \` inside a double-quoted shell string escapes the quote, so
   anything scripting this from a shell will reach for BEL.
+- **A reply must never re-parse as a request.** Every message the session sends
+  a program ends its verb in `-reply`, and nothing dispatches one. `hello` used
+  to answer with the verb `hello`, so a pane that echoed what it was sent — a
+  shell with echo on, `cat`, a REPL waiting for a line — answered the answer:
+  measured at 4.3 MB and 165,532 hellos in a second and a half. Fixed as the
+  rule rather than the instance, because the loop is a property of "a reply that
+  looks like a request" and the next verb to get an answer would have found it
+  again.
+
+**D13, revisited: a program may set its own pane's shader chains**, behind
+`in_band_shaders` (off by default). The original reasoning stands — a program
+that can restyle the session it is running in is a hazard, and `cat
+hostile.txt` must not be able to dim your panes — but *impossible* was the wrong
+shape for it: arriving at a colour pass by editing a file, saving, looking and
+guessing again is slow enough that shaders go unwritten. So it is possible, it
+costs a line of consent, and it is scoped to the pane that asked: its own two
+chains, never its neighbour's and never what the config said about everybody
+else. The payload is the config's own chain syntax parsed by the same function
+(`config_parse_chain`), because a chain that meant one thing typed and another
+thing pasted would be worse than not having it. `contrib/shader-repl` is the
+prompt this exists for, and `:paste` prints the block to keep.
 
 ## Non-goals
 

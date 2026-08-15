@@ -251,6 +251,24 @@ status_pad 4
 // expands a collapsed pane just because the pointer crossed its header.
 focus_follows_mouse true
 
+// Whether the program running in a pane may set that pane's shader chains, by
+// printing an escape sequence:
+//
+//   printf '\033]5577;1;shader;chrome;tint color="#ff5fd7" amount=255\033\\'
+//
+// The payload after `chrome` (or `content`) is a chain in exactly the syntax the
+// `shaders` block below uses, so a chain you arrive at this way is a line you can
+// paste. `contrib/shader-repl` is a prompt that does it for you, and prints the
+// block to paste when you like what you see.
+//
+// Off, because a program restyling the session it happens to be running in is a
+// hazard and not a feature -- `cat` some hostile file and it can dim your panes.
+// On, it is scoped to the pane that asked: it cannot touch another pane, and it
+// cannot change anything this file said about everybody else. The pane is told
+// `off` rather than ignored, so a program can tell "you said no" from "this
+// build has never heard of it".
+in_band_shaders false
+
 // The floor below which a pane is not small but useless. A split that cannot
 // give every child this much collapses into a stack instead, with one pane
 // expanded and its siblings as one-row headers. Recomputed every frame, so
