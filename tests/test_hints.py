@@ -139,6 +139,67 @@ def test_the_hint_never_writes_over_the_line_it_shares():
               and "pane 1/1" in row, repr(row))
 
 
+def test_the_version_sits_in_the_slot_when_no_hint_does():
+    """The middle of the status line is empty most of the time, and the first
+    question about a misbehaving session is which build it is running — which
+    is not "whatever was built last", because a session keeps the binary it
+    started with."""
+    with Session(SH, cols=96, rows=18) as s:
+        s.settle(20)
+        check("the banner is there by default", "sl0ppty 0." in bar(s), bar(s))
+
+        s.api("split", dir="cols")
+        s.settle(20)
+        h = hit(s, "close:")
+        hover(s, h["x"], h["y"])
+        check("a hint takes the slot back", "close this pane" in bar(s), bar(s))
+        check("and the banner gives way", "sl0ppty 0." not in bar(s), bar(s))
+
+        hover(s, h["x"], h["y"] + 4)   # off the button, into the pane
+        s.settle(20)
+        check("the banner returns when the pointer moves off",
+              "sl0ppty 0." in bar(s), bar(s))
+
+
+def test_the_banner_and_the_hints_are_separate_knobs():
+    off = cfg("version_banner false\n")
+    with Session(SH, cols=96, rows=18, config=off) as s:
+        s.settle(20)
+        check("version_banner false says nothing", "sl0ppty" not in bar(s),
+              bar(s))
+        s.api("split", dir="cols")
+        s.settle(20)
+        h = hit(s, "close:")
+        hover(s, h["x"], h["y"])
+        check("but hints still work", "close this pane" in bar(s), bar(s))
+    os.unlink(off)
+
+    nohints = cfg("hints false\n")
+    with Session(SH, cols=96, rows=18, config=nohints) as s:
+        s.settle(20)
+        check("hints false leaves the banner alone", "sl0ppty 0." in bar(s),
+              bar(s))
+        s.api("split", dir="cols")
+        s.settle(20)
+        h = hit(s, "close:")
+        hover(s, h["x"], h["y"])
+        check("and nothing replaces it", "sl0ppty 0." in bar(s), bar(s))
+    os.unlink(nohints)
+
+
+def test_the_banner_gives_way_when_there_is_no_room():
+    """Same rule as the hint: a thing in the middle that overwrites the ends is
+    worse than an empty middle."""
+    with Session(SH, cols=44, rows=10) as s:
+        s.settle(20)
+        s.api("set-purpose", target="tab", id=s.tabs()[0]["id"],
+              purpose="a-long-purpose-that-fills-the-line")
+        s.settle(20)
+        row = bar(s)
+        check("the ends win", "pane 1/1" in row and "sl0ppty 0." not in row,
+              repr(row))
+
+
 def test_hints_can_be_turned_off():
     conf = cfg("hints false\n")
     with Session(SH, cols=96, rows=18, config=conf) as s:
@@ -159,4 +220,7 @@ if __name__ == "__main__":
     test_the_gap_and_the_strip_and_the_bar()
     test_the_hint_never_writes_over_the_line_it_shares()
     test_hints_can_be_turned_off()
+    test_the_version_sits_in_the_slot_when_no_hint_does()
+    test_the_banner_and_the_hints_are_separate_knobs()
+    test_the_banner_gives_way_when_there_is_no_room()
     sys.exit(report())

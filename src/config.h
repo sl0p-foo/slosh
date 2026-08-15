@@ -98,6 +98,12 @@ typedef struct {
    * Discoverability for a frame whose affordances are mostly one character
    * wide; off if you already know them. */
   bool hints;
+  /* What sl0ppty this is, in the middle of the status line, whenever there is
+   * no hint to put there. The slot is otherwise empty most of the time, and
+   * "which build am I attached to" is the first question when a session is
+   * behaving oddly -- a session keeps the binary it started with, so the
+   * answer is not whatever was built last. */
+  bool version_banner;
   bool pane_buttons;
   /* Marks of similar visual weight, so the even spacing between the buttons
    * reads as even: a glyph that floats in a mostly-empty cell donates its own

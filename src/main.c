@@ -20,6 +20,7 @@
 
 #include "proto.h"
 #include "server.h"
+#include "version.h"
 
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
                  int idle_ms, bool script, const char *layout);
@@ -36,7 +37,8 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
 }
 
 static void usage(void) {
-  fputs("usage: sl0ppty [-s NAME] [--layout FILE] [--no-reload]\n                [ls | cmd LINE | -- CMD...]\n",
+  fputs("usage: sl0ppty [-s NAME] [--layout FILE] [--no-reload]\n"
+        "                [--version] [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
 
@@ -60,6 +62,12 @@ int main(int argc, char **argv) {
     else if (strcmp(a, "-s") == 0 && i + 1 < argc) name = argv[++i];
     else if (strcmp(a, "--layout") == 0 && i + 1 < argc) layout = argv[++i];
     else if (strcmp(a, "--no-reload") == 0) watch = false;
+    else if (strcmp(a, "--version") == 0) {
+      /* The same string the status line shows, so "which build is this" has
+       * one answer whether you ask the binary or the session. */
+      printf("sl0ppty %s\n", SL0PPTY_VERSION);
+      return 0;
+    }
     else if (strcmp(a, "ls") == 0) list = true;
     else if (strcmp(a, "cmd") == 0 && i + 1 < argc) cmd_line = argv[++i];
     else if (strcmp(a, "--cols") == 0 && i + 1 < argc) cols = (uint16_t)atoi(argv[++i]);

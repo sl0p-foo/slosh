@@ -60,6 +60,17 @@ title_inset 2
 // is explaining is worse than no hint.
 hints true
 
+// When there is no hint to show — which is most of the time, since a hint
+// needs the pointer to be on something — that space says which sl0ppty this
+// is: `sl0ppty 0.1.0+d9dee7f`. It reads as decoration and is not: a session
+// keeps the binary it started with, so after a rebuild the version on screen
+// is the one you are actually talking to, and `sl0ppty --version` is the one
+// on disk. When those disagree, that is the answer to whatever you were about
+// to debug. (contrib/sl0ppty-dev restarts into the new one.)
+//
+// It gives way to a hint, and both give way to the ends of the line.
+version_banner true
+
 pane_buttons true
 
 // Plain single-width ASCII, after box-drawing and block characters were each

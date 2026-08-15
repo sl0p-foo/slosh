@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "json.h"
+#include "version.h"
 #include "graphics.h"
 #include "kdl.h"
 
@@ -610,22 +611,34 @@ static void draw_status_line(app_t *a, screen_t *s) {
   if (n > (size_t)(right - x)) line[right - x] = 0;
   if (n) screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
 
-  /* The hint sits in what is left between the two ends, centred there rather
-   * than in the row: centring it in the row would put it under the session
-   * name on a narrow screen, and a hint that overwrites what it is explaining
-   * is worse than no hint. It is simply not drawn when it does not fit. */
-  if (!CFG.hints || !a->painted) return;
-  const char *hint = hint_for(a, hit_test(&s->hits, a->ptr_x, a->ptr_y));
-  if (!hint || !a->ptr_valid) return;
+  /* What goes between the two ends: the hint for whatever the pointer is on,
+   * and when there is none, which sl0ppty this is. The hint wins because it is
+   * about right now and the banner is about always; the banner takes the slot
+   * back the moment the pointer moves off, which is most of the time.
+   *
+   * Centred in what is *left* rather than in the row: centring it in the row
+   * would put it under the session name on a narrow screen, and either of
+   * these overwriting what it sits next to is worse than not being drawn. */
+  const char *middle = NULL;
+  color_t middle_fg = HINT_C;
+  if (CFG.hints && a->painted && a->ptr_valid)
+    middle = hint_for(a, hit_test(&s->hits, a->ptr_x, a->ptr_y));
+  if (!middle && CFG.version_banner) {
+    /* Quieter than a hint: this is ambient, and a hint is an answer to
+     * something you are doing. */
+    middle = "sl0ppty " SL0PPTY_VERSION;
+    middle_fg = STATUS_C;
+  }
+  if (!middle) return;
 
   uint16_t used = (uint16_t)(x + cells(line));
   uint16_t from = (uint16_t)(used + 2);
   if (right <= from) return;
   uint16_t span = (uint16_t)(right - from);
-  uint16_t hw = cells(hint);
+  uint16_t hw = cells(middle);
   if (hw + 2 > span) return;
-  screen_text(s, (uint16_t)(from + (span - hw) / 2), y, hint, HINT_C, NO_COLOR,
-              0);
+  screen_text(s, (uint16_t)(from + (span - hw) / 2), y, middle, middle_fg,
+              NO_COLOR, 0);
 }
 
 static void draw_toasts(app_t *a, screen_t *s) {

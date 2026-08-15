@@ -210,6 +210,7 @@ void config_defaults(config_t *c) {
   c->title_align = ALIGN_CENTER;
   c->title_inset = 2;
   c->hints = true;
+  c->version_banner = true;
   c->pane_buttons = true;
   snprintf(c->zoom_mark, sizeof c->zoom_mark, "#");
   snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "*");
@@ -618,6 +619,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   c->title_inset =
       (uint16_t)kdl_arg_int(kdl_child(root, "title_inset"), 0, c->title_inset);
   c->hints = kdl_arg_bool(kdl_child(root, "hints"), 0, c->hints);
+  c->version_banner =
+      kdl_arg_bool(kdl_child(root, "version_banner"), 0, c->version_banner);
   c->pane_buttons =
       kdl_arg_bool(kdl_child(root, "pane_buttons"), 0, c->pane_buttons);
   const char *zm = kdl_arg(kdl_child(root, "zoom_mark"), 0, NULL);
