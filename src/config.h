@@ -72,6 +72,11 @@ typedef struct {
   int key;       /* GhosttyKey */
   uint16_t mods; /* MOD_* */
   action_t action;
+  /* Fires without the leader, taking that chord away from every program in
+   * every pane. Deliberately possible and deliberately opt-in: it is the
+   * user's terminal and their keyboard, and a multiplexer that refuses to get
+   * out of the way is its own kind of wrong. */
+  bool direct;
 } binding_t;
 
 typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
@@ -270,7 +275,15 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap);
 const char *config_default_path(void);
 void config_free(config_t *c);
 
+/* What a chord does after the leader. Direct bindings answer here too, so
+ * pressing the leader first never makes a binding stop working. */
 action_t config_lookup(const config_t *c, int key, uint16_t mods);
+/* What a chord does on its own, with no leader pressed. ACT_NONE for the
+ * overwhelming majority of keys, which is what lets them reach the pane. */
+action_t config_lookup_direct(const config_t *c, int key, uint16_t mods);
+/* Whether any binding fires without the leader, so the cheatsheet knows
+ * whether it has a section to draw. */
+bool config_has_direct(const config_t *c);
 /* The reverse of config_parse_chord: what to call a binding on screen. A
  * shifted letter is written the way you would type it ("H"), because "S-h" is
  * a description of a keystroke rather than a keystroke. */

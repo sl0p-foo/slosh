@@ -494,4 +494,25 @@ keys {
     bind "end" "scroll-bottom"
     bind "d" "detach"
     bind "q" "quit"
+
+    // ── bindings that need no leader ────────────────────────────────────────
+    //
+    // Anything in here fires the moment you press it, with no prefix first.
+    // That also means the chord is *gone* from every program in every pane:
+    // vim will never see it, your shell will never see it, and the only sign
+    // will be that the key does not work in there any more.
+    //
+    // It is a footgun and it is yours: this is your keyboard, and a
+    // multiplexer that refuses to get out of the way is its own kind of
+    // wrong. Prefer chords no program wants -- ctrl+alt+something is usually
+    // safe, a bare letter certainly is not.
+    //
+    // `none` gives a chord back, the same as anywhere else.
+    //
+    // direct {
+    //     bind "ctrl+alt+left" "focus-left"
+    //     bind "ctrl+alt+right" "focus-right"
+    //     bind "ctrl+alt+up" "focus-up"
+    //     bind "ctrl+alt+down" "focus-down"
+    // }
 }

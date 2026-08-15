@@ -65,6 +65,22 @@ included, follows what you bound:
 keys { prefix "ctrl+b" }        // or ctrl+space, or alt+x, or ...
 ```
 
+Or skip the leader entirely for the ones you use constantly:
+
+```kdl
+keys {
+    direct {
+        bind "ctrl+alt+left" "focus-left"
+        bind "ctrl+alt+right" "focus-right"
+    }
+}
+```
+
+Those fire the moment you press them — which also means the chord is gone from
+every program in every pane, because it has to be. It is a footgun and it is
+yours; the cheatsheet lists them apart, under "without the leader", so the
+`C-a then:` caption above stays true.
+
 ### The mouse works properly
 
 - **Click a pane's border to split toward it** — the side you click is the side

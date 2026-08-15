@@ -186,14 +186,19 @@ static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
   return n;
 }
 
-static void bind_add(config_t *c, int key, uint16_t mods, action_t action) {
+/* `direct` is part of the identity, not a property of it: `x` after the leader
+ * and `x` on its own are two different bindings, and binding one must not
+ * silently redefine the other. */
+static void bind_add(config_t *c, int key, uint16_t mods, action_t action,
+                     bool direct) {
   for (size_t i = 0; i < c->nbinds; i++)
-    if (c->binds[i].key == key && c->binds[i].mods == mods) {
+    if (c->binds[i].key == key && c->binds[i].mods == mods &&
+        c->binds[i].direct == direct) {
       c->binds[i].action = action; /* a later binding replaces an earlier one */
       return;
     }
   c->binds = realloc(c->binds, (c->nbinds + 1) * sizeof *c->binds);
-  c->binds[c->nbinds++] = (binding_t){key, mods, action};
+  c->binds[c->nbinds++] = (binding_t){key, mods, action, direct};
 }
 
 void config_defaults(config_t *c) {
@@ -355,47 +360,48 @@ void config_defaults(config_t *c) {
   c->prefix_key = GHOSTTY_KEY_A;
   c->prefix_mods = MOD_CTRL;
 
-  bind_add(c, GHOSTTY_KEY_BACKSLASH, 0, ACT_SPLIT_COLS);
-  bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS);
-  bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE);
+  bind_add(c, GHOSTTY_KEY_BACKSLASH, 0, ACT_SPLIT_COLS, false);
+  bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS, false);
+  bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE, false);
   /* `?` twice, because whether it arrives with shift depends on the outer
    * terminal: as a plain byte there is no modifier to be had, and under the
    * kitty keyboard protocol (which the client asks for) there is. Binding one
    * of them is a binding that works on the author's machine. */
-  bind_add(c, GHOSTTY_KEY_SLASH, MOD_SHIFT, ACT_HELP);
-  bind_add(c, GHOSTTY_KEY_SLASH, 0, ACT_HELP);
-  bind_add(c, GHOSTTY_KEY_R, 0, ACT_RERUN);
-  bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM);
-  bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE);
-  bind_add(c, GHOSTTY_KEY_H, 0, ACT_FOCUS_LEFT);
-  bind_add(c, GHOSTTY_KEY_L, 0, ACT_FOCUS_RIGHT);
-  bind_add(c, GHOSTTY_KEY_K, 0, ACT_FOCUS_UP);
-  bind_add(c, GHOSTTY_KEY_J, 0, ACT_FOCUS_DOWN);
-  bind_add(c, GHOSTTY_KEY_ARROW_LEFT, 0, ACT_FOCUS_LEFT);
-  bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, 0, ACT_FOCUS_RIGHT);
-  bind_add(c, GHOSTTY_KEY_ARROW_UP, 0, ACT_FOCUS_UP);
-  bind_add(c, GHOSTTY_KEY_ARROW_DOWN, 0, ACT_FOCUS_DOWN);
-  bind_add(c, GHOSTTY_KEY_O, 0, ACT_FOCUS_NEXT);
-  bind_add(c, GHOSTTY_KEY_H, MOD_SHIFT, ACT_RESIZE_LEFT);
-  bind_add(c, GHOSTTY_KEY_L, MOD_SHIFT, ACT_RESIZE_RIGHT);
-  bind_add(c, GHOSTTY_KEY_K, MOD_SHIFT, ACT_RESIZE_UP);
-  bind_add(c, GHOSTTY_KEY_J, MOD_SHIFT, ACT_RESIZE_DOWN);
-  bind_add(c, GHOSTTY_KEY_ARROW_LEFT, MOD_SHIFT, ACT_RESIZE_LEFT);
-  bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, MOD_SHIFT, ACT_RESIZE_RIGHT);
-  bind_add(c, GHOSTTY_KEY_ARROW_UP, MOD_SHIFT, ACT_RESIZE_UP);
-  bind_add(c, GHOSTTY_KEY_ARROW_DOWN, MOD_SHIFT, ACT_RESIZE_DOWN);
-  bind_add(c, GHOSTTY_KEY_C, 0, ACT_NEW_TAB);
-  bind_add(c, GHOSTTY_KEY_N, 0, ACT_NEXT_TAB);
-  bind_add(c, GHOSTTY_KEY_P, 0, ACT_PREV_TAB);
-  bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER);
-  bind_add(c, GHOSTTY_KEY_PAGE_UP, 0, ACT_SCROLL_PAGE_UP);
-  bind_add(c, GHOSTTY_KEY_PAGE_DOWN, 0, ACT_SCROLL_PAGE_DOWN);
-  bind_add(c, GHOSTTY_KEY_HOME, 0, ACT_SCROLL_TOP);
-  bind_add(c, GHOSTTY_KEY_END, 0, ACT_SCROLL_BOTTOM);
-  bind_add(c, GHOSTTY_KEY_D, 0, ACT_DETACH);
-  bind_add(c, GHOSTTY_KEY_Q, 0, ACT_QUIT);
+  bind_add(c, GHOSTTY_KEY_SLASH, MOD_SHIFT, ACT_HELP, false);
+  bind_add(c, GHOSTTY_KEY_SLASH, 0, ACT_HELP, false);
+  bind_add(c, GHOSTTY_KEY_R, 0, ACT_RERUN, false);
+  bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM, false);
+  bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE, false);
+  bind_add(c, GHOSTTY_KEY_H, 0, ACT_FOCUS_LEFT, false);
+  bind_add(c, GHOSTTY_KEY_L, 0, ACT_FOCUS_RIGHT, false);
+  bind_add(c, GHOSTTY_KEY_K, 0, ACT_FOCUS_UP, false);
+  bind_add(c, GHOSTTY_KEY_J, 0, ACT_FOCUS_DOWN, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_LEFT, 0, ACT_FOCUS_LEFT, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, 0, ACT_FOCUS_RIGHT, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_UP, 0, ACT_FOCUS_UP, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_DOWN, 0, ACT_FOCUS_DOWN, false);
+  bind_add(c, GHOSTTY_KEY_O, 0, ACT_FOCUS_NEXT, false);
+  bind_add(c, GHOSTTY_KEY_H, MOD_SHIFT, ACT_RESIZE_LEFT, false);
+  bind_add(c, GHOSTTY_KEY_L, MOD_SHIFT, ACT_RESIZE_RIGHT, false);
+  bind_add(c, GHOSTTY_KEY_K, MOD_SHIFT, ACT_RESIZE_UP, false);
+  bind_add(c, GHOSTTY_KEY_J, MOD_SHIFT, ACT_RESIZE_DOWN, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_LEFT, MOD_SHIFT, ACT_RESIZE_LEFT, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, MOD_SHIFT, ACT_RESIZE_RIGHT, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_UP, MOD_SHIFT, ACT_RESIZE_UP, false);
+  bind_add(c, GHOSTTY_KEY_ARROW_DOWN, MOD_SHIFT, ACT_RESIZE_DOWN, false);
+  bind_add(c, GHOSTTY_KEY_C, 0, ACT_NEW_TAB, false);
+  bind_add(c, GHOSTTY_KEY_N, 0, ACT_NEXT_TAB, false);
+  bind_add(c, GHOSTTY_KEY_P, 0, ACT_PREV_TAB, false);
+  bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER, false);
+  bind_add(c, GHOSTTY_KEY_PAGE_UP, 0, ACT_SCROLL_PAGE_UP, false);
+  bind_add(c, GHOSTTY_KEY_PAGE_DOWN, 0, ACT_SCROLL_PAGE_DOWN, false);
+  bind_add(c, GHOSTTY_KEY_HOME, 0, ACT_SCROLL_TOP, false);
+  bind_add(c, GHOSTTY_KEY_END, 0, ACT_SCROLL_BOTTOM, false);
+  bind_add(c, GHOSTTY_KEY_D, 0, ACT_DETACH, false);
+  bind_add(c, GHOSTTY_KEY_Q, 0, ACT_QUIT, false);
   for (int i = 0; i < 9; i++)
-    bind_add(c, GHOSTTY_KEY_DIGIT_1 + i, 0, (action_t)(ACT_SELECT_TAB_1 + i));
+    bind_add(c, GHOSTTY_KEY_DIGIT_1 + i, 0,
+             (action_t)(ACT_SELECT_TAB_1 + i), false);
 }
 
 void config_free(config_t *c) {
@@ -532,10 +538,29 @@ void config_chord_name(int key, uint16_t mods, char *out, size_t cap) {
 action_t config_lookup(const config_t *c, int key, uint16_t mods) {
   /* caps/num lock must not make a binding stop working */
   mods &= (uint16_t)(MOD_SHIFT | MOD_CTRL | MOD_ALT | MOD_SUPER);
+  /* Prefixed bindings first, then direct ones: after the leader, everything
+   * that is bound works, so a chord that fires on its own does not stop
+   * firing because you happened to press the leader before it. */
   for (size_t i = 0; i < c->nbinds; i++)
-    if (c->binds[i].key == key && c->binds[i].mods == mods)
+    if (!c->binds[i].direct && c->binds[i].key == key &&
+        c->binds[i].mods == mods)
+      return c->binds[i].action;
+  return config_lookup_direct(c, key, mods);
+}
+
+action_t config_lookup_direct(const config_t *c, int key, uint16_t mods) {
+  mods &= (uint16_t)(MOD_SHIFT | MOD_CTRL | MOD_ALT | MOD_SUPER);
+  for (size_t i = 0; i < c->nbinds; i++)
+    if (c->binds[i].direct && c->binds[i].key == key &&
+        c->binds[i].mods == mods)
       return c->binds[i].action;
   return ACT_NONE;
+}
+
+bool config_has_direct(const config_t *c) {
+  for (size_t i = 0; i < c->nbinds; i++)
+    if (c->binds[i].direct && c->binds[i].action != ACT_NONE) return true;
+  return false;
 }
 
 static action_t action_by_name(const char *name) {
@@ -773,25 +798,37 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         snprintf(err, errcap, "bad prefix: %s", pfx);
       }
     }
+    /* `bind` under `keys` needs the leader; `bind` under `keys { direct { } }`
+     * does not. A block rather than a property on each line, because these
+     * take a chord away from every program in every pane and that is worth
+     * being able to see at a glance — and worth having somewhere to write the
+     * warning down. */
     for (size_t i = 0; i < keys->nkids; i++) {
-      const kdl_node_t *b = keys->kids[i];
-      if (strcmp(b->name, "bind") != 0) continue;
-      const char *chord = kdl_arg(b, 0, NULL);
-      const char *act = kdl_arg(b, 1, NULL);
-      int k;
-      uint16_t m;
-      if (!chord || !act || !config_parse_chord(chord, &k, &m)) {
-        if (err && !err[0])
-          snprintf(err, errcap, "line %d: bad binding", b->line);
-        continue;
+      const kdl_node_t *node = keys->kids[i];
+      bool direct = strcmp(node->name, "direct") == 0;
+      if (!direct && strcmp(node->name, "bind") != 0) continue;
+
+      size_t count = direct ? node->nkids : 1;
+      for (size_t j = 0; j < count; j++) {
+        const kdl_node_t *b = direct ? node->kids[j] : node;
+        if (!b || strcmp(b->name, "bind") != 0) continue;
+        const char *chord = kdl_arg(b, 0, NULL);
+        const char *act = kdl_arg(b, 1, NULL);
+        int k;
+        uint16_t m;
+        if (!chord || !act || !config_parse_chord(chord, &k, &m)) {
+          if (err && !err[0])
+            snprintf(err, errcap, "line %d: bad binding", b->line);
+          continue;
+        }
+        action_t a = action_by_name(act);
+        if (a == ACT_NONE && strcmp(act, "none") != 0) {
+          if (err && !err[0])
+            snprintf(err, errcap, "line %d: unknown action %s", b->line, act);
+          continue;
+        }
+        bind_add(c, k, m, a, direct);
       }
-      action_t a = action_by_name(act);
-      if (a == ACT_NONE && strcmp(act, "none") != 0) {
-        if (err && !err[0])
-          snprintf(err, errcap, "line %d: unknown action %s", b->line, act);
-        continue;
-      }
-      bind_add(c, k, m, a);
     }
   }
 

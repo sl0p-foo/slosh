@@ -235,6 +235,26 @@ repeating:
   background differs from the configured one shifts slightly. Documented next
   to `modal_scrim` rather than hidden.
 
+## Leader-less bindings
+
+`keys { direct { bind ... } }` fires without the prefix. Three ordering facts
+hold it together, and all three are tested because none is obvious from the
+code:
+
+- direct lookup happens **last** in the key path, after the rename editor, the
+  finder, the cheatsheet and the prefix itself. So an overlay still owns the
+  keyboard, and a direct binding cannot shadow the leader — which would make
+  the leader unusable with no way back.
+- `direct` is part of a binding's **identity**, not a property of it: `x`
+  after the leader and `x` on its own are two bindings, and binding one must
+  not silently redefine the other.
+- `config_lookup()` (the after-the-leader path) falls through to direct
+  bindings, so pressing the prefix first never makes a binding stop working.
+  A rule anybody has to keep track of is a rule that will surprise them.
+
+The cheatsheet lists them in their own section, because the caption at the top
+says "<prefix> then:" and these are exactly the ones that is not true of.
+
 ## Things left on the table
 
 - **A `reload` keybinding.** The config watcher made it less pressing.

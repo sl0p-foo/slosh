@@ -3037,6 +3037,7 @@ static size_t help_rows(help_row_t *out, size_t cap) {
       char chords[40] = {0};
       size_t used = 0;
       for (size_t i = 0; i < CFG.nbinds; i++) {
+        if (CFG.binds[i].direct) continue; /* listed on their own, below */
         action_t bound = CFG.binds[i].action;
         /* The nine tab digits are one row: nine of them is a table, not a
          * thing to learn. */
@@ -3061,6 +3062,23 @@ static size_t help_rows(help_row_t *out, size_t cap) {
       }
       out[n] = (help_row_t){GROUPS[g], {0}, label};
       snprintf(out[n].chord, sizeof out[n].chord, "%s", chords);
+      n++;
+    }
+  }
+
+  /* Bindings that need no leader, in their own section because the caption at
+   * the top of the sheet says "<prefix> then:" and these are the ones that is
+   * not true of. Listed in the order they were bound rather than by action:
+   * they are a short, deliberate list somebody wrote by hand. */
+  if (config_has_direct(&CFG) && n < cap) {
+    out[n++] = (help_row_t){NULL, {0}, "without the leader"};
+    for (size_t i = 0; i < CFG.nbinds && n < cap; i++) {
+      if (!CFG.binds[i].direct) continue;
+      const char *label = config_action_label(CFG.binds[i].action);
+      if (!label) continue; /* unbound with `none`, or nothing to say */
+      out[n] = (help_row_t){"direct", {0}, label};
+      config_chord_name(CFG.binds[i].key, CFG.binds[i].mods, out[n].chord,
+                        sizeof out[n].chord);
       n++;
     }
   }
@@ -3973,6 +3991,20 @@ void app_event(app_t *a, const input_event_t *ev) {
     }
     if (is_prefix) {
       a->prefix = true;
+      return;
+    }
+
+    /* Bindings that need no leader. Last, so the leader itself and every
+     * overlay that owns the keyboard have already had their say -- a direct
+     * binding must not fire while you are typing a pane's new name, and it
+     * must never shadow the prefix.
+     *
+     * Everything below this line goes to the program in the pane, so a chord
+     * bound here is a chord that program can no longer see. That is the deal,
+     * it is opt-in, and it is the user's keyboard. */
+    action_t direct = config_lookup_direct(&CFG, ev->key, mods);
+    if (direct != ACT_NONE && direct != ACT_LITERAL_PREFIX) {
+      prefix_command(a, ev);
       return;
     }
   }
