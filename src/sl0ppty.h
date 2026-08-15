@@ -179,6 +179,9 @@ void pane_resize(pane_t *p, uint16_t cols, uint16_t rows);
  * is dropped, which is a picture that silently does not appear. */
 void pane_set_cell_px(pane_t *p, uint16_t w, uint16_t h);
 bool pane_dirty(pane_t *p);
+/* Ask for a repaint without having changed a cell: what is drawn *over* the
+ * pane changed, and composing is the only thing that can see that. */
+void pane_touch(pane_t *p);
 /* Scrollback. Negative delta scrolls up (towards older output). */
 void pane_scroll(pane_t *p, int delta);
 void pane_scroll_edge(pane_t *p, bool top);

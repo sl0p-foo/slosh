@@ -130,6 +130,19 @@ static void parse_buttons(pane_t *p, const char *payload) {
 
 static void on_osc5577(const char *verb, const char *payload, void *ud) {
   pane_t *p = ud;
+
+  /* A reply is never a request. Everything the session sends *to* a program ends
+   * its verb in `-reply`, and nothing here dispatches one, so a pane that echoes
+   * what it is sent -- `cat`, `tee`, a shell with echo on, a REPL waiting for a
+   * line -- cannot be answered into a loop.
+   *
+   * Found the hard way: `hello` used to answer with the verb `hello`, and a pane
+   * running `tee` traded four megabytes of them with the session in a second and
+   * a half. The fork's `click` (D1) goes to a program too and predates the rule;
+   * it is safe because nothing answers a click. */
+  size_t vlen = strlen(verb);
+  if (vlen >= 6 && strcmp(verb + vlen - 6, "-reply") == 0) return;
+
   if (strcmp(verb, "status") == 0) {
     snprintf(p->status, sizeof p->status, "%s", payload);
     p->dirty = true;
@@ -142,7 +155,7 @@ static void on_osc5577(const char *verb, const char *payload, void *ud) {
   } else if (strcmp(verb, "hello") == 0) {
     /* Our addition to the fork's protocol, which is unversioned in practice:
      * a program can ask what it is talking to before using anything new. */
-    const char *reply = "\033]5577;1;hello;sl0ppty;1\033\\";
+    const char *reply = "\033]5577;1;hello-reply;sl0ppty;1\033\\";
     pane_write(p, reply, strlen(reply));
   } else if (p->osc_cb) {
     p->osc_cb(p, verb, payload, p->osc_ud); /* purpose, and anything later */
@@ -399,6 +412,11 @@ void pane_clear_bell(pane_t *p) {
   p->bell = false;
   p->dirty = true;
 }
+
+/* Nothing about the pane's cells changed, but what is drawn over them did.
+ * Composing is the only thing that can notice a new shader chain, and the loop
+ * only composes when something is dirty. */
+void pane_touch(pane_t *p) { p->dirty = true; }
 
 void pane_set_name(pane_t *p, const char *name) {
   if (!name) name = "";

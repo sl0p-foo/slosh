@@ -6,6 +6,7 @@ for the existing pi extensions. The hostile cases matter as much as the happy
 ones: a pane's own output is untrusted input.
 """
 import sys
+import time
 
 from harness import Session, check, report
 
@@ -248,7 +249,26 @@ def test_hello_handshake():
         s.settle()
         out = s.snapshot().pane_text(s.pane())
         check("hello is answered with an implementation and a version",
-              "5577;1;hello;sl0ppty;1" in out, repr(out[:120]))
+              "5577;1;hello-reply;sl0ppty;1" in out, repr(out[:120]))
+
+
+def test_a_reply_is_not_a_request():
+    """The pane in `emit()` runs `cat -v`, so everything the session sends it
+    goes straight back out again. That is the ordinary case -- a shell with echo
+    on, a REPL waiting for a line -- and it used to be a loop: `hello` was
+    answered with the verb `hello`, which parsed as another request. A pane
+    running `tee` traded four megabytes with the session in a second and a half.
+
+    So: exactly one answer, however loudly the pane echoes it.
+    """
+    with Session(emit(osc("1;hello;")), cols=60, rows=12) as s:
+        s.settle()
+        time.sleep(0.5)  # real time: a loop needs none of our help to run
+        out = s.snapshot().pane_text(s.pane())
+        check("a reply the pane echoes back is not answered again",
+              out.count("hello-reply") == 1, repr(out[:200]))
+        check("and the pane is still usable afterwards",
+              len(out) < 400, "%d chars of screen" % len(out))
 
 
 if __name__ == "__main__":
@@ -260,4 +280,5 @@ if __name__ == "__main__":
     test_split_across_reads()
     test_pi_extension_compat()
     test_hello_handshake()
+    test_a_reply_is_not_a_request()
     sys.exit(report())

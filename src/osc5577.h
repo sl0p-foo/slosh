@@ -11,6 +11,13 @@
  *
  *   \033]5577;1;click;approve\033\\
  *
+ * A reply is never a request. Everything the session sends back to a program
+ * ends its verb in `-reply` (`hello-reply`, `shader-reply`), and no request verb
+ * may, because a pane that echoes what it is sent -- `cat`, a shell with echo
+ * on, a REPL waiting for a line -- would otherwise be answered into a loop. The
+ * fork's `click` predates the rule and is safe for the weaker reason that
+ * nothing answers a click.
+ *
  * libghostty-vt's UNKNOWN_SEQUENCE effect reports APC only, not unknown OSC,
  * so we scan the pty stream ourselves. The bytes still go to lib-vt, which
  * discards an OSC it does not know — nothing is drawn, and we need no
