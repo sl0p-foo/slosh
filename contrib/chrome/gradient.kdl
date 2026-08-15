@@ -1,0 +1,20 @@
+// gradient — chrome
+//
+// Hand-written, unlike contrib/shaders: those are generated from
+// contrib/shadertoy.html, and the toy previews a pane's *contents*. A frame is
+// a different rect and the toy has no frame to show.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane
+// state instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// Not animated: the border is simply brightest at the top-left corner and falls
+// away round both sides, so the frame reads as lit from somewhere rather than
+// drawn in one flat colour. Costs nothing per frame -- it does not read the
+// clock, so the whole pass is computed once into a map and reused.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="235 - min((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y), (2 * cols + 2 * rows - 4) - (y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)) * 255 / (cols + rows - 2)"
+}

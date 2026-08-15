@@ -20,15 +20,18 @@
  * nothing in here has an effect. Evaluation is therefore O(program length),
  * a bad expression cannot hang a session, and there is nothing to sandbox.
  *
- *   variables   x y cols rows curx cury cursor focused t
+ *   variables   x y cols rows curx cury cursor focused t since
  *   operators   + - * / %   < > <= >= == !=   && || !   ?:
  *   functions   min max abs clamp dist
  *
- * `x`/`y` are cell positions inside the pane's content rect, `t` is a
- * millisecond clock for animation, `dist` corrects for a cell being about
- * twice as tall as it is wide. Division and modulo by zero are 0 rather than
- * a trap: an expression that is wrong should look wrong, not take the session
- * with it.
+ * `x`/`y` are cell positions inside the rect the pass runs over (a pane's
+ * contents, or its frame for a chrome pass), `t` is a millisecond clock for
+ * animation, `since` is how many milliseconds the pane has been in the state
+ * it is in — which is what a one-shot effect needs, because `t` says what time
+ * it is and not how long ago something happened. `dist` corrects for a cell
+ * being about twice as tall as it is wide. Division and modulo by zero are 0
+ * rather than a trap: an expression that is wrong should look wrong, not take
+ * the session with it.
  */
 #ifndef SL0PPTY_EXPR_H
 #define SL0PPTY_EXPR_H
@@ -71,6 +74,8 @@ typedef struct {
   int curx, cury, cursor;
   int focused;
   int64_t t;
+  /* Milliseconds since the pane entered its current state, clamped at 0. */
+  int64_t since;
 } expr_env_t;
 
 /* Evaluate for one cell. Clamped to 0..255 by the caller, not here: the

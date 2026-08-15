@@ -29,10 +29,10 @@ SCRIPT = open(HTML).read().split("<script>")[1].split("</script>")[0]
 
 # Environments to evaluate at: corners, the middle, and a moved cursor.
 ENVS = [
-    dict(x=0,  y=0,  cols=80, rows=24, curx=0,  cury=0,  cursor=1, focused=1, t=0),
-    dict(x=13, y=7,  cols=80, rows=24, curx=40, cury=12, cursor=1, focused=1, t=1234),
-    dict(x=79, y=23, cols=80, rows=24, curx=3,  cury=21, cursor=0, focused=0, t=99999),
-    dict(x=40, y=12, cols=100, rows=40, curx=99, cury=39, cursor=1, focused=1, t=7),
+    dict(x=0,  y=0,  cols=80, rows=24, curx=0,  cury=0,  cursor=1, focused=1, t=0,     since=0),
+    dict(x=13, y=7,  cols=80, rows=24, curx=40, cury=12, cursor=1, focused=1, t=1234,  since=120),
+    dict(x=79, y=23, cols=80, rows=24, curx=3,  cury=21, cursor=0, focused=0, t=99999, since=8000),
+    dict(x=40, y=12, cols=100, rows=40, curx=99, cury=39, cursor=1, focused=1, t=7,    since=250),
 ]
 
 def page_presets():
@@ -82,6 +82,9 @@ EXPRS = [
     "focused ? x * 2 : y * 3",
     "0 ? 1 / 0 : 7",
     "t % 255",
+    "since",
+    "(since < 250) * 255",             # a flash
+    "abs(since / 8 % 510 - 255)",      # ...and a breathe
     "(x + y) % 7 * 30",
     "cols - x",
     "rows * 2 - y",
@@ -91,7 +94,8 @@ EXPRS = [
 def rand_exprs(n, seed=20260814):
     """A few generated ones too, so the checks are not only what I thought of."""
     rng = random.Random(seed)
-    atoms = ["x", "y", "cols", "rows", "curx", "cury", "t", "3", "7", "40", "255"]
+    atoms = ["x", "y", "cols", "rows", "curx", "cury", "t", "since", "3", "7",
+             "40", "255"]
     out = []
     for _ in range(n):
         a, b, c = (rng.choice(atoms) for _ in range(3))
@@ -113,7 +117,7 @@ def c_values(pairs):
     for env, expr in pairs:
         vals = " ".join(str(env[k]) for k in
                         ("x", "y", "cols", "rows", "curx", "cury", "cursor",
-                         "focused", "t"))
+                         "focused", "t", "since"))
         lines.append(f"{vals}\t{expr}")
     out = subprocess.run([EVAL], input="\n".join(lines) + "\n",
                          capture_output=True, text=True)
@@ -190,7 +194,7 @@ def main():
     # cell by cell -- sampling every other row made three `y % 2` effects look
     # dead when they were fine.
     grid = [dict(x=x, y=y, cols=64, rows=24, curx=30, cury=12, cursor=1,
-                 focused=1, t=t)
+                 focused=1, t=t, since=t)
             for t in (0, 500, 1500, 4000) for y in range(24) for x in range(64)]
     flat = [(env, e) for _, _, e in presets for env in grid]
     vals = c_values(flat)

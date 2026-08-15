@@ -1,0 +1,19 @@
+// shine — chrome
+//
+// Hand-written, unlike contrib/shaders: those are generated from
+// contrib/shadertoy.html, and the toy previews a pane's *contents*. A frame is
+// a different rect and the toy has no frame to show.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane
+// state instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// A highlight running clockwise round the border, wrapping at the corner it
+// started from. `min(d, P - d)` is what makes it wrap: distance the short way
+// round a ring, rather than along a line that stops.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="clamp(235 - min(abs((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y) - (t / 14 % (2 * cols + 2 * rows - 4))), (2 * cols + 2 * rows - 4) - abs((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y) - (t / 14 % (2 * cols + 2 * rows - 4)))) * 30, 0, 235)"
+}

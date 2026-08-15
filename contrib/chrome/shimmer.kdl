@@ -1,0 +1,19 @@
+// shimmer — chrome
+//
+// Hand-written, unlike contrib/shaders: those are generated from
+// contrib/shadertoy.html, and the toy previews a pane's *contents*. A frame is
+// a different rect and the toy has no frame to show.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane
+// state instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// Sparkles drifting along the border. The `% 19 < 2` is a cheap pseudo-pattern
+// rather than a random number: the language has no rand, and a stride that does
+// not divide the perimeter never repeats where you can see it.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="(((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y) * 7 + t / 40) % 19 < 2) * 210"
+}

@@ -68,9 +68,16 @@ const char *shader_kind(size_t i);
  * anywhere: the trust decision is "put a file here". */
 size_t shader_load_dir(const char *dir, char *err, size_t errcap);
 
-/* Run `n` shaders in order over the w×h rect at (x0,y0). `base` supplies
- * everything in the context except the per-cell position and the size. */
-void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
-                 uint16_t y0, uint16_t w, uint16_t h, const shade_ctx_t *base);
+/* Run `n` shaders in order over `r`, skipping the cells inside `hole` (NULL
+ * for none). `base` supplies everything in the context except the per-cell
+ * position and the size.
+ *
+ * The hole is what makes a pane's *frame* a rect: chrome is the pane's rect
+ * minus its contents, and an effect has to see the whole frame's coordinates
+ * or it could not travel round one — four separate passes over the four sides
+ * would each start counting from zero. Skipped cells are not visited at all,
+ * so a chrome pass cannot touch a cell the content pass owns. */
+void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
+                 const rect_t *hole, const shade_ctx_t *base);
 
 #endif /* SL0PPTY_SHADER_H */

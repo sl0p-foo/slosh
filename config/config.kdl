@@ -65,6 +65,11 @@ title_inset 2
 // showed on screen would be useless in a background tab. Looking at the pane
 // is what puts it out. Off makes a bell silent *and* invisible, which is a
 // real choice rather than an oversight.
+//
+// The mark is the quiet default. A louder one is a shader rather than a knob:
+// `bell` is a pane state, so `states { bell { ... } }` colours or flashes a
+// rung pane's frame for as long as the bell is unanswered. See the chrome
+// passes further down.
 // ── the frame's own buttons ─────────────────────────────────────────────────
 //
 // Minimise, zoom and close, in the top-right of every pane's frame: the mark
@@ -271,6 +276,7 @@ modal_scrim 120
 //   drop_target  the others, all of them somewhere it could go
 //   dead         its program exited; waiting to be re-run or closed
 //   suspended    laid out, never started (its label is its contents)
+//   bell         a BEL arrived and nobody has looked since; ends when you do
 //   scrolled     looking at scrollback rather than at the present
 //   unfocused    the weakest thing that can be true of a pane
 //
@@ -311,6 +317,7 @@ states {
     suspended { grayscale amount=170; dim amount=60 }
     scrolled { tint amount=22 color="#ff5fd7" }   // = theme's scroll_bg
     // dragging { }
+    // bell { }    // see the chrome passes below for a border flash
     // unfocused { dim amount=60 }    // = dim_unfocused above; yours replaces it
 }
 
@@ -336,6 +343,13 @@ states {
 //                                        text on it stays readable
 //   margin     amount at=100             everything from that column recedes
 //   spotlight  amount radius=12          brightness falls away from the cursor
+//
+// Two props are the *pass's* rather than the shader's, and work on any of them:
+//
+//   where="content"|"chrome"   the contents, or the frame (see further down)
+//   channel="both"|"fg"|"bg"   which of the cell's two colours it may keep;
+//                              `fg` recolours glyphs and leaves backgrounds
+//                              alone, which is what a border wants
 //
 // `amount` can also be an *expression* instead of a number, evaluated for
 // every cell. That is how you get an effect nobody built in, without building
@@ -381,6 +395,90 @@ states {
 //     ruler amount=60 at=80 color="#ff5fd7"
 //     spotlight amount=90 radius=14
 // }
+
+// ── chrome passes ───────────────────────────────────────────────────────────
+//
+// `where="chrome"` on any entry above runs that pass over a pane's *frame*
+// instead of its contents: the border, the padding inside it, the title and
+// the buttons. Everything else is identical -- same shaders, same `amount`,
+// same expressions -- because a frame is just another rect, so it is just
+// another pass. `where="content"` is the default and never has to be written.
+//
+// The two never touch each other's cells: the contents are cut out of the
+// frame pass, so a full-strength chrome tint leaves your text alone and a
+// full-strength content tint leaves the border alone.
+//
+// `channel="fg"` (or `"bg"`, or `"both"`, the default) says which of a cell's
+// two colours a pass may keep. On a frame you almost always want `fg`: a
+// border's *background* is the terminal's own default, and mixing that towards
+// a colour paints a rectangle behind the glyphs instead of colouring them --
+// and leaves it there until the pane changes state. `fg` also keeps the padding
+// inside the border out of it, since a blank cell has no foreground to colour,
+// so the effect lands on exactly the rules, the title and the buttons.
+//
+// `x`/`y` are the *whole frame's*, counted from its top-left corner, with
+// `cols`/`rows` the size of the pane's rect -- not of one side. That is what
+// lets an effect travel round a border rather than restart at every corner:
+//
+//     shaders {
+//         // the top rule only, where the title is
+//         tint where="chrome" channel="fg" color="#ff5fd7" amount="(y==0)*255"
+//         // a corner glow. One node per line: a newline ends a node, so a
+//         // pass split over two lines is two broken nodes, not one pass.
+//         tint where="chrome" channel="fg" color="#00ffd7" amount="255-dist(x,y,0,0)*20"
+//     }
+//
+// For anything that *travels*, though, `x`/`y` are rarely what you want: it
+// wants distance *along the ring*, which the language can work
+// out -- clockwise from the top-left corner, in cells:
+//
+//     (y == 0 ? x : x == cols - 1 ? cols - 1 + y
+//      : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)
+//
+// with the perimeter itself `2 * cols + 2 * rows - 4`. Two things fall out of
+// that: `min(d, P - d)` is distance the short way round, so an effect crosses
+// the corner it started from instead of stopping at a seam; and
+// `(p - head + P) % P` is "how far ahead of the head", which makes an arc
+// rotate rather than a blob slide. There is no way to name a subexpression, so
+// it has to be written out in full -- which is why a small effect is a long
+// line. contrib/chrome has seven of them ready to paste (a shine running round
+// the border, sparkles, ripples from a corner, a rotating arc, a static
+// gradient, corner glints, a sheen across the title rule).
+//
+// Hung off a state, this is a border that says what a pane is doing -- which
+// is what chrome is for, and it costs no room and no text:
+//
+//     states {
+//         // a dead pane's frame breathes red until you deal with it: a
+//         // triangle wave, up and back down over about four seconds
+//         dead { tint where="chrome" channel="fg" color="#ff0033" amount="abs(t/8%510-255)" }
+//         // a bell nobody has answered yet: `since` is how long the pane has
+//         // been in this state, so this is a real *flash* -- full strength for
+//         // a quarter second and then gone, without the bell being answered.
+//         // `t` could not say that: it is the time, not how long ago.
+//         bell { tint where="chrome" channel="fg" color="#ffcc00" amount="(since<250)*255" }
+//         // one that has not started yet is outlined, not filled
+//         suspended { tint where="chrome" channel="fg" color="#8a8a95" amount=160 }
+//         // the panes you are not in recede, frame and contents together.
+//         // Both passes are written out because naming a state replaces the
+//         // *whole* state: a block holding only chrome passes is a state with
+//         // no content pass, which for `unfocused` means dim_unfocused above
+//         // stops applying to it.
+//         unfocused { dim amount=60; dim where="chrome" amount=90 }
+//     }
+//
+// A pane a small window has collapsed to a single row (see min_pane) is chrome
+// all the way through, so a chrome pass is the only kind that can still colour
+// it -- which is the state where a colour is worth the most.
+//
+// Empty by default, like the content passes: yours to ask for.
+
+// How often to repaint while a shader is animated, in milliseconds -- which
+// means one whose `amount` reads `t`. Nothing else needs a frame clock: every
+// other repaint has an event behind it, and this one is only asked for while
+// such a shader is actually on screen. 0 turns it off, which leaves an
+// animated shader advancing only when something else causes a frame.
+anim_ms 50
 
 // How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
 // "config reloaded") stays in the bottom-right corner.
@@ -497,7 +595,8 @@ theme {
 // pageup/pagedown/delete/insert/backslash/minus/slash/comma/period.
 //
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
-// focus-down focus-next resize-left resize-right resize-up resize-down
+// focus-down focus-next resize-left resize-right resize-up resize-down equalize
+// rotate-layout
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
 // scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder
 // palette help detach quit
@@ -549,9 +648,27 @@ keys {
     bind "shift+k" "resize-up"
     bind "shift+j" "resize-down"
 
+    // Undo every drag and nudge at once: each split divided between the panes
+    // behind it, so every visible pane gets an even share of the rows and
+    // columns it competes for.
+    bind "=" "equalize"
+
+    // A quarter turn of the whole tab, clockwise: every split changes axis and
+    // a row split's children reverse, because the pane on top of a stack is the
+    // pane on the right once you turn it. Four presses come back exactly, so
+    // there is nothing to undo -- which is what earns it the space bar, the
+    // easiest key there is and the one tmux spends on cycling layouts. Refused
+    // with a word when the turn would leave a pane under the floor: a share of
+    // the height is not always a share the width can afford, and `=` first
+    // usually fixes that.
+    bind "space" "rotate-layout"
+
     bind "c" "new-tab"
-    bind "n" "next-tab"
-    bind "p" "prev-tab"
+    // Tab cycles tabs, the way every other tabbed thing does. `n` and `p`
+    // used to, and are free again: `p` is worth more as the palette, which is
+    // pressed rather more often than "the tab before this one".
+    bind "tab" "next-tab"
+    bind "shift+tab" "prev-tab"
     bind "1" "select-tab-1"
     bind "2" "select-tab-2"
     bind "3" "select-tab-3"
@@ -560,7 +677,7 @@ keys {
 
     // Every action by name, including the ones nothing is bound to -- which
     // is the whole point of it, since an unbound action has no other way in.
-    bind "shift+p" "palette"
+    bind "p" "palette"
 
     // The cheatsheet, built from whatever is bound below rather than from a
     // list of what the defaults were -- rebind something and it says so.

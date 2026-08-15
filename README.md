@@ -48,10 +48,12 @@ connection goes away. Reattach with the same command.
 | `C-a \` / `C-a -` | split into columns / rows |
 | `C-a h j k l` or arrows | move focus |
 | `C-a H J K L` or shift+arrows | move the boundary between panes |
+| `C-a =` | give every visible pane an even share again |
+| `C-a Space` | turn the whole layout a quarter turn (four brings it back) |
 | `C-a z` / `C-a m` | zoom a pane to fill the tab / minimise it |
-| `C-a c` · `C-a n` `C-a p` · `C-a 1..9` | new tab · cycle · select |
+| `C-a c` · `C-a Tab` `C-a shift+Tab` · `C-a 1..9` | new tab · cycle · select |
 | `C-a f` | find a pane by name |
-| `C-a shift+p` | the command palette: every action by name |
+| `C-a p` | the command palette: every action by name |
 | `C-a PgUp` `C-a PgDn` `C-a Home` `C-a End` | scrollback (the wheel works too) |
 | `C-a x` / `C-a r` | close a pane / re-run a finished one |
 | `C-a d` / `C-a q` | detach / quit |
@@ -116,7 +118,7 @@ mistyped command in a fresh session no longer closes the session.
 
 ### The rest of it
 
-- **Run a command without knowing its key.** `C-a shift+p` opens a palette of
+- **Run a command without knowing its key.** `C-a p` opens a palette of
   every action there is, by phrase ("split into columns") or by the name a
   config file uses (`split-cols`). It shows the chord beside each one, so
   using it teaches the key that would have skipped it — and it lists actions
@@ -187,7 +189,7 @@ shaders {
 }
 ```
 
-Integer arithmetic over `x y cols rows curx cury focused t`, with `min max abs
+Integer arithmetic over `x y cols rows curx cury focused t since`, with `min max abs
 clamp dist` and comparisons that give 0 or 1 — so `(x < 10) * 200` is how you
 write a rule. Thirty-two ready-made ones are in
 [`contrib/shaders`](contrib/shaders) — a cursor line, a crosshair, a torch, a
@@ -197,6 +199,40 @@ expression produces the *strength* and never the colour, which keeps the
 mixing in C and means the whole program can be worked out once into a per-cell
 map and reused: a shader you wrote in your config costs about what a compiled
 one does.
+
+**The frame is a rect too**, so the same passes can run over a pane's chrome
+instead of its contents — `where="chrome"` — and a border becomes somewhere to
+say what a pane is doing, for no room and no words:
+
+```kdl
+states {
+    // a dead pane's frame breathes red until you deal with it
+    dead { tint where="chrome" channel="fg" color="#ff0033" amount="abs((t / 8) % 510 - 255)" }
+    // a bell nobody has answered: a quarter-second flash, then gone
+    bell { tint where="chrome" channel="fg" color="#ffcc00" amount="(since < 250) * 255" }
+    // and the panes you are not in recede, frame and contents together
+    unfocused { dim amount=60; dim where="chrome" channel="fg" amount=90 }
+}
+```
+
+`x`/`y` there are the *whole frame's*, so an effect travels round a border
+rather than restarting at every corner, and the contents are cut out of the
+pass — a full-strength chrome tint cannot reach your text. `channel="fg"` keeps
+it a border rather than a slab: a frame's *background* is the terminal's own
+default, and mixing that towards a colour paints a rectangle behind the glyphs
+instead of colouring them. A pane that a small
+window has collapsed to a single row is chrome all the way through, which
+makes this the only kind of pass that can still colour it. Anything that reads
+`t` also asks the session to keep painting (`anim_ms`, 20fps by default, and
+only while such a shader is on screen), because a pulse that froze the moment
+you stopped typing would just look broken.
+
+On a frame, the coordinate you usually want is not `x`/`y` but **distance along
+the perimeter**, which the language can work out — and that is what makes a
+shine travel round a border, a ripple leave a corner in both directions, or an
+arc rotate. Seven of those are in [`contrib/chrome`](contrib/chrome): a shine, a
+shimmer, ripples, a spinner, a static gradient, corner glints, and a sheen
+across the title rule.
 
 **You can add your own** without rebuilding sl0ppty: a shader is a C function
 from one cell to that cell's colours, and any `*.so` in

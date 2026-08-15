@@ -1,0 +1,18 @@
+// corner glints — chrome
+//
+// Hand-written, unlike contrib/shaders: those are generated from
+// contrib/shadertoy.html, and the toy previews a pane's *contents*. A frame is
+// a different rect and the toy has no frame to show.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane
+// state instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// The four corners breathe together, brightest at the corner itself. `dist`
+// counts a row double, so the glint is round rather than an ellipse.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="clamp(220 - min(min(dist(x, y, 0, 0), dist(x, y, cols - 1, 0)), min(dist(x, y, 0, rows - 1), dist(x, y, cols - 1, rows - 1))) * 55, 0, 220) * (55 + abs(t / 3 % 90 - 45)) / 100"
+}

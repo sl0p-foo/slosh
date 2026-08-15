@@ -18,7 +18,24 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SL0PPTY_SHADER_ABI 2
+/* 3: shade_ctx_t gained `state_ms`, so an effect can know how long the pane has
+ *    been as it is and not only what time it is; struct shader gained
+ *    `channels`, which is the pass's business rather than a shader's. */
+#define SL0PPTY_SHADER_ABI 3
+
+/* Which of a cell's two colours a pass is allowed to keep. Enforced by the
+ * pass, not by the shader: every shader writes whatever it writes, and the
+ * cell's other colour is put back afterwards — so this works for a built-in
+ * and for a loaded one, and no shader has to grow a variant of itself.
+ *
+ * Put back to what it *was*, which for a cell the terminal is drawing in its
+ * own default colour means back to unset. That is the difference between
+ * recolouring a border glyph and painting a dark rectangle behind it. */
+enum {
+  SHADE_FG = 1 << 0,
+  SHADE_BG = 1 << 1,
+  SHADE_BOTH = SHADE_FG | SHADE_BG, /* and 0 means this, so zeroed is normal */
+};
 
 enum {
   ATTR_BOLD = 1 << 0,
@@ -57,6 +74,12 @@ typedef struct {
   uint16_t x, y;       /* cell position within the content rect, 0-based */
   uint16_t cols, rows; /* content size, so an effect can be positional */
   int64_t now_ms;      /* for anything animated */
+  /* How long this pane has been in the state it is in, in milliseconds — the
+   * bell that just rang, the pane that died a moment ago, the one you have not
+   * been in for a while. `now_ms` says what time it is; a one-shot effect needs
+   * to know how long ago something happened, and only the session can say. 0
+   * when there is nothing to date the state from. */
+  int64_t state_ms;
   bool focused;
 
   /* Where the cursor is, in the same rect-relative space as x/y. Only ever
@@ -97,6 +120,10 @@ struct shader {
    *   gradient  0 down, 1 up, 2 right, 3 left
    */
   uint16_t param;
+  /* SHADE_FG / SHADE_BG / SHADE_BOTH, and 0 for both. Opaque to a shader, like
+   * `amount_expr` above: it is the pass that keeps a channel, so a shader
+   * cannot get it wrong and does not have to know. */
+  uint8_t channels;
 };
 
 /* ---- plugins ------------------------------------------------------------

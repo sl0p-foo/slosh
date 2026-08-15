@@ -19,7 +19,8 @@ enum {
 };
 
 /* Variable slots, in the order the names table lists them. */
-enum { V_X, V_Y, V_COLS, V_ROWS, V_CURX, V_CURY, V_CURSOR, V_FOCUSED, V_T };
+enum { V_X, V_Y, V_COLS, V_ROWS, V_CURX, V_CURY, V_CURSOR, V_FOCUSED, V_T,
+       V_SINCE };
 
 static const struct {
   const char *name;
@@ -35,6 +36,9 @@ static const struct {
     {"cursor", V_CURSOR, EXPR_DEP_CURSOR},
     {"focused", V_FOCUSED, EXPR_DEP_FOCUS},
     {"t", V_T, EXPR_DEP_TIME},
+    /* Also a clock, so it carries the same dependency: never cached, and the
+     * session keeps painting while something reads it. */
+    {"since", V_SINCE, EXPR_DEP_TIME},
 };
 
 /* cols/rows are a dependency even though the map's key always carries the
@@ -314,6 +318,12 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
       [V_CURX] = env->curx,   [V_CURY] = env->cury,
       [V_CURSOR] = env->cursor, [V_FOCUSED] = env->focused,
       [V_T] = (int32_t)(env->t & 0x7fffffff),
+      /* Clamped, not wrapped: a pane that has been unfocused for a month
+       * should read as "a long time", and a `since` that rolled over would
+       * make an effect restart for no reason anybody could see. */
+      [V_SINCE] = (int32_t)(env->since < 0 ? 0
+                            : env->since > 0x7fffffff ? 0x7fffffff
+                                                      : env->since),
   };
 
   for (size_t i = 0; i < pr->n; i++) {

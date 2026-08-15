@@ -12,6 +12,13 @@
  * the one place they are a *contract* with code compiled outside this tree. */
 #include "shader_abi.h"
 
+/* A rectangle of cells. Here rather than in app.h because the layout is not
+ * the only thing that has one: a shader pass is given a rect to run over, and
+ * the frame pass is given the rect it must skip. */
+typedef struct {
+  uint16_t x, y, w, h;
+} rect_t;
+
 /* ---- screen: our composited cell buffer + diff emitter ---------------- */
 
 /* One geometry (DESIGN.md): every painted interactive element records its rect

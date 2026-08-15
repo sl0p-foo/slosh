@@ -110,6 +110,14 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     }
     return jok_raw("screen", screen_dump_json(s));
   }
+  if (strcmp(cmd, "deadline") == 0) {
+    /* When this session wants its next frame, in milliseconds, or -1 for "only
+     * when something happens". A property of the frame last composed -- an
+     * animated shader asks for a clock, a toast asks to expire -- so a caller
+     * that has not composed one is asking about nothing. The server's poll loop
+     * lives on this answer; a scripted front end has the same question. */
+    return jok_int("ms", app_next_deadline_ms(a));
+  }
   if (strcmp(cmd, "send") == 0) {
     const char *data = jv_gets(req, "data", "");
     input_feed(in, (const uint8_t *)data, strlen(data), feed_event, a);
@@ -333,6 +341,11 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
   if (strcmp(verb, "snapshot") == 0) {
     app_compose(a, s);
     return strcmp(arg, "text") == 0 ? screen_dump(s) : screen_dump_json(s);
+  }
+  if (strcmp(verb, "deadline") == 0) {
+    char buf[24];
+    snprintf(buf, sizeof buf, "%d", app_next_deadline_ms(a));
+    return strdup(buf);
   }
   if (strcmp(verb, "panes") == 0) {
     app_compose(a, s); /* layout is a function of the frame: compose first */

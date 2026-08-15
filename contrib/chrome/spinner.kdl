@@ -1,0 +1,19 @@
+// spinner — chrome
+//
+// Hand-written, unlike contrib/shaders: those are generated from
+// contrib/shadertoy.html, and the toy previews a pane's *contents*. A frame is
+// a different rect and the toy has no frame to show.
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
+// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane
+// state instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// A fixed arc rotating: fourteen cells of border, going round. Reads as work in
+// progress, so it belongs on a state -- `suspended` for a pane that has not
+// started, or `bell` for one that wants you.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffcc00" amount="(((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y) - (t / 14 % (2 * cols + 2 * rows - 4)) + (2 * cols + 2 * rows - 4)) % (2 * cols + 2 * rows - 4) < 14) * 200"
+}

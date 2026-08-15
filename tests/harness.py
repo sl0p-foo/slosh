@@ -195,6 +195,15 @@ class Session:
         self._cmd("alive")
         return self.proc.stdout.readline().strip() == "true"
 
+    def deadline(self):
+        """Milliseconds until the session wants a frame of its own, or -1.
+
+        A property of the frame last composed -- an animated shader asks for a
+        clock, a toast asks to expire -- so snapshot() first or you are asking
+        about nothing."""
+        self._cmd("deadline")
+        return int(self.proc.stdout.readline().strip())
+
     def close(self):
         try:
             self._cmd("quit")

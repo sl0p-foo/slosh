@@ -48,7 +48,7 @@ static void run1(screen_t *s, const char *kind, color_t color, uint8_t amount) {
   shader_t sh;
   if (!shader_make(&sh, kind, color, amount)) return;
   shade_ctx_t base = base_ctx();
-  shade_apply(s, &sh, 1, 0, 0, s->cols, s->rows, &base);
+  shade_apply(s, &sh, 1, (rect_t){0, 0, s->cols, s->rows}, NULL, &base);
 }
 
 static void run1p(screen_t *s, const char *kind, color_t color, uint8_t amount,
@@ -56,7 +56,7 @@ static void run1p(screen_t *s, const char *kind, color_t color, uint8_t amount,
   shader_t sh;
   if (!shader_make_p(&sh, kind, color, amount, param)) return;
   shade_ctx_t base = ctx ? *ctx : base_ctx();
-  shade_apply(s, &sh, 1, 0, 0, s->cols, s->rows, &base);
+  shade_apply(s, &sh, 1, (rect_t){0, 0, s->cols, s->rows}, NULL, &base);
 }
 
 /* Fills every cell mid-grey, so any change is a change the shader made. */
@@ -216,7 +216,7 @@ int main(void) {
     screen_init(&s, 4, 2);
     put(&s, 0, 0, (color_t){0}, (color_t){0});
     shade_ctx_t base = base_ctx();
-    shade_apply(&s, NULL, 0, 0, 0, 4, 2, &base);
+    shade_apply(&s, NULL, 0, (rect_t){0, 0, 4, 2}, NULL, &base);
     ok("no shaders leaves defaults unset", !screen_at(&s, 0, 0)->fg.set,
        shown(screen_at(&s, 0, 0)->fg));
     screen_free(&s);
@@ -255,7 +255,7 @@ int main(void) {
     shader_t sh;
     shader_make(&sh, "dim", (color_t){0}, 255);
     shade_ctx_t base = base_ctx();
-    shade_apply(&s, &sh, 1, 2, 1, 4, 2, &base); /* an inset rect */
+    shade_apply(&s, &sh, 1, (rect_t){2, 1, 4, 2}, NULL, &base); /* an inset rect */
 
     ok("a cell inside the rect is shaded",
        ceq(screen_at(&s, 2, 1)->fg, 0, 0, 0), shown(screen_at(&s, 2, 1)->fg));
@@ -288,14 +288,14 @@ int main(void) {
     screen_init(&s, 2, 1);
     put(&s, 0, 0, rgb(0x00, 0x80, 0x00), rgb(0, 0, 0));
     shader_t ab[2] = {gray, tint};
-    shade_apply(&s, ab, 2, 0, 0, 2, 1, &base);
+    shade_apply(&s, ab, 2, (rect_t){0, 0, 2, 1}, NULL, &base);
     color_t after_ab = screen_at(&s, 0, 0)->fg;
     screen_free(&s);
 
     screen_init(&s, 2, 1);
     put(&s, 0, 0, rgb(0x00, 0x80, 0x00), rgb(0, 0, 0));
     shader_t ba[2] = {tint, gray};
-    shade_apply(&s, ba, 2, 0, 0, 2, 1, &base);
+    shade_apply(&s, ba, 2, (rect_t){0, 0, 2, 1}, NULL, &base);
     color_t after_ba = screen_at(&s, 0, 0)->fg;
     screen_free(&s);
 
@@ -310,7 +310,7 @@ int main(void) {
     shader_t twice[2];
     shader_make(&twice[0], "dim", (color_t){0}, 128);
     shader_make(&twice[1], "dim", (color_t){0}, 128);
-    shade_apply(&s, twice, 2, 0, 0, 2, 1, &base);
+    shade_apply(&s, twice, 2, (rect_t){0, 0, 2, 1}, NULL, &base);
     ok("two half-dims are darker than one",
        screen_at(&s, 0, 0)->fg.r < 0x70, shown(screen_at(&s, 0, 0)->fg));
     screen_free(&s);
@@ -324,11 +324,11 @@ int main(void) {
       for (uint16_t x = 0; x < 8; x++)
         put(&s, x, y, rgb(0x11, 0x22, 0x33), rgb(0, 0, 0));
 
-    shader_t sh = {"probe", probe_fn, {0}, 0, 0};
+    shader_t sh = {.kind = "probe", .fn = probe_fn};
     shade_ctx_t base = base_ctx();
     base.now_ms = 1234;
     base.focused = true;
-    shade_apply(&s, &sh, 1, 2, 1, 4, 2, &base);
+    shade_apply(&s, &sh, 1, (rect_t){2, 1, 4, 2}, NULL, &base);
 
     ok("every cell in the rect is visited exactly once", probe.calls == 4 * 2,
        "");
@@ -346,6 +346,110 @@ int main(void) {
        ceq(screen_at(&s, 2, 1)->bg, 0, 0, 0), shown(screen_at(&s, 2, 1)->bg));
     ok("and (3,1) is its opposite corner",
        ceq(screen_at(&s, 5, 2)->bg, 3, 1, 0), shown(screen_at(&s, 5, 2)->bg));
+    screen_free(&s);
+  }
+
+  /* ---- the hole: a frame is a rect minus its contents ---- */
+  {
+    memset(&probe, 0, sizeof probe);
+    screen_init(&s, 6, 5);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+
+    shader_t sh = {.kind = "probe", .fn = probe_fn};
+    shade_ctx_t base = base_ctx();
+    rect_t hole = {1, 1, 4, 3};
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 6, 5}, &hole, &base);
+
+    ok("a hole leaves the ring, and only the ring", probe.calls == 6 * 5 - 4 * 3,
+       "");
+    ok("a cell inside the hole is not visited at all",
+       ceq(screen_at(&s, 2, 2)->bg, 0xff, 0xff, 0xff),
+       shown(screen_at(&s, 2, 2)->bg));
+    ok("the ring is still measured against the whole rect",
+       probe.cols == 6 && probe.rows == 5, "");
+    ok("so the far corner keeps the rect's own coordinates",
+       ceq(screen_at(&s, 5, 4)->bg, 5, 4, 0), shown(screen_at(&s, 5, 4)->bg));
+    ok("and a side cell beside the hole is the ring's",
+       ceq(screen_at(&s, 0, 2)->bg, 0, 2, 0), shown(screen_at(&s, 0, 2)->bg));
+    screen_free(&s);
+  }
+
+  /* A hole that is empty, or that misses, is no hole: a pane whose rect is too
+   * small for a frame has no content rect to speak of, and asking for one
+   * anyway must not silently skip half the pass. */
+  {
+    memset(&probe, 0, sizeof probe);
+    screen_init(&s, 4, 2);
+    fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
+    shader_t sh = {.kind = "probe", .fn = probe_fn};
+    shade_ctx_t base = base_ctx();
+    rect_t empty = {1, 1, 0, 0};
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 4, 2}, &empty, &base);
+    ok("a zero-sized hole removes nothing", probe.calls == 4 * 2, "");
+
+    memset(&probe, 0, sizeof probe);
+    rect_t elsewhere = {40, 40, 4, 4};
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 4, 2}, &elsewhere, &base);
+    ok("nor does one that does not overlap", probe.calls == 4 * 2, "");
+
+    /* Clipped rather than wrapped: a hole hanging off the rect removes the
+     * part that is inside it and nothing else. */
+    memset(&probe, 0, sizeof probe);
+    rect_t over = {2, 0, 10, 10};
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 4, 2}, &over, &base);
+    ok("a hole larger than the rect is clipped to it", probe.calls == 2 * 2, "");
+    screen_free(&s);
+  }
+
+  /* ---- channels: which of a cell's two colours a pass keeps ---- */
+  {
+    shader_t sh;
+    shade_ctx_t base = base_ctx();
+    const color_t red = {true, 0xff, 0, 0};
+
+    screen_init(&s, 2, 1);
+    fill(&s, rgb(0x40, 0x40, 0x40), rgb(0x20, 0x20, 0x20));
+    shader_make(&sh, "tint", red, 255);
+    sh.channels = SHADE_FG;
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 2, 1}, NULL, &base);
+    ok("channel fg tints the foreground",
+       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0), shown(screen_at(&s, 0, 0)->fg));
+    ok("...and puts the background back",
+       ceq(screen_at(&s, 0, 0)->bg, 0x20, 0x20, 0x20),
+       shown(screen_at(&s, 0, 0)->bg));
+
+    fill(&s, rgb(0x40, 0x40, 0x40), rgb(0x20, 0x20, 0x20));
+    sh.channels = SHADE_BG;
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 2, 1}, NULL, &base);
+    ok("channel bg tints the background",
+       ceq(screen_at(&s, 0, 0)->bg, 0xff, 0, 0), shown(screen_at(&s, 0, 0)->bg));
+    ok("...and leaves the foreground",
+       ceq(screen_at(&s, 0, 0)->fg, 0x40, 0x40, 0x40),
+       shown(screen_at(&s, 0, 0)->fg));
+
+    /* The reason the mask exists. A cell the terminal draws in its own default
+     * has no background of ours; mixing that towards a colour turns a
+     * recoloured glyph into a painted rectangle, and it must come back *unset*
+     * rather than as our idea of what default means. */
+    screen_free(&s);
+    screen_init(&s, 2, 1);
+    put(&s, 0, 0, rgb(0x40, 0x40, 0x40), (color_t){0});
+    put(&s, 1, 0, rgb(0x40, 0x40, 0x40), (color_t){0});
+    sh.channels = SHADE_FG;
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 2, 1}, NULL, &base);
+    ok("an unset background stays unset", !screen_at(&s, 0, 0)->bg.set,
+       shown(screen_at(&s, 0, 0)->bg));
+
+    /* Zero is both, so every shader made before the mask existed behaves as it
+     * did: the field is the pass's, and a shader that says nothing gets the
+     * old answer. */
+    fill(&s, rgb(0x40, 0x40, 0x40), rgb(0x20, 0x20, 0x20));
+    sh.channels = 0;
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 2, 1}, NULL, &base);
+    ok("no mask means both",
+       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0) &&
+           ceq(screen_at(&s, 0, 0)->bg, 0xff, 0, 0),
+       shown(screen_at(&s, 0, 0)->bg));
     screen_free(&s);
   }
 
@@ -488,10 +592,10 @@ int main(void) {
     shader_t sh;
     shader_make(&sh, "dim", (color_t){0}, 255);
     shade_ctx_t base = base_ctx();
-    shade_apply(&s, &sh, 1, 0, 0, 0, 0, &base);   /* empty rect */
-    shade_apply(&s, &sh, 0, 0, 0, 4, 2, &base);   /* no shaders */
-    shade_apply(NULL, &sh, 1, 0, 0, 4, 2, &base); /* no screen */
-    shade_apply(&s, &sh, 1, 100, 100, 4, 2, &base); /* rect off-screen */
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 0, 0}, NULL, &base);   /* empty rect */
+    shade_apply(&s, &sh, 0, (rect_t){0, 0, 4, 2}, NULL, &base);   /* no shaders */
+    shade_apply(NULL, &sh, 1, (rect_t){0, 0, 4, 2}, NULL, &base); /* no screen */
+    shade_apply(&s, &sh, 1, (rect_t){100, 100, 4, 2}, NULL, &base); /* rect off-screen */
     ok("a degenerate pass changes nothing and does not crash",
        ceq(screen_at(&s, 0, 0)->fg, 0x80, 0x80, 0x80),
        shown(screen_at(&s, 0, 0)->fg));

@@ -8,6 +8,8 @@ from harness import Session, check, report
 
 SH = ["/bin/sh", "-c", "stty raw -echo; cat"]
 
+NEXT, PREV = r"\t", r"\e[Z"  # C-a tab / C-a shift+tab
+
 
 def test_tabs():
     with Session(SH, cols=60, rows=14) as s:
@@ -29,15 +31,31 @@ def test_tabs():
         check("the tab strip is drawn", "1" in snap.line(1) and "2" in snap.line(1),
               repr(snap.line(1)))
 
-        s.key("p")  # previous tab
+        s.key(PREV)
         s.settle()
-        check("C-a p goes back", s.tabs()[0]["active"])
+        check("C-a shift+tab goes back", s.tabs()[0]["active"])
         check("the first tab kept its content", "in-tab-one" in s.snapshot().screen(),
               repr(s.snapshot().screen()[:200]))
 
         s.key("2")
         s.settle()
         check("C-a 2 selects by number", s.tabs()[1]["active"])
+
+        # `n`/`p` used to cycle. `p` is the palette now -- pressed far more
+        # often than "the tab before this one" -- and `n` went with it rather
+        # than leaving half a pair behind.
+        active = [t["index"] for t in s.tabs() if t["active"]]
+        s.key("n")
+        s.settle()
+        check("C-a n no longer cycles tabs",
+              [t["index"] for t in s.tabs() if t["active"]] == active,
+              str(s.tabs()))
+        s.key("p")
+        s.settle()
+        check("nor does C-a p, which opens the palette",
+              [t["index"] for t in s.tabs() if t["active"]] == active,
+              str(s.tabs()))
+        s.send(r"\e")  # put the palette away again
 
 
 def test_background_tabs_keep_running():
@@ -51,7 +69,7 @@ def test_background_tabs_keep_running():
         s.settle()
         s.raw("still-alive")
         s.settle()
-        s.key("n")  # away again
+        s.key(NEXT)  # away again
         s.settle()
         check("a background pane still accepts input",
               any(p["tab"] == 1 for p in s.panes()), str(s.panes()))

@@ -23,6 +23,8 @@ static const struct {
     {"focus-down", ACT_FOCUS_DOWN},   {"focus-next", ACT_FOCUS_NEXT},
     {"resize-left", ACT_RESIZE_LEFT}, {"resize-right", ACT_RESIZE_RIGHT},
     {"resize-up", ACT_RESIZE_UP},     {"resize-down", ACT_RESIZE_DOWN},
+    {"equalize", ACT_EQUALIZE},
+    {"rotate-layout", ACT_ROTATE_LAYOUT},
     {"scroll-up", ACT_SCROLL_UP},     {"scroll-down", ACT_SCROLL_DOWN},
     {"scroll-page-up", ACT_SCROLL_PAGE_UP},
     {"scroll-page-down", ACT_SCROLL_PAGE_DOWN},
@@ -115,21 +117,60 @@ static bool parse_color(const char *text, color_t *out) {
 
 static const char *const PSTATE_NAMES[PSTATE_COUNT] = {
     "dragging", "drop_hover", "drop_target", "dead", "suspended",
-    "scrolled",  "unfocused",
+    "bell",     "scrolled",   "unfocused",
 };
 
 const char *pane_state_name(pane_state_t s) {
   return s < PSTATE_COUNT ? PSTATE_NAMES[s] : "";
 }
 
-/* Reads the children of `node` as a shader chain into `out` (SHADE_MAX slots),
- * returning how many were understood. */
-static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
-                                shader_t *out, char *err, size_t errcap) {
-  size_t n = 0;
-  for (size_t i = 0; i < node->nkids && n < SHADE_MAX; i++) {
+/* Reads the children of `node` as shader chains: the ones that run over a
+ * pane's contents and the ones that run over its frame, routed by each entry's
+ * `where` (default "content"). One parser, because a chrome pass is not a
+ * different kind of shader — it is the same chain run over a different rect,
+ * and a second parser would be a second place for `amount` to mean something
+ * slightly else. Counts are set, not added to: naming a block replaces it. */
+static void parse_shader_list(config_t *c, const kdl_node_t *node,
+                              shader_t *content, size_t *ncontent,
+                              shader_t *chrome, size_t *nchrome, char *err,
+                              size_t errcap) {
+  *ncontent = 0;
+  *nchrome = 0;
+  for (size_t i = 0; i < node->nkids; i++) {
     const kdl_node_t *k = node->kids[i];
     if (!k || !k->name) continue;
+
+    /* Where this pass runs. Dropped rather than defaulted when the word is not
+     * one we know, for the same reason a bad `amount` is: the entry says what
+     * it wants and we cannot do it, and running it over the contents because
+     * "chrom" was a typo would be a surprise nobody asked for. */
+    const char *where = kdl_prop(k, "where", "content");
+    bool on_chrome = strcmp(where, "chrome") == 0;
+    if (!on_chrome && strcmp(where, "content") != 0) {
+      if (err && !err[0])
+        snprintf(err, errcap, "bad where for %s: %s (content or chrome)",
+                 k->name, where);
+      continue;
+    }
+    shader_t *out = on_chrome ? chrome : content;
+    size_t *n = on_chrome ? nchrome : ncontent;
+    if (*n >= SHADE_MAX) continue;
+
+    /* Which of the cell's two colours it may touch. `fg` is what a *border*
+     * flash wants: a frame's background is usually the terminal's own default,
+     * and mixing that towards a colour turns a recoloured glyph into a painted
+     * rectangle. Refused the same way a bad `where` is, and for the same
+     * reason. */
+    const char *chan = kdl_prop(k, "channel", "both");
+    uint8_t channels = SHADE_BOTH;
+    if (strcmp(chan, "fg") == 0) channels = SHADE_FG;
+    else if (strcmp(chan, "bg") == 0) channels = SHADE_BG;
+    else if (strcmp(chan, "both") != 0) {
+      if (err && !err[0])
+        snprintf(err, errcap, "bad channel for %s: %s (fg, bg or both)",
+                 k->name, chan);
+      continue;
+    }
 
     /* `amount` is a number, or an expression that produces one per cell.
      * Same key either way: `amount=90` and `amount="(y % 2) * 40"` are the
@@ -174,20 +215,20 @@ static size_t parse_shader_list(config_t *c, const kdl_node_t *node,
     if (cs && !parse_color(cs, &col) && err && !err[0])
       snprintf(err, errcap, "bad colour for shader %s: %s", k->name, cs);
 
-    if (!shader_make_p(&out[n], k->name, col, (uint8_t)amount,
-                       (uint16_t)param)) {
+    shader_t *slot = &out[*n];
+    if (!shader_make_p(slot, k->name, col, (uint8_t)amount, (uint16_t)param)) {
       if (err && !err[0]) snprintf(err, errcap, "unknown shader: %s", k->name);
       expr_free(aexpr);
       continue;
     }
-    out[n].amount_expr = aexpr;
+    slot->channels = channels;
+    slot->amount_expr = aexpr;
     if (aexpr) {
       c->exprs = realloc(c->exprs, (c->nexprs + 1) * sizeof *c->exprs);
       c->exprs[c->nexprs++] = aexpr; /* the config owns every program */
     }
-    n++;
+    (*n)++;
   }
-  return n;
 }
 
 /* `direct` is part of the identity, not a property of it: `x` after the leader
@@ -326,6 +367,10 @@ void config_defaults(config_t *c) {
   c->toast_ms = 2500;
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
+  /* 20fps. Fast enough that a pulse or a sweep reads as movement, slow enough
+   * that an idle session with an animated shader is not a busy loop -- and it
+   * only costs anything at all while such a shader is actually on screen. */
+  c->anim_ms = 50;
   c->modal_scrim = 120;
   c->status_bar = true;
   c->status_line = true;
@@ -491,11 +536,22 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, MOD_SHIFT, ACT_RESIZE_RIGHT, false);
   bind_add(c, GHOSTTY_KEY_ARROW_UP, MOD_SHIFT, ACT_RESIZE_UP, false);
   bind_add(c, GHOSTTY_KEY_ARROW_DOWN, MOD_SHIFT, ACT_RESIZE_DOWN, false);
+  bind_add(c, GHOSTTY_KEY_EQUAL, 0, ACT_EQUALIZE, false);
+  /* The leader and the space bar: the biggest key on the keyboard, no modifier,
+   * and the one tmux already spends on cycling layouts — so the hand that knows
+   * that reaches for the right thing here. Four presses come back round, which
+   * is what makes a key this easy to hit the right choice rather than a hazard. */
+  bind_add(c, GHOSTTY_KEY_SPACE, 0, ACT_ROTATE_LAYOUT, false);
   bind_add(c, GHOSTTY_KEY_C, 0, ACT_NEW_TAB, false);
-  bind_add(c, GHOSTTY_KEY_N, 0, ACT_NEXT_TAB, false);
-  bind_add(c, GHOSTTY_KEY_P, 0, ACT_PREV_TAB, false);
+  /* Cycling tabs is on tab/shift+tab, not on n/p: `p` is the palette, which is
+   * pressed far more often than "the tab before this one" and had the only
+   * shifted letter in the defaults. Tab is the key every other tabbed thing
+   * cycles with, and it decodes on a plain terminal (`\e[Z` is shift+tab), so
+   * this costs nothing on a client without the kitty protocol. */
+  bind_add(c, GHOSTTY_KEY_TAB, 0, ACT_NEXT_TAB, false);
+  bind_add(c, GHOSTTY_KEY_TAB, MOD_SHIFT, ACT_PREV_TAB, false);
   bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER, false);
-  bind_add(c, GHOSTTY_KEY_P, MOD_SHIFT, ACT_PALETTE, false);
+  bind_add(c, GHOSTTY_KEY_P, 0, ACT_PALETTE, false);
   bind_add(c, GHOSTTY_KEY_PAGE_UP, 0, ACT_SCROLL_PAGE_UP, false);
   bind_add(c, GHOSTTY_KEY_PAGE_DOWN, 0, ACT_SCROLL_PAGE_DOWN, false);
   bind_add(c, GHOSTTY_KEY_HOME, 0, ACT_SCROLL_TOP, false);
@@ -546,6 +602,10 @@ static const struct {
     {ACT_RESIZE_RIGHT, "size", "move the boundary right"},
     {ACT_RESIZE_UP, "size", "move the boundary up"},
     {ACT_RESIZE_DOWN, "size", "move the boundary down"},
+    /* Short enough to fit the palette's label column, which truncates at 26 —
+     * "give every pane an even share" read as "give every pane an even sh". */
+    {ACT_EQUALIZE, "size", "even out every split"},
+    {ACT_ROTATE_LAYOUT, "size", "turn the layout a quarter"},
 
     {ACT_NEW_TAB, "tabs", "new tab"},
     {ACT_NEXT_TAB, "tabs", "next tab"},
@@ -710,7 +770,7 @@ static void cb_color(cfgbuf_t *b, const char *name, color_t c) {
 }
 
 static void cb_chain(cfgbuf_t *b, const char *indent, const shader_t *sh,
-                     size_t n) {
+                     size_t n, bool chrome) {
   for (size_t i = 0; i < n; i++) {
     if (!sh[i].kind) continue;
     cb_add(b, "%s%s amount=%u", indent, sh[i].kind, sh[i].amount);
@@ -718,6 +778,9 @@ static void cb_chain(cfgbuf_t *b, const char *indent, const shader_t *sh,
       cb_add(b, " color=\"#%02x%02x%02x\"", sh[i].color.r, sh[i].color.g,
              sh[i].color.b);
     if (sh[i].param) cb_add(b, " at=%u", sh[i].param);
+    if (chrome) cb_add(b, " where=\"chrome\"");
+    if (sh[i].channels == SHADE_FG) cb_add(b, " channel=\"fg\"");
+    else if (sh[i].channels == SHADE_BG) cb_add(b, " channel=\"bg\"");
     cb_add(b, "\n");
   }
 }
@@ -776,6 +839,8 @@ char *config_render(const config_t *c) {
   cb_add(&b, "toast_ms %u\n", c->toast_ms);
   cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
   cb_add(&b, "double_click_ms %u\n", c->double_click_ms);
+  cb_add(&b, "anim_ms %u             // frame clock while a shader animates\n",
+         c->anim_ms);
   cb_add(&b, "modal_scrim %u         // how far a modal pushes the rest back\n",
          c->modal_scrim);
   cb_add(&b, "dim_unfocused %u       // ...and how far the panes you are not in\n",
@@ -796,17 +861,22 @@ char *config_render(const config_t *c) {
   cb_add(&b, "}\n");
 
   /* Written even when empty: an empty block says "this exists and you have
-   * none", where nothing at all says "we forgot to tell you". */
-  cb_add(&b, "\n// ---- colour passes over every pane's contents ----\n");
+   * none", where nothing at all says "we forgot to tell you". Chrome passes
+   * live in the same blocks, marked, because that is how they are written. */
+  cb_add(&b, "\n// ---- colour passes over every pane ----\n");
   cb_add(&b, "// (contrib/shaders has thirty-odd to paste; contrib/shadertoy.html\n");
-  cb_add(&b, "//  previews them)\nshaders {\n");
-  cb_chain(&b, "    ", c->shaders, c->nshaders);
+  cb_add(&b, "//  previews them. where=\"chrome\" runs a pass over the frame\n");
+  cb_add(&b, "//  instead of the contents)\nshaders {\n");
+  cb_chain(&b, "    ", c->shaders, c->nshaders, false);
+  cb_chain(&b, "    ", c->chrome_shaders, c->nchrome_shaders, true);
   cb_add(&b, "}\n");
 
   cb_add(&b, "\n// ---- what a pane looks like in a given state ----\nstates {\n");
   for (int st = 0; st < PSTATE_COUNT; st++) {
     cb_add(&b, "    %s {\n", pane_state_name((pane_state_t)st));
-    cb_chain(&b, "        ", c->state_shaders[st], c->state_n[st]);
+    cb_chain(&b, "        ", c->state_shaders[st], c->state_n[st], false);
+    cb_chain(&b, "        ", c->chrome_state_shaders[st],
+             c->chrome_state_n[st], true);
     cb_add(&b, "    }\n");
   }
   cb_add(&b, "}\n");
@@ -994,6 +1064,8 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
                                             c->hover_delay_ms);
   c->double_click_ms = (uint16_t)kdl_arg_int(kdl_child(root, "double_click_ms"),
                                              0, c->double_click_ms);
+  c->anim_ms =
+      (uint16_t)kdl_arg_int(kdl_child(root, "anim_ms"), 0, c->anim_ms);
   {
     long v = kdl_arg_int(kdl_child(root, "modal_scrim"), 0, c->modal_scrim);
     c->modal_scrim = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
@@ -1044,7 +1116,9 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
    * Shared by `shaders { }` and by every state, so a state's chain is exactly
    * as expressive as the global one and there is one parser to be wrong. */
   const kdl_node_t *shaders = kdl_child(root, "shaders");
-  if (shaders) c->nshaders = parse_shader_list(c, shaders, c->shaders, err, errcap);
+  if (shaders)
+    parse_shader_list(c, shaders, c->shaders, &c->nshaders, c->chrome_shaders,
+                      &c->nchrome_shaders, err, errcap);
 
   /* `states { drop_target { grayscale amount=200; dim amount=140 } }` — what a
    * pane looks like while it is in a state. Naming a state at all replaces its
@@ -1064,7 +1138,9 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         continue;
       }
       if (st == PSTATE_UNFOCUSED) unfocused_declared = true;
-      c->state_n[st] = parse_shader_list(c, k, c->state_shaders[st], err, errcap);
+      parse_shader_list(c, k, c->state_shaders[st], &c->state_n[st],
+                        c->chrome_state_shaders[st], &c->chrome_state_n[st],
+                        err, errcap);
     }
   }
   /* After the states block, so a config that wrote its own chain keeps it and

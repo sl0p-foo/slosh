@@ -186,7 +186,10 @@ bool shader_make_p(shader_t *out, const char *kind, color_t color,
   if (!out || !kind) return false;
   const shader_def_t *d = find_kind(kind);
   if (!d) return false;
-  *out = (shader_t){d->name, d->fn, NULL, color, amount, param};
+  /* channels left 0, which the pass reads as both: a shader made here has no
+   * opinion about that, and the config sets it when the config has one. */
+  *out = (shader_t){.kind = d->name, .fn = d->fn, .color = color,
+                    .amount = amount, .param = param};
   return true;
 }
 
@@ -318,9 +321,9 @@ size_t shader_load_dir(const char *dir, char *err, size_t errcap) {
 
 /* ---- the pass ----------------------------------------------------------- */
 
-void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
-                 uint16_t y0, uint16_t w, uint16_t h, const shade_ctx_t *base) {
-  if (!s || !shaders || !n || !w || !h) return;
+void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
+                 const rect_t *hole, const shade_ctx_t *base) {
+  if (!s || !shaders || !n || !r.w || !r.h) return;
 
   /* Clip once, here, so the inner loop can walk a row pointer instead of
    * bounds-checking every cell through screen_at(). That call was a fifth of
@@ -328,10 +331,24 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
    * already guarantees, once per cell per shader. The layout never asks for a
    * rect that needs clipping; this is so that a caller that does gets a
    * smaller rect rather than an out-of-bounds write. */
+  uint16_t x0 = r.x, y0 = r.y, w = r.w, h = r.h;
   if (x0 >= s->cols || y0 >= s->rows) return;
   if ((size_t)x0 + w > s->cols) w = (uint16_t)(s->cols - x0);
   if ((size_t)y0 + h > s->rows) h = (uint16_t)(s->rows - y0);
   if (!w || !h) return;
+
+  /* The hole in this rect's own coordinates, as a half-open span per axis.
+   * Computed once: the inner loop then asks two comparisons per cell, and an
+   * empty hole leaves an empty span that nothing is ever inside. */
+  uint16_t hx0 = 0, hx1 = 0, hy0 = 0, hy1 = 0;
+  if (hole && hole->w && hole->h && hole->x + hole->w > x0 &&
+      hole->y + hole->h > y0) {
+    hx0 = (uint16_t)(hole->x > x0 ? hole->x - x0 : 0);
+    hy0 = (uint16_t)(hole->y > y0 ? hole->y - y0 : 0);
+    long ex = (long)hole->x + hole->w - x0, ey = (long)hole->y + hole->h - y0;
+    hx1 = (uint16_t)(ex > w ? w : ex);
+    hy1 = (uint16_t)(ey > h ? h : ey);
+  }
 
   shade_ctx_t ctx = base ? *base : (shade_ctx_t){0};
   ctx.cols = w;
@@ -353,6 +370,11 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
     const uint8_t *map = NULL;
     expr_env_t env = {0};
     bool per_cell = false;
+    /* Which colours this pass keeps. Per shader, not per cell: it is one test
+     * of a byte, and the inner loop is walked tens of thousands of times a
+     * frame. 0 means both, so a zeroed shader_t behaves as it always did. */
+    bool keep_fg = !sh->channels || (sh->channels & SHADE_FG);
+    bool keep_bg = !sh->channels || (sh->channels & SHADE_BG);
 
     if (sh->amount_expr) {
       env.cols = w;
@@ -362,6 +384,7 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
       env.cursor = ctx.has_cursor;
       env.focused = ctx.focused;
       env.t = ctx.now_ms;
+      env.since = ctx.state_ms;
       if (expr_deps(sh->amount_expr) == 0) {
         local.amount = (uint8_t)clamp255(expr_constant(sh->amount_expr));
       } else {
@@ -379,11 +402,26 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
     for (uint16_t y = 0; y < h; y++) {
       cell_t *row = &s->cur[(size_t)(y0 + y) * s->cols + x0];
       ctx.y = y;
+      bool y_in_hole = y >= hy0 && y < hy1;
       for (uint16_t x = 0; x < w; x++) {
+        /* Inside the hole: not this pass's cell. Skipped before anything is
+         * materialised on it, so a frame pass leaves the contents exactly as
+         * the content pass left them. */
+        if (y_in_hole && x >= hx0 && x < hx1) {
+          x = (uint16_t)(hx1 - 1); /* jump the span rather than walk it */
+          continue;
+        }
         cell_t *c = &row[x];
         /* width 0 is the tail half of a wide cell: never painted, so shading
          * it would be computing a colour nothing can display. */
         if (!c->width) continue;
+
+        /* What the cell was, for whichever colour this pass does not keep.
+         * Taken before materialising, so a colour the terminal was drawing in
+         * its own default goes back to *unset* rather than to our idea of it —
+         * the difference between recolouring a glyph and painting a rectangle
+         * behind it. */
+        color_t was_fg = c->fg, was_bg = c->bg;
 
         /* Materialised per shader rather than once for the chain, so a shader
          * added later cannot observe a half-resolved cell. Idempotent: once
@@ -400,6 +438,9 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, uint16_t x0,
           local.amount = (uint8_t)clamp255(expr_eval(sh->amount_expr, &env));
         }
         local.fn(&local, &ctx, c);
+
+        if (!keep_fg) c->fg = was_fg;
+        if (!keep_bg) c->bg = was_bg;
       }
     }
   }

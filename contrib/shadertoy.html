@@ -101,6 +101,8 @@
     <code>cols rows</code> the size of the pane<br>
     <code>curx cury</code> the cursor (follows your mouse), <code>cursor</code> 0/1<br>
     <code>focused</code> 0/1 &nbsp; <code>t</code> milliseconds<br>
+    <code>since</code> ms in the pane's current state (<code>bell</code>,
+    <code>dead</code>…); here it restarts every 3s so a flash is visible<br>
     <code>+ - * / %</code> integer only; division by zero is 0<br>
     <code>&lt; &gt; &lt;= &gt;= == != &amp;&amp; || !</code> give 0 or 1, so
     <code>(x &lt; 10) * 200</code> is a rule<br>
@@ -138,6 +140,7 @@ const VARS = {
   cursor:  { dep: DEP.CURSOR },
   focused: { dep: DEP.FOCUS },
   t:       { dep: DEP.TIME },
+  since:   { dep: DEP.TIME },
 };
 
 const FNS = { min: 2, max: 2, abs: 1, clamp: 3, dist: 4 };
@@ -537,8 +540,15 @@ function draw(now) {
   ctx.font = `${CH - 5}px ui-monospace, monospace`;
   ctx.textBaseline = "top";
 
+  /* `since` is how long the pane has been in its current state. This preview
+     has no pane and no states, so it is simulated: the clock restarts every
+     three seconds, as if something rang again — which is the only way a
+     one-shot effect (a bell flash) is visible in a preview at all. Said out
+     loud in the legend, because a preview that quietly means something else
+     than the session does is worse than no preview. */
   const env = { cols: COLS, rows: ROWS, curx: cursor.x, cury: cursor.y,
-                cursor: 1, focused: 1, t: Math.floor(now), x: 0, y: 0 };
+                cursor: 1, focused: 1, t: Math.floor(now),
+                since: Math.floor(now) % 3000, x: 0, y: 0 };
 
   for (let y = 0; y < ROWS; y++) {
     const [colour, text] = SAMPLE[y] || ["", ""];

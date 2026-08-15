@@ -26,6 +26,12 @@ typedef enum {
   PSTATE_DROP_TARGET, /* the others, all of them somewhere it could go */
   PSTATE_DEAD,        /* its program exited; waiting to be re-run or closed */
   PSTATE_SUSPENDED,   /* laid out, never started */
+  /* A BEL arrived and nobody has looked since. Above the ambient states
+   * because it is *news* — the whole point of a bell is to be noticed on a
+   * pane you were not watching — and below `dead`, because a pane that rang
+   * and then exited is a pane that exited. It ends when you look at the pane,
+   * which is what answering a bell is. */
+  PSTATE_BELL,
   PSTATE_SCROLLED,    /* looking at scrollback rather than the present */
   PSTATE_UNFOCUSED,
   PSTATE_COUNT,
@@ -42,6 +48,7 @@ typedef enum {
   ACT_RERUN,
   ACT_ZOOM,
   ACT_MINIMIZE,
+  ACT_ROTATE_LAYOUT,
   ACT_FOCUS_LEFT,
   ACT_FOCUS_RIGHT,
   ACT_FOCUS_UP,
@@ -62,6 +69,7 @@ typedef enum {
   ACT_RESIZE_RIGHT,
   ACT_RESIZE_UP,
   ACT_RESIZE_DOWN,
+  ACT_EQUALIZE,
   ACT_DETACH,
   ACT_QUIT,
   ACT_HELP,
@@ -184,6 +192,24 @@ typedef struct {
    * already had to avoid by hand. */
   shader_t state_shaders[PSTATE_COUNT][SHADE_MAX];
   size_t state_n[PSTATE_COUNT];
+
+  /* The same two things again, over a pane's *frame* rather than its contents:
+   * any entry in `shaders` or in a state's block carrying `where="chrome"`
+   * lands here instead. Separate chains rather than a flag on each shader,
+   * because a pass is per rect: the contents and the frame are two rects and
+   * therefore two passes, and a chain is exactly the list one pass runs. It
+   * also keeps the flag out of the plugin ABI, which has no business knowing
+   * where a session chose to run an effect. */
+  shader_t chrome_shaders[SHADE_MAX];
+  size_t nchrome_shaders;
+  shader_t chrome_state_shaders[PSTATE_COUNT][SHADE_MAX];
+  size_t chrome_state_n[PSTATE_COUNT];
+  /* How often to repaint while something on screen is animated -- which means
+   * a shader whose amount reads the clock. Nothing else needs a frame clock:
+   * every other repaint has an event behind it. 0 turns animation off, in the
+   * sense that an animated shader then only advances when something else
+   * causes a frame. */
+  uint16_t anim_ms;
   bool status_bar;  /* the strip along the top: tabs, prefix, pane count */
   bool status_line; /* the line along the bottom: what you are looking at */
   /* How far the strip and the line are held off the left and right edges.

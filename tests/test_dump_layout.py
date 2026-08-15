@@ -126,7 +126,7 @@ def test_the_active_tab_survives():
     lay = write(LAYOUT)
     with Session(SH, cols=90, rows=20, layout=lay) as s:
         s.settle(60)
-        s.key("n")               # to the second tab
+        s.key(r"\t")             # C-a tab: to the second tab
         s.settle()
         was = [t["index"] for t in s.tabs() if t["active"]]
         dumped = s.api("dump-layout")["kdl"]

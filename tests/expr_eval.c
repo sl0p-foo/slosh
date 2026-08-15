@@ -4,7 +4,8 @@
  *
  * One request per line on stdin:
  *
- *   <x> <y> <cols> <rows> <curx> <cury> <cursor> <focused> <t>\t<expression>
+ *   <x> <y> <cols> <rows> <curx> <cury> <cursor> <focused> <t> <since>
+ *   \t<expression>
  *
  * One answer per line on stdout: the value, or `error: ...`.
  */
@@ -29,14 +30,15 @@ int main(void) {
     *tab = 0;
 
     expr_env_t env = {0};
-    long long t = 0;
-    if (sscanf(line, "%d %d %d %d %d %d %d %d %lld", &env.x, &env.y, &env.cols,
-               &env.rows, &env.curx, &env.cury, &env.cursor, &env.focused,
-               &t) != 9) {
+    long long t = 0, since = 0;
+    if (sscanf(line, "%d %d %d %d %d %d %d %d %lld %lld", &env.x, &env.y,
+               &env.cols, &env.rows, &env.curx, &env.cury, &env.cursor,
+               &env.focused, &t, &since) != 10) {
       printf("error: bad environment\n");
       continue;
     }
     env.t = t;
+    env.since = since;
 
     char err[128] = {0};
     expr_prog_t *p = expr_compile(tab + 1, err, sizeof err);

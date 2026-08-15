@@ -23,7 +23,7 @@ static int at(const char *src, int x, int y) {
   }
   expr_env_t env = {.x = x, .y = y, .cols = 80, .rows = 24,
                     .curx = 10, .cury = 5, .cursor = 1, .focused = 1,
-                    .t = 1000};
+                    .t = 1000, .since = 250};
   int v = expr_eval(p, &env);
   expr_free(p);
   return v;
@@ -81,6 +81,12 @@ int main(void) {
   eq("cursor", 1);
   eq("focused", 1);
   eq("t", 1000);
+  eq("since", 250);
+  /* What a flash is: full strength for a moment after the state began, then
+   * nothing. `t` cannot express this — it says what time it is, not how long
+   * ago something happened. */
+  eq("(since < 300) * 255", 255);
+  eq("(since < 200) * 255", 0);
 
   printf("\n-- functions\n");
   eq("min(3, 9)", 3);
@@ -119,6 +125,7 @@ int main(void) {
         {"dist(x, y, curx, cury)", EXPR_DEP_POS | EXPR_DEP_CURSOR},
         {"focused * 90", EXPR_DEP_FOCUS},
         {"t % 1000", EXPR_DEP_TIME},
+        {"since", EXPR_DEP_TIME}, /* a clock, so never cached */
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
       char err[128] = {0};

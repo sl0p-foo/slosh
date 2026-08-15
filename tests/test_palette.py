@@ -17,7 +17,7 @@ from harness import Session, check, report
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;shell\\007"; stty raw -echo; cat']
 
-OPEN = r"\x01P"   # the default bind: prefix, then shift+p
+OPEN = r"\x01p"   # the default bind: prefix, then p
 
 
 def cfg(text):

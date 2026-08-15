@@ -8,10 +8,6 @@
 #include "shader.h"
 #include "sl0ppty.h"
 
-typedef struct {
-  uint16_t x, y, w, h;
-} rect_t;
-
 typedef enum { SPLIT_COLS, SPLIT_ROWS } split_dir_t;
 
 typedef struct node node_t;
@@ -30,8 +26,10 @@ char *app_graphics_json(app_t *a);
 /* Transient announcements, drawn bottom-right and expiring on their own. */
 void app_toast(app_t *a, const char *text);
 size_t app_toast_count(app_t *a);
-/* Milliseconds until something needs repainting on its own (a toast expiring),
- * or -1 when nothing does. */
+/* Milliseconds until something needs repainting on its own — a toast expiring,
+ * a hover guide arming, or a shader whose amount reads the clock having run
+ * over the frame just composed — or -1 when nothing does. A property of that
+ * frame, so it is asked after composing one. */
 int app_next_deadline_ms(app_t *a);
 
 /* Text the session has copied, and the copy the client has not been told
@@ -107,6 +105,12 @@ bool app_minimize(app_t *a, uint32_t id);
 bool app_toggle_zoom(app_t *a, uint32_t id);
 bool app_pane_zoomed(app_t *a, uint32_t id);
 
+/* Give every visible pane in the current tab an even share of the rows and
+ * columns it competes for: each split's children weighted by how many visible
+ * panes are behind them, so "even" means the same thing at every depth. False
+ * when the tab is a single pane and there is nothing to divide. */
+bool app_equalize_splits(app_t *a);
+
 /* Address panes by id (the control API), not "the focused one". */
 bool app_focus_pane(app_t *a, uint32_t id);
 bool app_split_pane(app_t *a, uint32_t id, bool rows);
@@ -114,6 +118,12 @@ bool app_close_pane(app_t *a, uint32_t id);
 /* Run a dead (or not-yet-started) pane's command again, in the same pane and
  * on top of the same scrollback. 0 means the focused one. */
 bool app_rerun_pane(app_t *a, uint32_t id);
+
+/* Turn the current tab's layout a quarter turn clockwise: every split changes
+ * axis, and the children of a row split reverse, because the pane on top of a
+ * stack is the pane on the right once you turn it. Four turns are the identity.
+ * False when the tab is a single pane, which looks the same from every angle. */
+bool app_rotate_layout(app_t *a);
 /* Open the config file in $EDITOR, in a pane of its own, so the edit/save/
  * watch loop happens without leaving the session. The pane is ephemeral. */
 bool app_edit_config(app_t *a);

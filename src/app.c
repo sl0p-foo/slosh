@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "expr.h"
 #include "json.h"
 #include "version.h"
 #include "graphics.h"
@@ -140,6 +141,16 @@ struct node {
   size_t nshaders;
   char purpose[64];
   bool purpose_locked; /* declared by a layout: in-band cannot override */
+
+  /* When this pane last became what it is, for `since` (D20). A *transition*
+   * cannot be derived from the frame in front of you — the frame only says
+   * what is true now — so this is remembered, and it is remembered in the one
+   * place that decides the state, which is what keeps the timestamp and the
+   * state it belongs to from disagreeing. `last_state` is the state it was in
+   * when `state_since` was stamped; PSTATE_COUNT is "in none of them", which
+   * is a state to have been in for a while like any other. */
+  pane_state_t last_state;
+  int64_t state_since;
 
   /* split */
   split_dir_t dir;
@@ -296,11 +307,20 @@ struct app {
    * socket under that name; the app only knows it because it is worth saying
    * out loud when several are running. */
   char session[64];
+  /* The last layout pass made this tab a list rather than a layout (D6). Same
+   * rule as `animating`: derived every pass, never remembered across one. */
+  bool flattened;
   /* the screen we last composed into: its hit list is what a click resolves
    * against, so routing can never consult geometry the user never saw */
   corner_t corners[16];
   size_t ncorners;
   const screen_t *painted;
+  /* Something on the frame we last composed is animated: a shader whose amount
+   * reads the clock ran over it. Derived every frame from the chains actually
+   * applied, like the rect and the collapsed flag and for the same reason —
+   * remembering "this session animates" would keep a clock running for a pulse
+   * that was hung off a state no pane is in any more. */
+  bool animating;
 };
 
 static tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
@@ -386,10 +406,13 @@ static void toasts_expire(app_t *a) {
   a->ntoasts = keep;
 }
 
-/* When something needs repainting on its own: a toast expiring, or a hover
- * guide arming. Without the second one the guide would appear on the next
- * event rather than when the dwell is up, which for a resting pointer means
- * "never". */
+/* When something needs repainting on its own: a toast expiring, a hover guide
+ * arming, or an animated shader — the three things on screen that change
+ * without an event behind them. Without the second one the guide would appear
+ * on the next event rather than when the dwell is up, which for a resting
+ * pointer means "never"; without the third a pulse would only advance when
+ * something else happened to cause a frame, which for an idle pane means a
+ * border frozen mid-pulse. */
 int app_next_deadline_ms(app_t *a) {
   int64_t soonest = -1;
   for (size_t i = 0; i < a->ntoasts; i++)
@@ -407,6 +430,16 @@ int app_next_deadline_ms(app_t *a) {
                                   strncmp(action, "corner:", 7) == 0);
       if (on_border && (soonest < 0 || due < soonest)) soonest = due;
     }
+  }
+
+  /* An animated shader ran over the last frame, so the next thing that changes
+   * is the clock. Bounded by a config knob rather than painting flat out: this
+   * is a terminal, and 20fps of one pane's border is not worth a core. The
+   * flag comes from the frame we composed, so the cost lands only while
+   * something animated is actually on screen. */
+  if (a->animating && CFG.anim_ms) {
+    int64_t due = now_ms_() + CFG.anim_ms;
+    if (soonest < 0 || due < soonest) soonest = due;
   }
 
   if (soonest < 0) return -1;
@@ -1187,6 +1220,11 @@ static size_t tab_of(app_t *a, node_t *n);
 
 static void layout(app_t *a) {
   if (!a->ntabs) return;
+  /* Re-derived below, like everything else about a layout pass: whether this
+   * tab is a layout or a list (D6). Recorded because a tree edit needs to be
+   * able to ask what its edit did — a turn that flattens the tab is a turn
+   * nobody asked for. */
+  a->flattened = false;
   uint16_t gx = (uint16_t)(CFG.gap * CFG.gap_aspect), gy = CFG.gap;
   uint16_t top = (uint16_t)(gy + STRIP_ROWS);
   rect_t r = {.x = gx,
@@ -1263,6 +1301,7 @@ static void layout(app_t *a) {
       collapse_leaf(mins[i], (rect_t){r.x, r.y, 0, 0});
     return;
   }
+  a->flattened = true;
   cur(a)->min_bar = (rect_t){0, 0, 0, 0}; /* a list has no separate bar */
   if (r.h >= (uint16_t)(count_leaves(root) + 2)) {
     /* One row per pane, plus a body worth opening into: a frame is two rows. */
@@ -2060,6 +2099,139 @@ static void resize_focus(app_t *a, int dx, int dy) {
   layout(a);
 }
 
+/* ---- equalising ---------------------------------------------------------
+ *
+ * Every visible pane an even share of the rows and columns it competes for.
+ *
+ * A split's children are weighted by *how many visible panes are behind each
+ * of them*, not given a weight each: one pane beside a column of three is a
+ * quarter of the width, not half of it. Weighting per child instead would make
+ * "even" mean something different at every depth — the pane on its own would
+ * get as much room as the three sharing the other side, which is the layout a
+ * person asks for this action to get *away* from.
+ *
+ * Exactly equal cell counts are not something a tree can always express: a
+ * nested split pays for its own gaps out of its share, and a share that is not
+ * a whole number of cells lands where the layout's remainder loop puts it. So
+ * this is the even division the tree *can* express, which is why the action is
+ * "give every pane an even share" and not "make every pane the same size".
+ *
+ * Minimised panes are not counted. They are out of the layout entirely and
+ * cost a row in the strip rather than a share of the tree, so counting one
+ * would hand its share to a pane nobody can see. Their own weight is still
+ * evened, because that is the share they come back to.
+ *
+ * Returns the number of visible panes under `n`. */
+static size_t equalize_node(node_t *n) {
+  if (n->kind == NODE_LEAF) {
+    n->weight = WEIGHT_UNIT;
+    return n->minimized ? 0 : 1;
+  }
+  size_t vis = 0;
+  for (size_t i = 0; i < n->nkids; i++) vis += equalize_node(n->kids[i]);
+  /* A subtree with nothing visible in it is not laid out at all, so its weight
+   * is never divided by — but it must not be zero either, or restoring the
+   * pane inside it would give it no share to come back to. */
+  n->weight = (int)(WEIGHT_UNIT * (vis ? vis : 1));
+  return vis;
+}
+
+/* The current tab, like zooming and minimising: this is about the arrangement
+ * you are looking at. False when there are no boundaries to move, so the
+ * caller can say so rather than leaving a keystroke looking broken. */
+bool app_equalize_splits(app_t *a) {
+  node_t *root = cur(a)->root;
+  if (!root || root->kind == NODE_LEAF) return false;
+  equalize_node(root);
+  layout(a);
+  return true;
+}
+
+/* ---- rotating -----------------------------------------------------------
+ *
+ * A quarter turn clockwise, of the whole tab.
+ *
+ * Every split changes axis, and one of the two directions also reverses its
+ * children — because that is what a quarter turn does to a stack. Turn a column
+ * of panes clockwise and the one that was on top is now the one on the *right*,
+ * so a row split becomes a column split read backwards; turn a row of them and
+ * the leftmost becomes the top, so the order stands. Getting that asymmetry
+ * wrong gives you a mirror image, which looks almost right and is not a
+ * rotation: four turns would not come back.
+ *
+ * Four turns *do* come back, exactly, which is what makes this safe to press:
+ * it is a permutation of the tree and nothing else. Weights travel with the
+ * children they belong to, so a pane that had two thirds of the width has two
+ * thirds of the height afterwards.
+ *
+ * Depth first, so a subtree is turned before the split above it reorders it —
+ * the two operations are independent, but doing the children first keeps the
+ * reversal reading as one thing rather than as something that has to be
+ * reasoned about twice. */
+static void rotate_node(node_t *n) {
+  if (!n || n->kind == NODE_LEAF) return;
+  for (size_t i = 0; i < n->nkids; i++) rotate_node(n->kids[i]);
+
+  if (n->dir == SPLIT_ROWS) {
+    for (size_t i = 0, j = n->nkids ? n->nkids - 1 : 0; i < j; i++, j--) {
+      node_t *t = n->kids[i];
+      n->kids[i] = n->kids[j];
+      n->kids[j] = t;
+    }
+    n->dir = SPLIT_COLS;
+  } else {
+    n->dir = SPLIT_ROWS;
+  }
+}
+
+/* The current tab, like zooming and equalising. False when there is nothing to
+ * turn — one pane looks the same from every angle — and false when the turn
+ * would not fit, which is the interesting case.
+ *
+ * A pane's share of one axis is not a share the other axis can always afford:
+ * two rows split 19:6 are fine as rows and put the smaller one under the column
+ * floor as columns, and a node that cannot give its children their floor takes
+ * the *whole tab* down to a list (D6). So the turn is tried, the layout is asked
+ * what it made of it, and a turn that flattened the tab is put back — the same
+ * rule `split_fits` applies to splitting, and for the same reason: an action a
+ * person just asked for should not be the thing that breaks the arrangement.
+ *
+ * Put back by turning three more times rather than by a second, mirrored
+ * rotation. Four turns are the identity, so this *is* the inverse, and the
+ * asymmetry between the two directions — the part that is easy to get wrong —
+ * stays written down exactly once.
+ *
+ * A tab that was *already* a list is turned anyway: there is nothing to break,
+ * and refusing would mean a window too small to lay out could never be turned
+ * back into one that is. */
+bool app_rotate_layout(app_t *a) {
+  node_t *root = cur(a)->root;
+  if (!root || root->kind == NODE_LEAF) return false;
+
+  bool was_flat = a->flattened;
+  rotate_node(root);
+  layout(a);
+  if (a->flattened && !was_flat) {
+    rotate_node(root);
+    rotate_node(root);
+    rotate_node(root);
+    layout(a);
+    return false;
+  }
+  return true;
+}
+
+/* Turning because a person just asked for it, which is the only case that needs
+ * telling why nothing happened. The two refusals are different facts and get
+ * different words: one pane has no arrangement to turn, and a turn that would
+ * flatten the tab was put back. Same split of responsibility as
+ * `split_focus_ui`: the tree edit is quiet and the UI explains itself. */
+static void rotate_layout_ui(app_t *a) {
+  bool one_pane = cur(a)->root && cur(a)->root->kind == NODE_LEAF;
+  if (!app_rotate_layout(a))
+    app_toast(a, one_pane ? "nothing to turn" : "no room to turn it");
+}
+
 /* Reordering is a swap of two leaves, in place: their positions, weights and
  * parents trade, and everything else about them is untouched. */
 static bool swap_panes(app_t *a, uint32_t id_a, uint32_t id_b) {
@@ -2503,6 +2675,12 @@ struct draw {
   screen_t *s;
 };
 
+/* Defined with the other shader passes below, because it is one. A collapsed
+ * row needs it here: the row is chrome, and it is the only thing a flattened
+ * tab draws of a pane. */
+static void shade_chrome(app_t *a, screen_t *s, node_t *n, rect_t r,
+                         const rect_t *hole);
+
 /* A collapsed subtree: one row, the title of the pane it stands for, and a hit
  * that focuses it — which expands it on the next layout pass, because the
  * expanded child is simply the one holding focus. */
@@ -2519,11 +2697,13 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
    * gone or was never started.
    *
    * This row is the only thing a flattened tab draws of a pane, and the
-   * shader pass deliberately never reaches it: shaders colour *contents*, and
-   * a header is chrome (D13). So the states that get a colour everywhere else
-   * have to be carried by the words here, in the same order the status line
-   * ranks them. Without this, collapsing a tab hides exactly the facts the
-   * colour exists to show. */
+   * *content* shader pass deliberately never reaches it: those colour
+   * contents, and a header is chrome (D13). So the states that get a colour
+   * everywhere else have to be carried by the words here, in the same order
+   * the status line ranks them. Without this, collapsing a tab hides exactly
+   * the facts the colour exists to show. A `where="chrome"` chain does reach
+   * this row — it is a frame — but that is a thing you may have asked for,
+   * not something the words can rely on. */
   bool dead = !pane_alive(leaf->pane) && !pane_suspended(leaf->pane);
   char words[64];
   if (dead) {
@@ -2586,6 +2766,12 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
   char action[48];
   snprintf(action, sizeof action, "focus:%u", leaf->id);
   hit_add(&s->hits, r.x, r.y, r.w, 1, action);
+
+  /* Last, so the pass sees the finished row: rule, bell, title and all. The
+   * state comes from the leaf this row stands for, not from the node that
+   * happens to own the rect — a collapsed subtree is drawn as its first pane
+   * and should be coloured as that pane. */
+  shade_chrome(a, s, leaf, r, NULL);
 }
 
 /* ---- shaders ------------------------------------------------------------ */
@@ -2626,7 +2812,7 @@ size_t app_shade_count(app_t *a, uint32_t pane_id) {
  * should not be recoloured by anything, a mode the whole screen is in outranks
  * a hint about one pane, and "not focused" is the weakest thing that can be
  * true of a pane. */
-static pane_state_t pane_state(app_t *a, node_t *n) {
+static pane_state_t pane_state_of(app_t *a, node_t *n) {
   /* Only once the pointer has actually moved: a press that turns out to be a
    * click would otherwise flash the whole session on its way to nothing. */
   if (a->drag.kind == DRAG_TITLE && a->drag.moved) {
@@ -2636,9 +2822,29 @@ static pane_state_t pane_state(app_t *a, node_t *n) {
   }
   if (!pane_alive(n->pane) && !pane_suspended(n->pane)) return PSTATE_DEAD;
   if (pane_suspended(n->pane)) return PSTATE_SUSPENDED;
+  /* A rung pane outranks a scrolled or unfocused one, and *replaces* it rather
+   * than stacking with it: states do not stack (D13), and of the things true
+   * of a pane that rang while you were elsewhere, the ringing is the one you
+   * needed telling. The focused pane never reaches here with a bell — looking
+   * at it answers the bell before anything is drawn. */
+  if (pane_bell(n->pane)) return PSTATE_BELL;
   if (pane_scrolled(n->pane)) return PSTATE_SCROLLED;
   if (n != cur(a)->focus) return PSTATE_UNFOCUSED;
   return PSTATE_COUNT;
+}
+
+/* ...and when it last became that, which is the part a frame cannot tell you.
+ * Stamped here, in the one place that decides the state, so `since` cannot end
+ * up describing a state the pane is no longer in. Idempotent within a frame:
+ * the content pass and the chrome pass both ask, and the second sees no
+ * change. */
+static pane_state_t pane_state(app_t *a, node_t *n) {
+  pane_state_t st = pane_state_of(a, n);
+  if (st != n->last_state || !n->state_since) {
+    n->last_state = st;
+    n->state_since = now_ms_();
+  }
+  return st;
 }
 
 static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
@@ -2648,6 +2854,30 @@ static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
   if (k > cap) k = cap;
   for (size_t i = 0; i < k; i++) out[i] = CFG.state_shaders[st][i];
   return k;
+}
+
+static size_t chrome_policy_shaders(app_t *a, node_t *n, shader_t *out,
+                                    size_t cap) {
+  pane_state_t st = pane_state(a, n);
+  if (st >= PSTATE_COUNT) return 0;
+  size_t k = CFG.chrome_state_n[st];
+  if (k > cap) k = cap;
+  for (size_t i = 0; i < k; i++) out[i] = CFG.chrome_state_shaders[st][i];
+  return k;
+}
+
+/* Does anything in this chain read the clock? If so the session has to keep
+ * painting on its own, because the thing that will change next is the time.
+ * Asked of the chain that was actually applied rather than of the config: a
+ * pulse hung off `dead` costs a frame clock while a pane is dead and nothing
+ * for the rest of the session. */
+static void note_animation(app_t *a, const shader_t *chain, size_t n) {
+  for (size_t i = 0; i < n; i++)
+    if (chain[i].amount_expr &&
+        (expr_deps(chain[i].amount_expr) & EXPR_DEP_TIME)) {
+      a->animating = true;
+      return;
+    }
 }
 
 /* A pane with nothing to apply costs nothing: no context is built and no cell
@@ -2668,8 +2898,11 @@ static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
 
   if (!nc) return;
   bool focused = n == cur(a)->focus;
+  /* After policy_shaders, which is what stamps the transition. */
+  int64_t now = now_ms_();
   shade_ctx_t base = {
-      .now_ms = now_ms_(),
+      .now_ms = now,
+      .state_ms = n->state_since ? now - n->state_since : 0,
       .focused = focused,
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
@@ -2683,8 +2916,46 @@ static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
     base.cursor_x = (uint16_t)(s->cursor_x - n->content.x);
     base.cursor_y = (uint16_t)(s->cursor_y - n->content.y);
   }
-  shade_apply(s, chain, nc, n->content.x, n->content.y, n->content.w,
-              n->content.h, &base);
+  note_animation(a, chain, nc);
+  shade_apply(s, chain, nc, n->content, NULL, &base);
+}
+
+/* Chrome: a pass over `r`, skipping `hole` (the contents, when the thing being
+ * drawn has any). One pass over the whole frame rather than one per side, so
+ * that an effect can travel round it — four passes would each count from zero
+ * and a sweep would restart at every corner.
+ *
+ * The rect is passed in rather than taken from the node because the two things
+ * that wear chrome are not the same shape: an open pane is its rect minus its
+ * contents, and a collapsed pane is one row that is chrome all the way through
+ * — its `content` is the size the program inside still believes it has, which
+ * is somewhere else entirely, and punching that out of the row would remove
+ * cells the row does not even overlap. `n` is only asked which state it is in,
+ * so a collapsed row is coloured by the pane it stands for.
+ *
+ * No cursor. The cursor is in the contents by construction, so a frame pass
+ * carrying one would hand an effect a position outside its own rect; `cursor`
+ * reads 0 here, which is the truth about a frame. */
+static void shade_chrome(app_t *a, screen_t *s, node_t *n, rect_t r,
+                         const rect_t *hole) {
+  shader_t chain[SHADE_CHAIN_MAX];
+  size_t nc = 0;
+
+  for (size_t i = 0; i < CFG.nchrome_shaders && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = CFG.chrome_shaders[i];
+  nc += chrome_policy_shaders(a, n, &chain[nc], SHADE_CHAIN_MAX - nc);
+  if (!nc) return;
+
+  int64_t now = now_ms_();
+  shade_ctx_t base = {
+      .now_ms = now,
+      .state_ms = n->state_since ? now - n->state_since : 0,
+      .focused = n == cur(a)->focus,
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  note_animation(a, chain, nc);
+  shade_apply(s, chain, nc, r, hole, &base);
 }
 
 /* Drawn after the panes, so the corner's hit is registered after the two gap
@@ -2761,8 +3032,15 @@ static void draw_cb(node_t *n, void *ud) {
   }
   /* Between the contents and the chrome that goes over them: the frame was
    * painted before this and lies outside the content rect, and the split guide
-   * is painted after, so it stays legible on top of a shaded pane. */
+   * is painted after, so it stays legible on top of a shaded pane.
+   *
+   * The chrome pass runs here too, and for the same reason: the frame it
+   * recolours is already painted, and the guide, the resize hints and the
+   * corners are painted after it and stay in their own colours. An affordance
+   * is not decoration and must not be dimmed along with the thing it is
+   * offered on. */
   shade_leaf(d->a, d->s, n);
+  shade_chrome(d->a, d->s, n, n->rect, &n->content);
   draw_split_guide(d->a, d->s, n);
 }
 
@@ -3287,7 +3565,7 @@ static void draw_scrim(app_t *a, screen_t *s) {
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };
-  shade_apply(s, &dim, 1, 0, 0, s->cols, s->rows, &base);
+  shade_apply(s, &dim, 1, (rect_t){0, 0, s->cols, s->rows}, NULL, &base);
 }
 
 /* The frame every modal wears: an opaque box with a pane's corners, a title
@@ -3909,6 +4187,8 @@ void app_compose(app_t *a, screen_t *s) {
   hit_reset(&s->hits);
   s->cursor_visible = false;
   a->painted = s;
+  /* Re-derived by the shader passes below, every frame, from what they ran. */
+  a->animating = false;
   if (!a->ntabs || !cur(a)->root) return;
 
   /* Looking at a pane is the acknowledgement, and it happens before anything
@@ -4385,6 +4665,10 @@ static bool run_action(app_t *a, action_t act) {
     case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
     case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
     case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
+    case ACT_EQUALIZE:
+      if (!app_equalize_splits(a)) app_toast(a, "nothing to even out");
+      return true;
+    case ACT_ROTATE_LAYOUT: rotate_layout_ui(a); return true;
     case ACT_SCROLL_UP: pane_scroll(cur(a)->focus->pane, -CFG.scroll_lines); return true;
     case ACT_SCROLL_DOWN: pane_scroll(cur(a)->focus->pane, CFG.scroll_lines); return true;
     case ACT_SCROLL_PAGE_UP:
