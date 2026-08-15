@@ -122,6 +122,52 @@ def test_a_config_written_after_the_session_started_is_noticed():
                        capture_output=True, env=env)
 
 
+def test_an_included_file_is_watched_too():
+    """A theme you can include is a theme that has to reload when you save it,
+    so the watch covers every file the config was built from -- not only the one
+    the session was started with. Driven through a real session, because the
+    watcher is the thing under test and the headless driver has none."""
+    home = tempfile.mkdtemp(prefix="sl0ppty-inc-")
+    cfgdir = os.path.join(home, ".config", "sl0ppty")
+    os.makedirs(os.path.join(cfgdir, "themes"))
+    main = os.path.join(cfgdir, "config.kdl")
+    theme = os.path.join(cfgdir, "themes", "t.kdl")
+    with open(main, "w") as f:
+        f.write('include "themes/t.kdl"\n')
+    with open(theme, "w") as f:
+        f.write('theme { frame_focus "#00ff00" }\n')
+
+    env = dict(os.environ, SL0PPTY_CONFIG=main)
+    name = "inctest-%d" % os.getpid()
+    subprocess.run([BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
+                   env=env, capture_output=True, timeout=5)
+
+    def screen():
+        return subprocess.run([BIN, "-s", name, "cmd",
+                               '{"cmd":"snapshot","format":"json"}'],
+                              capture_output=True, text=True, env=env).stdout
+
+    try:
+        check("the included theme applied at startup", '"#00ff00"' in screen(),
+              "green never appeared")
+
+        # The include line is untouched; only the file it points at changes.
+        deadline = time.time() + 3
+        got = None
+        while time.time() < deadline:
+            with open(theme, "w") as f:
+                f.write('theme { frame_focus "#ff00ff" }\n')
+            time.sleep(0.4)
+            if '"#ff00ff"' in screen():
+                got = True
+                break
+        check("saving the included file reloads the session", got,
+              "the session never saw the theme change")
+    finally:
+        subprocess.run([BIN, "-s", name, "cmd", '{"cmd":"quit"}'],
+                       capture_output=True, env=env)
+
+
 for name, fn in sorted(list(globals().items())):
     if name.startswith("test_"):
         fn()

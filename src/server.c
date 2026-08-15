@@ -174,6 +174,69 @@ static void drop_display(server_t *s, uint8_t reason) {
     }
 }
 
+/* What the config watcher is watching: a directory per config file, and the
+ * basenames to match events against. Rebuilt from the config every time one
+ * loads, because an `include` line can be added, changed or removed — a theme
+ * you can include is a theme that has to reload when you save it.
+ *
+ * Names are matched against every watched directory rather than against the one
+ * their own watch fired for. Two directories holding a file of the same name
+ * would reload for the other's save, which costs a debounced re-read of a config
+ * that has not changed and is not worth a second data structure to avoid. */
+#define WATCH_MAX CONFIG_FILES_MAX
+typedef struct {
+  int fd;
+  int wds[WATCH_MAX];
+  size_t nwds;
+  char names[WATCH_MAX][128];
+  size_t nnames;
+} watchset_t;
+
+static void watch_config(watchset_t *w) {
+  if (w->fd < 0) return;
+  for (size_t i = 0; i < w->nwds; i++) inotify_rm_watch(w->fd, w->wds[i]);
+  w->nwds = 0;
+  w->nnames = 0;
+
+  const char *files[WATCH_MAX];
+  size_t n = app_config_files(files, WATCH_MAX);
+  for (size_t i = 0; i < n; i++) {
+    char dir[512], base[128];
+    snprintf(dir, sizeof dir, "%s", files[i]);
+    char *slash = strrchr(dir, '/');
+    if (slash) {
+      *slash = 0;
+      snprintf(base, sizeof base, "%s", slash + 1);
+    } else {
+      snprintf(base, sizeof base, "%s", files[i]);
+      snprintf(dir, sizeof dir, ".");
+    }
+    /* The main config's directory is ours to create, so that a session started
+     * before the file exists still notices it appearing. An include's is not:
+     * a mistyped path should not leave a directory behind. */
+    if (i == 0) path_mkdirs(dir);
+
+    int wd = inotify_add_watch(w->fd, dir,
+                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+    if (wd >= 0) {
+      bool have = false;
+      for (size_t k = 0; k < w->nwds; k++)
+        if (w->wds[k] == wd) have = true; /* same directory, same descriptor */
+      if (!have && w->nwds < WATCH_MAX) w->wds[w->nwds++] = wd;
+    }
+    if (w->nnames < WATCH_MAX) {
+      snprintf(w->names[w->nnames], sizeof w->names[0], "%s", base);
+      w->nnames++;
+    }
+  }
+}
+
+static bool watch_hit(const watchset_t *w, const char *name) {
+  for (size_t i = 0; i < w->nnames; i++)
+    if (strcmp(w->names[i], name) == 0) return true;
+  return false;
+}
+
 int server_run(const char *name, const char *const argv[], uint16_t cols,
                uint16_t rows, const char *layout, bool watch) {
   char path[512];
@@ -225,37 +288,12 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
    * writes in chunks is read once it has finished rather than halfway. */
   const int64_t RELOAD_DEBOUNCE_MS = 80;
   int64_t reload_due = -1;
-  int inofd = -1, inowd = -1;
-  char cfg_dir[512] = {0}, cfg_base[256] = {0};
+  int inofd = -1;
+  watchset_t watches = {.fd = -1};
   if (watch) {
-    const char *path = config_default_path();
-    if (path && *path) {
-      snprintf(cfg_dir, sizeof cfg_dir, "%s", path);
-      char *slash = strrchr(cfg_dir, '/');
-      if (slash) {
-        *slash = 0;
-        snprintf(cfg_base, sizeof cfg_base, "%s", slash + 1);
-      } else {
-        snprintf(cfg_dir, sizeof cfg_dir, ".");
-        snprintf(cfg_base, sizeof cfg_base, "%s", path);
-      }
-      /* The watch is on the directory, not the file -- editors write a new
-       * file and rename it over the old one, so watching the file itself
-       * stops working the first time you save. But a directory that is not
-       * there cannot be watched at all, and then nothing is ever noticed for
-       * the life of the session: no config, no watch, and saving one later
-       * does nothing until a restart. Ours to create, so create it. */
-      path_mkdirs(cfg_dir);
-      inofd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-      if (inofd >= 0) {
-        inowd = inotify_add_watch(inofd, cfg_dir,
-                                  IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
-        if (inowd < 0) {
-          close(inofd);
-          inofd = -1;
-        }
-      }
-    }
+    inofd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    watches.fd = inofd;
+    watch_config(&watches);
   }
 
   bool pending_paint = true;
@@ -424,7 +462,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
         if (got <= 0) break;
         for (char *q = buf; q < buf + got;) {
           struct inotify_event *ev = (struct inotify_event *)q;
-          if (ev->len && strcmp(ev->name, cfg_base) == 0) touched = true;
+          if (ev->len && watch_hit(&watches, ev->name)) touched = true;
           q += sizeof *ev + ev->len;
         }
       }
@@ -436,6 +474,9 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       char err[256] = {0};
       if (app_reload_config(err, sizeof err)) {
         app_resize(s.app, s.screen.cols, s.screen.rows);
+        /* The set of files can have changed with the config that named them:
+         * an include added, pointed somewhere else, or taken out. */
+        watch_config(&watches);
         app_toast(s.app, "config reloaded");
       } else {
         app_toast(s.app, err[0] ? err : "config reload failed");

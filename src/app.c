@@ -57,6 +57,15 @@ bool app_reload_config(char *err, size_t errcap) {
   return true;
 }
 
+/* Which files the config in force was read from. The server watches every one
+ * of them, so a theme that can be included is a theme that reloads when you
+ * save it — asked of the app rather than read from a config the front ends do
+ * not own. */
+size_t app_config_files(const char **out, size_t max) {
+  ensure_config();
+  return config_files(&CFG, out, max);
+}
+
 #define WEIGHT_UNIT 1000
 #define WEIGHT_MIN 150  /* a pane can be squeezed, not squeezed out */
 #define WEIGHT_STEP 120 /* one keyboard nudge */

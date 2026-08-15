@@ -91,6 +91,11 @@ typedef struct {
 
 typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
 
+/* How many files one config may be built from: itself plus its includes. Small
+ * and fixed, because a config assembled from more than this many pieces is a
+ * thing nobody can read. */
+#define CONFIG_FILES_MAX 16
+
 typedef struct {
   /* geometry */
   uint16_t gap, gap_aspect, pad;
@@ -321,6 +326,15 @@ typedef struct {
    * `states` blocks are parsed, because what they are allowed to name depends
    * on what has been loaded. */
   char *shader_dir;
+
+  /* Every file this config was built from, in the order they were read: the one
+   * that was loaded and everything it included, whether or not each existed.
+   * Kept because the watcher needs it — a theme you can include is a theme you
+   * expect to reload when you save it — and recorded even for a file that is
+   * not there, so a session started before you wrote one still notices it
+   * appearing. */
+  char *files[CONFIG_FILES_MAX];
+  size_t nfiles;
 } config_t;
 
 /* Defaults, then <config dir>/config.kdl on top. Never fails: on a bad file
@@ -330,6 +344,9 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap);
 /* $SL0PPTY_CONFIG, else $XDG_CONFIG_HOME/sl0ppty/config.kdl, else ~/.config/… */
 const char *config_default_path(void);
 void config_free(config_t *c);
+/* The files this config was read from, oldest first: `files[0]` is the one that
+ * was loaded, the rest are what it included. Returns how many were written. */
+size_t config_files(const config_t *c, const char **out, size_t max);
 
 /* What a chord does after the leader. Direct bindings answer here too, so
  * pressing the leader first never makes a binding stop working. */

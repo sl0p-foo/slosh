@@ -570,6 +570,7 @@ void config_free(config_t *c) {
   free(c->shell);
   free(c->editor);
   free(c->shader_dir);
+  for (size_t i = 0; i < c->nfiles; i++) free(c->files[i]);
   memset(c, 0, sizeof *c);
 }
 
@@ -1046,6 +1047,23 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   return load_into(c, path, 0, err, errcap);
 }
 
+/* Remembered before the parse, not after: a file that is not there yet is
+ * exactly the file worth watching, since writing it is the next thing that will
+ * happen. Deduplicated, so a cycle does not fill the list with two names. */
+static void remember_file(config_t *c, const char *path) {
+  for (size_t i = 0; i < c->nfiles; i++)
+    if (strcmp(c->files[i], path) == 0) return;
+  if (c->nfiles >= CONFIG_FILES_MAX) return;
+  char *dup = strdup(path);
+  if (dup) c->files[c->nfiles++] = dup;
+}
+
+size_t config_files(const config_t *c, const char **out, size_t max) {
+  size_t n = c->nfiles < max ? c->nfiles : max;
+  for (size_t i = 0; i < n; i++) out[i] = c->files[i];
+  return n;
+}
+
 static bool load_into(config_t *c, const char *path, int depth, char *err,
                       size_t errcap) {
   if (depth > INCLUDE_MAX_DEPTH) {
@@ -1053,6 +1071,7 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       snprintf(err, errcap, "%s: includes nested too deep (a cycle?)", path);
     return false;
   }
+  remember_file(c, path);
   kdl_node_t *root = kdl_parse_file(path, err, errcap);
   if (!root) return false; /* defaults stand; the caller reports why */
 
