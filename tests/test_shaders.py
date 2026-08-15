@@ -50,6 +50,22 @@ def frame_fg(snap, pane):
     return (run or {}).get("fg")
 
 
+def check_at_rest(s, label):
+    """Assert every pane looks the way it should with nothing transient going
+    on: the one you are in keeps its colour, the others are pushed back.
+
+    Stated as the rule rather than as "the same as before the drag", because a
+    drag *moves focus* -- press a title and that pane is yours -- so the two
+    panes legitimately swap appearances across one. Comparing to a remembered
+    snapshot said they had both changed, which was true and not the point."""
+    snap = s.snapshot()
+    for p in s.panes():
+        fg = content_fg(snap, p)
+        ok = fg == GREEN if p["focused"] else fg not in (GREEN, None)
+        check(f"{label}: pane {p['id']} is at rest",
+              ok, f"{fg} (focused={p['focused']})")
+
+
 def split(s):
     s.key("\\\\")
     s.settle()
@@ -77,17 +93,33 @@ def release(s, x, y):
 
 # ---- the unfocused state ---------------------------------------------------
 
-def test_off_by_default():
+def test_the_default_dims_the_pane_you_are_not_in():
+    """`dim_unfocused` writes the unfocused chain when a config has not, so out
+    of the box the pane you left is pushed back and the one you are in is not.
+    (This asserted the opposite until the knob existed to turn it off with.)"""
     with Session(SH, cols=80, rows=14) as s:
         s.until_text("BLOCK")
         split(s)
         focused, other = by_focus(s)
         snap = s.snapshot()
-        check("by default an unfocused pane is not dimmed",
-              content_fg(snap, other) == GREEN, str(content_fg(snap, other)))
-        check("and the focused one is not either",
+        check("the unfocused pane is dimmed",
+              content_fg(snap, other) not in (GREEN, None),
+              str(content_fg(snap, other)))
+        check("and the focused one is left alone",
               content_fg(snap, focused) == GREEN,
               str(content_fg(snap, focused)))
+
+
+def test_nothing_is_dimmed_with_the_knob_at_zero():
+    with Session(SH, cols=80, rows=14, config=cfg("dim_unfocused 0\n")) as s:
+        s.until_text("BLOCK")
+        split(s)
+        focused, other = by_focus(s)
+        snap = s.snapshot()
+        check("neither pane is touched",
+              content_fg(snap, other) == GREEN and
+              content_fg(snap, focused) == GREEN,
+              f"{content_fg(snap, other)} {content_fg(snap, focused)}")
 
 
 def test_dims_everything_but_the_focused_pane():
@@ -168,10 +200,7 @@ def test_dragging_greys_the_other_panes():
               ch[0] == ch[2], str(grey))
 
         release(s, right["x"] + 5, right["y"] + 3)
-        snap = s.snapshot()
-        for p in s.panes():
-            check(f"pane {p['id']} is back to its own colour after the drop",
-                  content_fg(snap, p) == GREEN, str(content_fg(snap, p)))
+        check_at_rest(s, "after the drop")
 
 
 def test_full_strength_is_a_true_grey():
@@ -197,9 +226,7 @@ def test_a_press_that_never_moves_greys_nothing():
         left, right = split(s)
 
         press(s, left["x"] + 4, left["y"])
-        snap = s.snapshot()
-        check("pressing without moving greys nothing",
-              content_fg(snap, right) == GREEN, str(content_fg(snap, right)))
+        check_at_rest(s, "a press that never moved")
         release(s, left["x"] + 4, left["y"])
         s.settle(120)
 
@@ -333,10 +360,7 @@ def test_a_drag_that_ends_off_a_pane_still_clears():
         s.settle(120)
         motion(s, 0, 0)          # out into the margin
         release(s, 0, 0)
-        snap = s.snapshot()
-        for p in s.panes():
-            check(f"pane {p['id']} is un-greyed after a drop into nowhere",
-                  content_fg(snap, p) == GREEN, str(content_fg(snap, p)))
+        check_at_rest(s, "a drop into nowhere")
 
 
 def test_a_keystroke_mid_drag_clears_the_greying():
@@ -349,9 +373,7 @@ def test_a_keystroke_mid_drag_clears_the_greying():
         motion(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
         s.send("x")
-        snap = s.snapshot()
-        check("the greying goes with the drag it belonged to",
-              content_fg(snap, right) == GREEN, str(content_fg(snap, right)))
+        check_at_rest(s, "a keystroke mid-drag")
 
 
 # ---- the config block ------------------------------------------------------
@@ -424,8 +446,7 @@ def test_the_dragged_pane_can_have_a_state_of_its_own():
         check("the pane in your hand takes the dragging state",
               content_fg(snap, left) == "#0000ff", str(content_fg(snap, left)))
         release(s, right["x"] + 5, right["y"] + 3)
-        check("and gives it back on release",
-              content_fg(s.snapshot(), s.panes()[0]) == GREEN, "")
+        check_at_rest(s, "after the drop")
 
 
 def test_the_hovered_pane_is_a_different_state_from_the_rest():
@@ -527,7 +548,8 @@ def test_an_unknown_state_is_refused():
 
 
 if __name__ == "__main__":
-    test_off_by_default()
+    test_the_default_dims_the_pane_you_are_not_in()
+    test_nothing_is_dimmed_with_the_knob_at_zero()
     test_dims_everything_but_the_focused_pane()
     test_the_dimming_follows_focus()
     test_dimming_never_touches_the_chrome()

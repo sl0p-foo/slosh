@@ -201,6 +201,21 @@ static void bind_add(config_t *c, int key, uint16_t mods, action_t action,
   c->binds[c->nbinds++] = (binding_t){key, mods, action, direct};
 }
 
+/* The knob and the states table are one mechanism: the knob writes the table.
+ * `declared` is whether the config named `unfocused` itself, in which case it
+ * has said what it wants -- including `states { unfocused { } }`, which says
+ * "nothing", and must not be quietly refilled. */
+static void apply_dim_unfocused(config_t *c, bool declared) {
+  if (declared) return;
+  if (!c->dim_unfocused) {
+    c->state_n[PSTATE_UNFOCUSED] = 0;
+    return;
+  }
+  shader_make(&c->state_shaders[PSTATE_UNFOCUSED][0], "dim", (color_t){0},
+              c->dim_unfocused);
+  c->state_n[PSTATE_UNFOCUSED] = 1;
+}
+
 void config_defaults(config_t *c) {
   memset(c, 0, sizeof *c);
   c->gap = 1;
@@ -220,6 +235,10 @@ void config_defaults(config_t *c) {
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
   c->keep_dead = true;
+  /* Gentle: an unfocused pane is one you are still reading half the time.
+   * At 60 white text lands on #c3c3c3, which reads as "not this one" without
+   * reading as "not available". */
+  c->dim_unfocused = 60;
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
   c->min_split_cols = 32;
@@ -279,6 +298,8 @@ void config_defaults(config_t *c) {
               170);
   shader_make(&c->state_shaders[PSTATE_SUSPENDED][1], "dim", (color_t){0}, 60);
   c->state_n[PSTATE_SUSPENDED] = 2;
+
+  apply_dim_unfocused(c, false);
 
   const color_t accent = rgb(0xff, 0x5f, 0xd7);
   const color_t ink = rgb(0x14, 0x14, 0x18);
@@ -634,6 +655,10 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   const char *nt = kdl_arg(kdl_child(root, "newtab_mark"), 0, NULL);
   if (nt) snprintf(c->newtab_mark, sizeof c->newtab_mark, "%s", nt);
   c->keep_dead = kdl_arg_bool(kdl_child(root, "keep_dead"), 0, c->keep_dead);
+  {
+    long v = kdl_arg_int(kdl_child(root, "dim_unfocused"), 0, c->dim_unfocused);
+    c->dim_unfocused = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+  }
   c->bell_indicator =
       kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);
   const char *bm = kdl_arg(kdl_child(root, "bell_mark"), 0, NULL);
@@ -710,6 +735,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
    * pane looks like while it is in a state. Naming a state at all replaces its
    * default outright, including with nothing, which is how you turn one off. */
   const kdl_node_t *states = kdl_child(root, "states");
+  bool unfocused_declared = false;
   if (states) {
     for (size_t i = 0; i < states->nkids; i++) {
       const kdl_node_t *k = states->kids[i];
@@ -722,9 +748,13 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
         if (err && !err[0]) snprintf(err, errcap, "unknown pane state: %s", k->name);
         continue;
       }
+      if (st == PSTATE_UNFOCUSED) unfocused_declared = true;
       c->state_n[st] = parse_shader_list(c, k, c->state_shaders[st], err, errcap);
     }
   }
+  /* After the states block, so a config that wrote its own chain keeps it and
+   * one that did not gets the knob's. */
+  apply_dim_unfocused(c, unfocused_declared);
 
   const kdl_node_t *theme = kdl_child(root, "theme");
   if (theme) {

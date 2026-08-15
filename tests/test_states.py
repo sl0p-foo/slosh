@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What sl0ppty says, out of the box, about a pane that is not live.
+"""What sl0ppty says, out of the box, about a pane you are not in.
 
 Three states mean "these cells are not a running program's present": its
 program exited, it never started, or you are looking at the past. None of them
@@ -87,19 +87,64 @@ def test_scrollback_is_coloured_by_default():
               f"{fg(s.snapshot(), pane)} vs {live}")
 
 
-def test_an_unfocused_pane_is_left_alone():
-    """The deliberate non-opinion. If this ever fails because someone shipped a
-    default dim, that was a taste, and it needs an argument rather than a
-    commit."""
+def test_an_unfocused_pane_is_dimmed_by_default():
+    """This used to assert the opposite, deliberately: ambient contrast is a
+    taste, and the argument against shipping a taste was that turning it off
+    should be obvious. It is now — `dim_unfocused 0` — which is what changed.
+    The knob is the escape hatch that makes the default defensible."""
     with Session(SH, cols=90, rows=14, config=cfg()) as s:
         s.until_text("line 39")
         before = fg(s.snapshot(), s.pane())
         s.key("\\\\")                   # split; the left pane loses focus
         s.settle(40)
         unfocused = [p for p in s.panes() if not p["focused"]][0]
-        check("an unfocused pane keeps its colours",
-              fg(s.snapshot(), unfocused) == before,
-              f"{fg(s.snapshot(), unfocused)} vs {before}")
+        after = fg(s.snapshot(), unfocused)
+        check("the pane you left is pushed back", after != before,
+              f"{before} -> {after}")
+        check("but still plainly readable", after not in (None, "#000000"),
+              str(after))
+
+
+def test_dim_unfocused_zero_turns_it_off():
+    conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    conf.write('theme { default_fg "#ffffff" default_bg "#000000" }\n'
+               'dim_unfocused 0\n')
+    conf.close()
+    with Session(SH, cols=90, rows=14, config=conf.name) as s:
+        s.until_text("line 39")
+        before = fg(s.snapshot(), s.pane())
+        s.key("\\\\")
+        s.settle(40)
+        unfocused = [p for p in s.panes() if not p["focused"]][0]
+        check("nothing is done to it", fg(s.snapshot(), unfocused) == before,
+              f"{before} -> {fg(s.snapshot(), unfocused)}")
+    os.unlink(conf.name)
+
+
+def test_a_states_block_beats_the_knob():
+    """Both directions, asserted on the colour rather than on "did it change":
+    a chain replaces the knob's dim, and an empty block means "nothing" rather
+    than "you did not say". (A grayscale chain makes a poor probe here — it
+    leaves white text white, so it looks like nothing happened.)"""
+    cases = [
+        ('dim_unfocused 60\nstates { unfocused { tint amount=255 color="#00ff00" } }\n',
+         "#00ff00", "a chain replaces the knob"),
+        ('dim_unfocused 60\nstates { unfocused { } }\n',
+         None, "an empty block means nothing at all"),
+        ('dim_unfocused 60\n', "#c3c3c3", "and the knob applies when nobody said"),
+    ]
+    for text, want, label in cases:
+        conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+        conf.write('theme { default_fg "#ffffff" default_bg "#000000" }\n' + text)
+        conf.close()
+        with Session(SH, cols=90, rows=14, config=conf.name) as s:
+            s.until_text("line 39")
+            s.key("\\\\")
+            s.settle(40)
+            unfocused = [p for p in s.panes() if not p["focused"]][0]
+            got = fg(s.snapshot(), unfocused)
+            check(label, got == want, f"{got}, wanted {want}")
+        os.unlink(conf.name)
 
 
 def test_a_flattened_tab_still_says_which_panes_are_not_live():

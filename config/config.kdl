@@ -113,6 +113,17 @@ newtab_mark "+"
 // last thing a failing command printed.
 keep_dead true
 
+// How far the panes you are *not* in are pushed back, 0..255, and 0 for not
+// at all. On by default and gently: at 60 white text lands on #c3c3c3, which
+// reads as "not this one" without reading as "not available", because half
+// the time you are still reading the other pane.
+//
+// This is the one taste shipped as a default, and it is shipped because
+// turning it off is a single obvious number rather than a shader incantation.
+// Writing the chain yourself still wins -- `states { unfocused { ... } }`
+// replaces it, and `states { unfocused { } }` means nothing at all.
+dim_unfocused 60
+
 bell_indicator true
 
 // What to draw. A short string rather than a fixed glyph, because the obvious
@@ -245,10 +256,12 @@ modal_scrim 120
 //   the past. None of that is discoverable by looking unless something says
 //   so, which is the entire argument for colouring it.
 //
-//   a pane that is merely *not the one you are in* does not -- unfocused, and
-//   one being dragged. That is ambient contrast, which is a taste, and a taste
-//   shipped as a default is how a tool gets a reputation for fighting you.
-//   `unfocused { dim amount=90 }` is one line away if you disagree.
+//   a pane that is merely *not the one you are in* is a taste rather than a
+//   fact, and gets a default anyway -- but through `dim_unfocused` above,
+//   which is one number to change or zero out. The objection to shipping a
+//   taste was never the taste, it was that turning it off should not require
+//   knowing this block exists. `dragging` still has no default: the pane in
+//   your hand keeping its colour is what makes it lift off the page.
 //
 // All the defaults are gentle: a dead pane, a suspended one and scrollback are
 // all things you still want to read. The compiled-in scrolled tint uses the
@@ -263,7 +276,7 @@ states {
     suspended { grayscale amount=170; dim amount=60 }
     scrolled { tint amount=22 color="#ff5fd7" }   // = theme's scroll_bg
     // dragging { }
-    // unfocused { dim amount=90 }
+    // unfocused { dim amount=60 }    // = dim_unfocused above; yours replaces it
 }
 
 // While a pane is being dragged its border stays solid and every other pane's

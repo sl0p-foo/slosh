@@ -137,18 +137,20 @@ mistake in it is refused rather than half-applied.
 Geometry, key bindings and every colour are configurable. Six ready-made
 themes are in [`contrib/themes`](contrib/themes).
 
-Panes are tinted by *state*, and out of the box only for states that mean
-**this pane is not live**: its program exited, it never started, or you are
-looking at scrollback rather than the present. None of those is discoverable
-by looking unless something says so. A pane that is merely not the one you are
-in is left alone — that is a taste, and it is one line away if it is yours:
+Panes are tinted by *state*. Out of the box: the panes you are **not in** are
+gently pushed back (`dim_unfocused 60`, or `0` if you hate it), and so is any
+pane that is **not live** — its program exited, it never started, or you are
+looking at scrollback rather than the present. That second group is the one
+you cannot discover by looking unless something says so:
 
 ```kdl
-states {
-    dead { grayscale amount=200; dim amount=90 }   // shipped
+dim_unfocused 60          // the one knob most people want
+
+states {                  // ...and the whole table underneath it
+    dead { grayscale amount=200; dim amount=90 }
     suspended { grayscale amount=170; dim amount=60 }
     scrolled { tint amount=22 color="#ff5fd7" }
-    unfocused { dim amount=90 }                    // yours, if you want it
+    unfocused { dim amount=60 }    // writing this replaces dim_unfocused
 }
 ```
 

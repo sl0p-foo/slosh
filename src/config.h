@@ -141,8 +141,17 @@ typedef struct {
    * A modal that floats over a screen as bright as it is reads as another
    * pane rather than as something in front. */
   uint8_t modal_scrim;
-  /* Shader strengths, 0..255, 0 being off. Ambient dimming is a taste and is
-   * off by default; the drag greying is transient and on. */
+  /* How far the panes you are *not* in are pushed back, 0..255 and 0 for not
+   * at all. A knob rather than only a `states { unfocused { } }` chain,
+   * because "dim the other panes" is a thing people want by name and should
+   * not have to know the shader vocabulary to ask for -- and because the
+   * argument against shipping it on was that turning it off should be
+   * obvious, which a single number is and a chain is not.
+   *
+   * Writing the state chain by hand still wins: the knob only fills it in
+   * when the config has not. */
+  uint8_t dim_unfocused;
+
   /* Colour passes every pane gets, in the order they were written. Ordinary
    * shaders rather than policy: the session has no opinion about these, you
    * asked for them. */
