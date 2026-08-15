@@ -3,6 +3,8 @@
 #define _GNU_SOURCE
 #include "sl0ppty.h"
 
+#include <ghostty/vt.h>
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -114,20 +116,6 @@ cell_t *screen_at(screen_t *s, uint16_t x, uint16_t y) {
   return &s->cur[(size_t)y * s->cols + x];
 }
 
-void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
-                     size_t len, color_t fg, color_t bg, uint16_t attrs) {
-  cell_t *c = screen_at(s, x, y);
-  if (!c) return;
-  if (len > sizeof c->text) len = sizeof c->text;
-  memset(c->text, 0, sizeof c->text);
-  memcpy(c->text, txt, len);
-  c->len = (uint8_t)len;
-  c->width = 1;
-  c->fg = fg;
-  c->bg = bg;
-  c->attrs = attrs;
-}
-
 static size_t u8_len(unsigned char b) {
   if (b < 0x80) return 1;
   if ((b & 0xe0) == 0xc0) return 2;
@@ -136,6 +124,114 @@ static size_t u8_len(unsigned char b) {
   return 1;
 }
 
+/* Decode UTF-8 into codepoints, bounded. Returns how many were written and,
+ * via `used`, how many bytes they came from -- the caller needs both to walk a
+ * string cluster by cluster. */
+static size_t decode_utf8(const char *txt, size_t len, uint32_t *cps,
+                          size_t max, size_t *used) {
+  size_t n = 0, i = 0;
+  while (i < len && n < max) {
+    size_t l = u8_len((unsigned char)txt[i]);
+    if (l == 0 || i + l > len) break;
+    uint32_t cp;
+    switch (l) {
+      case 1: cp = (unsigned char)txt[i]; break;
+      case 2: cp = ((uint32_t)((unsigned char)txt[i] & 0x1f) << 6) |
+                   ((unsigned char)txt[i + 1] & 0x3f); break;
+      case 3: cp = ((uint32_t)((unsigned char)txt[i] & 0x0f) << 12) |
+                   ((uint32_t)((unsigned char)txt[i + 1] & 0x3f) << 6) |
+                   ((unsigned char)txt[i + 2] & 0x3f); break;
+      default: cp = ((uint32_t)((unsigned char)txt[i] & 0x07) << 18) |
+                    ((uint32_t)((unsigned char)txt[i + 1] & 0x3f) << 12) |
+                    ((uint32_t)((unsigned char)txt[i + 2] & 0x3f) << 6) |
+                    ((unsigned char)txt[i + 3] & 0x3f); break;
+    }
+    cps[n++] = cp;
+    i += l;
+  }
+  if (used) *used = i;
+  return n;
+}
+
+/* How many columns the first grapheme cluster takes, asked of the same table
+ * the terminal uses (lib-vt's). Guessing 1 for everything is what made a
+ * two-column bell mark shift the rest of a pane's title row: the cell was
+ * booked as one column and drawn as two, and every glyph after it landed a
+ * column early. */
+uint8_t screen_width_of(const char *txt, size_t len) {
+  uint32_t cps[16];
+  size_t n = decode_utf8(txt, len, cps, sizeof cps / sizeof *cps, NULL);
+  if (!n) return 1;
+  uint8_t w = 1;
+  ghostty_unicode_grapheme_width(cps, n, &w);
+  /* A zero-width cluster still owns the cell it was written into: chrome is
+   * laid out in cells, and a mark that claims no space would be overwritten
+   * by whatever comes next. */
+  return w ? w : 1;
+}
+
+/* Columns a whole string occupies.
+ *
+ * Cluster by cluster, using the codepoint count lib-vt reports as consumed --
+ * summing per-codepoint widths is a different and wrong answer, because an
+ * emoji with a variation selector is two codepoints and one cluster. */
+uint16_t screen_cells(const char *txt) {
+  if (!txt) return 0;
+  uint32_t cps[256];
+  uint16_t total = 0;
+  size_t len = strlen(txt), at = 0;
+  while (at < len) {
+    size_t used = 0;
+    size_t n = decode_utf8(txt + at, len - at, cps, sizeof cps / sizeof *cps,
+                           &used);
+    if (!n) break;
+    for (size_t i = 0; i < n;) {
+      uint8_t w = 1;
+      size_t eaten = ghostty_unicode_grapheme_width(cps + i, n - i, &w);
+      if (!eaten) break;
+      i += eaten;
+      total = (uint16_t)(total + w);
+    }
+    at += used;
+  }
+  return total;
+}
+
+void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
+                     size_t len, color_t fg, color_t bg, uint16_t attrs) {
+  cell_t *c = screen_at(s, x, y);
+  if (!c) return;
+  /* Clamped on a codepoint boundary. A grapheme cluster can be longer than
+   * this cell holds -- a family emoji is eighteen bytes -- and cutting one in
+   * the middle of a codepoint puts invalid UTF-8 on the wire, which is worse
+   * than losing the tail of a cluster nobody can see anyway. */
+  if (len > sizeof c->text) {
+    len = sizeof c->text;
+    while (len && ((unsigned char)txt[len] & 0xC0) == 0x80) len--;
+  }
+  memset(c->text, 0, sizeof c->text);
+  memcpy(c->text, txt, len);
+  c->len = (uint8_t)len;
+  c->width = screen_width_of(txt, len);
+  /* The second half of a wide cell is a tail: never painted, and skipped by
+   * the diff. Without claiming it, the cell to the right keeps whatever was
+   * there and the terminal draws both. */
+  if (c->width == 2) {
+    cell_t *tail = screen_at(s, (uint16_t)(x + 1), y);
+    if (tail) {
+      memset(tail, 0, sizeof *tail);
+      tail->fg = fg;
+      tail->bg = bg;
+    } else {
+      c->width = 1; /* no room for the tail: do not claim what is not there */
+    }
+  }
+  c->fg = fg;
+  c->bg = bg;
+  c->attrs = attrs;
+}
+
+
 uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      color_t fg, color_t bg, uint16_t attrs) {
   uint16_t n = 0;
@@ -143,10 +239,11 @@ uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
     size_t len = u8_len((unsigned char)*p);
     if (x + n >= s->cols) break;
     screen_put_utf8(s, (uint16_t)(x + n), y, p, len, fg, bg, attrs);
+    cell_t *c = screen_at(s, (uint16_t)(x + n), y);
+    n = (uint16_t)(n + (c && c->width ? c->width : 1));
     p += len;
-    n++;
   }
-  return n; /* cells written, so a caller can lay out what follows */
+  return n; /* columns written, so a caller can lay out what follows */
 }
 
 static bool color_eq(color_t a, color_t b) {

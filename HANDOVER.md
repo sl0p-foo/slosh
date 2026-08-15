@@ -47,13 +47,28 @@ prefixes that arm after the pointer rests. Anything that arms on dwell and is
 so it looks intermittent, which is the worst way to be wrong. This caught me
 twice, for `edge:` and then `corner:`.
 
-**Glyph width and glyph weight are different problems.** `screen_text` books
-every chrome cell as one column. An emoji drawn two columns wide shifts the
-whole row. Separately, a glyph that does not *fill* its cell donates that space
-to the gap beside it and looks badly spaced next to one that does — the cells
-can be provably even and still look wrong. Three attempts at the frame buttons
-established this; they are plain ASCII now. If someone reports spacing, dump
-the actual cells before touching any arithmetic.
+**Glyph width and glyph weight are different problems.** Width is now handled:
+`screen_text` and `cells()` ask lib-vt's own table
+(`ghostty_unicode_grapheme_width`), the same one the terminal uses for pane
+content, so a two-column bell mark claims two columns and the wide cell's
+right half is a tail the diff skips. Set `bell_mark "🔔"` and the title row
+stays aligned. What is *not* solved is weight: a glyph that does not fill its
+cell donates that space to the gap beside it and looks badly spaced next to
+one that does — the cells can be provably even and still look wrong. Three
+attempts at the frame buttons established this; they are plain ASCII now. If
+someone reports spacing, dump the actual cells before touching any arithmetic.
+
+Two traps found while fixing the width, both worth knowing before touching
+this code again. `ghostty_unicode_grapheme_width` measures **only the first
+cluster** and tells you how many codepoints it ate; a loop that ignores the
+return value and instead asks "did the width change when I added the next
+codepoint?" concludes that an entire ASCII string is one cluster, which
+silently shrank the cheatsheet modal to ten columns. And a grapheme cluster
+can be longer than the 16 bytes a cell holds (a ZWJ family emoji is 18), so
+both the cell writer and the config's mark fields clamp on a codepoint
+boundary — truncating mid-codepoint put invalid UTF-8 into the snapshot, which
+surfaced as a decode error in a test rather than anything resembling the
+cause.
 
 **The test harness is not a session, and the difference hid a real bug.** The
 server set `signal(SIGCHLD, SIG_IGN)`, which does not merely skip a handler —

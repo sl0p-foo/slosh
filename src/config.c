@@ -268,6 +268,21 @@ static void bind_add(config_t *c, int key, uint16_t mods, action_t action,
  * `declared` is whether the config named `unfocused` itself, in which case it
  * has said what it wants -- including `states { unfocused { } }`, which says
  * "nothing", and must not be quietly refilled. */
+/* Copy a mark, cutting only where a codepoint ends.
+ *
+ * snprintf truncates at a byte, and a mark is a grapheme cluster: cutting one
+ * mid-codepoint puts bytes on the wire that are not UTF-8 at all, which shows
+ * up far from here as a garbled screen rather than a too-short mark. */
+static void set_mark(char *dst, size_t cap, const char *src) {
+  size_t n = strlen(src);
+  if (n >= cap) {
+    n = cap - 1;
+    while (n && ((unsigned char)src[n] & 0xC0) == 0x80) n--;
+  }
+  memcpy(dst, src, n);
+  dst[n] = 0;
+}
+
 static void apply_dim_unfocused(config_t *c, bool declared) {
   if (declared) return;
   if (!c->dim_unfocused) {
@@ -923,15 +938,15 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   c->pane_buttons =
       kdl_arg_bool(kdl_child(root, "pane_buttons"), 0, c->pane_buttons);
   const char *zm = kdl_arg(kdl_child(root, "zoom_mark"), 0, NULL);
-  if (zm) snprintf(c->zoom_mark, sizeof c->zoom_mark, "%s", zm);
+  if (zm) set_mark(c->zoom_mark, sizeof c->zoom_mark, zm);
   const char *zo = kdl_arg(kdl_child(root, "zoom_on_mark"), 0, NULL);
-  if (zo) snprintf(c->zoom_on_mark, sizeof c->zoom_on_mark, "%s", zo);
+  if (zo) set_mark(c->zoom_on_mark, sizeof c->zoom_on_mark, zo);
   const char *cm = kdl_arg(kdl_child(root, "close_mark"), 0, NULL);
-  if (cm) snprintf(c->close_mark, sizeof c->close_mark, "%s", cm);
+  if (cm) set_mark(c->close_mark, sizeof c->close_mark, cm);
   const char *mm = kdl_arg(kdl_child(root, "min_mark"), 0, NULL);
-  if (mm) snprintf(c->min_mark, sizeof c->min_mark, "%s", mm);
+  if (mm) set_mark(c->min_mark, sizeof c->min_mark, mm);
   const char *nt = kdl_arg(kdl_child(root, "newtab_mark"), 0, NULL);
-  if (nt) snprintf(c->newtab_mark, sizeof c->newtab_mark, "%s", nt);
+  if (nt) set_mark(c->newtab_mark, sizeof c->newtab_mark, nt);
   {
     /* `commands` (the default), `all`, or `none`. `true`/`false` are taken as
      * `all`/`none`, because that is what they used to mean here and a config
@@ -954,7 +969,7 @@ bool config_load(config_t *c, const char *path, char *err, size_t errcap) {
   c->bell_indicator =
       kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);
   const char *bm = kdl_arg(kdl_child(root, "bell_mark"), 0, NULL);
-  if (bm) snprintf(c->bell_mark, sizeof c->bell_mark, "%s", bm);
+  if (bm) set_mark(c->bell_mark, sizeof c->bell_mark, bm);
 
   const kdl_node_t *mins = kdl_child(root, "min_split");
   if (mins) {

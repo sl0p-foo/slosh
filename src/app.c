@@ -305,15 +305,13 @@ static tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
  * Always asked with the rect that is about to be registered as the hit, so a
  * thing that lights up and the thing that would be clicked cannot drift apart.
  * A pointer already carrying something is busy and lights nothing. */
-/* Display columns of a short chrome string. Counts codepoints, which is exact
- * for what chrome draws: every glyph here is one column, and a mark wide
- * enough not to be is the thing the config warns you about. */
-static uint16_t cells(const char *str) {
-  uint16_t n = 0;
-  for (const char *q = str; q && *q; q++)
-    if (((unsigned char)*q & 0xC0) != 0x80) n++;
-  return n;
-}
+/* Display columns of a chrome string, from the terminal's own width table.
+ *
+ * This counted codepoints until a two-column bell mark shifted a pane's title
+ * row: booking one column for a glyph drawn in two moves everything after it,
+ * and every length in this file -- title budgets, button positions, the hit
+ * rects that must agree with them -- is computed from here. */
+static uint16_t cells(const char *str) { return screen_cells(str); }
 
 static bool ptr_on(const app_t *a, uint16_t x, uint16_t y, uint16_t w,
                    uint16_t h) {

@@ -110,16 +110,19 @@ typedef struct {
    * reads as even: a glyph that floats in a mostly-empty cell donates its own
    * whitespace to the gap beside it and looks further away than its
    * neighbours, which is what an en dash did here. */
-  char zoom_mark[16], zoom_on_mark[16], close_mark[16], min_mark[16];
+  /* 32 bytes because a mark is a grapheme cluster, not a character: a
+   family emoji is eighteen bytes on its own. Truncating one mid-
+   codepoint used to put invalid UTF-8 on the wire. */
+  char zoom_mark[32], zoom_on_mark[32], close_mark[32], min_mark[32];
   /* The new-tab button at the end of the strip. Drawn with a space each side,
    * so a one-character mark is still a three-cell target. */
-  char newtab_mark[16];
+  char newtab_mark[32];
   bool bell_indicator;
   /* What to draw. A short string rather than a fixed glyph: the obvious
    * choice is an emoji bell, and emoji are drawn two columns wide by many
    * terminals while chrome here is booked as one — so the default is narrow
    * and anyone who knows their terminal can say otherwise. */
-  char bell_mark[16];
+  char bell_mark[32];
   /* Which dead panes stay, showing what they printed and offering to run
    * again, and which just go.
    *

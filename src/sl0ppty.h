@@ -59,7 +59,12 @@ void screen_clear(screen_t *s);
 cell_t *screen_at(screen_t *s, uint16_t x, uint16_t y);
 void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      size_t len, color_t fg, color_t bg, uint16_t attrs);
-/* Write a UTF-8 string one cell per codepoint; returns cells written. */
+/* Columns one grapheme cluster occupies, from lib-vt's own width table. */
+uint8_t screen_width_of(const char *txt, size_t len);
+/* Columns a whole string occupies. What chrome must budget with. */
+uint16_t screen_cells(const char *txt);
+/* Write a UTF-8 string; returns the *columns* written, which is not the number
+ * of characters when any of them is wide. */
 uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      color_t fg, color_t bg, uint16_t attrs);
 /* Diff cur against prev into s->out (the minimal byte stream for a terminal). */
