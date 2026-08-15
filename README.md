@@ -115,6 +115,12 @@ mistyped command in a fresh session no longer closes the session.
 
 ### The rest of it
 
+- **Find a pane instead of remembering where it is.** `C-a f` opens a picker
+  over the whole session — every tab, including panes a small window has
+  collapsed out of sight. Type to narrow it by pane title, tab name or
+  purpose; arrows or `C-n`/`C-p` or tab to move, enter to go, and a dot marks
+  where you already are. Tabs stop being navigation somewhere around six
+  projects, and this is what replaces them.
 - **Select text to copy it.** Release the mouse and it is on your clipboard,
   sent to your terminal over ssh as well as locally. Middle click pastes.
 - **Images work.** Kitty graphics pass through to your terminal, which is the

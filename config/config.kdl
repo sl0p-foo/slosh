@@ -471,10 +471,14 @@ theme {
     modal_button_hover "#ff5fd7"
 
     // ── the pane finder ─────────────────────────────────────────────────────
+    // The finder is a modal, so its box is the modal colours above; these are
+    // the parts only it has. `finder_bg` is the query field and the row under
+    // the pointer — a band that is not the box, so typing and hovering both
+    // have somewhere to show.
     finder_fg "#ffffff"
     finder_bg "#45454a"
     finder_sel_fg "#141418"
-    finder_sel_bg "#ff5fd7"
+    finder_sel_bg "#ff5fd7"      // the row enter would take
 
     // ── the in-place editor a double-click opens on a pane title ────────────
     rename_fg "#141418"

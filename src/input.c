@@ -351,6 +351,16 @@ static size_t parse_one(input_parser_t *p, input_cb_t cb, void *ud) {
         return i + 1;
       }
 
+      /* Back-tab. Every terminal sends shift+tab as CSI Z rather than as tab
+       * with a modifier param, so it is the one chord whose shift lives in
+       * the final byte -- and a picker that walks its list with tab is
+       * useless without it. */
+      if (final == 'Z') {
+        emit_key(cb, ud, GHOSTTY_KEY_TAB, (uint16_t)(mods | MOD_SHIFT), action,
+                 NULL, 0, 0);
+        return i + 1;
+      }
+
       int key = final_key(final);
       if (key != GHOSTTY_KEY_UNIDENTIFIED) {
         emit_key(cb, ud, key, mods, action, NULL, 0, 0);

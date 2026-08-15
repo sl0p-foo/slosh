@@ -3447,52 +3447,193 @@ static void draw_help(app_t *a, screen_t *s) {
                 (uint16_t)(in.y + in.h), foot, HINT_C, MODAL_BG, 0);
 }
 
+/* How many rows of results the box shows at once. Past this it scrolls, and
+ * the point of the finder is that you narrow rather than scroll. */
+#define FINDER_ROWS 10
+
+/* A band of background, for a row that is selected or under the pointer. The
+ * whole width, not just the text: a highlight that stops where the words stop
+ * reads as a highlighted *word* rather than a chosen row. */
+static void fill_row(screen_t *s, uint16_t x, uint16_t y, uint16_t w,
+                     color_t bg) {
+  for (uint16_t i = 0; i < w; i++)
+    screen_text(s, (uint16_t)(x + i), y, " ", NO_COLOR, bg, 0);
+}
+
+/* The finder is a modal, like the cheatsheet: scrim behind it, a pane's frame
+ * around it, a title and a close button in the places a pane keeps them. It
+ * used to be a bare coloured rectangle painted over whatever pane it landed
+ * on, which read as output from the program underneath rather than as a
+ * window in front of it -- and gave it no title, no way out you could see,
+ * and no edge to tell you where it ended.
+ *
+ * It differs from the cheatsheet in the one way that matters: the cheatsheet
+ * is *read*, so any key dismisses it, while this one is *used*, so it keeps
+ * the keyboard until it is answered. */
 static void draw_finder(app_t *a, screen_t *s) {
   find_entry_t entries[64];
   size_t n = finder_entries(a, entries, 64);
   if (a->sel >= n) a->sel = n ? n - 1 : 0;
 
-  uint16_t w = (uint16_t)(s->cols > 60 ? 56 : (s->cols > 20 ? s->cols - 8 : 12));
-  uint16_t rows = (uint16_t)(n > 10 ? 10 : (n ? n : 1));
-  uint16_t h = (uint16_t)(rows + 4);
+  /* The window of results on screen. Kept around the selection rather than
+   * anchored at the top, so arrowing past the bottom scrolls instead of
+   * moving the selection somewhere you cannot see it. */
+  size_t shown = n > FINDER_ROWS ? FINDER_ROWS : n;
+  size_t first = a->sel >= shown ? a->sel - shown + 1 : 0;
+
+  uint16_t w = 64;
+  if (w > s->cols - 4) w = (uint16_t)(s->cols > 24 ? s->cols - 4 : s->cols);
+  /* border, query, blank, rows (at least one, for "no matches"), border */
+  uint16_t list = (uint16_t)(shown ? shown : 1);
+  uint16_t h = (uint16_t)(list + 5);
   if (h > s->rows) h = s->rows;
-  uint16_t x = (uint16_t)((s->cols - w) / 2), y = (uint16_t)((s->rows - h) / 2);
 
-  for (uint16_t yy = y; yy < y + h; yy++)
-    for (uint16_t xx = x; xx < x + w; xx++)
-      screen_text(s, xx, yy, " ", NO_COLOR, FINDER_BG, 0);
+  rect_t in = modal_frame(a, s, w, h, "find", "closefind");
 
-  char head[128];
-  snprintf(head, sizeof head, " find: %s\u2588", a->query);
-  screen_text(s, (uint16_t)(x + 1), (uint16_t)(y + 1), head, FINDER_FG,
-              FINDER_BG, ATTR_BOLD);
+  /* The query, in a field that looks like one: a program you type into should
+   * show you where the typing goes even when you have not typed anything. */
+  uint16_t fy = (uint16_t)(in.y + 1);
+  fill_row(s, in.x, fy, in.w, FINDER_BG);
+  uint16_t qx = (uint16_t)(in.x + 1);
+  qx += help_text(s, qx, fy, "\u203a ", in.w, HINT_C, FINDER_BG, 0);
+  qx += help_text(s, qx, fy, a->query, (uint16_t)(in.x + in.w - qx), FINDER_FG,
+                  FINDER_BG, ATTR_BOLD);
+  if (qx < in.x + in.w)
+    screen_text(s, qx, fy, "\u2588", FINDER_FG, FINDER_BG, 0);
 
-  for (size_t i = 0; i < rows && i < n; i++) {
-    size_t idx = i + (a->sel >= rows ? a->sel - rows + 1 : 0);
+  uint16_t ly = (uint16_t)(in.y + 3); /* the first result row */
+
+  if (!n) {
+    /* An empty box says the finder is broken; this says the query is. */
+    const char *none = a->query[0] ? "no pane matches that" : "no panes";
+    help_text(s, (uint16_t)(in.x + 2), ly, none, (uint16_t)(in.w - 2), HINT_C,
+              MODAL_BG, 0);
+    return;
+  }
+
+  for (size_t i = 0; i < shown; i++) {
+    size_t idx = first + i;
     if (idx >= n) break;
     find_entry_t *e = &entries[idx];
-    char line[256];
-    const char *title = pane_title(e->node->pane);
-    snprintf(line, sizeof line, " %zu:%-12.12s %-16.16s %s",
-             e->tab + 1,
-             e->tab == (size_t)-1 ? "" : a->tabs[e->tab].name,
-             title && *title ? title : "pane", e->node->purpose);
-    line[w - 2 < sizeof line ? w - 2 : sizeof line - 1] = 0;
-    bool on = idx == a->sel;
-    uint16_t yy = (uint16_t)(y + 3 + i);
-    uint16_t drawn = screen_text(s, (uint16_t)(x + 1), yy, line,
-                                 on ? FINDER_SEL_FG : FINDER_FG,
-                                 on ? FINDER_SEL_BG : FINDER_BG, 0);
+    uint16_t yy = (uint16_t)(ly + i);
+    if (yy >= in.y + in.h) break;
+
     char action[48];
     snprintf(action, sizeof action, "find:%u", e->node->id);
-    hit_add(&s->hits, (uint16_t)(x + 1), yy, drawn, 1, action);
+    hit_add(&s->hits, in.x, yy, in.w, 1, action);
+
+    /* Selected wins over hovered: the pointer may be resting anywhere, and
+     * the row Enter would take is the one that has to be unambiguous. */
+    bool on = idx == a->sel;
+    bool hot = !on && ptr_on(a, in.x, yy, in.w, 1);
+    color_t bg = on ? FINDER_SEL_BG : (hot ? FINDER_BG : MODAL_BG);
+    color_t fg = on ? FINDER_SEL_FG : FINDER_FG;
+    fill_row(s, in.x, yy, in.w, bg);
+
+    /* Which pane you are in now, so the list says where you are as well as
+     * where you could go. A different mark from the query prompt: two rows
+     * that both begin with the same glyph invite you to read one as the
+     * other. */
+    bool here = e->node == cur(a)->focus && e->tab == a->cur;
+    uint16_t cx = (uint16_t)(in.x + 1);
+    cx += help_text(s, cx, yy, here ? "\u2022" : " ", 1, fg, bg, 0);
+    cx++;
+
+    /* Tab, then title, then purpose, in columns -- and drawn as three pieces
+     * rather than one printf so the parts that matter can be told apart by
+     * weight. A tab with no name is its number alone: "1:" with nothing after
+     * it looks like something failed to load. */
+    char tab[24];
+    const char *tname = e->tab == (size_t)-1 ? "" : a->tabs[e->tab].name;
+    if (tname && *tname)
+      snprintf(tab, sizeof tab, "%zu:%.10s", e->tab + 1, tname);
+    else
+      snprintf(tab, sizeof tab, "%zu", e->tab + 1);
+    uint16_t tw = 13;
+    if (in.w > 40) help_text(s, cx, yy, tab, tw, on ? fg : HINT_C, bg, 0);
+    if (in.w > 40) cx = (uint16_t)(cx + tw);
+
+    const char *title = pane_title(e->node->pane);
+    if (!title || !*title) title = "pane";
+    uint16_t room = (uint16_t)(in.x + in.w > cx ? in.x + in.w - cx - 1 : 0);
+    uint16_t tcol = (uint16_t)(room > 20 ? 18 : room);
+    uint16_t drew = help_text(s, cx, yy, title, tcol, fg, bg, ATTR_BOLD);
+    cx = (uint16_t)(cx + (drew > tcol ? drew : tcol) + 1);
+
+    if (*e->node->purpose && cx < in.x + in.w)
+      help_text(s, cx, yy, e->node->purpose,
+                (uint16_t)(in.x + in.w - cx - 1), on ? fg : HINT_C, bg, 0);
   }
+
+  /* What is off the top and bottom of the window. Without this a list that
+   * scrolls looks like a list that ends. */
+  if (first)
+    screen_text(s, (uint16_t)(in.x + in.w - 1), ly, "\u2191", HINT_C, MODAL_BG, 0);
+  if (first + shown < n)
+    screen_text(s, (uint16_t)(in.x + in.w - 1),
+                (uint16_t)(ly + shown - 1), "\u2193", HINT_C, MODAL_BG, 0);
+
+  /* The count belongs where the eye already goes for "how much is there", and
+   * it is the answer to "is my query too narrow, or is there nothing?". */
+  char foot[64];
+  snprintf(foot, sizeof foot, " %zu of %zu \u00b7 \u2191\u2193 enter ", a->sel + 1, n);
+  if (in.w > cells(foot))
+    screen_text(s, (uint16_t)(in.x + (in.w - cells(foot)) / 2),
+                (uint16_t)(in.y + in.h), foot, HINT_C, MODAL_BG, 0);
 }
 
-/* Returns true when the finder consumed the event. */
+static size_t finder_count(app_t *a) {
+  find_entry_t entries[64];
+  return finder_entries(a, entries, 64);
+}
+
+/* Move the selection by `d`, wrapping.
+ *
+ * Wrapping because the list is short and the selection starts at the top: one
+ * press of Up to reach the last entry is worth more here than the protection
+ * against overshooting that a long list wants. */
+static void finder_move(app_t *a, int d) {
+  size_t n = finder_count(a);
+  if (!n) {
+    a->sel = 0;
+    return;
+  }
+  int64_t sel = (int64_t)a->sel + d;
+  int64_t last = (int64_t)n - 1;
+  if (sel < 0) sel = d == -1 ? last : 0;          /* a page up stops at the top */
+  if (sel > last) sel = d == 1 ? 0 : last;
+  a->sel = (size_t)sel;
+}
+
+/* Returns true when the finder consumed the event.
+ *
+ * It consumes *everything* while it is open, including keys it does nothing
+ * with: it is a text field, and a text field that lets an unrecognised key
+ * fall through to the pane behind it types into that pane. */
 static bool finder_key(app_t *a, const input_event_t *ev) {
   if (!a->finder) return false;
   if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
+
+  bool ctrl = (ev->mods & MOD_CTRL) != 0;
+  bool shift = (ev->mods & MOD_SHIFT) != 0;
+
+  /* The emacs pair every picker in this shape answers to, and which the hands
+   * of anyone who has used one reach for before the arrows. */
+  if (ctrl && (ev->key == GHOSTTY_KEY_N || ev->unshifted == 'n')) {
+    finder_move(a, 1);
+    return true;
+  }
+  if (ctrl && (ev->key == GHOSTTY_KEY_P || ev->unshifted == 'p')) {
+    finder_move(a, -1);
+    return true;
+  }
+  /* Clear the query rather than the whole finder: the shell's own C-u, and
+   * the alternative is backspacing a long wrong guess out one key at a time. */
+  if (ctrl && (ev->key == GHOSTTY_KEY_U || ev->unshifted == 'u')) {
+    a->query[0] = 0;
+    a->sel = 0;
+    return true;
+  }
 
   switch (ev->key) {
     case GHOSTTY_KEY_ESCAPE:
@@ -3505,22 +3646,44 @@ static bool finder_key(app_t *a, const input_event_t *ev) {
       a->finder = false;
       return true;
     }
+    case GHOSTTY_KEY_TAB:
+      finder_move(a, shift ? -1 : 1);
+      return true;
     case GHOSTTY_KEY_ARROW_DOWN:
-      a->sel++;
+      finder_move(a, 1);
       return true;
     case GHOSTTY_KEY_ARROW_UP:
-      if (a->sel) a->sel--;
+      finder_move(a, -1);
       return true;
+    case GHOSTTY_KEY_PAGE_DOWN:
+      finder_move(a, FINDER_ROWS);
+      return true;
+    case GHOSTTY_KEY_PAGE_UP:
+      finder_move(a, -FINDER_ROWS);
+      return true;
+    case GHOSTTY_KEY_HOME:
+      a->sel = 0;
+      return true;
+    case GHOSTTY_KEY_END: {
+      size_t n = finder_count(a);
+      a->sel = n ? n - 1 : 0;
+      return true;
+    }
     case GHOSTTY_KEY_BACKSPACE: {
+      /* A character, not a byte: the query can hold whatever a pane's title
+       * did, and half a UTF-8 sequence is not a search. (The rename editor
+       * learned this first; this one was still eating bytes.) */
       size_t l = strlen(a->query);
-      if (l) a->query[l - 1] = 0;
+      while (l && ((unsigned char)a->query[l - 1] & 0xC0) == 0x80) l--;
+      if (l) l--;
+      a->query[l] = 0;
       a->sel = 0;
       return true;
     }
     default:
       break;
   }
-  if (ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
+  if (!ctrl && ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
     size_t l = strlen(a->query);
     if (l + ev->text_len < sizeof a->query) {
       memcpy(a->query + l, ev->text, ev->text_len);
@@ -3641,15 +3804,13 @@ void app_compose(app_t *a, screen_t *s) {
   draw_corners(a, s);
   draw_min_bar(a, s);
   draw_status_line(a, s);
-  if (a->finder) draw_finder(a, s); /* painted last, so its hits win */
-  /* And the modal on top of even that: it is the only thing that can be
+  /* The modals, on top of everything: each is the only thing that can be
    * interacted with while it is up, so it owns the topmost hits. The scrim
-   * goes down first, over everything already painted — including the finder,
-   * if that happened to be open. */
-  if (a->help) {
-    draw_scrim(a, s);
-    draw_help(a, s);
-  }
+   * goes down first, over everything already painted, and once for both —
+   * dimming twice would make the second one darker for no reason. */
+  if (a->finder || a->help) draw_scrim(a, s);
+  if (a->finder) draw_finder(a, s);
+  if (a->help) draw_help(a, s);
   draw_toasts(a, s);                /* and above even that: it is transient */
 }
 
@@ -3938,6 +4099,10 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     if (ev->maction != MOUSE_PRESS) return;
     app_focus_pane(a, (uint32_t)strtoul(action + 5, NULL, 10));
     a->finder = false;
+    return;
+  }
+  if (strcmp(action, "closefind") == 0) {
+    if (ev->maction == MOUSE_PRESS) a->finder = false;
     return;
   }
   if (strncmp(action, "tab:", 4) == 0) {
@@ -4330,6 +4495,21 @@ void app_event(app_t *a, const input_event_t *ev) {
       if (a->help) {
         if (ev->maction == MOUSE_PRESS) a->help = false;
         break;
+      }
+
+      /* The finder owns the pointer as well as the keyboard. A press on one
+       * of its rows chooses; a press anywhere else dismisses it and does
+       * nothing further -- clicking past a modal must not also land on the
+       * layout behind it, which is how you end up focusing a pane you were
+       * trying to click *away* from. Motion still falls through, so rows
+       * light up under the pointer. */
+      if (a->finder && ev->maction != MOUSE_MOTION) {
+        bool own = action && (strncmp(action, "find:", 5) == 0 ||
+                              strcmp(action, "closefind") == 0);
+        if (!own) {
+          if (ev->maction == MOUSE_PRESS) a->finder = false;
+          break;
+        }
       }
 
       if (action) do_action(a, action, ev);

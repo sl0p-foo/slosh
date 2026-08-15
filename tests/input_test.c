@@ -79,6 +79,11 @@ int main(void) {
   T("ctrl-up", "\x1b[1;5A", "key ARROW_UP mods=C press");
   T("shift-alt-left", "\x1b[1;4D", "key ARROW_LEFT mods=SA press");
   T("home", "\x1b[H", "key HOME mods=- press");
+  /* Back-tab: the one chord whose shift lives in the final byte rather than
+   * in a modifier param. It was falling through as an unrecognised CSI, so
+   * shift+tab reached neither a binding nor the program in the pane. */
+  T("shift-tab", "\x1b[Z", "key TAB mods=S press");
+  T("ctrl-shift-tab", "\x1b[1;5Z", "key TAB mods=SC press");
   T("delete", "\x1b[3~", "key DELETE mods=- press");
   T("f5", "\x1b[15~", "key F5 mods=- press");
   T("ss3 f1", "\x1bOP", "key F1 mods=- press");
