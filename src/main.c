@@ -38,9 +38,56 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
   }
 }
 
+/* `sl0ppty --check [FILE]`: read a config the way a session would and say what
+ * it could not honour, one problem per line, `file:line: what`. Exits 1 when
+ * there is anything to say, so it drops into an editor's compile step or a
+ * pre-commit hook without any glue.
+ *
+ * Worth being a mode rather than a script: the only checker that cannot drift
+ * from the loader is the loader, and the difference between this and a session
+ * is that a session shows the first complaint (it has one status line) while
+ * this shows all of them. */
+static int check_config(const char *path) {
+  config_t cfg;
+  config_defaults(&cfg);
+  char err[256] = {0};
+  const char *file = path ? path : config_default_path();
+  bool parsed = config_load(&cfg, file, err, sizeof err);
+
+  const char *msgs[CONFIG_MSGS_MAX];
+  size_t n = config_messages(&cfg, msgs, CONFIG_MSGS_MAX);
+  for (size_t i = 0; i < n; i++) fprintf(stderr, "  %s\n", msgs[i]);
+
+  if (!parsed) {
+    /* The file could not be read or parsed at all, so nothing in it applied --
+     * a different thing from a line that was skipped, and worth saying so. */
+    fprintf(stderr, "%s: not loaded (defaults would stand)\n", file);
+    config_free(&cfg);
+    return 1;
+  }
+
+  /* What it did read, so a clean run is evidence rather than silence: an empty
+   * answer and a file that was never opened look identical otherwise. */
+  const char *files[CONFIG_FILES_MAX];
+  size_t nf = config_files(&cfg, files, CONFIG_FILES_MAX);
+  if (n) {
+    fprintf(stderr, "%s: %zu problem%s\n", file, n, n == 1 ? "" : "s");
+  } else {
+    char prefix[24];
+    config_chord_name(cfg.prefix_key, cfg.prefix_mods, prefix, sizeof prefix);
+    printf("%s: ok\n", file);
+    for (size_t i = 0; i < nf; i++)
+      printf("  read     %s\n", files[i]);
+    printf("  prefix   %s\n", prefix);
+    printf("  bindings %zu\n", cfg.nbinds);
+  }
+  config_free(&cfg);
+  return n ? 1 : 0;
+}
+
 static void usage(void) {
   fputs("usage: sl0ppty [-s NAME] [--layout FILE] [--no-reload]\n"
-        "                [--version] [--dump-config]\n"
+        "                [--version] [--dump-config] [--check [FILE]]\n"
         "                [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
@@ -71,6 +118,13 @@ int main(int argc, char **argv) {
     else if (strcmp(a, "-s") == 0 && i + 1 < argc) name = argv[++i];
     else if (strcmp(a, "--layout") == 0 && i + 1 < argc) layout = argv[++i];
     else if (strcmp(a, "--no-reload") == 0) watch = false;
+    else if (strcmp(a, "--check") == 0) {
+      /* An optional path, so it lints a file you have not installed yet:
+       * `sl0ppty --check theme.kdl`. Without one it checks the config a session
+       * would actually read. */
+      const char *path = (i + 1 < argc && argv[i + 1][0] != '-') ? argv[++i] : NULL;
+      return check_config(path);
+    }
     else if (strcmp(a, "--dump-config") == 0) {
       /* Every setting with the value it currently has, as a file you could
        * have written. `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl`

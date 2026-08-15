@@ -30,6 +30,33 @@ already loaded needs a new session.
   setting is for, what it cost to get right, and which ones are opinions. When
   the two disagree, the dump is right and that file is stale (a test says so).
 
+## Checking one
+
+```bash
+$ sl0ppty --check                     # the config a session would read
+$ sl0ppty --check themes/mine.kdl     # or one you have not installed yet
+```
+
+Every problem it found, one per line, with the file and line it happened at:
+
+```
+  config.kdl:101: bad prefix: C-a
+  config.kdl:116: bad key: ←
+  themes/mine.kdl:7: unknown shader: bloom
+~/.config/sl0ppty/config.kdl: 3 problems
+```
+
+It exits 1 when it has anything to say, so it drops into an editor's compile
+step or a pre-commit hook with no glue. A clean run prints what it read — the
+files, the prefix it ended up with, how many bindings — because otherwise a
+config that was never opened and a config with nothing wrong look identical.
+
+It is the loader, not a second implementation of it: the only checker that
+cannot drift from what a session does is the one a session uses. The single
+difference is how many problems each reports — a session has one status line and
+shows the first, and a linter that stopped at the first mistake would make you
+run it once per mistake.
+
 ## include
 
 A config can be made of files:
