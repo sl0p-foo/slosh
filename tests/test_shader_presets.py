@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 from harness import Session, check, report
 
@@ -62,8 +63,17 @@ def test_every_preset_changes_the_pane():
             reply = s.api("reload")
             check(f"{name} loads", reply.get("ok") is True, str(reply))
 
-            s.settle(20)
-            now = cells(s.snapshot(), s.pane())
+            # Polled rather than sampled once. An animated preset can be at a
+            # phase where it genuinely does nothing -- `motion-typewriter` dims
+            # the rows below a line that walks down the pane, and one frame in
+            # `rows` that line is past the last row -- and a pass at zero
+            # strength now leaves the cells alone instead of quietly rewriting
+            # them in the same colours. So: wait for it to show itself.
+            now = base
+            deadline = time.monotonic() + 2.5
+            while now == base and time.monotonic() < deadline:
+                s.settle(20)
+                now = cells(s.snapshot(), s.pane())
             check(f"{name} changes the pane", now != base,
                   f"identical to unshaded: {now[:3]}")
 

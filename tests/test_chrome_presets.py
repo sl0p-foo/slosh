@@ -75,11 +75,17 @@ def test_every_chrome_preset_moves_the_frame():
             s.api("reload")
             s.settle(40)  # past toast_ms, so no announcement is on the frame
 
-            # Sampled over time, because most of these are animated and a
-            # single frame can legitimately catch one between pulses.
+            # Polled, not sampled a fixed few times. Most of these are animated
+            # and one is deliberately quiet for a second at a stretch
+            # (`heartbeat`), so "look five times, 50ms apart" is a guess about
+            # something observable -- and a guess that fails under load, where
+            # five snapshots can land inside one rest. The deadline only bounds
+            # failure: a preset that paints is seen the moment it paints.
             seen = set()
             content_moved = False
-            for _ in range(5):
+            started = time.monotonic()
+            deadline = started + 3.0
+            while time.monotonic() < deadline:
                 snap = s.snapshot()
                 pane = s.pane()
                 seen.update(
@@ -87,7 +93,11 @@ def test_every_chrome_preset_moves_the_frame():
                     if a != b)
                 if content_cells(snap, pane) != base_content:
                     content_moved = True
-                time.sleep(0.05)
+                # The frame answer can stop the clock; the contents answer is
+                # "nothing happened", and nothing needs a while to be sure of.
+                if seen and time.monotonic() - started > 0.3:
+                    break
+                time.sleep(0.03)
 
             check(f"{name} colours the frame", len(seen) > 0, "no cell changed")
             check(f"{name} leaves the contents alone", not content_moved, "content changed")
