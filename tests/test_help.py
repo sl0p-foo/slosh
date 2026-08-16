@@ -78,7 +78,10 @@ def modal_top(snap):
 def test_sections_are_separated_by_a_blank_line():
     """Five short lists rather than one wall of rows. The line above a heading
     is blank -- except the first, which the caption already separates."""
-    with Session(SH, cols=56, rows=44) as s:   # narrow: one column, easy to read
+    # Narrow, so one column and easy to read -- and tall enough for all of it,
+    # because this is about the spacing between groups and not about what a short
+    # terminal does with the overflow (which is checked below).
+    with Session(SH, cols=56, rows=56) as s:
         s.settle()
         snap = open_help(s)
         text = [l for l in snap.text if "│" in l]

@@ -26,10 +26,14 @@ def cfg(text):
 
 
 def by_tab(s):
-    """Which panes are in which tab, by id."""
+    """Which panes are in which tab, by tab **id**.
+
+    `tab_id`, not `tab`: the latter is where the tab sits in the strip, and the two
+    stop agreeing the moment a tab is removed -- which is half of what this file is
+    about."""
     out = {t["id"]: [] for t in s.tabs()}
     for p in s.panes():
-        out.setdefault(p["tab"], []).append(p["id"])
+        out.setdefault(p["tab_id"], []).append(p["id"])
     return {k: sorted(v) for k, v in out.items()}
 
 
@@ -89,7 +93,7 @@ def test_it_lands_beside_the_destination_focus():
         s.api("select-tab", id=tabs[1])
         s.settle(60)
         rects = {p["id"]: (p["x"], p["y"], p["w"], p["h"]) for p in s.panes()
-                 if p["tab"] == tabs[1]}
+                 if p["tab_id"] == tabs[1]}
         check("both panes are in the destination", len(rects) == 2, str(rects))
         check("side by side, the arrival on the right",
               rects[mover][0] > rects[host][0], str(rects))
@@ -101,7 +105,7 @@ def test_it_lands_beside_the_destination_focus():
         s.api("select-tab", id=tabs[0])
         s.settle(60)
         rects = {p["id"]: (p["x"], p["y"], p["w"], p["h"]) for p in s.panes()
-                 if p["tab"] == tabs[0]}
+                 if p["tab_id"] == tabs[0]}
         check("`rows` puts it underneath",
               rects[mover][1] > min(r[1] for r in rects.values()), str(rects))
 
@@ -194,8 +198,8 @@ def test_a_move_drops_what_the_old_tab_thought():
         pane = [p for p in s.panes() if p["id"] == mover][0]
         check("it arrives laid out, not filed away", pane["h"] > 1, str(pane))
         check("and the tab it left is not zoomed onto a pane that has gone",
-              all(p["h"] > 1 for p in s.panes() if p["tab"] == tabs[0]),
-              str([p for p in s.panes() if p["tab"] == tabs[0]]))
+              all(p["h"] > 1 for p in s.panes() if p["tab_id"] == tabs[0]),
+              str([p for p in s.panes() if p["tab_id"] == tabs[0]]))
 
 
 def test_the_layout_survives_a_move():
@@ -208,14 +212,14 @@ def test_the_layout_survives_a_move():
         s.settle(40)
 
         for target in (tabs[1], tabs[0], tabs[1]):
-            movable = [p["id"] for p in s.panes() if p["tab"] != target]
+            movable = [p["id"] for p in s.panes() if p["tab_id"] != target]
             if not movable:
                 continue
             s.api("move-pane", id=movable[0], tab=target)
             s.settle(60)
 
         rs = [(p["x"], p["y"], p["w"], p["h"]) for p in s.panes()
-              if p["tab"] == [t["id"] for t in s.tabs() if t.get("active")][0]]
+              if p["tab_id"] == [t["id"] for t in s.tabs() if t.get("active")][0]]
         for i in range(len(rs)):
             for j in range(i + 1, len(rs)):
                 ax, ay, aw, ah = rs[i]
@@ -237,6 +241,114 @@ def test_the_layout_survives_a_move():
         os.unlink(path)
 
 
+def test_the_keys_push_a_pane_a_tab_along():
+    """`C-a >` and `C-a <`, and a word about where it went -- you do not follow it,
+    and a key that might have done nothing is a key you press again."""
+    with Session(ECHO, cols=90, rows=16) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[0])
+        s.settle(40)
+        watching = [t["id"] for t in s.tabs() if t.get("active")]
+        moved = [p["id"] for p in s.panes()
+                 if p["tab_id"] == tabs[0] and p["focused"]][0]
+
+        s.key(">")
+        s.settle(60)
+        check("`C-a >` moves the focused pane to the next tab",
+              moved in by_tab(s)[tabs[1]], str(by_tab(s)))
+        check("and says where it went", "moved to tab" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-120:]))
+        check("without following it",
+              [t["id"] for t in s.tabs() if t.get("active")] == watching,
+              str([t["id"] for t in s.tabs() if t.get("active")]))
+
+        s.api("select-tab", id=tabs[1])
+        s.api("focus", id=moved)
+        s.settle(40)
+        s.key("<")
+        s.settle(60)
+        check("`C-a <` sends it back the other way",
+              moved in by_tab(s)[tabs[0]], str(by_tab(s)))
+
+
+def test_the_key_for_a_tab_of_its_own():
+    with Session(ECHO, cols=90, rows=16) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[0])
+        s.settle(40)
+        moved = [p["id"] for p in s.panes()
+                 if p["tab_id"] == tabs[0] and p["focused"]][0]
+
+        s.key("b")
+        s.settle(60)
+        made = [t["id"] for t in s.tabs() if t["id"] not in tabs]
+        check("`C-a b` breaks it out into a new tab", len(made) == 1, str(s.tabs()))
+        check("with the pane in it", by_tab(s).get(made[0]) == [moved],
+              str(by_tab(s)))
+        check("and says so", "tab of its own" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-120:]))
+
+
+def test_one_tab_has_nowhere_to_push_to():
+    """Refused with a word rather than silently: the only tab is the one it is in."""
+    with Session(ECHO, cols=80, rows=14) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle(40)
+        before = by_tab(s)
+        s.key(">")
+        s.settle(60)
+        check("nothing moved", by_tab(s) == before, "%s -> %s" % (before, by_tab(s)))
+        check("and it says why", "only one tab" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-120:]))
+
+
+def test_pushing_the_last_pane_out_takes_the_tab_with_it():
+    """The tab you were looking at can be the one that goes. There is nowhere to
+    stay, so you arrive in the tab that survived -- and the toast reads the
+    destination's number *after* the removal, which is the number on screen."""
+    with Session(ECHO, cols=90, rows=16) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[1])   # the tab with one pane in it
+        s.settle(40)
+        s.key(">")
+        s.settle(60)
+        check("the tab it emptied is gone",
+              [t["id"] for t in s.tabs()] == [tabs[0]], str(s.tabs()))
+        check("all three panes are in the survivor",
+              len(by_tab(s)[tabs[0]]) == 3, str(by_tab(s)))
+        check("and that is what we are looking at",
+              [t["id"] for t in s.tabs() if t.get("active")] == [tabs[0]],
+              str(s.tabs()))
+
+
+def test_the_sheet_and_the_palette_know_about_them():
+    """The palette comes free with an action, which is the reason to make these
+    actions rather than special cases in the key handler. And the cheatsheet has to
+    print `>`, not the bare period it also answers to -- what you would type."""
+    with Session(ECHO, cols=100, rows=30) as s:
+        s.settle()
+        s.key("?")
+        s.settle(60)
+        sheet = s.snapshot().screen()
+        check("the sheet lists pushing a pane along", "tab after" in sheet,
+              repr([l.strip() for l in s.snapshot().text if "tab after" in l]))
+        check("under the key you would type", ">" in sheet, "")
+        s.send("\\x1b")
+        s.settle(40)
+
+        s.key("p")
+        s.settle(40)
+        s.send("tab of its own")
+        s.settle(60)
+        pal = s.snapshot().screen()
+        check("and the palette finds it by its label", "tab of its own" in pal,
+              repr([l.strip() for l in s.snapshot().text if "own" in l]))
+
+
 if __name__ == "__main__":
     test_a_pane_moves_and_keeps_running()
     test_it_lands_beside_the_destination_focus()
@@ -245,4 +357,9 @@ if __name__ == "__main__":
     test_the_refusals()
     test_a_move_drops_what_the_old_tab_thought()
     test_the_layout_survives_a_move()
+    test_the_keys_push_a_pane_a_tab_along()
+    test_the_key_for_a_tab_of_its_own()
+    test_one_tab_has_nowhere_to_push_to()
+    test_pushing_the_last_pane_out_takes_the_tab_with_it()
+    test_the_sheet_and_the_palette_know_about_them()
     sys.exit(report())

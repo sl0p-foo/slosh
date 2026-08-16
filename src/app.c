@@ -4115,7 +4115,23 @@ static void draw_help(app_t *a, screen_t *s) {
   if (right_n && !rows[n - 1].label) right_n--;
   uint16_t lines = (uint16_t)(left_n > right_n ? left_n : right_n);
 
-  rect_t in = modal_frame(a, s, (uint16_t)(body + 6), (uint16_t)(lines + 6),
+  /* A terminal too short for the whole sheet gets as much of it as fits and a line
+   * saying how much it did not. `modal_frame` clamps the box to the screen, so
+   * without this the rows past the bottom are simply not drawn -- and a list that
+   * quietly stops is worse than a short one, because the reader has no way to know
+   * the key they are looking for is on it. */
+  uint16_t room = (uint16_t)(s->rows > 7 ? s->rows - 7 : 1);
+  uint16_t shown = lines > room ? room : lines;
+  /* Counted, not calculated: the two columns are not the same length and a blank
+   * spacer is not a row anybody is missing. Arithmetic on `lines` claimed six rows
+   * were hidden on a screen showing all of them. */
+  size_t hidden = 0;
+  for (size_t i = 0; i < n; i++) {
+    size_t row = (two && i >= split) ? i - split : i;
+    if (row >= shown && rows[i].label) hidden++;
+  }
+
+  rect_t in = modal_frame(a, s, (uint16_t)(body + 6), (uint16_t)(shown + 6 + (hidden ? 1 : 0)),
                           "keys", "closehelp");
   uint16_t x1 = (uint16_t)(in.x + in.w); /* the right border */
 
@@ -4130,6 +4146,7 @@ static void draw_help(app_t *a, screen_t *s) {
   for (size_t i = 0; i < n; i++) {
     bool right = two && i >= split;
     size_t row = right ? i - split : i;
+    if (row >= shown) continue; /* past the bottom: counted, not drawn */
     uint16_t ry = (uint16_t)(in.y + 3 + row);
     if (ry >= in.y + in.h) continue;
     if (!rows[i].label) continue; /* the blank row: it occupies, it draws not */
@@ -4149,6 +4166,14 @@ static void draw_help(app_t *a, screen_t *s) {
     uint16_t lx = (uint16_t)(rx + kw[right ? 1 : 0] + 2);
     help_text(s, lx, ry, rows[i].label, (uint16_t)(x1 > lx ? x1 - lx : 0),
               MODAL_FG, MODAL_BG, 0);
+  }
+
+  /* Said inside the box, where the rows stopped, rather than left to be noticed. */
+  if (hidden) {
+    char more[64];
+    snprintf(more, sizeof more, "+%zu more, in docs/keys.md", hidden);
+    help_text(s, (uint16_t)(in.x + 2), (uint16_t)(in.y + 3 + shown), more, in.w,
+              HINT_C, MODAL_BG, 0);
   }
 
   const char *foot = " any key closes this ";
@@ -4397,6 +4422,37 @@ static void draw_picker(app_t *a, screen_t *s) {
 
 /* Defined with the other action handling, further down: a picker row that
  * says "run:" means one of these, and running it is that code's business. */
+/* Push the focused pane one tab along, and say where it went.
+ *
+ * You do not follow it -- which is the right default for a key you might press
+ * twice, and useless without a word about where the thing landed. The name is read
+ * *before* the move and the index *after*: emptying this tab removes it and shifts
+ * everything after, so the number you would have printed first is not the number
+ * anybody will see. */
+static bool push_pane_a_tab(app_t *a, bool forward) {
+  if (a->ntabs < 2) {
+    app_toast(a, "only one tab to move it to");
+    return true;
+  }
+  size_t to = (a->cur + (forward ? 1 : a->ntabs - 1)) % a->ntabs;
+  uint32_t tid = a->tabs[to].id;
+  char name[64];
+  snprintf(name, sizeof name, "%s", a->tabs[to].name);
+
+  if (!app_move_pane_to_tab(a, 0, tid, false)) {
+    app_toast(a, "cannot move it there");
+    return true;
+  }
+  size_t at = 0;
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == tid) at = i;
+  char msg[128];
+  if (name[0]) snprintf(msg, sizeof msg, "moved to tab %zu (%s)", at + 1, name);
+  else snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
+  app_toast(a, msg);
+  return true;
+}
+
 static bool run_action(app_t *a, action_t act);
 
 /* Do what a row says it does. One entry point for the keyboard and the mouse,
@@ -5099,6 +5155,15 @@ static bool run_action(app_t *a, action_t act) {
       app_toast(a, app_clear_pane_shaders(a, 0) ? "shaders cleared"
                                                : "no shaders on this pane");
       return true;
+    case ACT_PANE_TO_NEXT_TAB:
+    case ACT_PANE_TO_PREV_TAB:
+      return push_pane_a_tab(a, act == ACT_PANE_TO_NEXT_TAB);
+    case ACT_PANE_TO_NEW_TAB: {
+      uint32_t made = app_move_pane_to_new_tab(a, 0, "");
+      app_toast(a, made ? "into a tab of its own"
+                        : "it is the only pane in this tab");
+      return true;
+    }
     case ACT_EQUALIZE:
       if (!app_equalize_splits(a)) app_toast(a, "nothing to even out");
       return true;
@@ -5537,7 +5602,13 @@ static void panes_cb(node_t *n, void *ud) {
   }
   json_str(j, "purpose", n->purpose, strlen(n->purpose));
   json_bool(j, "purpose_declared", n->purpose_locked);
-  json_int(j, "tab", (long long)tab_of(pj->a, n) + 1);
+  /* Both, because they answer different questions and only one of them is stable:
+   * `tab` is where it sits in the strip, which is what a person reads, and `tab_id`
+   * is what every command that takes a tab wants. They coincide until a tab is
+   * removed, which is exactly when a script that guessed would be wrong. */
+  size_t ti = tab_of(pj->a, n);
+  json_int(j, "tab", (long long)ti + 1);
+  json_int(j, "tab_id", (long long)pj->a->tabs[ti].id);
   const char *t = pane_title(n->pane);
   json_str(j, "title", t ? t : "", t ? strlen(t) : 0);
   json_obj_close(j);

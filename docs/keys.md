@@ -21,6 +21,8 @@ you can type into.
 | `m` | minimise it into the strip along the bottom |
 | `x` | close this pane |
 | `r` | run a finished pane's command again |
+| `>` `<` | push this pane to the next / previous tab (a toast says where it went) |
+| `b` | break this pane out into a tab of its own |
 | `c` | new tab |
 | `Tab` `shift+Tab` | next / previous tab |
 | `1`…`9` | go to that tab |
@@ -95,12 +97,16 @@ being bound at all.
 
 | group | actions |
 |---|---|
-| panes | `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` |
+| panes | `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` |
 | focus | `focus-left` `focus-right` `focus-up` `focus-down` `focus-next` `finder` |
 | size | `resize-left` `resize-right` `resize-up` `resize-down` `equalize` |
 | tabs | `new-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |
 | scroll | `scroll-up` `scroll-down` `scroll-page-up` `scroll-page-down` `scroll-top` `scroll-bottom` |
 | session | `palette` `help` `edit-config` `detach` `quit` `literal-prefix` |
+
+`>` and `<` are the shifted period and comma. A terminal does not report the shift
+for punctuation, so `.` and `,` answer to them too — the same deal `/` has with
+`?`, and the reason the defaults bind both halves.
 
 `scroll-up` and `scroll-down` have no default key — the wheel does that job —
 which is exactly the case the palette exists for. So does `clear-shaders`, which

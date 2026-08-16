@@ -703,7 +703,7 @@ theme {
 //
 // Actions: split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down equalize
-// rotate-layout clear-shaders
+// rotate-layout clear-shaders pane-to-next-tab pane-to-prev-tab pane-to-new-tab
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
 // scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder
 // palette help detach quit
@@ -770,6 +770,13 @@ keys {
     // usually fixes that.
     bind "space" "rotate-layout"
 
+    // Push the focused pane one tab along, or out into a tab of its own. `>` and
+    // `<` are the shifted period and comma; a terminal does not report the shift
+    // for punctuation, so `.` and `,` answer to them too -- the same deal `/`
+    // already has with `?`.
+    bind ">" "pane-to-next-tab"
+    bind "<" "pane-to-prev-tab"
+    bind "b" "pane-to-new-tab"
     bind "c" "new-tab"
     // Tab cycles tabs, the way every other tabbed thing does. `n` and `p`
     // used to, and are free again: `p` is worth more as the palette, which is

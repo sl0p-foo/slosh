@@ -25,6 +25,9 @@ static const struct {
     {"resize-up", ACT_RESIZE_UP},     {"resize-down", ACT_RESIZE_DOWN},
     {"equalize", ACT_EQUALIZE},
     {"clear-shaders", ACT_CLEAR_SHADERS},
+    {"pane-to-next-tab", ACT_PANE_TO_NEXT_TAB},
+    {"pane-to-prev-tab", ACT_PANE_TO_PREV_TAB},
+    {"pane-to-new-tab", ACT_PANE_TO_NEW_TAB},
     {"rotate-layout", ACT_ROTATE_LAYOUT},
     {"scroll-up", ACT_SCROLL_UP},     {"scroll-down", ACT_SCROLL_DOWN},
     {"scroll-page-up", ACT_SCROLL_PAGE_UP},
@@ -860,6 +863,21 @@ void config_defaults(config_t *c) {
    * that reaches for the right thing here. Four presses come back round, which
    * is what makes a key this easy to hit the right choice rather than a hazard. */
   bind_add(c, GHOSTTY_KEY_SPACE, 0, ACT_ROTATE_LAYOUT, false);
+  /* `>` and `<` are the shifted period and comma, which is how the sheet prints
+   * them and how anybody would type them. Pushing a pane one tab along is the
+   * cheap version of moving it: no picker, no drag, and the toast says where it
+   * went since you do not follow it. */
+  bind_add(c, GHOSTTY_KEY_PERIOD, MOD_SHIFT, ACT_PANE_TO_NEXT_TAB, false);
+  bind_add(c, GHOSTTY_KEY_COMMA, MOD_SHIFT, ACT_PANE_TO_PREV_TAB, false);
+  /* ...and without the shift, because a terminal does not report one for
+   * punctuation: `>` arrives as a bare period, the way `?` arrives as a bare
+   * slash. The config loader binds both halves for the same reason when you write
+   * one of these by hand; the defaults have to do it themselves. The cost is that
+   * `.` and `,` are spoken for, which is the cost `/` already pays for `?`. */
+  bind_add(c, GHOSTTY_KEY_PERIOD, 0, ACT_PANE_TO_NEXT_TAB, false);
+  bind_add(c, GHOSTTY_KEY_COMMA, 0, ACT_PANE_TO_PREV_TAB, false);
+  /* `b` for break out, which is the word tmux taught everybody for this. */
+  bind_add(c, GHOSTTY_KEY_B, 0, ACT_PANE_TO_NEW_TAB, false);
   bind_add(c, GHOSTTY_KEY_C, 0, ACT_NEW_TAB, false);
   /* Cycling tabs is on tab/shift+tab, not on n/p: `p` is the palette, which is
    * pressed far more often than "the tab before this one" and had the only
@@ -927,6 +945,12 @@ static const struct {
     /* Under `panes`, not `size`: it undoes what the program in the pane did to
      * the pane, which is a fact about that pane and not about the layout. */
     {ACT_CLEAR_SHADERS, "panes", "clear this pane's shaders"},
+    /* Under `panes`: what moves is the pane, and the tab it lands in is where it
+     * lands. A reader looking for "how do I get this thing out of here" looks up
+     * the thing, not the place. */
+    {ACT_PANE_TO_NEXT_TAB, "panes", "push it to the tab after"},
+    {ACT_PANE_TO_PREV_TAB, "panes", "push it to the tab before"},
+    {ACT_PANE_TO_NEW_TAB, "panes", "into a tab of its own"},
     {ACT_ROTATE_LAYOUT, "size", "turn the layout a quarter"},
 
     {ACT_NEW_TAB, "tabs", "new tab"},
