@@ -1593,7 +1593,18 @@ static bool split_fits(node_t *leaf, split_dir_t dir) {
     k = 2;
     total = dir == SPLIT_COLS ? leaf->rect.w : leaf->rect.h;
   }
-  return total >= (uint16_t)(k * floor_ + gap * (k - 1));
+  if (total < (uint16_t)(k * floor_ + gap * (k - 1))) return false;
+
+  /* And the axis this split does *not* divide has to already clear the floor,
+   * because splitting will not improve it. A pane four rows tall on a short
+   * terminal has room for two columns by every measure this function used to take,
+   * and produces two panes the layout immediately collapses into a list -- so the
+   * border was offering, and the keys were doing, something that could only undo
+   * the arrangement. The same hole `layout_node` closed at the leaf: the check on a
+   * split only ever asked about the dimension that split divides. */
+  uint16_t across = dir == SPLIT_COLS ? leaf->rect.h : leaf->rect.w;
+  uint16_t across_floor = dir == SPLIT_COLS ? MIN_PANE_ROWS : MIN_PANE_COLS;
+  return across >= across_floor;
 }
 
 static split_dir_t side_dir(char side) {
@@ -1622,6 +1633,45 @@ static void split_focus_ui(app_t *a, split_dir_t dir) {
     return;
   }
   split_node(a, n, dir, false);
+}
+
+/* Which way this pane wants to be cut: across its longer side, so the two halves
+ * come out as square as the pane allows.
+ *
+ * "Longer" is a question about what you can *see*, and a cell is about twice as
+ * tall as it is wide -- so 80x24 is wider than it is tall (80 against 48) while
+ * 40x24 is not (40 against 48). `gap_aspect` is already this program's answer to
+ * how many columns a row is worth, so it is the number used here rather than a
+ * second constant meaning the same thing: a config that says cells are square gets
+ * a square answer. */
+static split_dir_t preferred_dir(const node_t *leaf) {
+  uint16_t aspect = CFG.gap_aspect ? CFG.gap_aspect : 1;
+  return (uint32_t)leaf->rect.w >= (uint32_t)leaf->rect.h * aspect ? SPLIT_COLS
+                                                                  : SPLIT_ROWS;
+}
+
+/* Split whichever way there is room for, preferring the longer side.
+ *
+ * The fallback is the point: a pane that is wide but six rows tall wants cutting
+ * across, and if that will not fit `split_fits` says so and the other axis is tried
+ * before giving up. Refusing while a split was available would be the worse answer.
+ * It does not pick quietly either -- one key that can do two things has to say
+ * which it did. */
+static void split_focus_auto(app_t *a) {
+  node_t *n = cur(a)->focus;
+  if (!n) return;
+  split_dir_t want = preferred_dir(n);
+  split_dir_t other = want == SPLIT_COLS ? SPLIT_ROWS : SPLIT_COLS;
+  split_dir_t dir;
+  if (split_fits(n, want)) dir = want;
+  else if (split_fits(n, other)) dir = other;
+  else {
+    app_toast(a, "no room to split");
+    return;
+  }
+  split_node(a, n, dir, false);
+  /* The same two words the border click uses for the same two outcomes. */
+  app_toast(a, dir == SPLIT_COLS ? "split right" : "split down");
 }
 
 static node_t *first_leaf(node_t *n) {
@@ -5191,6 +5241,7 @@ static bool run_action(app_t *a, action_t act) {
     return true;
   }
   switch (act) {
+    case ACT_SPLIT: split_focus_auto(a); return true;
     case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
     case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
     case ACT_ZOOM: app_toggle_zoom(a, 0); return true;

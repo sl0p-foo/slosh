@@ -15,6 +15,7 @@ static const struct {
   const char *name;
   action_t action;
 } ACTIONS[] = {
+    {"split", ACT_SPLIT},
     {"split-cols", ACT_SPLIT_COLS},   {"split-rows", ACT_SPLIT_ROWS},
     {"close-pane", ACT_CLOSE_PANE},   {"rerun", ACT_RERUN},
     {"zoom", ACT_ZOOM},
@@ -827,6 +828,9 @@ void config_defaults(config_t *c) {
   c->prefix_key = GHOSTTY_KEY_A;
   c->prefix_mods = MOD_CTRL;
 
+  /* Enter: the key you press when you want *a* pane and have no opinion about
+   * where. The two explicit splits are one key away when you do. */
+  bind_add(c, GHOSTTY_KEY_ENTER, 0, ACT_SPLIT, false);
   bind_add(c, GHOSTTY_KEY_BACKSLASH, 0, ACT_SPLIT_COLS, false);
   bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS, false);
   bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE, false);
@@ -921,6 +925,9 @@ static const struct {
   const char *group;
   const char *label;
 } ACTION_HELP[] = {
+    /* First in the group: the one to reach for, with the two explicit ones after
+     * it for when you mean a particular axis. */
+    {ACT_SPLIT, "panes", "split the longer way"},
     {ACT_SPLIT_COLS, "panes", "split into columns"},
     {ACT_SPLIT_ROWS, "panes", "split into rows"},
     {ACT_CLOSE_PANE, "panes", "close this pane"},

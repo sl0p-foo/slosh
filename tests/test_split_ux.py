@@ -402,6 +402,143 @@ def test_the_arrow_sits_on_the_new_boundary():
               pos is not None and pos[0] == p["x"] + p["w"] // 2, str(pos))
 
 
+# ---- `C-a Enter`: split whichever way there is room for -----------------------
+
+
+def geometry(s):
+    return [(p["x"], p["y"], p["w"], p["h"])
+            for p in sorted(s.panes(), key=lambda q: (q["y"], q["x"]))]
+
+
+def toast_line(s):
+    got = [l.strip() for l in s.snapshot().text
+           if "split right" in l or "split down" in l or "no room" in l]
+    return got[-1] if got else ""
+
+
+def test_it_splits_across_the_longer_side():
+    """Longer as you *see* it: a cell is about twice as tall as it is wide, so a
+    100x24 terminal is a wide pane and wants cutting into columns, while 60x40 is a
+    tall one and wants rows. `gap_aspect` is the number that says so."""
+    with Session(SH, cols=100, rows=24) as s:
+        s.settle()
+        s.key(r"\r")
+        s.settle(60)
+        g = geometry(s)
+        check("a wide pane splits into columns", len(g) == 2 and g[0][1] == g[1][1],
+              str(g))
+        check("side by side, evenly", g[0][2] == g[1][2], str(g))
+        check("and it says which way it went", toast_line(s) == "split right",
+              repr(toast_line(s)))
+
+    with Session(SH, cols=60, rows=40) as s:
+        s.settle()
+        s.key(r"\r")
+        s.settle(60)
+        g = geometry(s)
+        check("a tall pane splits into rows", len(g) == 2 and g[0][0] == g[1][0],
+              str(g))
+        check("one above the other", g[1][1] > g[0][1], str(g))
+        check("and says so", toast_line(s) == "split down", repr(toast_line(s)))
+
+
+def test_the_aspect_is_the_configured_one():
+    """`gap_aspect` is already this program's answer to how many columns a row is
+    worth, so it is the number that decides "longer" -- one knob, one answer, rather
+    than a second constant meaning the same thing.
+
+    74x44 is the case that proves it: the pane is about 72x40, which is wider than it
+    is tall in *cells* and taller than it is wide once a row counts double. Square
+    cells split it into columns; the default splits it into rows.
+    """
+    square = cfg("gap_aspect 1\n")
+    with Session(SH, cols=74, rows=44, config=square) as s:
+        s.settle()
+        s.key(r"\r")
+        s.settle(60)
+        g = geometry(s)
+        check("with square cells, 72x40 splits into columns",
+              len(g) == 2 and g[0][1] == g[1][1], str(g))
+    with Session(SH, cols=74, rows=44) as s:
+        s.settle()
+        s.key(r"\r")
+        s.settle(60)
+        g = geometry(s)
+        check("...and with the default aspect, the same pane splits into rows",
+              len(g) == 2 and g[0][0] == g[1][0], str(g))
+    os.unlink(square)
+
+
+def test_it_falls_back_to_the_axis_that_fits():
+    """The point of the action: on a pane that is wide but short the longer side is
+    across, and if that does not fit the other one is tried before giving up."""
+    # 150x14: the pane is 146x10 -- wide, so columns are preferred, and two columns
+    # of 73 clear `min_split cols=32`. Rows would not (10 rows cannot make two of 8).
+    with Session(SH, cols=150, rows=14) as s:
+        s.settle()
+        s.key(r"\r")
+        s.settle(60)
+        g = geometry(s)
+        check("wide and short splits into columns", g[0][1] == g[1][1], str(g))
+
+    # 40x50: the pane is 36x46 -- tall, so rows, and 46 makes two of 8 easily while
+    # 36 columns cannot make two of 32.
+    with Session(SH, cols=40, rows=50) as s:
+        s.settle()
+        s.key(r"\r")
+        s.settle(60)
+        g = geometry(s)
+        check("narrow and tall splits into rows", g[0][0] == g[1][0], str(g))
+        check("...even though columns is what a naive cell count would pick",
+              g[1][1] > g[0][1], str(g))
+
+
+def test_no_room_says_so_rather_than_collapsing_the_tab():
+    """A pane already under the floor cannot be split into two panes worth having by
+    either axis -- and `split_fits` used to say yes, because it only asked about the
+    dimension it was dividing. The answer was two panes the layout immediately
+    collapsed into a list, from an action that was offered."""
+    with Session(SH, cols=100, rows=8) as s:
+        s.settle()
+        before = geometry(s)
+        s.key(r"\r")
+        s.settle(60)
+        check("nothing was split", geometry(s) == before,
+              "%s -> %s" % (before, geometry(s)))
+        check("and it says why", toast_line(s) == "no room to split",
+              repr(toast_line(s)))
+
+    # The explicit keys answer the same way, because whether there is room cannot
+    # depend on which key you asked with.
+    with Session(SH, cols=100, rows=8) as s:
+        s.settle()
+        before = geometry(s)
+        s.key("\\\\")
+        s.settle(60)
+        check("`C-a \\` refuses it too", geometry(s) == before, str(geometry(s)))
+        check("...in its own words", "no room to split across" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-100:]))
+
+
+def test_it_is_on_the_sheet_and_in_the_palette():
+    with Session(SH, cols=100, rows=30) as s:
+        s.settle()
+        s.send(r"\x01?")
+        s.settle(60)
+        sheet = s.snapshot().screen()
+        check("the sheet lists it", "split the longer way" in sheet,
+              repr([l.strip() for l in s.snapshot().text if "longer" in l]))
+        check("under Enter", "enter" in sheet.lower(), "")
+        s.send(r"\e")
+        s.settle(40)
+        s.send(r"\x01p")
+        s.settle(40)
+        s.send("longer")
+        s.settle(60)
+        check("and the palette finds it", "split the longer way" in s.snapshot().screen(),
+              repr([l.strip() for l in s.snapshot().text if "longer" in l]))
+
+
 if __name__ == "__main__":
     test_no_more_plus()
     test_each_border_splits_toward_itself()
@@ -418,4 +555,9 @@ if __name__ == "__main__":
     test_the_keyboard_obeys_the_same_floor()
     test_the_guide_says_which_way_it_goes()
     test_the_arrow_sits_on_the_new_boundary()
+    test_it_splits_across_the_longer_side()
+    test_the_aspect_is_the_configured_one()
+    test_it_falls_back_to_the_axis_that_fits()
+    test_no_room_says_so_rather_than_collapsing_the_tab()
+    test_it_is_on_the_sheet_and_in_the_palette()
     sys.exit(report())

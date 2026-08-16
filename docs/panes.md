@@ -5,8 +5,12 @@ looking at is drawn.
 
 ## Arranging
 
-- **Split** with `C-a \` and `C-a -`. Splitting the same direction again gives
-  three equal shares rather than 1/2 + 1/4 + 1/4.
+- **Split** with `C-a Enter` and it picks the axis: across the pane's longer side,
+  measured as you see it (a cell is about twice as tall as it is wide, which is
+  what `gap_aspect` says), falling back to the other axis when that one will not
+  fit and saying which way it went. `C-a \` and `C-a -` when you mean one.
+  Splitting the same direction again gives three equal shares rather than
+  1/2 + 1/4 + 1/4.
 - **Resize** with `C-a H J K L`: the boundary moves the way you press, whichever
   side of it you are on. Sizes are *weights*, so a resized layout survives the
   window changing size.
@@ -81,7 +85,10 @@ recomputed from the tree every frame, and the list is what that function returns
 when the room runs out.
 
 `min_pane` is where that starts happening; `min_split` is the smaller pane a
-split is willing to *create*.
+split is willing to *create*. A split is refused when either floor would be
+broken — including the axis it does not divide, since splitting cannot improve
+that one: a pane already too short for two rows has no room for two columns
+either, whatever its width says.
 
 ## Text, images, bells
 

@@ -701,7 +701,7 @@ theme {
 //
 // `sl0ppty --check` reads this file and says what it could not honour.
 //
-// Actions: split-cols split-rows close-pane focus-left focus-right focus-up
+// Actions: split split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down equalize
 // rotate-layout clear-shaders pane-to-next-tab pane-to-prev-tab pane-to-new-tab
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
@@ -729,6 +729,9 @@ keys {
     // Pressing it twice always sends the key itself, whichever key it is.
     prefix "ctrl+a"
 
+    // Enter splits whichever way there is room for, preferring the longer side;
+    // the next two are for when you mean a particular axis.
+    bind "enter" "split"
     bind "\\" "split-cols"
     bind "-" "split-rows"
     bind "x" "close-pane"

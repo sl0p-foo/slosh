@@ -14,7 +14,8 @@ it did not — `+7 more, in docs/keys.md`, which is the table below.
 
 | key | does |
 |---|---|
-| `\` `-` | split into columns / rows |
+| `Enter` | split whichever way there is more room — across the longer side, and the other axis if that will not fit |
+| `\` `-` | split into columns / rows, when you mean one |
 | `h` `j` `k` `l`, or arrows | move focus |
 | `o` | the next pane |
 | `H` `J` `K` `L`, or shift+arrows | move the boundary between panes |
@@ -100,7 +101,7 @@ being bound at all.
 
 | group | actions |
 |---|---|
-| panes | `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` |
+| panes | `split` `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` |
 | focus | `focus-left` `focus-right` `focus-up` `focus-down` `focus-next` `finder` |
 | size | `resize-left` `resize-right` `resize-up` `resize-down` `equalize` |
 | tabs | `new-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |

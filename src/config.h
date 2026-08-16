@@ -42,6 +42,7 @@ const char *pane_state_name(pane_state_t s);
 
 typedef enum {
   ACT_NONE = 0,
+  ACT_SPLIT,
   ACT_SPLIT_COLS,
   ACT_SPLIT_ROWS,
   ACT_CLOSE_PANE,
