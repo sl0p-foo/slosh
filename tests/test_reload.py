@@ -102,6 +102,21 @@ def test_a_config_written_after_the_session_started_is_noticed():
     name = "reloadtest-%d" % os.getpid()
     subprocess.run([BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
                    env=env, capture_output=True, timeout=5)
+
+    # The session *creates* its config directory at startup, precisely so there is
+    # always somewhere to watch -- and writing the file before it has is a race
+    # this test lost about once in eight full-suite runs, under load, with a
+    # FileNotFoundError from the open() below. Waiting for it turns the thing the
+    # test depends on into something the test states.
+    made = None
+    dir_deadline = time.time() + 3
+    while time.time() < dir_deadline:
+        if os.path.isdir(os.path.dirname(path)):
+            made = True
+            break
+        time.sleep(0.02)
+    check("the session created the directory it needs to watch", made,
+          os.path.dirname(path))
     try:
         deadline = time.time() + 3
         got = None
@@ -148,7 +163,16 @@ def test_an_included_file_is_watched_too():
                               capture_output=True, text=True, env=env).stdout
 
     try:
-        check("the included theme applied at startup", '"#00ff00"' in screen(),
+        # Polled for the same reason as the directory above: `-s` returning means
+        # the session was asked for, not that it has composed a frame to look at.
+        started = None
+        deadline = time.time() + 3
+        while time.time() < deadline:
+            if '"#00ff00"' in screen():
+                started = True
+                break
+            time.sleep(0.02)
+        check("the included theme applied at startup", started,
               "green never appeared")
 
         # The include line is untouched; only the file it points at changes.
