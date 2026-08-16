@@ -1,17 +1,43 @@
 #!/usr/bin/env python3
-"""A prompt for prototyping shader chains, run inside the pane it repaints.
+"""A prompt for prototyping shaders, run inside the pane it repaints.
 
     $ contrib/shader-repl
-    chrome> tint color="#ff5fd7" amount="abs(t / 8 % 510 - 255)"
-    ok
-    chrome> :load sine-comet
-    sine-comet.kdl: 1 chrome, 0 content
-    chrome> :paste
+    chrome> tint color="#ff5fd7" amount="abs(sin(t / 5))"
+    1 chrome, 0 content
+    chrome> :content
+    content> dim amount=80
+    1 chrome, 1 content
+    content> :paste
+    shaders {
+        tint where="chrome" color="#ff5fd7" amount="abs(sin(t / 5))"
+        dim where="content" amount=80
+    }
 
-The line you type is a chain in exactly the syntax `config.kdl` uses, sent to the
-session with OSC 5577 and applied to *this* pane. Nothing is written anywhere, so
-a chain you like has to be copied out -- which `:paste` does, in the form a config
-file wants.
+**What you type is what a config file says.** Not a dialect of it -- the same
+words, so the two directions match:
+
+    tint amount=200                     one entry, for the rect the prompt names
+    tint where="content" amount=200     ...or the rect the entry names, which wins
+    dim amount=90; tint amount=40       several, as a config separates them
+    shaders { ... }                     the block itself, over as many lines as
+                                        it takes -- paste it and the prompt waits
+                                        for the closing brace
+    include "contrib/chrome/shine.kdl"  a file, the way a config includes one
+    :load shine                         the same thing, for the ones that ship here
+
+That list is the whole grammar, and it exists because the first thing anybody does
+with `:paste`'s output is paste it back. It round-trips: there is a test that reads
+the block off the screen, forgets it, types it back and compares the cells.
+
+The session holds a *document* -- what it is told replaces both chains, the way
+naming `shaders { }` in a config replaces the block rather than adding to it. The
+prompt keeps that document and sends all of it, so a line aimed at the frame leaves
+the contents alone, and the reply counts say where everything went.
+
+Nothing here parses KDL. A file is handed over by path and a block by a temporary
+file, because the session already has the parser -- and a second reader of a config
+file would be a second opinion about what it says, exactly where comments meet
+quoted strings.
 
 Needs `in_band_shaders true` in your config. Without it the session answers "off"
 rather than doing it, which is the answer this asks for: a program restyling the
@@ -19,30 +45,22 @@ session it happens to be running in is a hazard, and prototyping is worth one li
 of consent (D13).
 
 Commands:
-    :chrome     aim the next chain at the frame (the default)
-    :content    aim it at the pane's contents
+    :chrome     the rect an entry means when it does not say (the default)
+    :content    ...and the other one
     :load F     a preset file: a path, or a name from `chrome/` or `shaders/`
-                beside this script. Its entries go wherever their own `where=`
-                says, so `:load sine-comet` fills the frame chain and
-                `:load built-ins-spotlight` fills the contents one
-    :clear      take this pane's chain away
-    :both       clear both chains
-    :paste      print what you have as a `shaders { }` block -- or, after a
-                `:load`, the one `include` line that keeps it
+                beside this script. `include "F"` and `load F` do the same
+    :clear      take this rect out of the document
+    :both       take everything off
+    :paste      the document, as a `shaders { }` block -- or, after a `:load`, the
+                one `include` line that keeps it
     :help       this list
-    :quit       leave (the chain stays until the pane closes)
-
-`:load` hands the *path* to the session, which reads it with the parser that
-already knows this format. Nothing here parses KDL: a second reader of a config
-file is a second opinion about what it says, and comments and quoted strings are
-exactly where those two would differ.
+    :quit       leave (what you set stays until the pane closes)
 
 The prompt is readline's, so it has the editing and history you already know --
 up/down through what you tried, ctrl-r to search it, and history kept across runs
 in `$XDG_DATA_HOME/sl0ppty/shader-repl.history`. Tab completes the commands, the
-shader names, the property keys and the expression language's own variables,
-constants and functions -- and filenames after `:load`, which is most of what
-there is to remember.
+shader names, the property keys, the expression language's variables, constants and
+functions, and filenames after `:load`.
 
 Python 3, standard library only.
 """
@@ -51,6 +69,7 @@ import glob
 import os
 import select
 import sys
+import tempfile
 import termios
 import time
 import tty
@@ -173,17 +192,26 @@ def reply(fd, timeout=TIMEOUT):
     return body.rstrip(ST).rstrip("\a")
 
 
-def ask(fd, where, chain):
-    send("shader;%s;%s" % (where, chain))
-    answer = reply(fd)
-    if answer is None:
+def answer_of(fd, raw):
+    """A reply, as a line to print and whether it worked.
+
+    `ok;1 chrome, 0 content` -- the counts are the answer worth showing, because
+    `where=` inside what you typed decides which chain a pass went to and the count
+    is the only way to see that it went where you meant."""
+    if raw is None:
         # Whatever half-arrived is not a line anybody typed: drop it, or those
         # escape bytes become the front of the next thing readline reads.
         termios.tcflush(fd, termios.TCIFLUSH)
         return ("no answer -- is this pane inside sl0ppty?", False)
-    if answer == "ok":
-        return ("ok", True)
-    return (answer.replace("error;", "", 1), False)
+    if raw == "ok" or raw.startswith("ok;"):
+        _, _, detail = raw.partition(";")
+        return (detail or "ok", True)
+    return (raw.replace("error;", "", 1), False)
+
+
+def ask(fd, where, chain):
+    send("shader;%s;%s" % (where, chain))
+    return answer_of(fd, reply(fd))
 
 
 PRESET_DIRS = [os.path.join(os.path.dirname(os.path.abspath(__file__)), d)
@@ -213,17 +241,36 @@ def load(fd, path):
     resolves the name, makes the path absolute (the session's working directory is
     not ours) and sends it."""
     send("shader-load;%s" % path)
-    answer = reply(fd)
-    if answer is None:
-        termios.tcflush(fd, termios.TCIFLUSH)
-        return ("no answer -- is this pane inside sl0ppty?", False)
-    if answer.startswith("ok"):
-        _, _, detail = answer.partition(";")
-        return (detail or "ok", True)
-    return (answer.replace("error;", "", 1), False)
+    return answer_of(fd, reply(fd))
 
 
-def paste(chains, loaded=None):
+def entries_of(chain):
+    return [e.strip() for e in chain.split(";") if e.strip()]
+
+
+def with_where(entry, rect):
+    """An entry that says which rect it is for. Untouched if it already does: the
+    entry's own word wins, here and in the session."""
+    if "where=" in entry:
+        return entry
+    head, _, rest = entry.partition(" ")
+    return '%s where="%s"%s' % (head, rect, (" " + rest) if rest else "")
+
+
+def document(chains):
+    """Everything this pane should be wearing, as one line of config.
+
+    The session takes a *document*: what it holds replaces both chains, exactly as
+    naming `shaders { }` in a config replaces the block rather than adding to it. So
+    the prompt keeps the document and sends all of it every time -- which is also
+    why `:paste` and what you type are the same thing in two shapes."""
+    out = []
+    for rect in ("chrome", "content"):
+        out += [with_where(e, rect) for e in entries_of(chains[rect])]
+    return "; ".join(out)
+
+
+def paste(chains, loaded=None, typed=None):
     """What a config file would say. Two `where=` entries rather than two blocks,
     because one `shaders { }` holds both and that is the shape to copy.
 
@@ -235,6 +282,10 @@ def paste(chains, loaded=None):
     """
     if loaded:
         return '// %s\ninclude "%s"' % (os.path.basename(loaded), loaded)
+    if typed:
+        # A block you typed is already the block to keep, `where=` and all.
+        return typed if typed.lstrip().startswith("shaders") else (
+            "shaders {\n%s\n}" % typed)
     if not any(chains.values()):
         return "shaders { }  // nothing set"
     lines = ["shaders {"]
@@ -250,6 +301,50 @@ def paste(chains, loaded=None):
     return "\n".join(lines)
 
 
+def unclosed(text):
+    """How many `{` are still open, so a pasted block can be finished.
+
+    Braces inside a quoted string or after `//` do not count -- a preset's own
+    header says `states { bell { ... } }` in a comment, and taking that literally
+    would leave the prompt waiting for braces nobody typed. This is the only thing
+    here that looks at the syntax at all, and it only decides *whether the input is
+    finished*: what it means is still the session's answer.
+    """
+    depth, quoted, i = 0, False, 0
+    while i < len(text):
+        c = text[i]
+        if quoted:
+            quoted = c != '"'
+        elif c == '"':
+            quoted = True
+        elif c == "/" and text[i:i + 2] == "//":
+            nl = text.find("\n", i)
+            if nl < 0:
+                break
+            i = nl
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        i += 1
+    return depth
+
+
+def spool(text):
+    """A multi-line document, on disk, so the session can read it.
+
+    An OSC payload cannot carry a newline -- a control byte ends the sequence, by
+    the spec -- and joining the lines with `;` would need this script to understand
+    comments, which is the one thing it refuses to do. A file needs neither: the
+    session already reads files, with the parser that already reads this format.
+    """
+    fd, path = tempfile.mkstemp(prefix="shader-repl-", suffix=".kdl")
+    with os.fdopen(fd, "w") as f:
+        f.write(text if text.lstrip().startswith("shaders")
+                else "shaders {\n%s\n}\n" % text)
+    return path
+
+
 def main():
     if not sys.stdin.isatty():
         sys.exit("shader-repl: needs a terminal (run it in a pane)")
@@ -257,17 +352,106 @@ def main():
     saved = termios.tcgetattr(fd)
     where = "chrome"
     chains = {"chrome": "", "content": ""}
-    loaded = None  # the preset file in force, for `:paste`
+    loaded = None   # a preset file is in force: `:paste` is an include of it
+    typed = None    # a block was typed: `:paste` is that block, as given
+    pending = []    # lines of a document whose braces have not closed yet
+
+    def exchange(fn, *args):
+        """Raw only around one request, so the prompt keeps its line editing."""
+        tty.setraw(fd)
+        try:
+            return fn(fd, *args)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+    def apply_load(arg):
+        """`:load x`, `include "x"`, `load x` -- all the same act."""
+        nonlocal loaded, typed
+        if not arg:
+            print("  :load <file.kdl>, or the name of one in chrome/ or "
+                  "shaders/ beside this script")
+            return
+        path = resolve(arg)
+        if not path:
+            print("  no such file: %s" % arg)
+            return
+        msg, ok = exchange(load, path)
+        if ok:
+            # The file replaces both chains, so anything typed before it is gone
+            # and `:paste` should answer with the file rather than half a truth.
+            loaded, typed = path, None
+            chains["chrome"] = chains["content"] = ""
+        print("  %s: %s" % (os.path.basename(path), msg))
+
+    def apply_text(text):
+        """One entry, several with `;`, or a whole `shaders { }` block.
+
+        A bare entry replaces this rect's part of the document and the whole
+        document is sent, because the session's text *is* the document: what it
+        holds replaces both chains, the way naming `shaders { }` in a config
+        replaces the block. A block or a `where=` of its own speaks for the whole
+        pane, so it becomes the document outright.
+
+        Several lines go via a file: a newline cannot cross an OSC (a control byte
+        ends the sequence, by the spec) and joining them with `;` would need this
+        script to understand comments, which is the one thing it will not do.
+        """
+        nonlocal loaded, typed
+        whole = "{" in text or "\n" in text
+        if "\n" in text:
+            path = spool(text)
+            try:
+                msg, ok = exchange(load, path)
+            finally:
+                os.unlink(path)
+        elif whole:
+            msg, ok = exchange(ask, where, text)
+        else:
+            # This rect's part, then everything, so the other rect survives a line
+            # aimed at this one.
+            before = chains[where]
+            chains[where] = text
+            msg, ok = exchange(ask, where, document(chains))
+            if not ok:
+                chains[where] = before
+        if not ok and "unknown shader" in msg:
+            # The mistake worth naming: a config file's other words -- `include`,
+            # `states`, `theme` -- are not shaders, and the first thing anybody
+            # does with a file is try to paste one of its lines.
+            msg += '\n  (a file? `:load <path>`, or `include "<path>"`)'
+        if ok:
+            loaded = None
+            if whole:
+                typed = text            # already the document to keep
+                chains["chrome"] = chains["content"] = ""
+            else:
+                typed = None
+        print(msg)
 
     setup_readline()
-    print("shader-repl: a chain in config syntax, applied to this pane.")
+    print("shader-repl: config syntax, applied to this pane.")
     print("  " + "  ".join(COMMANDS) + ("" if readline else "   (no readline)"))
     try:
         while True:
             try:
-                line = input("%s> " % where)
+                line = input("...> " if pending else "%s> " % where)
             except EOFError:
                 break
+
+            # Finishing a document: an empty line gives up on it, because a prompt
+            # you cannot get out of is worse than one that forgot what you typed.
+            if pending:
+                if not line.strip():
+                    pending = []
+                    print("  (dropped)")
+                    continue
+                pending.append(line)
+                text = "\n".join(pending)
+                if unclosed(text) <= 0:
+                    pending = []
+                    apply_text(text)
+                continue
+
             line = line.strip()
             if not line:
                 continue
@@ -286,30 +470,10 @@ def main():
                 where = line[1:]
                 continue
             if line == ":paste":
-                print(paste(chains, loaded))
+                print(paste(chains, loaded, typed))
                 continue
             if line.startswith(":load"):
-                arg = line[len(":load"):].strip()
-                if not arg:
-                    print("  :load <file.kdl>, or the name of one in chrome/ or "
-                          "shaders/ beside this script")
-                    continue
-                path = resolve(arg)
-                if not path:
-                    print("  no such file: %s" % arg)
-                    continue
-                tty.setraw(fd)
-                try:
-                    msg, ok = load(fd, path)
-                finally:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-                if ok:
-                    # The file replaces both chains, so the typed ones are gone
-                    # and `:paste` should answer with the file rather than with
-                    # something half true.
-                    loaded = path
-                    chains["chrome"] = chains["content"] = ""
-                print("  %s: %s" % (os.path.basename(path), msg))
+                apply_load(line[len(":load"):].strip())
                 continue
             if line in (":help", ":h", "?"):
                 print("  " + "  ".join(COMMANDS))
@@ -319,37 +483,44 @@ def main():
                 print("  consts:  " + " ".join(CONSTS)
                       + "   (degrees, so PI is a half turn)")
                 print("  funcs:   " + " ".join(f.rstrip("(") for f in FUNCS))
-                print("  :load takes a path, or a preset name from chrome/ or shaders/")
+                print("  anything a config's shaders section holds: an entry, "
+                      "several with `;`,")
+                print('  a whole `shaders { }` block over as many lines as it '
+                      'takes, or `include "f.kdl"`')
                 print("  tab completes all of it; up/down and ctrl-r are history")
                 continue
             if line in (":clear", ":both"):
-                # `:both` names no rect, which the session reads as all of them:
-                # one exchange, and the pane cannot be left half put-back.
-                target = "" if line == ":both" else where
-                tty.setraw(fd)
-                try:
-                    msg, ok = ask(fd, target, "")
-                finally:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+                # `:clear` takes this rect out of the document and sends what is
+                # left; `:both` sends nothing at all, which is how the session
+                # spells "put the pane back". Same rule either way: the text is the
+                # whole document, so what it does not mention is not worn.
+                before = dict(chains)
+                if line == ":both":
+                    chains["chrome"] = chains["content"] = ""
+                else:
+                    chains[where] = ""
+                msg, ok = exchange(ask, where, document(chains))
                 if ok:
-                    loaded = None
-                    if target:
-                        chains[target] = ""
-                    else:
-                        chains["chrome"] = chains["content"] = ""
+                    loaded = typed = None
+                else:
+                    chains.update(before)
                 print(msg)
                 continue
 
-            # raw only around the exchange, so the prompt keeps its line editing
-            tty.setraw(fd)
-            try:
-                msg, ok = ask(fd, where, line)
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-            if ok:
-                chains[where] = line
-                loaded = None  # hand-typed now: `:paste` should say so
-            print(msg)
+            # `include "f.kdl"` is what `:paste` prints and what a config file
+            # says, so it is a thing you can type here: the same act as `:load`,
+            # spelled the way the file spells it. `load` too, because that is the
+            # other thing a person tries.
+            head, _, rest = line.partition(" ")
+            if head in ("include", "load") and rest.strip():
+                apply_load(rest.strip().strip('";'))
+                continue
+
+            # Otherwise it is a document: finished, or waiting for its brace.
+            if unclosed(line) > 0:
+                pending = [line]
+                continue
+            apply_text(line)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
 

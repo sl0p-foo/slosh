@@ -455,9 +455,13 @@ static void on_pane_shader(app_t *a, pane_t *p, const char *payload) {
 
   char err[192] = {0};
   const char *text = semi ? semi + 1 : "";
-  bool ok = app_set_pane_shaders(a, b.found->id, chrome, text, err, sizeof err);
+  size_t nchrome = 0, ncontent = 0;
+  bool ok = app_set_pane_shaders(a, b.found->id, chrome, text, &nchrome, &ncontent,
+                                 err, sizeof err);
   if (ok)
-    snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;ok\033\\");
+    snprintf(reply, sizeof reply,
+             "\033]5577;1;shader-reply;ok;%zu chrome, %zu content\033\\", nchrome,
+             ncontent);
   else
     snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;error;%s\033\\",
              err[0] ? err : "refused");
@@ -3014,8 +3018,11 @@ bool app_clear_pane_shaders(app_t *a, uint32_t pane_id) {
   return had;
 }
 
-bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
-                          const char *text, char *err, size_t errcap) {
+bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool default_chrome,
+                          const char *text, size_t *nchrome, size_t *ncontent,
+                          char *err, size_t errcap) {
+  if (nchrome) *nchrome = 0;
+  if (ncontent) *ncontent = 0;
   if (err && errcap) err[0] = 0;
   if (!CFG.in_band_shaders) {
     if (err && errcap) snprintf(err, errcap, "in_band_shaders is off");
@@ -3027,20 +3034,50 @@ bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
     return false;
   }
 
-  /* Parsed into a fresh chain and swapped in, so a chain that turns out to be
-   * unreadable leaves the pane looking like it did rather than half-restyled. */
-  inband_chain_t next = {0};
-  next.n = config_parse_chain(text, CFG.frame_focus, chrome, next.sh, SHADE_MAX,
-                              next.exprs, &next.nexprs, err, errcap);
+  /* Both chains, because the text is a *document*: `where=` inside it decides
+   * where each pass goes, exactly as it does in the config file this syntax comes
+   * from, and `default_chrome` is only what a pass that keeps quiet means. An
+   * earlier version refused an entry that named the other rect, which made the
+   * prompt's mode a rule rather than a default -- and made a two-rect block, the
+   * thing `:paste` prints, impossible to paste back.
+   *
+   * Parsed beside the live chains and swapped in together, so text that turns out
+   * to be unreadable leaves the pane as it was rather than half-restyled. */
+  inband_chain_t con = {0}, chr = {0};
+  expr_prog_t *exprs[SHADE_MAX * 2];
+  size_t nexprs = 0;
+  config_parse_chain_doc(text, CFG.frame_focus, default_chrome, con.sh, &con.n,
+                         chr.sh, &chr.n, exprs, &nexprs, err, errcap);
   if (err && errcap && err[0]) {
-    for (size_t i = 0; i < next.nexprs; i++) expr_free(next.exprs[i]);
+    for (size_t i = 0; i < nexprs; i++) expr_free(exprs[i]);
     return false;
   }
 
-  inband_chain_t *slot = chrome ? &n->chrome_chain : &n->content_chain;
-  chain_clear(slot);
-  *slot = next;
+  /* Each program to the chain whose shader points at it. Walked rather than
+   * assumed: freeing one that the other chain still uses is the bug here that
+   * would not show up until the next repaint. */
+  for (size_t i = 0; i < nexprs; i++) {
+    bool mine = false;
+    for (size_t j = 0; j < chr.n && !mine; j++)
+      if (chr.sh[j].amount_expr == exprs[i]) {
+        chr.exprs[chr.nexprs++] = exprs[i];
+        mine = true;
+      }
+    for (size_t j = 0; j < con.n && !mine; j++)
+      if (con.sh[j].amount_expr == exprs[i]) {
+        con.exprs[con.nexprs++] = exprs[i];
+        mine = true;
+      }
+    if (!mine) expr_free(exprs[i]);
+  }
+
+  chain_clear(&n->chrome_chain);
+  chain_clear(&n->content_chain);
+  n->chrome_chain = chr;
+  n->content_chain = con;
   pane_touch(n->pane);
+  if (nchrome) *nchrome = chr.n;
+  if (ncontent) *ncontent = con.n;
   return true;
 }
 

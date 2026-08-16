@@ -111,9 +111,11 @@ printf '\033]5577;1;shader;chrome;\033\\'   # that rect: back to normal
 printf '\033]5577;1;shader;\033\\'          # no rect named, so both of them
 ```
 
-The field after `shader` is which rect (`content` or `chrome`), and the rest of
-the payload is the chain, verbatim -- `;` separates entries, so several passes fit
-on one line. The session answers on the program's stdin, `\033]5577;1;shader-reply;ok\033\\`
+The field after `shader` is which rect an entry means **when it does not say** --
+an entry's own `where=` wins -- and the rest of the payload is a document in the
+config's syntax: one entry, several separated by `;`, or a whole `shaders { }` block.
+What it says replaces both chains, as naming the block in a config does. The reply
+counts what went where. The session answers on the program's stdin, `\033]5577;1;shader-reply;ok\033\\`
 or `shader-reply;error;bad amount for tint: ...`, so a typo says so instead of
 looking like a shader that does nothing.
 
@@ -132,24 +134,39 @@ allowed it -- paint a pane, then turn the setting off -- and a way out that the
 setting can take away is not one. They clear what the *pane* set: the config's own
 chains and the session's own dimming are not this pane's doing.
 
-`contrib/shader-repl` is that loop with a prompt on it: type a chain, see the
-pane change, and `:paste` prints what you have as a `shaders { }` block for your
-config. What you prototype and what you paste are parsed by the same code, which
-is the point of using the config's syntax for a thing typed at a terminal.
+`contrib/shader-repl` is that loop with a prompt on it, and **what you type at it
+is what a config file says** -- not a dialect of it:
 
-`:load` takes any of the ready-made files -- `:load sine-comet` from anywhere,
-because the preset folders sit beside the script -- and its entries land wherever
-their own `where=` says, so one file can fill both chains. The *session* reads the
-file, with the parser that already knows the format: nothing in the prompt parses
-KDL, because a second reader of a config file is a second opinion about what it
-says. After a load, `:paste` prints the one `include` line that keeps it.
+```
+chrome> tint amount=200                       one entry, for the rect the prompt names
+chrome> tint where="content" amount=200       ...or the one the entry names, which wins
+chrome> dim amount=90; tint amount=40         several, separated as a config separates them
+chrome> shaders { … }                         the block itself, over as many lines as it takes
+chrome> include "contrib/chrome/shine.kdl"    a file, the way a config includes one
+chrome> :load shine                           the same, for the presets that ship with it
+```
 
-It is a readline prompt, so editing, up/down and ctrl-r work as they do in a
-shell, and history is kept between runs in
-`$XDG_DATA_HOME/sl0ppty/shader-repl.history` -- the chains only, since `:quit` is
-not something you want to press up past. Tab completes the commands, the shader
-names, the property keys and the expression language's own variables and
-functions; `:help` prints the same list at once. A test checks that list against
+`:paste` prints the document back as a `shaders { }` block with `where=` on every
+entry — and that block can be typed straight back in, which is the point of
+borrowing the syntax rather than inventing one. A test reads it off the screen,
+clears the pane, types it back and compares the cells.
+
+The text is a **document**: what it says replaces both chains, the way naming
+`shaders { }` in a config replaces the block rather than adding to it. The reply
+counts (`1 chrome, 1 content`) say where the passes went, which is the only way to
+see that an entry's `where=` did what you meant.
+
+Nothing in the prompt parses KDL. A file goes over by path and a pasted block via a
+temporary file, because the session already has the parser — and a second reader of
+a config file would be a second opinion about what it says, exactly where comments
+meet quoted strings.
+
+It is a readline prompt, so editing, up/down and ctrl-r work as they do in a shell,
+and history is kept between runs in `$XDG_DATA_HOME/sl0ppty/shader-repl.history` --
+the chains only, since `:quit` is not something you want to press up past. Tab
+completes the commands, the shader names, the property keys, the expression
+language's own variables, constants and functions, and filenames after `:load`.
+`:help` prints the same list at once. A test checks that list against
 `src/shader.c` and `src/expr.c`, because a completion list that has gone stale
 reads as "that is all there is".
 

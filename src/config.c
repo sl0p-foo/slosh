@@ -382,24 +382,104 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
   }
 }
 
-/* A chain from text, for whoever is not a config file: `dim amount=90` or
- * `tint where="chrome" channel="fg" amount="(since<250)*255"`, several separated
- * by `;` or newlines. The same entries a `shaders { }` block holds, parsed by
- * the same function, so what you prototype in a pane is what you can paste into
- * a config.
+/* Entry nodes into two chains, routed by each one's `where=` -- the only place
+ * that routing is decided, whether the entries came from a config file, from a
+ * preset file, or from a line somebody typed at a prompt.
  *
- * Expressions come back in `exprs` for the caller to free. Returns how many
- * shaders were understood; `err` gets the first reason one was not. */
+ * `default_chrome` is what an entry that does not say `where=` means. A config
+ * file's default is content; a prompt aimed at the frame passes true, so a line
+ * lifted out of a config still means what it meant there and a line typed at
+ * `chrome>` means what the prompt says. Either way an explicit `where=` wins: a
+ * document says where its own passes go, and the caller's is a *default*.
+ *
+ * Expressions come back in `exprs` for the caller to free; entries past SHADE_MAX
+ * for their rect are dropped, and the first refusal lands in `err`. */
+static size_t route_entries(const kdl_node_t *const *kids, size_t nkids,
+                            color_t default_color, bool default_chrome,
+                            shader_t *content, size_t *ncontent, shader_t *chrome,
+                            size_t *nchrome, expr_prog_t **exprs, size_t *nexprs,
+                            char *err, size_t errcap) {
+  size_t total = 0;
+  for (size_t i = 0; i < nkids; i++) {
+    const kdl_node_t *k = kids[i];
+    if (!k || !k->name) continue;
+
+    bool on_chrome = false;
+    shader_t made;
+    expr_prog_t *aexpr = NULL;
+    char why[160] = {0};
+    bool ok = parse_shader_entry(k, default_color, default_chrome, &on_chrome,
+                                 &made, &aexpr, why, sizeof why);
+    if (why[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", why);
+    if (!ok) continue;
+
+    shader_t *out = on_chrome ? chrome : content;
+    size_t *n = on_chrome ? nchrome : ncontent;
+    if (*n >= SHADE_MAX) {
+      if (err && errcap && !err[0])
+        snprintf(err, errcap, "more than %d passes for the %s", SHADE_MAX,
+                 on_chrome ? "frame" : "contents");
+      expr_free(aexpr);
+      continue;
+    }
+    out[(*n)++] = made;
+    if (aexpr) exprs[(*nexprs)++] = aexpr;
+    total++;
+  }
+  return total;
+}
+
+/* Chains from text: what a `shaders { }` block holds, as a person types it at a
+ * prompt -- one entry, several separated by `;`, or the whole block with its
+ * braces around it. Every shape a config file has, parsed by the config's own
+ * parser, so what you prototype is what you can paste and the other way round. */
+size_t config_parse_chain_doc(const char *text, color_t default_color,
+                              bool default_chrome, shader_t *content,
+                              size_t *ncontent, shader_t *chrome, size_t *nchrome,
+                              expr_prog_t **exprs, size_t *nexprs, char *err,
+                              size_t errcap) {
+  *ncontent = 0;
+  *nchrome = 0;
+  *nexprs = 0;
+  if (err && errcap) err[0] = 0;
+  if (!text) return 0;
+
+  char perr[192] = {0};
+  kdl_node_t *root = kdl_parse(text, perr, sizeof perr);
+  if (!root) {
+    if (err && errcap) snprintf(err, errcap, "%s", perr[0] ? perr : "bad chain");
+    return 0;
+  }
+
+  /* `shaders { ... }` around the entries, or the entries on their own. Both are
+   * things a config file contains, so both are things this takes: the wrapper is
+   * what `:paste` prints, and therefore what somebody will paste back. */
+  const kdl_node_t *block = NULL;
+  for (size_t i = 0; i < root->nkids; i++) {
+    const kdl_node_t *k = root->kids[i];
+    if (k && k->name && strcmp(k->name, "shaders") == 0) block = k;
+  }
+  const kdl_node_t *const *kids =
+      block ? (const kdl_node_t *const *)block->kids
+            : (const kdl_node_t *const *)root->kids;
+  size_t nkids = block ? block->nkids : root->nkids;
+
+  size_t n = route_entries(kids, nkids, default_color, default_chrome, content,
+                           ncontent, chrome, nchrome, exprs, nexprs, err, errcap);
+  kdl_free(root);
+  return n;
+}
+
 /* A preset file into two chains: the same `shaders { }` block a config carries,
  * routed by each entry's `where=` exactly as the config routes it.
  *
  * Here rather than in the caller because the parsing is already here, and a second
  * reader of this format -- a scanner counting braces and skipping `//` outside
- * quotes -- would be a second answer to "what does this file say". The KDL parser
- * knows about comments and strings; nobody else needs to.
+ * quoted strings -- would be a second answer to "what does this file say". The KDL
+ * parser knows about comments and strings; nobody else needs to.
  *
  * Anything else at the top level is ignored, so a whole config.kdl can be handed
- * over and only its shaders apply: `theme` and `keys` are not this pane's business
+ * over and only its shaders apply: `theme` and `keys` are not this pane's business,
  * and refusing the file over them would make the useful case the awkward one. */
 size_t config_parse_chain_file(const char *path, color_t default_color,
                                shader_t *content, size_t *ncontent,
@@ -420,84 +500,31 @@ size_t config_parse_chain_file(const char *path, color_t default_color,
   }
 
   size_t total = 0;
-  bool found = false;
+  bool found = false, states = false;
   for (size_t i = 0; i < root->nkids; i++) {
     const kdl_node_t *block = root->kids[i];
-    if (!block || !block->name || strcmp(block->name, "shaders") != 0) continue;
+    if (!block || !block->name) continue;
+    if (strcmp(block->name, "states") == 0) states = true;
+    if (strcmp(block->name, "shaders") != 0) continue;
     found = true;
-    for (size_t j = 0; j < block->nkids; j++) {
-      const kdl_node_t *k = block->kids[j];
-      if (!k || !k->name) continue;
-
-      bool on_chrome = false;
-      shader_t made;
-      expr_prog_t *aexpr = NULL;
-      char why[160] = {0};
-      /* `content` is the default here, as it is in a config file: the entries are
-       * the file's own words and mean what they meant there. */
-      bool ok = parse_shader_entry(k, default_color, false, &on_chrome, &made,
-                                   &aexpr, why, sizeof why);
-      if (why[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", why);
-      if (!ok) continue;
-
-      shader_t *out = on_chrome ? chrome : content;
-      size_t *n = on_chrome ? nchrome : ncontent;
-      if (*n >= SHADE_MAX) {
-        expr_free(aexpr);
-        continue;
-      }
-      out[(*n)++] = made;
-      if (aexpr) exprs[(*nexprs)++] = aexpr;
-      total++;
-    }
+    /* A config file's default is content, and this is a config file. */
+    total += route_entries((const kdl_node_t *const *)block->kids, block->nkids,
+                           default_color, false, content, ncontent, chrome,
+                           nchrome, exprs, nexprs, err, errcap);
   }
   kdl_free(root);
-  if (!found && err && errcap && !err[0])
-    snprintf(err, errcap, "no shaders { } block in it");
+  if (!found && err && errcap && !err[0]) {
+    /* Naming the likely mistake rather than the general one: a file of nothing but
+     * `states { }` is a config's opinion about every pane, and a pane cannot wear
+     * one -- an in-band chain has no state to hang off. */
+    if (states)
+      snprintf(err, errcap,
+               "only states { } in it, which is a config's and not a pane's -- "
+               "paste the pass itself");
+    else
+      snprintf(err, errcap, "no shaders { } block in it");
+  }
   return total;
-}
-
-size_t config_parse_chain(const char *text, color_t default_color, bool chrome,
-                          shader_t *out, size_t max, expr_prog_t **exprs,
-                          size_t *nexprs, char *err, size_t errcap) {
-  *nexprs = 0;
-  if (err && errcap) err[0] = 0;
-  if (!text) return 0;
-
-  char perr[192] = {0};
-  kdl_node_t *root = kdl_parse(text, perr, sizeof perr);
-  if (!root) {
-    if (err && errcap) snprintf(err, errcap, "%s", perr[0] ? perr : "bad chain");
-    return 0;
-  }
-
-  size_t n = 0;
-  for (size_t i = 0; i < root->nkids && n < max; i++) {
-    const kdl_node_t *k = root->kids[i];
-    if (!k || !k->name) continue;
-    bool on_chrome = false;
-    shader_t made;
-    expr_prog_t *aexpr = NULL;
-    char why[160] = {0};
-    bool ok = parse_shader_entry(k, default_color, chrome, &on_chrome, &made,
-                                 &aexpr, why, sizeof why);
-    if (why[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", why);
-    if (!ok) continue;
-    /* One chain, one rect. The caller's rect is the *default*, so a line lifted
-     * out of a config still means what it meant there, and an explicit `where=`
-     * naming the other one is refused rather than quietly moved. */
-    if (on_chrome != chrome) {
-      if (err && errcap && !err[0])
-        snprintf(err, errcap, "%s: this chain is %s", k->name,
-                 chrome ? "chrome" : "content");
-      expr_free(aexpr);
-      continue;
-    }
-    out[n++] = made;
-    if (aexpr) exprs[(*nexprs)++] = aexpr;
-  }
-  kdl_free(root);
-  return n;
 }
 
 /* `direct` is part of the identity, not a property of it: `x` after the leader

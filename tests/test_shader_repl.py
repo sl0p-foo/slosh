@@ -45,10 +45,15 @@ def source_names(path, pattern):
 
 
 def last_reply(sess):
-    """The repl's answer to the last chain: `ok`, or why not."""
+    """The repl's answer to the last thing typed.
+
+    A chain that ran answers with where it went -- `1 chrome, 0 content` -- because
+    `where=` inside the text decides that and the count is the only way to see it."""
     txt = sess.snapshot().pane_text(sess.pane())
     for l in reversed([l.strip() for l in txt.split("\n") if l.strip()]):
-        if l == "ok" or l.startswith("bad ") or l.startswith("no answer"):
+        if re.match(r"^\d+ chrome, \d+ content$", l) or l == "ok":
+            return l
+        if l.startswith(("bad ", "no answer", "unknown ", "unexpected ")):
             return l
     return "(no reply)"
 
@@ -66,11 +71,11 @@ def cfg(text):
     return f.name
 
 
-def session(cfg_path, data_home):
+def session(cfg_path, data_home, rows=16):
     """A pane running the repl, with its history in a directory we can inspect."""
     env = {"XDG_DATA_HOME": data_home, "TERM": "xterm-256color"}
     return Session(["/bin/sh", "-c", "exec python3 %s" % REPL],
-                   cols=84, rows=16, config=cfg_path, env=env)
+                   cols=84, rows=rows, config=cfg_path, env=env)
 
 
 def test_the_script_is_a_script():
@@ -131,7 +136,7 @@ def test_every_offered_shader_is_accepted_by_a_session():
             s.raw("%s amount=40\\r" % name)
             s.settle(60)
             reply = last_reply(s)
-            if reply != "ok":
+            if "content" not in reply:  # `N chrome, M content` means it ran
                 refused.append((name, reply))
     check("every completable shader parses in a real session", not refused,
           str(refused))
@@ -307,6 +312,128 @@ def test_load_completes_a_preset_name():
     os.unlink(path)
 
 
+def test_the_prompt_takes_what_a_config_file_says():
+    """The grammar is a config's shaders section, not a dialect of it: an entry, a
+    `shaders { }` block round it, `include "f.kdl"`, `load f.kdl`. Every one of
+    those is a line somebody will paste, because every one of them is a line that
+    appears in a config file or in this prompt's own output."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        for line, want in (
+                ('tint color="#ff0033" amount=200', "1 chrome, 0 content"),
+                ('shaders { tint color="#ff0033" amount=200 }', "1 chrome, 0 content"),
+                ('include "contrib/chrome/heartbeat.kdl"', "heartbeat.kdl"),
+                ('load marching-ants', "marching-ants.kdl")):
+            s.raw(line + "\\r")
+            s.settle(70)
+            text = "\n".join(l.strip() for l in
+                             s.snapshot().pane_text(pane).split("\n"))
+            check("takes `%s`" % line[:38], want in text, repr(text[-160:]))
+    os.unlink(path)
+
+
+def test_a_block_can_be_pasted_over_several_lines():
+    """A pasted block arrives a line at a time, so the prompt waits for the brace
+    to close before sending anything -- and an empty line gives up on it, because a
+    prompt you cannot get out of is worse than one that forgets."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        for line in ('shaders {',
+                     '    tint where="chrome" color="#ff0033" amount=255',
+                     '    tint where="content" channel="bg" color="#00ff88" amount=255'):
+            s.raw(line + "\\r")
+            s.settle(40)
+        check("it waits for the closing brace", "...>" in s.snapshot().screen(),
+              repr(last_line(s)))
+        s.raw("}\\r")
+        s.settle(80)
+        snap = s.snapshot()
+        check("the frame took the chrome entry",
+              (snap.style_at(pane["x"], pane["y"]) or {}).get("fg") == "#ff0033",
+              str(snap.style_at(pane["x"], pane["y"])))
+        body = snap.style_at(pane["content_x"] + 1, pane["content_y"] + 1)
+        check("and the contents took the other one",
+              (body or {}).get("bg") == "#00ff88", str(body))
+
+        s.raw("shaders {\\r")
+        s.settle(40)
+        s.raw("\\r")  # an empty line: give up on it
+        s.settle(40)
+        check("an empty line drops an unfinished block",
+              "(dropped)" in s.snapshot().screen(), repr(last_line(s)))
+    os.unlink(path)
+
+
+def test_paste_round_trips_through_the_prompt():
+    """The whole point of borrowing the config's syntax: what `:paste` prints is
+    something you can type back in and get the same pane. Checked by doing exactly
+    that -- read the block off the screen, `:both` to forget it, type it back, and
+    compare the cells."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home, rows=30) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        s.raw('tint color="#ff0033" amount=200\\r')
+        s.settle(60)
+        s.raw(":content\\r")
+        s.settle(40)
+        s.raw("dim amount=80\\r")
+        s.settle(60)
+        before = (
+            (s.snapshot().style_at(pane["x"], pane["y"]) or {}).get("fg"),
+            (s.snapshot().style_at(pane["content_x"] + 1,
+                                   pane["content_y"] + 1) or {}).get("fg"))
+
+        s.raw(":paste\\r")
+        s.settle(60)
+        lines = [l.strip() for l in s.snapshot().pane_text(pane).split("\n")
+                 if l.strip()]
+        block = lines[lines.index("shaders {"):]
+        block = block[:block.index("}") + 1]
+        check("`:paste` printed a block with both rects in it",
+              len(block) == 4 and 'where="chrome"' in block[1]
+              and 'where="content"' in block[2], str(block))
+
+        s.raw(":both\\r")
+        s.settle(60)
+        for line in block:
+            s.raw(line + "\\r")
+            s.settle(40)
+        s.settle(80)
+        after = (
+            (s.snapshot().style_at(pane["x"], pane["y"]) or {}).get("fg"),
+            (s.snapshot().style_at(pane["content_x"] + 1,
+                                   pane["content_y"] + 1) or {}).get("fg"))
+        check("typing it back gives the same pane", before == after,
+              "%s -> %s" % (before, after))
+    os.unlink(path)
+
+
+def test_an_unknown_word_says_where_files_go():
+    """`include` and `states` are words from the same file and are not shaders. The
+    session says `unknown shader`, which is true and unhelpful on its own."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        s.raw("nonesuch amount=1\\r")
+        s.settle(60)
+        text = "\n".join(l.strip() for l in s.snapshot().pane_text(pane).split("\n"))
+        check("it names the mistake", "unknown shader: nonesuch" in text,
+              repr(text[-160:]))
+        check("and points at how files are loaded", ":load <path>" in text,
+              repr(text[-160:]))
+    os.unlink(path)
+
+
 def test_help_lists_what_there_is():
     path = cfg("in_band_shaders true\n")
     home = tempfile.mkdtemp()
@@ -331,5 +458,9 @@ if __name__ == "__main__":
     test_load_says_what_is_wrong_rather_than_nothing()
     test_paste_after_a_load_is_the_file()
     test_load_completes_a_preset_name()
+    test_the_prompt_takes_what_a_config_file_says()
+    test_a_block_can_be_pasted_over_several_lines()
+    test_paste_round_trips_through_the_prompt()
+    test_an_unknown_word_says_where_files_go()
     test_help_lists_what_there_is()
     sys.exit(report())

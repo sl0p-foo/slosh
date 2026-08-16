@@ -384,19 +384,25 @@ void config_free(config_t *c);
  * was loaded, the rest are what it included. Returns how many were written. */
 size_t config_files(const config_t *c, const char **out, size_t max);
 
-/* One shader chain from text rather than from a file: the same entries a
- * `shaders { }` block holds, separated by `;` or newlines. `chrome` says which
- * rect the chain is for, and is the default an entry's `where=` starts from.
+/* Shader chains from text rather than from a file: one entry, several separated by
+ * `;`, or a whole `shaders { ... }` block. Every shape a config file has, because
+ * the point of using the config's syntax at a prompt is that the two directions
+ * match -- what you prototype is what you paste, and what you paste is something
+ * you can type back.
  *
- * Here because the parser belongs with the config -- a chain typed at a running
- * pane and a chain in a config file have to mean the same thing, or prototyping
- * teaches you something that then does not work. Compiled expressions come back
- * in `exprs` (room for `max`) and belong to the caller, since a pane's chain
- * outlives no load in particular. Returns how many shaders were understood,
- * writing the first refusal to `err`. */
-size_t config_parse_chain(const char *text, color_t default_color, bool chrome,
-                          shader_t *out, size_t max, expr_prog_t **exprs,
-                          size_t *nexprs, char *err, size_t errcap);
+ * Each pass goes where its own `where=` says; `default_chrome` is only what a pass
+ * that keeps quiet means. Here because the parser belongs with the config: a chain
+ * typed at a running pane and a chain in a config file have to mean the same
+ * thing, or prototyping teaches you something that then does not work.
+ *
+ * Both arrays hold SHADE_MAX and `exprs` twice that; the compiled programs belong
+ * to the caller, since a pane's chain outlives no load in particular. Returns how
+ * many entries were understood, writing the first refusal to `err`. */
+size_t config_parse_chain_doc(const char *text, color_t default_color,
+                              bool default_chrome, shader_t *content,
+                              size_t *ncontent, shader_t *chrome, size_t *nchrome,
+                              expr_prog_t **exprs, size_t *nexprs, char *err,
+                              size_t errcap);
 
 /* The same, from a file: a `shaders { }` block as `contrib/chrome` and
  * `contrib/shaders` ship them, read with the parser that already knows this

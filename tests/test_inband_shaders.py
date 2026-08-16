@@ -102,26 +102,58 @@ def test_a_program_can_paint_its_own_frame():
 
 
 def test_the_contents_are_a_separate_chain():
-    """Two rects, two chains: what runs over the frame is not what runs over the
-    text, and setting one leaves the other alone."""
+    """Two rects, two chains -- named in one document, because the text *is* the
+    document: what it says replaces both, the way naming `shaders { }` in a config
+    replaces the block rather than adding to it."""
     path = cfg("in_band_shaders true\n")
-    with Session(pane(osc('1;shader;content;tint color="#00ff00" amount=255'),
-                      osc('1;shader;chrome;tint color="#ff0000" amount=255')),
+    with Session(pane(osc('1;shader;chrome;'
+                          'tint where="content" color="#00ff00" amount=255; '
+                          'tint where="chrome" color="#ff0000" amount=255')),
                  cols=60, rows=9, config=path) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
         body = snap.style_at(p["x"] + 1, p["y"] + 1)
-        check("the contents take the content chain",
+        check("the contents take the content entry",
               body["fg"] == "#00ff00", str(body))
         check("and the frame takes the chrome one",
               frame(snap, p)["fg"] == "#ff0000", str(frame(snap, p)))
+        check("and both are counted", "1 chrome, 1 content" in replies(snap, p),
+              repr(replies(snap, p)[:160]))
+    os.unlink(path)
+
+
+def test_a_document_replaces_what_it_does_not_mention():
+    """The half of "document" that bites: a second request naming only the frame
+    takes the contents pass away, because a document says everything this pane
+    wears. It is what a config does, and the counts say it out loud."""
+    path = cfg("in_band_shaders true\n")
+    with Session(staged((osc('1;shader;chrome;'
+                             'tint where="content" channel="bg" color="#00ff88" amount=255; '
+                             'tint where="chrome" color="#ff0033" amount=255'), "both"),
+                        (osc('1;shader;chrome;tint color="#ff0033" amount=255'), "one")),
+                 cols=64, rows=10, config=path) as s:
+        s.until_text("both")
+        snap, p = s.snapshot(), s.pane()
+        check("both rects to start with",
+              (snap.style_at(p["content_x"] + 1, p["content_y"] + 1) or {}).get("bg")
+              == "#00ff88",
+              str(snap.style_at(p["content_x"] + 1, p["content_y"] + 1)))
+        s.raw("\\n")
+        s.until_text("one")
+        snap = s.snapshot()
+        body = snap.style_at(p["content_x"] + 1, p["content_y"] + 1)
+        check("a document with only a frame pass takes the other one off",
+              not body or body.get("bg") != "#00ff88", str(body))
+        check("and the frame still has its own", frame(snap, p)["fg"] == "#ff0033",
+              str(frame(snap, p)))
     os.unlink(path)
 
 
 def test_a_line_from_a_config_means_what_it_meant_there():
-    """The rect the sender names is the *default*, so an entry lifted out of a
-    config file works as written -- and one naming the other rect is refused
-    rather than quietly moved to the one that was asked about."""
+    """The rect the sender names is a *default*, and an entry's own `where=` wins --
+    which is what a config file does, and the only way `:paste` output can be
+    pasted back. So a chrome-aimed request carrying a content entry sets the content
+    chain, and says so."""
     path = cfg("in_band_shaders true\n")
     with Session(pane(osc('1;shader;chrome;tint where="chrome" '
                           'color="#0000ff" amount=255')),
@@ -130,16 +162,46 @@ def test_a_line_from_a_config_means_what_it_meant_there():
         snap, p = s.snapshot(), s.pane()
         check("a pasted `where=chrome` entry lands on the chrome",
               frame(snap, p)["fg"] == "#0000ff", str(frame(snap, p)))
+        check("and the count says so", "1 chrome, 0 content" in replies(snap, p),
+              repr(replies(snap, p)[:160]))
 
-    with Session(pane(osc('1;shader;chrome;tint where="content" '
-                          'color="#0000ff" amount=255')),
+    with Session(pane(osc('1;shader;chrome;tint where="content" channel="bg" '
+                          'color="#00ff88" amount=255')),
                  cols=64, rows=9, config=path) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
-        check("and one naming the other rect is refused",
-              "error" in replies(snap, p), repr(replies(snap, p)[:160]))
-        check("so the frame is left alone",
-              frame(snap, p)["fg"] != "#0000ff", str(frame(snap, p)))
+        check("one naming the other rect goes there, not nowhere",
+              (snap.style_at(p["content_x"] + 1, p["content_y"] + 1) or {}).get("bg")
+              == "#00ff88",
+              str(snap.style_at(p["content_x"] + 1, p["content_y"] + 1)))
+        check("...and the frame is left alone",
+              frame(snap, p)["fg"] != "#00ff88", str(frame(snap, p)))
+        check("...and the count says where it went",
+              "0 chrome, 1 content" in replies(snap, p), repr(replies(snap, p)[:160]))
+    os.unlink(path)
+
+
+def test_the_text_is_a_document_not_just_a_chain():
+    """Everything a config's shaders section can hold, because that is the syntax
+    this borrows: bare entries, a `shaders { }` wrapper round them, and both rects
+    at once. The wrapper matters because it is what `:paste` prints."""
+    path = cfg("in_band_shaders true\n")
+    cases = [
+        ('tint color="#ff0033" amount=255', "1 chrome, 0 content"),
+        ('shaders { tint color="#ff0033" amount=255 }', "1 chrome, 0 content"),
+        ('shaders { tint where="chrome" color="#ff0033" amount=255; '
+         'tint where="content" channel="bg" color="#00ff88" amount=255 }',
+         "1 chrome, 1 content"),
+    ]
+    for text, want in cases:
+        with Session(pane(osc("1;shader;chrome;" + text)),
+                     cols=76, rows=9, config=path) as s:
+            s.until_text("shader-reply")
+            snap, p = s.snapshot(), s.pane()
+            check("accepted: %s" % text[:34], want in replies(snap, p),
+                  repr(replies(snap, p)[:160]))
+            check("...and the frame took it",
+                  frame(snap, p)["fg"] == "#ff0033", str(frame(snap, p)))
     os.unlink(path)
 
 
@@ -222,8 +284,9 @@ def test_naming_no_rect_clears_both():
     """`shader;` with no rect is every rect: one exchange puts the whole pane
     back, rather than two that can leave it half done."""
     path = cfg("in_band_shaders true\n")
-    with Session(staged((osc('1;shader;chrome;tint color="#ff0033" amount=255')
-                         + osc('1;shader;content;tint color="#ff0033" amount=255'),
+    with Session(staged((osc('1;shader;chrome;'
+                             'tint where="chrome" color="#ff0033" amount=255; '
+                             'tint where="content" color="#ff0033" amount=255'),
                          "painted"),
                         (osc("1;shader;"), "bare")),
                  cols=64, rows=10, config=path) as s:
@@ -377,7 +440,9 @@ def test_an_expression_animates():
 if __name__ == "__main__":
     test_a_program_can_paint_its_own_frame()
     test_the_contents_are_a_separate_chain()
+    test_a_document_replaces_what_it_does_not_mention()
     test_a_line_from_a_config_means_what_it_meant_there()
+    test_the_text_is_a_document_not_just_a_chain()
     test_several_entries_in_one_chain()
     test_an_empty_chain_puts_the_pane_back()
     test_a_chain_that_does_not_read_is_refused_with_a_reason()

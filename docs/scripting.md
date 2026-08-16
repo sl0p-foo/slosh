@@ -59,8 +59,10 @@ printing a prompt and hoping.
 `purpose` is the other verb: `printf '\033]5577;1;purpose;logs\033\\'`. A purpose
 declared by a layout or the control API wins and cannot be overwritten this way.
 
-`shader` is the third, and the only one the session can refuse: it sets the
-shader chain for the pane that asked, in the config's own syntax, and needs
+`shader` is the third, and the only one the session can refuse: it sets the shader
+passes for the pane that asked -- a document in the config's own syntax, so an
+entry's `where=` decides which rect it lands on and the reply counts what went
+where. It needs
 `in_band_shaders true` because a program restyling your session is a hazard
 before it is a convenience. `shader;` with no rect named clears both of that
 pane's chains, which is never refused -- and `clear-shaders` above is the same

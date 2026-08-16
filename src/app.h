@@ -138,15 +138,19 @@ uint32_t app_focused_pane_id(app_t *a);
 uint32_t app_current_tab_id(app_t *a);
 
 /* Colour passes over one pane (shader.h), set by the program running in it over
- * OSC 5577 -- `chrome` picks the chain that runs over its frame rather than its
- * contents, and empty text clears that chain.
+ * OSC 5577. `text` is a *document* in the config's own syntax -- one entry, several
+ * separated by `;`, or a whole `shaders { }` block -- and each pass goes where its
+ * own `where=` says, so both chains are set from one call. `default_chrome` is what
+ * a pass that does not say means, which is how a prompt aimed at the frame works
+ * without every line repeating itself. Empty text clears both.
  *
- * `text` is what a config's `shaders { }` block holds, one or more entries
- * separated by `;` or newlines, so a chain you arrive at by prototyping is a
- * chain you can paste. Refused with a reason in `err`: `in_band_shaders` off,
- * no such pane, or a chain that does not read. */
-bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
-                          const char *text, char *err, size_t errcap);
+ * Counts come back so a caller can say what happened: "ok" alone cannot tell a
+ * block that filled both chains from one whose entries were all dropped. Refused
+ * with a reason in `err`: `in_band_shaders` off, no such pane, or text that does
+ * not read. */
+bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool default_chrome,
+                          const char *text, size_t *nchrome, size_t *ncontent,
+                          char *err, size_t errcap);
 
 /* A preset file -- `contrib/chrome/sine-comet.kdl` and its neighbours -- applied
  * to one pane, both chains at once, routed by each entry's own `where=`. The
