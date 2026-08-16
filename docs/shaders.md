@@ -110,6 +110,15 @@ pane change, and `:paste` prints what you have as a `shaders { }` block for your
 config. What you prototype and what you paste are parsed by the same code, which
 is the point of using the config's syntax for a thing typed at a terminal.
 
+It is a readline prompt, so editing, up/down and ctrl-r work as they do in a
+shell, and history is kept between runs in
+`$XDG_DATA_HOME/sl0ppty/shader-repl.history` -- the chains only, since `:quit` is
+not something you want to press up past. Tab completes the commands, the shader
+names, the property keys and the expression language's own variables and
+functions; `:help` prints the same list at once. A test checks that list against
+`src/shader.c` and `src/expr.c`, because a completion list that has gone stale
+reads as "that is all there is".
+
 **Off by default.** It needs `in_band_shaders true`, because a program that can
 restyle the session it happens to be running in is a hazard first and a
 convenience second: `cat` the wrong file and your panes go dark. With it on, a

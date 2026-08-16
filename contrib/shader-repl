@@ -22,10 +22,18 @@ Commands:
     :clear      take this pane's chain away
     :both       clear both chains
     :paste      print what you have as a `shaders { }` block
+    :help       this list
     :quit       leave (the chain stays until the pane closes)
+
+The prompt is readline's, so it has the editing and history you already know --
+up/down through what you tried, ctrl-r to search it, and history kept across runs
+in `$XDG_DATA_HOME/sl0ppty/shader-repl.history`. Tab completes the commands, the
+shader names, the property keys and the expression language's own variables and
+functions, which is most of what there is to remember.
 
 Python 3, standard library only.
 """
+import atexit
 import os
 import select
 import sys
@@ -33,9 +41,71 @@ import termios
 import time
 import tty
 
+try:
+    import readline
+except ImportError:  # a python built without it: the prompt still works
+    readline = None
+
 OSC = "\033]5577;1;"
 ST = "\033\\"
 TIMEOUT = 2.0
+
+COMMANDS = [":chrome", ":content", ":clear", ":both", ":paste", ":help", ":quit"]
+
+# What there is to complete. Written here rather than asked for, because there is
+# nothing to ask: the session has no verb that lists them. Kept honest by
+# `tests/test_shader_repl.py`, which fails if `src/shader.c` or `src/expr.c`
+# grows a name this list does not have -- a completion list that quietly goes
+# stale is worse than none, because it reads as "that is all there is".
+SHADERS = ["dim", "grayscale", "tint", "vignette", "gradient", "zebra", "ruler",
+           "margin", "spotlight"]
+PROPS = ["amount=", "color=", "channel=", "where=", "at=", "radius=", "band=",
+         "direction="]
+# Values worth offering: the two rects, the three channels.
+VALUES = ['"chrome"', '"content"', '"fg"', '"bg"', '"both"']
+VARS = ["x", "y", "cols", "rows", "curx", "cury", "cursor", "focused", "t",
+        "since"]
+FUNCS = ["min(", "max(", "abs(", "clamp(", "dist("]
+
+HISTORY = os.path.join(
+    os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
+    "sl0ppty", "shader-repl.history")
+
+
+def complete(text, state):
+    """One flat vocabulary. A shader name is only valid first and a variable only
+    inside an expression, but a prompt that guesses which you meant and offers
+    nothing when it guesses wrong is worse company than one that offers
+    everything starting with what you typed."""
+    words = COMMANDS + SHADERS + PROPS + VALUES + VARS + FUNCS
+    hits = [w for w in words if w.startswith(text)]
+    return hits[state] if state < len(hits) else None
+
+
+def setup_readline():
+    """Editing, history across runs, and tab completion. Nothing here is load
+    bearing: without readline the prompt is still a prompt."""
+    if not readline:
+        return
+    os.makedirs(os.path.dirname(HISTORY), exist_ok=True)
+    try:
+        readline.read_history_file(HISTORY)
+    except OSError:
+        pass  # first run, or a home directory we cannot read: not a reason to stop
+    readline.set_history_length(500)
+    atexit.register(write_history)
+    readline.set_completer(complete)
+    # `=`, `"` and `(` end a word: `color="#ff` should complete on `#ff`, and
+    # `clamp(23` should not look like one enormous token.
+    readline.set_completer_delims(' \t\n;=("')
+    readline.parse_and_bind("tab: complete")
+
+
+def write_history():
+    try:
+        readline.write_history_file(HISTORY)
+    except OSError:
+        pass  # a read-only home is not worth a traceback on the way out
 
 
 def send(payload):
@@ -68,6 +138,9 @@ def ask(fd, where, chain):
     send("shader;%s;%s" % (where, chain))
     answer = reply(fd)
     if answer is None:
+        # Whatever half-arrived is not a line anybody typed: drop it, or those
+        # escape bytes become the front of the next thing readline reads.
+        termios.tcflush(fd, termios.TCIFLUSH)
         return ("no answer -- is this pane inside sl0ppty?", False)
     if answer == "ok":
         return ("ok", True)
@@ -100,8 +173,9 @@ def main():
     where = "chrome"
     chains = {"chrome": "", "content": ""}
 
+    setup_readline()
     print("shader-repl: a chain in config syntax, applied to this pane.")
-    print("  :chrome  :content  :clear  :both  :paste  :quit")
+    print("  " + "  ".join(COMMANDS) + ("" if readline else "   (no readline)"))
     try:
         while True:
             try:
@@ -111,6 +185,14 @@ def main():
             line = line.strip()
             if not line:
                 continue
+            # History is for chains. `:quit` and `:paste` are how you drove the
+            # prompt, not what you were working on, and having to press up past
+            # four of them to reach the line you want to edit is the whole
+            # annoyance history exists to remove.
+            if line.startswith((":", "?")) and readline:
+                n = readline.get_current_history_length()
+                if n:
+                    readline.remove_history_item(n - 1)
 
             if line in (":quit", ":q"):
                 break
@@ -119,6 +201,14 @@ def main():
                 continue
             if line == ":paste":
                 print(paste(chains))
+                continue
+            if line in (":help", ":h", "?"):
+                print("  " + "  ".join(COMMANDS))
+                print("  shaders: " + " ".join(SHADERS))
+                print("  keys:    " + " ".join(p.rstrip("=") for p in PROPS))
+                print("  vars:    " + " ".join(VARS))
+                print("  funcs:   " + " ".join(f.rstrip("(") for f in FUNCS))
+                print("  tab completes all of it; up/down and ctrl-r are history")
                 continue
             if line in (":clear", ":both"):
                 targets = ["chrome", "content"] if line == ":both" else [where]

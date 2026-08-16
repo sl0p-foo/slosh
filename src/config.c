@@ -252,6 +252,17 @@ static bool parse_shader_entry(const kdl_node_t *k, color_t default_color,
                                expr_prog_t **expr, char *why, size_t whycap) {
   *expr = NULL;
 
+  /* Every parameter a shader takes is a property, so a bare argument is not a
+   * thing we ignore -- it is a `;` somebody left out. `tint color="#000000"
+   * spotlight` reads to a person as two passes and to KDL as one node with a
+   * spare word, and answering "ok" to that is how you spend ten minutes
+   * wondering why the second one does nothing. */
+  if (k->nargs) {
+    snprintf(why, whycap, "unexpected argument for %s: %s (separate entries with `;`)",
+             k->name, kdl_arg(k, 0, ""));
+    return false;
+  }
+
   /* Where this pass runs. Dropped rather than defaulted when the word is not
    * one we know, for the same reason a bad `amount` is: the entry says what it
    * wants and we cannot do it, and running it over the contents because "chrom"

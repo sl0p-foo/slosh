@@ -188,6 +188,9 @@ def test_a_chain_that_does_not_read_is_refused_with_a_reason():
         ('1;shader;chrome;tint amount="y +"', "bad amount"),
         ('1;shader;chrome;tint channel="blue"', "bad channel"),
         ('1;shader;sideways;tint amount=200', "content or chrome"),
+        # A `;` left out: KDL reads the second name as a spare word on the first
+        # entry, which is the one mistake this syntax makes easy to make.
+        ('1;shader;chrome;tint color="#000000" spotlight', "unexpected argument"),
     ]
     for payload, want in cases:
         with Session(pane(osc(payload)), cols=76, rows=9, config=path) as s:
