@@ -10,6 +10,7 @@ becomes a list of what was true once.
 The rest is the loop itself, driven the way a person drives it -- typed lines,
 history, a tab -- in a real session with a real pty.
 """
+import ast
 import os
 import re
 import subprocess
@@ -34,7 +35,8 @@ def repl_lists():
         body = re.search(r"^%s = (\[[^\]]*\])" % var, src, re.M).group(1)
         return [w.strip().strip('"\'').rstrip("=(").strip('"')
                 for w in re.findall(r'["\'][^"\']+["\']', body)]
-    return {v: names(v) for v in ("COMMANDS", "SHADERS", "PROPS", "VARS", "FUNCS")}
+    return {v: names(v)
+            for v in ("COMMANDS", "SHADERS", "PROPS", "VARS", "CONSTS", "FUNCS")}
 
 
 def source_names(path, pattern):
@@ -70,6 +72,19 @@ def session(cfg_path, data_home):
                    cols=84, rows=16, config=cfg_path, env=env)
 
 
+def test_the_script_is_a_script():
+    """First, because everything below it starts a pane that runs this file: a
+    syntax error otherwise shows up as `IndexError: list index out of range` from
+    a pane that died before printing its prompt, which is a long way from saying
+    line 212 is indented wrong."""
+    try:
+        ast.parse(open(REPL).read())
+        ok, why = True, ""
+    except SyntaxError as exc:
+        ok, why = False, "%s line %s: %s" % (exc.__class__.__name__, exc.lineno, exc.msg)
+    check("contrib/shader-repl parses", ok, why)
+
+
 def test_the_completion_list_matches_the_code():
     lists = repl_lists()
 
@@ -89,6 +104,10 @@ def test_the_completion_list_matches_the_code():
     check("every expression variable can be completed",
           variables <= set(lists["VARS"]),
           "missing: %s" % sorted(variables - set(lists["VARS"])))
+
+    consts = source_names("expr.c", r'\{"([A-Z]+)", \d+\},?\s')
+    check("every constant can be completed", consts <= set(lists["CONSTS"]),
+          "missing: %s" % sorted(consts - set(lists["CONSTS"])))
 
     funcs = source_names("expr.c", r'\{"([a-z]+)", \d, OP_[A-Z]+\}')
     check("every expression function can be completed",
@@ -185,6 +204,7 @@ def test_help_lists_what_there_is():
 
 
 if __name__ == "__main__":
+    test_the_script_is_a_script()
     test_the_completion_list_matches_the_code()
     test_every_offered_shader_is_accepted_by_a_session()
     test_history_survives_the_next_run()

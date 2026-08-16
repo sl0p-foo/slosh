@@ -27,6 +27,28 @@ enum {
 enum { V_X, V_Y, V_COLS, V_ROWS, V_CURX, V_CURY, V_CURSOR, V_FOCUSED, V_T,
        V_SINCE };
 
+/* Angles are counted in degrees here (see `isin`), and pi is not a number in an
+ * angle language -- it is a half turn. So `PI` is 180 and `TAU` is 360, and a
+ * formula written the radian way ports across unchanged: `sin(TAU * x / cols)` is
+ * one cycle across the pane, `PI / 2` is a quarter turn, `PI / 6` is thirty
+ * degrees. It is also *more* exact than radians can be in integers, where
+ * 3.14159 / 6 is 0 and the common fractions of a turn are whole degrees.
+ *
+ * Which is why there is no `deg2rad` or `rad2deg` beside them. There is one angle
+ * unit and these are two of its landmarks; a conversion would have to either lose
+ * the angle (`deg2rad(90)` is 1, and `sin(1)` is nearly nothing) or invent a
+ * second scale for the language to disagree with itself about.
+ *
+ * Spelled-out numbers rather than variables: they read no environment, carry no
+ * dependency, and fold into the program like the literals they are. */
+static const struct {
+  const char *name;
+  int32_t value;
+} CONSTS[] = {
+    {"PI", 180},  /* a half turn */
+    {"TAU", 360}, /* ...and a whole one */
+};
+
 static const struct {
   const char *name;
   int slot;
@@ -219,6 +241,11 @@ static void parse_primary(parser_t *ps, expr_prog_t *pr) {
       return;
     }
 
+    for (size_t i = 0; i < sizeof CONSTS / sizeof *CONSTS; i++) {
+      if (strcmp(CONSTS[i].name, name) != 0) continue;
+      emit(ps, pr, OP_PUSH, CONSTS[i].value);
+      return;
+    }
     for (size_t i = 0; i < sizeof VARS / sizeof *VARS; i++) {
       if (strcmp(VARS[i].name, name) != 0) continue;
       pr->deps |= VARS[i].dep;

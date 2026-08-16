@@ -123,6 +123,11 @@ EXPRS = [
     "abs(sin(x * 9 + t / 6))",
     "clamp(sin(t / 5) + 128, 0, 255)",
     "sin(sin(t / 3))",
+    # pi as an angle: a half turn, in the degrees this language counts in
+    "PI", "TAU", "PI * 2 == TAU",
+    "sin(PI)", "sin(PI / 2)", "sin(PI / 6)", "cos(TAU)",
+    "sin(TAU * x / cols)", "sin(TAU * y / rows + t / 5)",
+    "128 + sin(TAU * t / 4000) / 2",
 ]
 
 

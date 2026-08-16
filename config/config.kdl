@@ -475,6 +475,13 @@ states {
 //                                  breathe with nothing to rescale. Any angle
 //                                  wraps, negative ones included, since `t / 4`
 //                                  does not stop at 360.
+//   constants   PI TAU        180 and 360: pi as an *angle*, which is all it can
+//                             be here -- a half turn and a whole one. So a
+//                             radian-shaped formula ports across as written,
+//                             `sin(TAU * x / cols)` is one cycle over the pane,
+//                             and the common fractions stay exact where
+//                             `3.14159 / 6` in integers would be 0. There is no
+//                             deg2rad/rad2deg: one unit, nothing to convert.
 //
 // There are no loops and no recursion, on purpose: a config cannot spin, and
 // there is nothing to sandbox. An expression that does not compile drops that

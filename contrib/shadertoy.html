@@ -134,6 +134,12 @@
 
 const DEP = { POS: 1, CURSOR: 2, TIME: 4, FOCUS: 8, SIZE: 16 };
 
+/* Pi is not a number in an angle language, it is a half turn -- and angles here
+   are degrees, so `PI` is 180 and `TAU` is 360. A radian-shaped formula ports
+   across unchanged, and the common fractions of a turn stay whole. Same table as
+   src/expr.c, spelled-out numbers rather than variables. */
+const CONSTS = { PI: 180, TAU: 360 };
+
 const VARS = {
   x:       { dep: DEP.POS },
   y:       { dep: DEP.POS },
@@ -206,6 +212,7 @@ function compile(src) {
         ws(); if (src[i] !== ")") fail("expected )"); i++;
         return makeCall(name, args);
       }
+      if (name in CONSTS) { const k = CONSTS[name]; return () => k; }
       const v = VARS[name];
       if (!v) { i = s; fail("unknown name"); }
       deps |= v.dep;

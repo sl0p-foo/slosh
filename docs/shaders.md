@@ -66,6 +66,15 @@ shaders {
 | functions | `min(a,b)` `max(a,b)` `abs(a)` `clamp(v,lo,hi)` |
 | | `dist(x1,y1,x2,y2)` — counts a row double, because a cell is about twice as tall as it is wide |
 | | `sin(deg)` `cos(deg)` — **degrees** in, −255..255 out, so `128 + sin(t / 4) / 2` is a breathe |
+| constants | `PI` = 180, `TAU` = 360 — pi as an *angle*, which is what it is here: a half turn |
+
+`PI` being a half turn is what makes a radian-shaped formula port across as
+written: `sin(TAU * x / cols)` is one cycle over the pane's width, `PI / 2` is a
+quarter turn, `PI / 6` is thirty degrees. It is also *more* exact than radians
+could be in a language with no fractions — a sixth of a turn is 30 whole degrees,
+where `3.14159 / 6` in integers is 0. For the same reason there is no `deg2rad`
+or `rad2deg`: there is one angle unit, and a conversion could only lose the angle
+or invent a second scale to disagree with.
 
 There are no loops and no recursion, on purpose: a config cannot spin and there
 is nothing to sandbox. An expression that does not compile drops that one shader

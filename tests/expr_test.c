@@ -132,6 +132,24 @@ int main(void) {
   eq("128 + sin(270) / 2", 1); /* -255/2 truncates toward zero, so 128 - 127 */
   eq("abs(sin(270))", 255);
 
+  printf("\n-- PI and TAU are angles, not numbers\n");
+  eq("PI", 180);
+  eq("TAU", 360);
+  eq("PI * 2 == TAU", 1);
+  /* The point of the pun: a formula written the radian way works as written. */
+  eq("sin(PI)", 0);
+  eq("sin(PI / 2)", 255);
+  eq("cos(TAU)", 255);
+  eq("sin(TAU * 3 / 4)", -255);
+  /* ...and exactly, which real radians could not manage in integers: a sixth of
+   * a turn is 30 whole degrees, where 3.14159 / 6 would be 0. */
+  eq("sin(PI / 6)", 127);
+  eq("sin(PI / 3)", 221);
+  eq("sin(PI / 4)", 180);
+  /* No conversions, because there is one unit and nothing to convert. */
+  refused("deg2rad is not a thing", "deg2rad(90)");
+  refused("nor rad2deg", "rad2deg(1)");
+
   printf("\n-- variables\n");
   eq("x", 3);
   eq("y", 4);

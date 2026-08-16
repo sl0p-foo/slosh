@@ -65,6 +65,8 @@ PROPS = ["amount=", "color=", "channel=", "where=", "at=", "radius=", "band=",
 VALUES = ['"chrome"', '"content"', '"fg"', '"bg"', '"both"']
 VARS = ["x", "y", "cols", "rows", "curx", "cury", "cursor", "focused", "t",
         "since"]
+# Angles are degrees, so pi is a half turn: `PI` is 180 and `TAU` is 360.
+CONSTS = ["PI", "TAU"]
 FUNCS = ["min(", "max(", "abs(", "clamp(", "dist(", "sin(", "cos("]
 
 HISTORY = os.path.join(
@@ -77,7 +79,7 @@ def complete(text, state):
     inside an expression, but a prompt that guesses which you meant and offers
     nothing when it guesses wrong is worse company than one that offers
     everything starting with what you typed."""
-    words = COMMANDS + SHADERS + PROPS + VALUES + VARS + FUNCS
+    words = COMMANDS + SHADERS + PROPS + VALUES + VARS + CONSTS + FUNCS
     hits = [w for w in words if w.startswith(text)]
     return hits[state] if state < len(hits) else None
 
@@ -207,6 +209,8 @@ def main():
                 print("  shaders: " + " ".join(SHADERS))
                 print("  keys:    " + " ".join(p.rstrip("=") for p in PROPS))
                 print("  vars:    " + " ".join(VARS))
+                print("  consts:  " + " ".join(CONSTS)
+                      + "   (degrees, so PI is a half turn)")
                 print("  funcs:   " + " ".join(f.rstrip("(") for f in FUNCS))
                 print("  tab completes all of it; up/down and ctrl-r are history")
                 continue
