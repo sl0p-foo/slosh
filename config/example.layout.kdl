@@ -1,7 +1,13 @@
-// A session described as a file:  sl0ppty --layout this.kdl
+// A session described as a file:  sl0ppty --layout project.layout.kdl
+//
+// Name them `*.layout.kdl`. The syntax is the same KDL subset the config uses --
+// one parser reads both -- so the extension says how to read the file and the
+// `.layout` says what is in it. Two documents sharing a syntax is only confusing
+// while nothing says which is which: hand this file to `sl0ppty --check` and it
+// tells you it is a layout, and hand a config to `--layout` and it says that too.
 //
 // The same shape can be sent to a running session over the control socket:
-//   sl0ppty cmd '{"cmd":"apply-layout","path":"/path/to/this.kdl"}'
+//   sl0ppty cmd '{"cmd":"apply-layout","path":"/path/to/project.layout.kdl"}'
 //   sl0ppty cmd '{"cmd":"apply-layout","kdl":"layout { tab name=\"x\" { pane } }"}'
 // which is how an orchestrator adds one project tab at a time.
 

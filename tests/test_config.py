@@ -6,6 +6,8 @@ is not that settings apply — it is that a broken config costs a warning and
 never a terminal.
 """
 import os
+import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -484,6 +486,87 @@ def test_an_unknown_theme_name_is_refused_not_ignored():
     os.unlink(conf)
 
 
+def test_a_setting_nobody_knows_is_said_out_loud():
+    """The loader reads a document by asking for the keys it knows, which means a
+    key it does *not* know was invisible: a mistyped setting did nothing quietly,
+    and a whole file of the wrong shape passed as ok."""
+    path = cfg("gap 2\nwobble 3\n")
+    out = subprocess.run([BIN, "--check", path], capture_output=True, text=True)
+    said = out.stderr + out.stdout
+    check("it names the setting it does not know", "unknown setting: wobble" in said,
+          repr(said))
+    check("and the line it is on", ":2:" in said, repr(said))
+    check("and exits non-zero", out.returncode == 1, str(out.returncode))
+    os.unlink(path)
+
+
+def test_the_two_documents_are_told_apart():
+    """A config and a layout share a syntax -- one parser reads both -- so a
+    filename is the only hint, and a filename cannot enforce anything. Each loader
+    says which document it was handed, and both answers come from the same list of
+    settings so they cannot disagree."""
+    lay = cfg('layout {\n  tab name="x" { pane }\n}\n')
+    out = subprocess.run([BIN, "--check", lay], capture_output=True, text=True)
+    said = out.stderr + out.stdout
+    check("a layout handed to --check says it is a layout",
+          "this is a layout, not a config" in said, repr(said))
+    check("...and points at the flag that reads one", "--layout" in said, repr(said))
+
+    conf = cfg("gap 2\ntheme { frame_focus \"#00ff88\" }\n")
+    out2 = subprocess.run(
+        [BIN, "--script", "--cols", "40", "--rows", "8", "--layout", conf,
+         "--", "/bin/sh", "-c", "read x"],
+        input="quit\n", capture_output=True, text=True)
+    said2 = out2.stderr + out2.stdout
+    check("a config handed to --layout says it is a config",
+          "this is a config, not a layout" in said2, repr(said2))
+    check("...and names the setting that gave it away", "`gap` is a setting" in said2,
+          repr(said2))
+
+    # A layout whose own tabs are misspelled is a different mistake, and keeps its
+    # own message rather than being told it is a config.
+    broken = cfg('layout {\n  tabb name="x" { pane }\n}\n')
+    out3 = subprocess.run(
+        [BIN, "--script", "--cols", "40", "--rows", "8", "--layout", broken,
+         "--", "/bin/sh", "-c", "read x"],
+        input="quit\n", capture_output=True, text=True)
+    check("a layout with no tabs still says that",
+          "layout declares no tabs" in (out3.stderr + out3.stdout),
+          repr(out3.stderr[:120]))
+    for p in (lay, conf, broken):
+        os.unlink(p)
+
+
+def test_the_shipped_files_are_what_they_claim():
+    """The example layout is a layout and the reference config is a config, checked
+    by the program rather than by their names."""
+    root = pathlib.Path(__file__).resolve().parent.parent
+    conf = subprocess.run([BIN, "--check", str(root / "config" / "config.kdl")],
+                          capture_output=True, text=True)
+    check("config/config.kdl lints clean", conf.returncode == 0,
+          repr(conf.stderr[:160]))
+    lay = root / "config" / "example.layout.kdl"
+    check("the example layout is named `*.layout.kdl`", lay.exists(), str(lay))
+    out = subprocess.run(
+        [BIN, "--script", "--cols", "60", "--rows", "12", "--layout", str(lay),
+         "--", "/bin/sh", "-c", "read x"],
+        input="tabs\nquit\n", capture_output=True, text=True)
+    check("and it loads as one", '"tabs"' in out.stdout or "api" in out.stdout,
+          repr(out.stdout[:160]) + repr(out.stderr[:120]))
+
+
+def test_the_known_settings_list_cannot_go_stale():
+    """`KNOWN_TOP` is what "unknown setting" is measured against, so a setting added
+    to the loader and not to that list would be reported as unknown -- which is the
+    same silent-ish wrongness one step along."""
+    src = (pathlib.Path(__file__).resolve().parent.parent / "src" / "config.c").read_text()
+    asked = set(re.findall(r'kdl_child\(root, "([a-z_]+)"\)', src))
+    listed = set(re.findall(r'^    "([a-z_]+)",', src[src.index("KNOWN_TOP[] = {"):], re.M))
+    check("every setting the loader reads is in KNOWN_TOP", asked <= listed,
+          "missing: %s" % sorted(asked - listed))
+    check("and the list was actually found", len(listed) > 20, str(len(listed)))
+
+
 if __name__ == "__main__":
     test_geometry()
     test_status_bar_off()
@@ -502,4 +585,8 @@ if __name__ == "__main__":
     test_status_pad_holds_both_bars_off_the_edge()
     test_every_surface_has_its_own_theme_name()
     test_an_unknown_theme_name_is_refused_not_ignored()
+    test_a_setting_nobody_knows_is_said_out_loud()
+    test_the_two_documents_are_told_apart()
+    test_the_shipped_files_are_what_they_claim()
+    test_the_known_settings_list_cannot_go_stale()
     sys.exit(report())

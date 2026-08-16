@@ -16,8 +16,28 @@ layout {
 ```
 
 ```bash
-sl0ppty --layout session.kdl
+sl0ppty --layout project.layout.kdl
 ```
+
+## What to call them
+
+**`*.layout.kdl`.** The syntax is the same KDL subset the config uses — one
+parser reads both files — so the extension says how to read it and `.layout`
+says what is in it, the way `docker-compose.yml` and `tsconfig.json` do it.
+Calling it something else would trade one wrong signal for another: it *is*
+KDL, and an editor that highlights KDL is worth keeping.
+
+A filename cannot enforce anything, so the program says which document it got:
+
+```
+$ sl0ppty --check project.layout.kdl
+  project.layout.kdl:8: this is a layout, not a config: `sl0ppty --layout` reads those
+$ sl0ppty --layout ~/.config/sl0ppty/config.kdl
+sl0ppty: config.kdl: this is a config, not a layout: `gap` is a setting
+```
+
+Both come from the same list of settings the loader reads, so the two answers
+cannot disagree about which file is which.
 
 ## The shape
 
@@ -35,12 +55,12 @@ sl0ppty --layout session.kdl
 - `purpose=` — a label for tooling; see below.
 
 A full annotated example is
-`config/layout.example.kdl`.
+`config/example.layout.kdl`.
 
 ## Writing one back out
 
 ```bash
-sl0ppty -s work cmd '{"cmd":"dump-layout"}'
+sl0ppty -s work cmd '{"cmd":"dump-layout"}' > project.layout.kdl
 ```
 
 writes the session as a layout file: tabs, splits, proportions, directories,
@@ -57,7 +77,7 @@ command, so restoring gives you a fresh one.
 ## Applying one to a running session
 
 ```bash
-sl0ppty -s work cmd '{"cmd":"apply-layout","path":"session.kdl"}'
+sl0ppty -s work cmd '{"cmd":"apply-layout","path":"project.layout.kdl"}'
 sl0ppty -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","replace":true}'
 ```
 

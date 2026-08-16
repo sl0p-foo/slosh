@@ -37,15 +37,18 @@ $ sl0ppty --check                     # the config a session would read
 $ sl0ppty --check themes/mine.kdl     # or one you have not installed yet
 ```
 
-Every problem it found, one per line, with the file and line it happened at:
+Every problem it found, one per line, with the file and line it happened at —
+including a setting it does not know, and a file that turns out to be a
+[layout](layouts.md#what-to-call-them) rather than a config:
 
 ```
   cannot open /home/you/.config/sl0ppty/themes/nope.kdl
-  config.kdl:12: bad prefix: ctrl+nope
-  config.kdl:14: bad key: wobble
-  config.kdl:15: unknown action: fly
+  config.kdl:2: bad prefix: ctrl+nope
+  config.kdl:3: bad key: wobble
+  config.kdl:5: padding takes 1, 2 or 4 values (all, vertical horizontal, or top right bottom left), not 3
+  config.kdl:6: unknown setting: wobble
   themes/mine.kdl:7: unknown shader: bloom
-~/.config/sl0ppty/config.kdl: 5 problems
+~/.config/sl0ppty/config.kdl: 6 problems
 ```
 
 The problems go to stderr and the summary with them. It exits 1 when it has

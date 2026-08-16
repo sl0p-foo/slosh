@@ -1387,6 +1387,83 @@ const char *config_default_path(void) {
  * mistake, and the message says which one you have. */
 #define INCLUDE_MAX_DEPTH 8
 
+/* Every node this file reads at the top level, so that one it does *not* read can
+ * be said out loud. Without this a whole document of the wrong shape -- a layout
+ * handed to `--check`, or `include`d into a config -- passes silently, because a
+ * loader that only asks for what it knows never notices what it was given. A
+ * mistyped setting did the same thing quietly.
+ *
+ * Kept honest by `tests/test_config.py`, which greps this file for the names it
+ * actually asks `kdl_child(root, ...)` for and fails if one is missing here. */
+static const char *const KNOWN_TOP[] = {
+    "include", /* read before the rest, but a name this file understands */
+    "anim_ms",
+    "bell_indicator",
+    "bell_mark",
+    "close_mark",
+    "dim_unfocused",
+    "double_click_ms",
+    "editor",
+    "focus_follows_mouse",
+    "gap",
+    "gap_aspect",
+    "hints",
+    "hover_delay_ms",
+    "in_band_shaders",
+    "keep_dead",
+    "keys",
+    "min_mark",
+    "min_pane",
+    "min_split",
+    "modal_scrim",
+    "newtab_mark",
+    "padding",
+    "pane_buttons",
+    "rounded",
+    "scroll_lines",
+    "shader_dir",
+    "shaders",
+    "shell",
+    "states",
+    "status_bar",
+    "status_line",
+    "status_pad",
+    "theme",
+    "title_align",
+    "title_inset",
+    "toast_ms",
+    "version_banner",
+    "zoom_mark",
+    "zoom_on_mark",
+};
+
+/* Whether a name is one of this file's settings. Public so that the *layout* loader
+ * can tell somebody they handed it a config -- the two documents share a syntax, so
+ * telling them apart has to come from one list rather than two guesses. */
+bool config_is_setting(const char *name) {
+  if (!name) return false;
+  for (size_t i = 0; i < sizeof KNOWN_TOP / sizeof *KNOWN_TOP; i++)
+    if (strcmp(name, KNOWN_TOP[i]) == 0) return true;
+  return false;
+}
+
+/* Named for what a stray node probably *is* rather than only for what it is not: a
+ * `layout` at the top of a document is somebody's session file, and the mistake
+ * worth naming is the one people make. */
+static void complain_unknown_top(config_t *c, const kdl_node_t *root, char *err,
+                                 size_t errcap) {
+  for (size_t i = 0; i < root->nkids; i++) {
+    const kdl_node_t *n = root->kids[i];
+    if (!n || !n->name) continue;
+    if (config_is_setting(n->name)) continue;
+    if (strcmp(n->name, "layout") == 0)
+      complain(c, err, errcap, n->line,
+               "this is a layout, not a config: `sl0ppty --layout` reads those");
+    else
+      complain(c, err, errcap, n->line, "unknown setting: %s", n->name);
+  }
+}
+
 static bool load_into(config_t *c, const char *path, int depth, char *err,
                       size_t errcap);
 
@@ -1507,6 +1584,9 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   /* After the includes, because each of those set it to its own file while it
    * was being read. From here the complaints belong to this file. */
   c->loading = path;
+  /* ...which includes "I have no idea what this document is", so it has to be
+   * said after the file is known and not before. */
+  complain_unknown_top(c, root, err, errcap);
 
   c->gap = (uint16_t)kdl_arg_int(kdl_child(root, "gap"), 0, c->gap);
   c->gap_aspect =

@@ -2265,6 +2265,20 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
   }
 
   if (!made) {
+    /* The other half of telling the two documents apart. A file with `theme` or
+     * `keys` at the top of it is somebody's config, and "declares no tabs" is true
+     * of it in the least useful way -- the same message a layout gets when its own
+     * tabs are misspelled. `config_is_setting` answers from the loader's own list,
+     * so this cannot drift from what a config actually holds. */
+    for (size_t i = 0; i < root->nkids; i++) {
+      const kdl_node_t *n = root->kids[i];
+      if (n && n->name && config_is_setting(n->name)) {
+        if (err)
+          snprintf(err, errcap,
+                   "this is a config, not a layout: `%s` is a setting", n->name);
+        return false;
+      }
+    }
     if (err) snprintf(err, errcap, "layout declares no tabs");
     return false;
   }

@@ -23,7 +23,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 bin="$here/../build/sl0ppty"
 SESSION=${SESSION:-dev}
 state="${XDG_RUNTIME_DIR:-/tmp}/sl0ppty-dev-$SESSION"
-layout="$state/layout.kdl"
+layout="$state/session.layout.kdl"
 flag="$state/restart"
 mkdir -p "$state"
 

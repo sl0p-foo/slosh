@@ -420,6 +420,11 @@ size_t config_parse_chain_file(const char *path, color_t default_color,
                                expr_prog_t **exprs, size_t *nexprs,
                                char *err, size_t errcap);
 
+/* Whether a name is one of the config's own settings. For the layout loader, which
+ * shares this syntax and needs to tell a config apart from a session file -- one
+ * list, so the two answers cannot disagree. */
+bool config_is_setting(const char *name);
+
 /* What a chord does after the leader. Direct bindings answer here too, so
  * pressing the leader first never makes a binding stop working. */
 action_t config_lookup(const config_t *c, int key, uint16_t mods);
