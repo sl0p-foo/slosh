@@ -49,7 +49,8 @@ nothing you click can disagree with what is on screen.
 Tabs stop being navigation somewhere around six projects. `C-a f` opens a picker
 over the whole session — every tab, including panes a small window has collapsed
 out of sight. Type to narrow it by pane title, tab name or
-[purpose](layouts.md#purposes); arrows, `C-n`/`C-p` or tab to move; enter to go.
+[purpose](layouts.md#purposes); arrows, `C-n`/`C-p` or tab to move, `C-u` to clear
+what you typed, enter to go.
 A dot marks where you already are.
 
 ## Panes that were given a command

@@ -42,21 +42,28 @@ the ring, which the language can work out — clockwise from the top-left:
  : y == rows-1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)
 ```
 
-with the perimeter itself `2 * cols + 2 * rows - 4`. Two things fall out of it:
+with the perimeter itself `2 * cols + 2 * rows - 4`. Three things fall out of it:
 
 - `min(d, P - d)` is distance the short way round, so an effect crosses the
   corner it started from instead of stopping at a seam.
 - `(p - head + P) % P` is "how far ahead of the head", which makes an arc rotate
   rather than a blob slide.
+- `sin(TAU * p / P)` is that position **as an angle**, one cycle to the lap — and
+  a sine wraps at the corner for free, where a ramp needs the trick above. Any
+  whole number of lobes (`* 3 / P`) fits the ring exactly, which is what makes a
+  standing wave stand.
 
 There is no way to name a subexpression, so the formula is written out in full —
 which is why a small effect is a long line.
 
-Seven of them are ready to paste in
+Thirteen of them are ready to paste in
 `contrib/chrome`:
-a shine running round the border, drifting sparkles, ripples leaving a corner in
-both directions, a rotating arc, a static gradient, corner glints, and a sheen
-across the title rule.
+a shine running round the border, a sine comet with softer shoulders, marching
+ants, a standing wave, drifting sparkles, ripples leaving a corner in both
+directions, a rotating arc, a bit-drift pattern, a heartbeat, a static gradient,
+corner glints, a sheen across the title rule and an XOR barcode along it. Its
+README has the two techniques they share: the angle idiom above, and overdrive
+then clip (`* 14 - 3000` after a sine) to turn a glow into an arc.
 
 ## A border that says something
 

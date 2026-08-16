@@ -29,9 +29,9 @@ the same object through the same commands, so there is exactly one implementatio
 of what a key does.
 
 That is what makes the tests real: they type keys and assert on the screen a
-client would have seen, rather than on the internals. 700-odd checks in about
-eight seconds, plus unit tests for the parts that are pure functions (the KDL
-parser, the shader pass, the expression compiler).
+client would have seen, rather than on the internals. 1,500-odd checks in about
+thirteen seconds, plus 260 more from unit tests on the parts that are pure
+functions (the KDL parser, the shader pass, the expression compiler).
 
 ## The shape of it
 
@@ -46,5 +46,5 @@ src/shader.c   the colour passes; src/expr.c compiles their strengths
 src/kdl.c      a hand-rolled KDL subset, for configs and layouts
 ```
 
-About 10k lines of C. The vendored terminal core does VT parsing, scrollback,
+About 15k lines of C. The vendored terminal core does VT parsing, scrollback,
 selection, images and key encoding; everything above is ours.

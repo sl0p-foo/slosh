@@ -7,6 +7,9 @@ leader twice sends it to the program in the pane.
 it cannot disagree with your keyboard. `C-a p` opens the same list as a palette
 you can type into.
 
+On a terminal too short for the whole sheet it shows what fits and says how much
+it did not — `+7 more, in docs/keys.md`, which is the table below.
+
 ## Defaults
 
 | key | does |

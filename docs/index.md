@@ -26,8 +26,8 @@ autotools, no libraries. The result is one static binary.
 
 ```bash
 make vendor    # build the vendored terminal core (once, a couple of minutes)
-make           # about a second
-make test      # optional: the full suite, about eight seconds
+make all       # a few seconds
+make test      # optional: the whole suite, about thirteen seconds
 ```
 
 ## Run
@@ -71,4 +71,4 @@ parsing, scrollback, selection, images and key encoding. What sits on top is
 small, recomputes rather than remembers, and is scriptable to the same depth it
 is usable.
 
-About 10k lines of C, no dependencies beyond libc and the vendored core.
+About 15k lines of C, no dependencies beyond libc and the vendored core.

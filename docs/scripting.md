@@ -20,7 +20,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 
 | verb | |
 |---|---|
-| `panes` `tabs` | what exists, with ids, rects, titles, purposes, state |
+| `panes` `tabs` | what exists, with ids, rects, titles, purposes, state. A pane's `tab_id` is what `move-pane` and `select-tab` want; its `tab` is where that tab sits in the strip |
 | `snapshot` | the composited screen, as JSON or `format:"text"` |
 | `deadline` | when the session wants its next frame, in ms, or -1 |
 | `send` | bytes as if typed, decoded like input (`"data":"\\x01\\\\"`) |
@@ -83,8 +83,8 @@ otherwise be answered into a loop, which is exactly what `hello` used to do:
 
 `sl0ppty --script` is the whole program without a terminal: commands on stdin,
 answers on stdout. It is how the test suite works — drive these events, assert
-this screen — which is also why the suite is 700-odd real end-to-end checks that
-finish in eight seconds.
+this screen — which is also why the suite is 1,500-odd real end-to-end checks that
+finish in about thirteen seconds.
 
 ```bash
 $ printf '%s\n' '{"cmd":"split","dir":"cols"}' '{"cmd":"snapshot","format":"text"}' \

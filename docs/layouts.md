@@ -82,7 +82,9 @@ than the pane's: a zoom that named it, and its minimised flag. Carried across, t
 first would zoom a pane that has left and the second would file the arrival in a
 strip nobody asked for. Which tab you are *looking* at does not change.
 
-There is no key for this yet — the mechanism first, the presentation after.
+`C-a >` and `C-a <` push the focused pane one tab along, `C-a b` gives it a tab of
+its own, and a pane can be dragged onto a tab in the strip — see
+[keys](keys.md#defaults) and [the mouse](panes.md#the-mouse).
 
 ## Purposes
 

@@ -40,13 +40,16 @@ $ sl0ppty --check themes/mine.kdl     # or one you have not installed yet
 Every problem it found, one per line, with the file and line it happened at:
 
 ```
-  config.kdl:101: bad prefix: C-a
-  config.kdl:116: bad key: ←
+  cannot open /home/you/.config/sl0ppty/themes/nope.kdl
+  config.kdl:12: bad prefix: ctrl+nope
+  config.kdl:14: bad key: wobble
+  config.kdl:15: unknown action: fly
   themes/mine.kdl:7: unknown shader: bloom
-~/.config/sl0ppty/config.kdl: 3 problems
+~/.config/sl0ppty/config.kdl: 5 problems
 ```
 
-It exits 1 when it has anything to say, so it drops into an editor's compile
+The problems go to stderr and the summary with them. It exits 1 when it has
+anything to say, so it drops into an editor's compile
 step or a pre-commit hook with no glue. A clean run prints what it read — the
 files, the prefix it ended up with, how many bindings — because otherwise a
 config that was never opened and a config with nothing wrong look identical.
@@ -103,7 +106,7 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 | group | what is in it |
 |---|---|
 | geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
-| chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
+| chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` `bell_indicator` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
 | behaviour | `focus_follows_mouse` `scroll_lines` `toast_ms` `hover_delay_ms` `double_click_ms` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
 | colour | `theme { }` |
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
