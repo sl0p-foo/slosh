@@ -1505,13 +1505,15 @@ static void split_node(app_t *a, node_t *leaf, split_dir_t dir, bool before) {
   split_node_with(a, leaf, dir, before, NULL, NULL);
 }
 
-static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
-                               bool before, const char *const *argv,
-                               const char *label) {
-  if (!leaf) return NULL;
-  node_t *fresh = argv ? leaf_new_ex(a, argv, NULL, false, label) : leaf_new(a);
-  if (!fresh) return NULL;
-
+/* Put `node` beside `leaf`, splitting `dir`, on the side `before` names.
+ *
+ * The tree surgery of a split without the pane: `split_node_with` hands it a leaf
+ * it just made, and moving a pane between tabs hands it one that already exists
+ * somewhere else. `t` is the tab `leaf` lives in, because replacing a root has to
+ * land on the right one -- `cur(a)` was right only while the only caller was
+ * splitting the pane you were looking at. */
+static void place_beside(app_t *a, tab_t *t, node_t *leaf, node_t *node,
+                         split_dir_t dir, bool before) {
   /* Growing an existing split in the same direction keeps the tree flat, so
    * three vertical splits are three equal columns rather than 1/2 + 1/4 + 1/4. */
   if (leaf->parent && leaf->parent->dir == dir) {
@@ -1522,8 +1524,8 @@ static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
     size_t slot = before ? at : at + 1;
     memmove(&p->kids[slot + 1], &p->kids[slot],
             (p->nkids - slot) * sizeof *p->kids);
-    p->kids[slot] = fresh;
-    fresh->parent = p;
+    p->kids[slot] = node;
+    node->parent = p;
     p->nkids++;
   } else {
     node_t *sp = calloc(1, sizeof *sp);
@@ -1531,18 +1533,28 @@ static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
     sp->id = ++a->next_id;
     sp->weight = leaf->weight; /* the new split inherits the pane's share */
     leaf->weight = WEIGHT_UNIT;
+    node->weight = WEIGHT_UNIT;
     sp->dir = dir;
     sp->nkids = 2;
     sp->kids = malloc(2 * sizeof *sp->kids);
     sp->kids[before ? 1 : 0] = leaf;
-    sp->kids[before ? 0 : 1] = fresh;
+    sp->kids[before ? 0 : 1] = node;
     sp->parent = leaf->parent;
     if (leaf->parent) replace_child(leaf->parent, leaf, sp);
-    else cur(a)->root = sp;
+    else t->root = sp;
     leaf->parent = sp;
-    fresh->parent = sp;
+    node->parent = sp;
   }
+}
 
+static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
+                               bool before, const char *const *argv,
+                               const char *label) {
+  if (!leaf) return NULL;
+  node_t *fresh = argv ? leaf_new_ex(a, argv, NULL, false, label) : leaf_new(a);
+  if (!fresh) return NULL;
+
+  place_beside(a, cur(a), leaf, fresh, dir, before);
   cur(a)->focus = fresh;
   layout(a);
   return fresh;
@@ -1892,6 +1904,131 @@ bool app_split_pane(app_t *a, uint32_t id, bool rows) {
   if (id && !app_focus_pane(a, id)) return false;
   split_focus(a, rows ? SPLIT_ROWS : SPLIT_COLS);
   return true;
+}
+
+/* Take a leaf out of its tree and leave it whole: the surgery `close_leaf` does,
+ * without the funeral. The pane keeps running the whole time -- nothing is
+ * re-spawned by a move, which is the entire point of moving it rather than opening
+ * one somewhere else and closing this.
+ *
+ * `*emptied` says the tab has nothing left in it. Removing it is the caller's, not
+ * because that is tidier but because removing a tab shifts every index after it,
+ * and a caller holding one has to know. */
+static bool detach_leaf(app_t *a, node_t *leaf, size_t *from, bool *emptied) {
+  size_t ti = tab_of(a, leaf);
+  if (ti == (size_t)-1) return false;
+  tab_t *t = &a->tabs[ti];
+  *from = ti;
+  *emptied = false;
+
+  /* Nothing about this pane should still say where it used to be. A zoom is the
+   * tab's opinion about one of its panes, and a minimised pane is one this tab put
+   * away; carried across, the first would zoom a pane that has left and the second
+   * would land the arrival in a strip nobody asked for. */
+  if (t->zoom == leaf->id) t->zoom = 0;
+  leaf->minimized = false;
+
+  node_t *p = leaf->parent;
+  if (!p) {
+    t->root = NULL;
+    t->focus = NULL;
+    *emptied = true;
+    return true;
+  }
+
+  size_t at = 0;
+  while (at < p->nkids && p->kids[at] != leaf) at++;
+  memmove(&p->kids[at], &p->kids[at + 1],
+          (p->nkids - at - 1) * sizeof *p->kids);
+  p->nkids--;
+  leaf->parent = NULL;
+
+  node_t *survivor = p->kids[0];
+  if (p->nkids == 1) { /* a split with one child is just that child */
+    survivor->parent = p->parent;
+    if (p->parent) replace_child(p->parent, p, survivor);
+    else t->root = survivor;
+    free(p->kids);
+    free(p);
+  }
+  if (t->focus == leaf || t->focus == p) t->focus = first_leaf(survivor);
+  return true;
+}
+
+/* Move a pane into another tab, beside whatever that tab has focused.
+ *
+ * 0 means the focused pane, as everywhere. The destination is named by *id* rather
+ * than index on purpose: emptying the source tab removes it, and every index after
+ * it moves -- an id survives that and an index quietly means a different tab.
+ *
+ * False when there is nothing to do or nowhere to do it: no such pane, no such tab,
+ * or the pane is already in that tab. The tab you are looking at does not change;
+ * whether a caller follows the pane is a question about intent, and this is the
+ * mechanism. */
+bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id, bool rows) {
+  node_t *leaf = pane_id ? pane_by_id(a, pane_id) : cur(a)->focus;
+  if (!leaf || leaf->kind != NODE_LEAF) return false;
+  tab_t *dest = tab_by_id(a, tab_id);
+  if (!dest || !dest->root) return false;
+  size_t src_ti = tab_of(a, leaf);
+  if (src_ti == (size_t)-1 || &a->tabs[src_ti] == dest) return false;
+
+  uint32_t dest_id = dest->id, cur_id = a->tabs[a->cur].id;
+  size_t from;
+  bool emptied = false;
+  if (!detach_leaf(a, leaf, &from, &emptied)) return false;
+  if (emptied) tab_remove(a, from);
+
+  /* Re-found by id, because the removal above may have moved it. */
+  dest = tab_by_id(a, dest_id);
+  if (!dest) { /* cannot happen: the destination is not the tab we emptied */
+    node_free(leaf);
+    return false;
+  }
+  node_t *beside = dest->focus ? dest->focus : first_leaf(dest->root);
+  place_beside(a, dest, beside, leaf, rows ? SPLIT_ROWS : SPLIT_COLS, false);
+  dest->focus = leaf;
+  /* A zoomed destination would hide the arrival behind the pane filling it, which
+   * looks exactly like the move having failed. */
+  dest->zoom = 0;
+
+  /* Stay where we were looking, unless that tab is the one that just went. */
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == cur_id) a->cur = i;
+  layout(a);
+  return true;
+}
+
+/* The same, into a tab of its own. Returns the new tab's id, or 0.
+ *
+ * Worth having as its own call rather than "move to a tab you make first": a pane
+ * that is the only thing in its tab would otherwise have its tab removed from under
+ * the new one, and the order in which those two happen is exactly the bug. */
+uint32_t app_move_pane_to_new_tab(app_t *a, uint32_t pane_id, const char *name) {
+  node_t *leaf = pane_id ? pane_by_id(a, pane_id) : cur(a)->focus;
+  if (!leaf || leaf->kind != NODE_LEAF) return 0;
+  size_t src_ti = tab_of(a, leaf);
+  if (src_ti == (size_t)-1) return 0;
+  /* A pane alone in its tab is already in a tab of its own. */
+  if (!leaf->parent) return 0;
+
+  uint32_t cur_id = a->tabs[a->cur].id;
+  size_t from;
+  bool emptied = false;
+  if (!detach_leaf(a, leaf, &from, &emptied)) return 0;
+  if (emptied) tab_remove(a, from);
+
+  tab_t *t = tab_add(a, name);
+  t->root = leaf;
+  t->focus = leaf;
+  leaf->parent = NULL;
+  leaf->weight = WEIGHT_UNIT;
+  uint32_t id = t->id;
+
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == cur_id) a->cur = i;
+  layout(a);
+  return id;
 }
 
 bool app_close_pane(app_t *a, uint32_t id) {

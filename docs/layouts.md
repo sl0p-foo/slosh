@@ -64,6 +64,26 @@ sl0ppty -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","repl
 Without `replace`, the tabs the file describes are added to what is already
 there.
 
+## Moving a pane between tabs
+
+```bash
+sl0ppty cmd '{"cmd":"move-pane","id":3,"tab":2}'              # beside that tab's focus
+sl0ppty cmd '{"cmd":"move-pane","id":3,"tab":2,"dir":"rows"}' # under it instead
+sl0ppty cmd '{"cmd":"move-pane","id":3,"tab":0,"name":"logs"}' # into a tab of its own
+```
+
+The pane keeps running: same pty, same scrollback, same process — a move is tree
+surgery, not a new pane and a funeral. The destination is a tab **id** rather than
+an index, because a tab whose last pane leaves is removed and every index after it
+shifts; an id survives that.
+
+Two things a move deliberately drops, both of them the old tab's opinion rather
+than the pane's: a zoom that named it, and its minimised flag. Carried across, the
+first would zoom a pane that has left and the second would file the arrival in a
+strip nobody asked for. Which tab you are *looking* at does not change.
+
+There is no key for this yet — the mechanism first, the presentation after.
+
 ## Purposes
 
 A pane or tab can carry a `purpose=` label — `agent:main`, `logs`, `db` — for

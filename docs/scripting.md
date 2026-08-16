@@ -31,6 +31,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `close` `rerun` | `id`, or 0 for the focused pane |
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1` — the way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` `set-name` | tabs, by `id` or `index` |
+| `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`. The pane keeps running — same pty, same scrollback |
 | `set-purpose` | `target:"pane"\|"tab"`, `id`, `purpose` |
 | `dump-layout` `apply-layout` | see [layouts](layouts.md) |
 | `notify` | put a line in the session's status area |

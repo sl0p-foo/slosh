@@ -108,6 +108,25 @@ void app_set_session(app_t *a, const char *name);
  * focusing it, which is what clicking its row does. */
 bool app_minimize(app_t *a, uint32_t id);
 
+/* Move a pane into another tab, beside whatever that tab has focused. 0 means the
+ * focused pane; `rows` puts it under rather than beside. The destination is a tab
+ * *id*, not an index: emptying the source tab removes it and shifts every index
+ * after it, which an id survives.
+ *
+ * The pane keeps running -- nothing is re-spawned, which is the point of moving one
+ * rather than opening another and closing this. False when there is nothing to do:
+ * no such pane, no such tab, or it is already there. Which tab you are looking at
+ * does not change.
+ *
+ * A move drops what the old tab thought about the pane: a zoom naming it, and its
+ * minimised flag. Carried across, the first would zoom a pane that has left and the
+ * second would file the arrival in a strip nobody asked for. */
+bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id, bool rows);
+
+/* The same, into a tab of its own; returns that tab's id, or 0 -- including for a
+ * pane that is already alone in its tab, which has nowhere to go. */
+uint32_t app_move_pane_to_new_tab(app_t *a, uint32_t pane_id, const char *name);
+
 /* Fill the tab with one pane, or put it back. 0 means the focused one. */
 bool app_toggle_zoom(app_t *a, uint32_t id);
 bool app_pane_zoomed(app_t *a, uint32_t id);

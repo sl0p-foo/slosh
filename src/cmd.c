@@ -176,6 +176,21 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     bool had = app_clear_pane_shaders(a, (uint32_t)jv_geti(req, "id", 0));
     return jok_int("cleared", had ? 1 : 0);
   }
+  /* `tab` is an id, `0` a tab of its own -- the same "0 means the obvious thing"
+   * the pane arguments use. `dir` decides beside or under, like `split`. */
+  if (strcmp(cmd, "move-pane") == 0) {
+    uint32_t pid = (uint32_t)jv_geti(req, "id", 0);
+    uint32_t tid = (uint32_t)jv_geti(req, "tab", 0);
+    bool rows = strcmp(jv_gets(req, "dir", "cols"), "rows") == 0;
+    if (!tid) {
+      uint32_t made = app_move_pane_to_new_tab(a, pid, jv_gets(req, "name", ""));
+      if (!made) return jerr("cannot move it to a tab of its own");
+      return jok_int("tab", (long long)made);
+    }
+    if (!app_move_pane_to_tab(a, pid, tid, rows))
+      return jerr("cannot move it there");
+    return jok_int("tab", (long long)tid);
+  }
   if (strcmp(cmd, "new-tab") == 0) {
     uint32_t id = app_new_tab(a, jv_gets(req, "name", ""));
     if (!id) return jerr("cannot create tab");
