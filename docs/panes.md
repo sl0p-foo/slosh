@@ -32,6 +32,10 @@ nothing you click can disagree with what is on screen.
   drag the crossing to move both at once.
 - **Drag a pane by its title** onto another to swap them. Everything it could
   land on greys out; the pane in your hand keeps its colour.
+- **...or onto a tab in the strip** to move it into that tab, or onto the `+` for a
+  tab of its own. The tabs light up as destinations while you carry a pane and the
+  one under the pointer fills; the tab it already lives in does not offer itself. A
+  toast says where it went, since the pane lands somewhere you are not looking.
 - **Double-click a name to rename it in place** — a pane's title or a tab in the
   strip. Enter keeps it, Escape abandons it, empty gives it back to the program.
 - **Drag a tab along the strip** to reorder it. The strip rearranges as you go

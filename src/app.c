@@ -268,6 +268,11 @@ struct app {
     } kind;
     uint32_t src;      /* pane being dragged, or the split being resized */
     uint32_t target;   /* pane under the pointer, for the drop highlight */
+    /* ...or the tab under it, when a pane is dragged over the strip: the same
+     * gesture with a different kind of destination. Never both -- the pointer is
+     * over one thing, and two highlights would be two promises. */
+    uint32_t tab_target;
+    bool new_tab_target; /* the strip's `+`: a tab of its own */
     size_t edge;       /* which boundary of that split */
     uint16_t x, y;     /* where the pointer was at the last event */
     bool moved;        /* a press that never moves is a click */
@@ -3485,6 +3490,9 @@ static bool tab_has_bell(tab_t *t) {
 }
 
 static void draw_tab_strip(app_t *a, screen_t *s) {
+  /* A pane is being carried: the strip is a row of destinations for as long as
+   * that is true. Worked out once rather than per tab. */
+  bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
   uint16_t x = CFG.status_pad;
   uint16_t y = CFG.gap;
 
@@ -3562,6 +3570,21 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     if (!editing && ptr_on(a, x, y, w, 1))
       screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
                   active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
+
+    /* While a pane is in your hand, every tab it does not already live in is
+     * somewhere it could go, and `ptr_on` says nothing during a drag by design --
+     * so the strip has to draw the drop states itself. Same two states the panes
+     * use: all the candidates in the drop colour, and the one under the pointer
+     * filled, because these are all targets and that is the one you are on. */
+    if (dragging_pane) {
+      node_t *held = pane_by_id(a, a->drag.src);
+      bool mine = held && tab_of(a, held) == i;
+      if (!mine) {
+        bool on = a->drag.tab_target == t->id;
+        screen_text(s, x, y, label, on ? TAB_ACTIVE_HOVER_FG : DROP_C,
+                    on ? DROP_C : NO_COLOR, attrs | ATTR_BOLD);
+      }
+    }
     char action[48];
     snprintf(action, sizeof action, "tab:%u", t->id);
     hit_add(&s->hits, x, y, w, 1, action);
@@ -3586,6 +3609,11 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
       uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
       if (ptr_on(a, x, y, w, 1))
         screen_text(s, x, y, btn, TAB_HOVER, NO_COLOR, ATTR_BOLD);
+      /* The button that makes a tab is also a place to drop a pane into one. */
+      if (dragging_pane)
+        screen_text(s, x, y, btn,
+                    a->drag.new_tab_target ? TAB_ACTIVE_HOVER_FG : DROP_C,
+                    a->drag.new_tab_target ? DROP_C : NO_COLOR, ATTR_BOLD);
       hit_add(&s->hits, x, y, w, 1, "newtab");
     }
   }
@@ -4451,6 +4479,39 @@ static bool push_pane_a_tab(app_t *a, bool forward) {
   else snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
   app_toast(a, msg);
   return true;
+}
+
+/* A pane dropped on the tab strip. The keys say this with a word and a drag says it
+ * with a gesture; both end in the same two calls.
+ *
+ * The toast matters more here than for a key: the pane leaves the tab you are
+ * looking at and lands somewhere you are not, so without a word the screen simply
+ * shows one fewer pane. */
+static void drop_pane_on_strip(app_t *a) {
+  uint32_t src = a->drag.src;
+  if (a->drag.new_tab_target) {
+    app_toast(a, app_move_pane_to_new_tab(a, src, "")
+                     ? "into a tab of its own"
+                     : "it is the only pane in this tab");
+    return;
+  }
+  uint32_t tid = a->drag.tab_target;
+  char name[64] = {0};
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == tid) snprintf(name, sizeof name, "%s", a->tabs[i].name);
+
+  if (!app_move_pane_to_tab(a, src, tid, false)) {
+    /* The one refusal a drag can reach: the tab it is already in. */
+    app_toast(a, "it is already in that tab");
+    return;
+  }
+  size_t at = 0;
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == tid) at = i;
+  char msg[128];
+  if (name[0]) snprintf(msg, sizeof msg, "moved to tab %zu (%s)", at + 1, name);
+  else snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
+  app_toast(a, msg);
 }
 
 static bool run_action(app_t *a, action_t act);
@@ -5347,13 +5408,31 @@ void app_event(app_t *a, const input_event_t *ev) {
                 to = a->ntabs - 1; /* past the last tab means last */
               if (to != (size_t)-1) move_tab(a, from, to);
             }
+          } else if (a->drag.kind == DRAG_TITLE && action &&
+                     strncmp(action, "tab:", 4) == 0) {
+            /* Over the strip: this pane is going to that tab. */
+            a->drag.tab_target = (uint32_t)strtoul(action + 4, NULL, 10);
+            a->drag.new_tab_target = false;
+            a->drag.target = 0;
+          } else if (a->drag.kind == DRAG_TITLE && action &&
+                     strcmp(action, "newtab") == 0) {
+            /* The button that makes a tab, used as somewhere to put one pane. */
+            a->drag.new_tab_target = true;
+            a->drag.tab_target = 0;
+            a->drag.target = 0;
           } else if (action && strncmp(action, "title:", 6) == 0) {
             a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
+            a->drag.tab_target = 0;
+            a->drag.new_tab_target = false;
           } else if (action && strncmp(action, "panetitle:", 10) == 0) {
             /* Dropping onto a pane's name is dropping onto that pane. */
             a->drag.target = (uint32_t)strtoul(action + 10, NULL, 10);
+            a->drag.tab_target = 0;
+            a->drag.new_tab_target = false;
           } else if (action && strncmp(action, "pane:", 5) == 0) {
             a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
+            a->drag.tab_target = 0;
+            a->drag.new_tab_target = false;
           }
           a->drag.x = ev->mx;
           a->drag.y = ev->my;
@@ -5394,10 +5473,17 @@ void app_event(app_t *a, const input_event_t *ev) {
               pane_select_done(n->pane);
             }
           }
-          if (a->drag.kind == DRAG_TITLE && a->drag.target != a->drag.src)
+          if (a->drag.kind == DRAG_TITLE &&
+              (a->drag.tab_target || a->drag.new_tab_target)) {
+            /* Dropped on the strip: the pane changes tab rather than places. */
+            drop_pane_on_strip(a);
+          } else if (a->drag.kind == DRAG_TITLE &&
+                     a->drag.target != a->drag.src) {
             swap_panes(a, a->drag.src, a->drag.target);
+          }
           a->drag.kind = DRAG_NONE;
-          a->drag.src = a->drag.target = 0;
+          a->drag.src = a->drag.target = a->drag.tab_target = 0;
+          a->drag.new_tab_target = false;
         }
         break; /* a drag owns the mouse until the button comes up */
       }

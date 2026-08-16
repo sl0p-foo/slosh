@@ -349,6 +349,153 @@ def test_the_sheet_and_the_palette_know_about_them():
               repr([l.strip() for l in s.snapshot().text if "own" in l]))
 
 
+# ---- dragging one onto the strip ----------------------------------------------
+#
+# The gesture the strip was already asking for: it is a row of drop targets during
+# a tab drag, and a pane in your hand is a thing that can go in a tab.
+
+
+def strip_hits(s):
+    """Where the tabs and the `+` are, by action."""
+    return {h["action"]: h for h in s.snapshot().hits
+            if h["action"].startswith("tab:") or h["action"] == "newtab"}
+
+
+def title_of(s, pane_id):
+    return [h for h in s.snapshot().hits
+            if h["action"] == "title:%d" % pane_id][0]
+
+
+def drag_pane_to(s, pane_id, hit, release=True):
+    """Press a pane's title, move onto `hit`, and let go. Motion is what arms a
+    drag: a press that never moves is still the click that focused the pane."""
+    th = title_of(s, pane_id)
+    s.send(r"\e[<0;%d;%dM" % (th["x"] + 3, th["y"] + 1))
+    s.settle(30)
+    s.send(r"\e[<32;%d;%dM" % (hit["x"] + 2, hit["y"] + 1))
+    s.settle(30)
+    if release:
+        s.send(r"\e[<0;%d;%dm" % (hit["x"] + 2, hit["y"] + 1))
+        s.settle(60)
+
+
+def test_dragging_a_pane_onto_a_tab_moves_it_there():
+    with Session(ECHO, cols=90, rows=18) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[0])
+        s.settle(40)
+        mover = by_tab(s)[tabs[0]][1]
+
+        drag_pane_to(s, mover, strip_hits(s)["tab:%d" % tabs[1]])
+        check("the pane is in the tab it was dropped on",
+              mover in by_tab(s)[tabs[1]], str(by_tab(s)))
+        check("and it says where it went", "moved to tab" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-120:]))
+        check("nothing was created or lost",
+              sum(len(v) for v in by_tab(s).values()) == 3, str(by_tab(s)))
+
+
+def test_dragging_one_onto_the_plus_gives_it_a_tab():
+    """The button that makes a tab, used as somewhere to put one pane."""
+    with Session(ECHO, cols=90, rows=18) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[0])
+        s.settle(40)
+        mover = by_tab(s)[tabs[0]][1]
+
+        drag_pane_to(s, mover, strip_hits(s)["newtab"])
+        made = [t["id"] for t in s.tabs() if t["id"] not in tabs]
+        check("a tab was made for it", len(made) == 1, str(s.tabs()))
+        check("with the pane in it", by_tab(s).get(made[0]) == [mover],
+              str(by_tab(s)))
+        check("and it says so", "tab of its own" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-120:]))
+
+
+def test_the_strip_shows_where_it_would_land():
+    """`ptr_on` reports nothing during a drag by design, so the strip draws the drop
+    states itself -- the same two the panes use. Every tab the pane does not already
+    live in is a candidate; the one under the pointer is filled."""
+    with Session(ECHO, cols=90, rows=18) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[0])
+        s.settle(40)
+        mover = by_tab(s)[tabs[0]][1]
+        hits = strip_hits(s)
+        own, other = hits["tab:%d" % tabs[0]], hits["tab:%d" % tabs[1]]
+        idle = s.snapshot().style_at(other["x"] + 1, other["y"])
+
+        # Hold it over the *other* tab.
+        drag_pane_to(s, mover, other, release=False)
+        mid = s.snapshot()
+        on = mid.style_at(other["x"] + 1, other["y"])
+        mine = mid.style_at(own["x"] + 1, own["y"])
+        plus = mid.style_at(hits["newtab"]["x"] + 1, hits["newtab"]["y"])
+        check("the tab under the pointer is filled",
+              on and on.get("bg") and on["bg"] != (idle or {}).get("bg"),
+              "%s -> %s" % (idle, on))
+        check("the `+` says it is a candidate too",
+              plus and plus.get("fg") == on.get("bg"), str(plus))
+        check("and the tab it already lives in does not offer itself",
+              mine and mine.get("fg") != on.get("bg"), str(mine))
+
+        # Leaving the strip takes the offer back: dragging away is not a drop.
+        pane = [p for p in s.panes() if p["id"] == mover][0]
+        s.send(r"\e[<32;%d;%dM" % (pane["x"] + 4, pane["y"] + 4))
+        s.settle(40)
+        after = s.snapshot().style_at(other["x"] + 1, other["y"])
+        s.send(r"\e[<0;%d;%dm" % (pane["x"] + 4, pane["y"] + 4))
+        s.settle(40)
+        check("off the strip, no tab is filled",
+              not after or not after.get("bg") or after.get("bg") == (idle or {}).get("bg"),
+              str(after))
+        check("and the pane stayed where it was", mover in by_tab(s)[tabs[0]],
+              str(by_tab(s)))
+
+
+def test_dropping_a_pane_on_its_own_tab_says_so():
+    """The one refusal a drag can reach, and it should not be silent."""
+    with Session(ECHO, cols=90, rows=18) as s:
+        tabs = two_tabs(s)
+        s.until_text("alive")
+        s.api("select-tab", id=tabs[0])
+        s.settle(40)
+        before = by_tab(s)
+        mover = before[tabs[0]][1]
+
+        drag_pane_to(s, mover, strip_hits(s)["tab:%d" % tabs[0]])
+        check("nothing moved", by_tab(s) == before, "%s -> %s" % (before, by_tab(s)))
+        check("and it says why", "already in that tab" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-120:]))
+
+
+def test_dragging_a_pane_onto_a_pane_still_swaps_them():
+    """The gesture that was already there has to keep working: the strip is a new
+    kind of destination, not a replacement for the old one."""
+    with Session(ECHO, cols=90, rows=18) as s:
+        s.settle()
+        s.key("\\\\")
+        s.settle(40)
+        s.until_text("alive")
+        panes = sorted(s.panes(), key=lambda q: q["x"])
+        left, right = panes[0], panes[1]
+
+        th = title_of(s, left["id"])
+        s.send(r"\e[<0;%d;%dM" % (th["x"] + 3, th["y"] + 1))
+        s.settle(30)
+        s.send(r"\e[<32;%d;%dM" % (right["x"] + 5, right["y"] + 3))
+        s.settle(30)
+        s.send(r"\e[<0;%d;%dm" % (right["x"] + 5, right["y"] + 3))
+        s.settle(60)
+        now = sorted(s.panes(), key=lambda q: q["x"])
+        check("the two panes swapped places",
+              now[0]["id"] == right["id"] and now[1]["id"] == left["id"],
+              str([(p["id"], p["x"]) for p in now]))
+
+
 if __name__ == "__main__":
     test_a_pane_moves_and_keeps_running()
     test_it_lands_beside_the_destination_focus()
@@ -362,4 +509,9 @@ if __name__ == "__main__":
     test_one_tab_has_nowhere_to_push_to()
     test_pushing_the_last_pane_out_takes_the_tab_with_it()
     test_the_sheet_and_the_palette_know_about_them()
+    test_dragging_a_pane_onto_a_tab_moves_it_there()
+    test_dragging_one_onto_the_plus_gives_it_a_tab()
+    test_the_strip_shows_where_it_would_land()
+    test_dropping_a_pane_on_its_own_tab_says_so()
+    test_dragging_a_pane_onto_a_pane_still_swaps_them()
     sys.exit(report())

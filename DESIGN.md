@@ -304,7 +304,7 @@ layout from before it, until the mouse moved and corrected itself. Same lesson
 as the hit list, one level up: do not remember what you can derive from the
 frame you are drawing.
 
-### One drag machine, three verbs (M8)
+### One drag machine, four verbs (M8)
 
 Pane sizes are **weights**, so an even split is simply equal weights and
 resizing is not a special case of anything: the layout pass stays the same
@@ -347,6 +347,16 @@ what is on screen:
 | a frame's top row | `draw_frame` | swap this pane with the one you drop it on |
 | the gap between two children | `draw_node`, from the rects they were just given | move that boundary |
 | a tab in the strip | `draw_tab_strip` | move it to where you drop it |
+| ...and a *pane* dropped on a tab | `draw_tab_strip` again | move the pane into that tab; onto the `+`, into one of its own |
+
+The fourth is the third one's target read the other way round, which is why it cost
+almost nothing: the strip was already a row of drop targets and a pane in your hand
+was already a thing being carried somewhere. `ptr_on` deliberately reports nothing
+during a drag, so the strip draws the two drop states itself — every tab the pane
+does not already live in as a candidate, the one under the pointer filled — which
+are the states the panes were already using for the same question. A pane cannot be
+dropped on the tab it is in, and that refusal is said out loud rather than looking
+like a drag that failed to take.
 
 The tab drag reorders **as you go** rather than dropping at the end. The strip
 is the only thing that could show an insertion point, and a strip already
