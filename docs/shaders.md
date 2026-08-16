@@ -65,6 +65,7 @@ shaders {
 | | `a ? b : c` — both sides are evaluated, then one is chosen |
 | functions | `min(a,b)` `max(a,b)` `abs(a)` `clamp(v,lo,hi)` |
 | | `dist(x1,y1,x2,y2)` — counts a row double, because a cell is about twice as tall as it is wide |
+| | `sin(deg)` `cos(deg)` — **degrees** in, −255..255 out, so `128 + sin(t / 4) / 2` is a breathe |
 
 There are no loops and no recursion, on purpose: a config cannot spin and there
 is nothing to sandbox. An expression that does not compile drops that one shader

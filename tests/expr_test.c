@@ -106,6 +106,32 @@ int main(void) {
   eq("x ^ y", 7);
   eq("(x ^ y) & 1", 1);
 
+  printf("\n-- sin and cos: degrees in, -255..255 out\n");
+  eq("sin(0)", 0);
+  eq("sin(30)", 127); /* round(255 * 0.5) is 127, not 128: 127.5 rounds down */
+  eq("sin(90)", 255);
+  eq("sin(180)", 0);
+  eq("sin(270)", -255);
+  eq("cos(0)", 255);
+  eq("cos(90)", 0);
+  eq("cos(180)", -255);
+  /* Symmetry, so the four quadrants are one curve and not four. */
+  eq("sin(45) - sin(135)", 0);
+  eq("sin(30) + sin(210)", 0);
+  eq("cos(60) - sin(30)", 0);
+  /* Any angle at all: wrapped, including negative ones, because `t / 4` does not
+   * stop at 360 and an expression that dies at one turn is no use for animation. */
+  eq("sin(360)", 0);
+  eq("sin(450)", 255);
+  eq("sin(0 - 90)", -255);
+  eq("sin(0 - 450)", -255);
+  eq("sin(36000 + 90)", 255);
+  /* The shape a strength actually wants: a breathe centred half way up, which is
+   * why the range is the same 255 the amounts use. */
+  eq("128 + sin(90) / 2", 255);
+  eq("128 + sin(270) / 2", 1); /* -255/2 truncates toward zero, so 128 - 127 */
+  eq("abs(sin(270))", 255);
+
   printf("\n-- variables\n");
   eq("x", 3);
   eq("y", 4);

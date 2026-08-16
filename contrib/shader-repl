@@ -65,7 +65,7 @@ PROPS = ["amount=", "color=", "channel=", "where=", "at=", "radius=", "band=",
 VALUES = ['"chrome"', '"content"', '"fg"', '"bg"', '"both"']
 VARS = ["x", "y", "cols", "rows", "curx", "cury", "cursor", "focused", "t",
         "since"]
-FUNCS = ["min(", "max(", "abs(", "clamp(", "dist("]
+FUNCS = ["min(", "max(", "abs(", "clamp(", "dist(", "sin(", "cos("]
 
 HISTORY = os.path.join(
     os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),

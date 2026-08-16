@@ -114,6 +114,15 @@ EXPRS = [
     "~x & 255",
     "t >> 6 & 15",
     "(x * 7 ^ y * 13) & 31",
+    # trig: degrees in, -255..255 out, from a table both sides share
+    "sin(0)", "sin(30)", "sin(45)", "sin(90)", "sin(180)", "sin(270)",
+    "sin(359)", "sin(360)", "sin(450)", "sin(0 - 30)", "sin(0 - 400)",
+    "cos(0)", "cos(90)", "cos(180)", "cos(270)", "cos(0 - 90)",
+    "sin(x * 40)", "cos(y * 37)", "sin(t / 4)", "sin(t) + cos(t)",
+    "128 + sin(t / 4) / 2",
+    "abs(sin(x * 9 + t / 6))",
+    "clamp(sin(t / 5) + 128, 0, 255)",
+    "sin(sin(t / 3))",
 ]
 
 
@@ -129,6 +138,9 @@ def rand_exprs(n, seed=20260814):
             f"({a} {rng.choice(['+', '-', '*', '/', '%', '&', '|', '^'])} {b}) * 2",
             f"{a} {rng.choice(['<<', '>>'])} ({b} % 6)",
             f"({a} ^ {b}) & {c}",
+            f"sin({a} * 3 + {b})",
+            f"cos({a} - {b})",
+            f"128 + sin({a} * {rng.choice(['2', '5', '11'])}) / 2",
             f"clamp({a} * {rng.choice([2, 3, 9])} - {b}, 0, 255)",
             f"({a} {rng.choice(['<', '>', '==', '<=', '!='])} {b}) * {c}",
             f"min({a}, {b}) + max({b}, {c})",

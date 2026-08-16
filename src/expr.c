@@ -19,7 +19,7 @@ enum {
    * contrib/shadertoy.html reimplements this language in JS and a test compares
    * the two, so `x << 33` has to mean the same thing in both. */
   OP_BAND, OP_BXOR, OP_BOR, OP_BNOT, OP_SHL, OP_SHR,
-  OP_MIN, OP_MAX, OP_ABS, OP_CLAMP, OP_DIST,
+  OP_MIN, OP_MAX, OP_ABS, OP_CLAMP, OP_DIST, OP_SIN, OP_COS,
   OP_SELECT, /* cond a b -> a or b, both already evaluated */
 };
 
@@ -190,6 +190,7 @@ static void parse_primary(parser_t *ps, expr_prog_t *pr) {
       } FNS[] = {
           {"min", 2, OP_MIN},   {"max", 2, OP_MAX},   {"abs", 1, OP_ABS},
           {"clamp", 3, OP_CLAMP}, {"dist", 4, OP_DIST},
+          {"sin", 1, OP_SIN},   {"cos", 1, OP_COS},
       };
       for (size_t i = 0; i < sizeof FNS / sizeof *FNS; i++) {
         if (strcmp(FNS[i].name, name) != 0) continue;
@@ -376,6 +377,40 @@ static void parse_expr(parser_t *ps, expr_prog_t *pr) {
   emit(ps, pr, OP_SELECT, 0);
 }
 
+
+/* ---- trigonometry, in the only arithmetic this language has ---------------
+ *
+ * `sin(d)` and `cos(d)` take **degrees** and answer -255..255. Degrees because
+ * they are what a person writing a config guesses, and 255 because that is the
+ * strength scale everything else works in: `128 + sin(t / 4) / 2` is a breathe
+ * centred half way up, with nothing to rescale.
+ *
+ * A quarter turn of round(255*sin) at one-degree steps, with the other three
+ * quadrants by symmetry. No interpolation: the argument is an integer and there
+ * is nothing between two degrees to interpolate. A table rather than a
+ * polynomial for one reason -- contrib/shadertoy.html has to answer identically,
+ * and identical data with identical reduction cannot drift the way two
+ * approximations of the same curve do.
+ */
+static const int16_t SIN_Q[91] = {
+      0,   4,   9,  13,  18,  22,  27,  31,  35,  40,  44,  49,  53,
+     57,  62,  66,  70,  75,  79,  83,  87,  91,  96, 100, 104, 108,
+    112, 116, 120, 124, 127, 131, 135, 139, 143, 146, 150, 153, 157,
+    160, 164, 167, 171, 174, 177, 180, 183, 186, 190, 192, 195, 198,
+    201, 204, 206, 209, 211, 214, 216, 219, 221, 223, 225, 227, 229,
+    231, 233, 235, 236, 238, 240, 241, 243, 244, 245, 246, 247, 248,
+    249, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255, 255,
+};
+
+static int32_t isin(int32_t deg) {
+  int32_t d = deg % 360;
+  if (d < 0) d += 360;
+  if (d <= 90) return SIN_Q[d];
+  if (d <= 180) return SIN_Q[180 - d];
+  if (d <= 270) return -SIN_Q[d - 180];
+  return -SIN_Q[360 - d];
+}
+
 /* ---- VM ----------------------------------------------------------------- */
 
 static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
@@ -408,6 +443,8 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
       case OP_NOT: if (sp) st[sp - 1] = !st[sp - 1]; break;
       case OP_BNOT: if (sp) st[sp - 1] = (int32_t)~(uint32_t)st[sp - 1]; break;
       case OP_ABS: if (sp) st[sp - 1] = st[sp - 1] < 0 ? -st[sp - 1] : st[sp - 1]; break;
+      case OP_SIN: if (sp) st[sp - 1] = isin(st[sp - 1]); break;
+      case OP_COS: if (sp) st[sp - 1] = isin(st[sp - 1] + 90); break;
       default: {
         int need = in->op == OP_CLAMP ? 3 : in->op == OP_DIST ? 4
                    : in->op == OP_SELECT ? 3 : 2;
@@ -505,6 +542,8 @@ static bool stack_fits(const expr_prog_t *pr) {
       case OP_NEG:
       case OP_NOT:
       case OP_BNOT:
+      case OP_SIN:
+      case OP_COS:
       case OP_ABS: break;
       case OP_CLAMP:
       case OP_SELECT: sp -= 2; break;

@@ -109,6 +109,8 @@
     <code>&amp; | ^ ~ &lt;&lt; &gt;&gt;</code> on the 32-bit value, binding tighter
     than comparison, so <code>x &amp; 7 == 0</code> reads as it looks<br>
     <code>a ? b : c</code> &nbsp; <code>min max abs clamp dist</code><br>
+    <code>sin cos</code> take <em>degrees</em> and answer -255..255, so
+    <code>128 + sin(t / 4) / 2</code> is a breathe<br>
     <code>dist</code> counts a row double, because a cell is about twice as
     tall as it is wide.
   </p>
@@ -145,7 +147,29 @@ const VARS = {
   since:   { dep: DEP.TIME },
 };
 
-const FNS = { min: 2, max: 2, abs: 1, clamp: 3, dist: 4 };
+const FNS = { min: 2, max: 2, abs: 1, clamp: 3, dist: 4, sin: 1, cos: 1 };
+  /* Degrees in, -255..255 out. The same quarter-turn table src/expr.c carries and
+     the same reduction: identical data cannot drift the way two approximations of
+     one curve would, and a preview that disagrees with the compiler is worse than
+     no preview. */
+  const SIN_Q = [
+    0,   4,   9,  13,  18,  22,  27,  31,  35,  40,  44,  49,  53,
+   57,  62,  66,  70,  75,  79,  83,  87,  91,  96, 100, 104, 108,
+  112, 116, 120, 124, 127, 131, 135, 139, 143, 146, 150, 153, 157,
+  160, 164, 167, 171, 174, 177, 180, 183, 186, 190, 192, 195, 198,
+  201, 204, 206, 209, 211, 214, 216, 219, 221, 223, 225, 227, 229,
+  231, 233, 235, 236, 238, 240, 241, 243, 244, 245, 246, 247, 248,
+  249, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255, 255
+  ];
+  const isin = (deg) => {
+    let d = deg % 360;
+    if (d < 0) d += 360;
+    if (d <= 90) return SIN_Q[d];
+    if (d <= 180) return SIN_Q[180 - d];
+    if (d <= 270) return -SIN_Q[d - 180];
+    return -SIN_Q[360 - d];
+  };
+
 
 function compile(src) {
   let i = 0, deps = 0;
@@ -195,6 +219,8 @@ function compile(src) {
       case "min":   return (e) => Math.min(a[0](e), a[1](e));
       case "max":   return (e) => Math.max(a[0](e), a[1](e));
       case "abs":   return (e) => Math.abs(a[0](e));
+      case "sin":   return (e) => isin(a[0](e));
+      case "cos":   return (e) => isin(a[0](e) + 90);
       case "clamp": return (e) => { const v = a[0](e), lo = a[1](e), hi = a[2](e);
                                     return v < lo ? lo : v > hi ? hi : v; };
       /* A row counts double: a cell is about twice as tall as it is wide, and
