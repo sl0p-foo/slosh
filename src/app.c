@@ -464,11 +464,37 @@ static void on_pane_shader(app_t *a, pane_t *p, const char *payload) {
   pane_write(p, reply, strlen(reply));
 }
 
+/* `shader-load;<path>`: the file's `shaders { }` block, on this pane. Answered with
+ * how much of it ran, because "ok" alone cannot tell a preset that filled both
+ * chains from a file whose entries were all dropped for one bad word. */
+static void on_pane_shader_load(app_t *a, pane_t *p, const char *payload) {
+  struct bypane b = {p, NULL};
+  walk_all(a, bypane_cb, &b);
+  if (!b.found) return;
+
+  char err[192] = {0}, reply[320];
+  size_t nchrome = 0, ncontent = 0;
+  bool ok = app_load_pane_shaders(a, b.found->id, payload, &nchrome, &ncontent,
+                                  err, sizeof err);
+  if (ok)
+    snprintf(reply, sizeof reply,
+             "\033]5577;1;shader-reply;ok;%zu chrome, %zu content\033\\", nchrome,
+             ncontent);
+  else
+    snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;error;%s\033\\",
+             err[0] ? err : "refused");
+  pane_write(p, reply, strlen(reply));
+}
+
 static void on_pane_osc(pane_t *p, const char *verb, const char *payload,
                         void *ud) {
   app_t *a = ud;
   if (strcmp(verb, "shader") == 0) {
     on_pane_shader(a, p, payload);
+    return;
+  }
+  if (strcmp(verb, "shader-load") == 0) {
+    on_pane_shader_load(a, p, payload);
     return;
   }
   if (strcmp(verb, "purpose") != 0) return;
@@ -2895,6 +2921,79 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
  * Refused, with a reason, when `in_band_shaders` is off -- a program restyling
  * itself by accident is exactly what that decision was about, and the answer is
  * a line of config rather than a rule nobody can lift. */
+/* A preset file, applied to this pane: both chains at once, routed by each entry's
+ * own `where=`. The session reads the file, because the session has the parser --
+ * a program that wants to prototype should not have to reimplement KDL, and a
+ * second reader of the format would be a second answer about what a file says.
+ *
+ * Gated like setting a chain by hand, and for the same reason: this is the program
+ * in the pane restyling the pane. Relative paths resolve against the *session's*
+ * working directory, which is why `contrib/shader-repl` sends an absolute one --
+ * the pane's own cwd is the pane's business and the session cannot see it. */
+bool app_load_pane_shaders(app_t *a, uint32_t pane_id, const char *path,
+                           size_t *nchrome, size_t *ncontent, char *err,
+                           size_t errcap) {
+  if (nchrome) *nchrome = 0;
+  if (ncontent) *ncontent = 0;
+  if (err && errcap) err[0] = 0;
+  if (!CFG.in_band_shaders) {
+    if (err && errcap) snprintf(err, errcap, "in_band_shaders is off");
+    return false;
+  }
+  node_t *n = pane_by_id(a, pane_id ? pane_id : app_focused_pane_id(a));
+  if (!n) {
+    if (err && errcap) snprintf(err, errcap, "no such pane");
+    return false;
+  }
+  if (!path || !path[0]) {
+    if (err && errcap) snprintf(err, errcap, "no path");
+    return false;
+  }
+
+  /* Both chains built beside the live ones and swapped in together, so a file
+   * that turns out to be unreadable half way through leaves the pane as it was
+   * rather than wearing the half that parsed. */
+  inband_chain_t con = {0}, chr = {0};
+  expr_prog_t *exprs[SHADE_MAX * 2];
+  size_t nexprs = 0;
+  size_t got = config_parse_chain_file(path, CFG.frame_focus, con.sh, &con.n,
+                                       chr.sh, &chr.n, exprs, &nexprs, err,
+                                       errcap);
+  if (!got) {
+    for (size_t i = 0; i < nexprs; i++) expr_free(exprs[i]);
+    if (err && errcap && !err[0]) snprintf(err, errcap, "nothing in it to run");
+    return false;
+  }
+
+  /* The programs belong to whichever chain holds the shader that points at one.
+   * Walking the two chains rather than trusting the order they came back in: a
+   * chain that frees a program another chain is still using is the one bug in
+   * this that would not show up until the next repaint. */
+  for (size_t i = 0; i < nexprs; i++) {
+    bool mine = false;
+    for (size_t j = 0; j < chr.n && !mine; j++)
+      if (chr.sh[j].amount_expr == exprs[i]) {
+        chr.exprs[chr.nexprs++] = exprs[i];
+        mine = true;
+      }
+    for (size_t j = 0; j < con.n && !mine; j++)
+      if (con.sh[j].amount_expr == exprs[i]) {
+        con.exprs[con.nexprs++] = exprs[i];
+        mine = true;
+      }
+    if (!mine) expr_free(exprs[i]); /* its entry was dropped */
+  }
+
+  chain_clear(&n->chrome_chain);
+  chain_clear(&n->content_chain);
+  n->chrome_chain = chr;
+  n->content_chain = con;
+  pane_touch(n->pane);
+  if (nchrome) *nchrome = chr.n;
+  if (ncontent) *ncontent = con.n;
+  return true;
+}
+
 /* Everything this pane painted on itself, gone: both chains at once.
  *
  * Not gated on `in_band_shaders`, unlike setting one. A chain can outlive the

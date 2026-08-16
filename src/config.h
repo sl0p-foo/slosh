@@ -398,6 +398,19 @@ size_t config_parse_chain(const char *text, color_t default_color, bool chrome,
                           shader_t *out, size_t max, expr_prog_t **exprs,
                           size_t *nexprs, char *err, size_t errcap);
 
+/* The same, from a file: a `shaders { }` block as `contrib/chrome` and
+ * `contrib/shaders` ship them, read with the parser that already knows this
+ * format. Entries are routed to the two chains by their own `where=`, defaulting
+ * to content as a config file does, so a preset lands where its author said.
+ * Anything else at the top level is ignored -- hand it a whole config.kdl and
+ * only the shaders apply. Both arrays hold SHADE_MAX; `exprs` holds twice that.
+ * Returns how many entries were understood. */
+size_t config_parse_chain_file(const char *path, color_t default_color,
+                               shader_t *content, size_t *ncontent,
+                               shader_t *chrome, size_t *nchrome,
+                               expr_prog_t **exprs, size_t *nexprs,
+                               char *err, size_t errcap);
+
 /* What a chord does after the leader. Direct bindings answer here too, so
  * pressing the leader first never makes a binding stop working. */
 action_t config_lookup(const config_t *c, int key, uint16_t mods);

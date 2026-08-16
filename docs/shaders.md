@@ -123,6 +123,7 @@ not always in a state to put it back:
 | | |
 |---|---|
 | `printf '\033]5577;1;shader;\033\\'` | from the program, one exchange, both rects |
+| `printf '\033]5577;1;shader-load;/path/to/preset.kdl\033\\'` | a `shaders { }` file, read by the session and routed by `where=` |
 | `sl0ppty cmd '{"cmd":"clear-shaders","id":3}'` | from outside; `id` 0 or absent means the focused pane |
 | the `clear-shaders` action | on a key you bind, or from the palette |
 
@@ -135,6 +136,13 @@ chains and the session's own dimming are not this pane's doing.
 pane change, and `:paste` prints what you have as a `shaders { }` block for your
 config. What you prototype and what you paste are parsed by the same code, which
 is the point of using the config's syntax for a thing typed at a terminal.
+
+`:load` takes any of the ready-made files -- `:load sine-comet` from anywhere,
+because the preset folders sit beside the script -- and its entries land wherever
+their own `where=` says, so one file can fill both chains. The *session* reads the
+file, with the parser that already knows the format: nothing in the prompt parses
+KDL, because a second reader of a config file is a second opinion about what it
+says. After a load, `:paste` prints the one `include` line that keeps it.
 
 It is a readline prompt, so editing, up/down and ctrl-r work as they do in a
 shell, and history is kept between runs in

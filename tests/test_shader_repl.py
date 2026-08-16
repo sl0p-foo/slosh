@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 from harness import Session, check, report
 
@@ -190,6 +191,122 @@ def test_tab_completes():
     os.unlink(path)
 
 
+def test_load_takes_a_preset_by_name():
+    """`:load sine-comet` from any directory: the preset folders sit beside the
+    script, so a bare name is enough and the session does the reading."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        ring = lambda: tuple(
+            (s.snapshot().style_at(x, pane["y"]) or {}).get("fg")
+            for x in range(pane["x"], pane["x"] + pane["w"]))
+        before = {ring() for _ in range(3)}
+
+        s.raw(":load sine-comet\\r")
+        s.settle(60)
+        out = last_line(s)
+        check("it says how much of the file ran",
+              "1 chrome, 0 content" in "\n".join(
+                  l.strip() for l in
+                  s.snapshot().pane_text(pane).split("\n")), repr(out))
+
+        seen = set()
+        deadline = time.monotonic() + 3
+        while len(seen) < 2 and time.monotonic() < deadline:
+            seen.add(ring())
+            s.settle(60)
+        check("and the preset is running on the frame", len(seen) > 1,
+              "%d rings before, %d after" % (len(before), len(seen)))
+    os.unlink(path)
+
+
+def test_load_routes_a_files_entries_by_their_own_where():
+    """A preset says which rect it is for, and loading it has to honour that --
+    including a file that fills both, which is one exchange and two chains."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    both = os.path.join(home, "both.kdl")
+    with open(both, "w") as f:
+        f.write('// two rects in one file\n'
+                'shaders {\n'
+                '    tint where="chrome" channel="fg" color="#ff0033" amount=255\n'
+                '    tint where="content" channel="bg" color="#00ff88" amount=255\n'
+                '}\n')
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        s.raw(":load %s\\r" % both)
+        s.settle(80)
+        snap = s.snapshot()
+        text = "\n".join(l.strip() for l in snap.pane_text(pane).split("\n"))
+        check("both chains are reported", "1 chrome, 1 content" in text, repr(text[-120:]))
+        check("the frame took the chrome entry",
+              (snap.style_at(pane["x"], pane["y"]) or {}).get("fg") == "#ff0033",
+              str(snap.style_at(pane["x"], pane["y"])))
+        body = snap.style_at(pane["content_x"] + 1, pane["content_y"] + 1)
+        check("and the contents took the other one",
+              (body or {}).get("bg") == "#00ff88", str(body))
+    os.unlink(path)
+
+
+def test_load_says_what_is_wrong_rather_than_nothing():
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    plain = os.path.join(home, "notashader.kdl")
+    with open(plain, "w") as f:
+        f.write('theme { frame_focus "#00ff00" }\n')
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        cases = [(":load nosuchthing", "no such file"),
+                 (":load %s" % plain, "no shaders { } block"),
+                 (":load", ":load <file.kdl>")]
+        for line, want in cases:
+            s.raw(line + "\\r")
+            s.settle(60)
+            text = "\n".join(l.strip() for l in s.snapshot().pane_text(pane).split("\n"))
+            check("`%s` says so: %s" % (line, want), want in text, repr(text[-140:]))
+    os.unlink(path)
+
+
+def test_paste_after_a_load_is_the_file():
+    """A loaded preset is a file on disk, so the thing to keep is an `include` of
+    it -- not thirty lines reprinted into a pane, and not a rebuild from the chains
+    that would drop the comments explaining the effect."""
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        pane = s.pane()
+        s.raw(":load marching-ants\\r")
+        s.settle(60)
+        s.raw(":paste\\r")
+        s.settle(60)
+        text = s.snapshot().pane_text(pane)
+        check("`:paste` names the file it came from", "marching-ants.kdl" in text,
+              repr(text[-200:]))
+        # An `include` line rather than the file's thirty: the config has a word
+        # for "that file, as written", and it fits on the pane you are looking at.
+        check("and offers it as an include", 'include "' in text, repr(text[-200:]))
+        check("with a path the session can read",
+              "/contrib/chrome/marching-ants.kdl" in text, repr(text[-200:]))
+    os.unlink(path)
+
+
+def test_load_completes_a_preset_name():
+    path = cfg("in_band_shaders true\n")
+    home = tempfile.mkdtemp()
+    with session(path, home) as s:
+        s.until_text("chrome>")
+        s.raw(":load march\\t")
+        s.settle(60)
+        check("tab after `:load` completes a preset name",
+              "marching-ants" in last_line(s), repr(last_line(s)))
+    os.unlink(path)
+
+
 def test_help_lists_what_there_is():
     path = cfg("in_band_shaders true\n")
     home = tempfile.mkdtemp()
@@ -209,5 +326,10 @@ if __name__ == "__main__":
     test_every_offered_shader_is_accepted_by_a_session()
     test_history_survives_the_next_run()
     test_tab_completes()
+    test_load_takes_a_preset_by_name()
+    test_load_routes_a_files_entries_by_their_own_where()
+    test_load_says_what_is_wrong_rather_than_nothing()
+    test_paste_after_a_load_is_the_file()
+    test_load_completes_a_preset_name()
     test_help_lists_what_there_is()
     sys.exit(report())

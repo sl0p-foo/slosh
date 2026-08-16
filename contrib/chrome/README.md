@@ -13,6 +13,10 @@ different rect with no preview to give. So these are checked the only way that
 means anything — `tests/test_chrome_presets.py` loads every file here into a
 real session and asserts that the frame moves and the contents do not.
 
+Try one without editing anything: run [`contrib/shader-repl`](../shader-repl) in a
+pane and type `:load sine-comet`. It applies to that pane only, `:paste` gives you
+the `include` line to keep, and `:both` puts the pane back.
+
 | file | what it does |
 |---|---|
 | `shine.kdl` | a highlight running clockwise round the border, wrapping at the corner |

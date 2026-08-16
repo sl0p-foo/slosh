@@ -4,6 +4,8 @@
     $ contrib/shader-repl
     chrome> tint color="#ff5fd7" amount="abs(t / 8 % 510 - 255)"
     ok
+    chrome> :load sine-comet
+    sine-comet.kdl: 1 chrome, 0 content
     chrome> :paste
 
 The line you type is a chain in exactly the syntax `config.kdl` uses, sent to the
@@ -19,21 +21,33 @@ of consent (D13).
 Commands:
     :chrome     aim the next chain at the frame (the default)
     :content    aim it at the pane's contents
+    :load F     a preset file: a path, or a name from `chrome/` or `shaders/`
+                beside this script. Its entries go wherever their own `where=`
+                says, so `:load sine-comet` fills the frame chain and
+                `:load built-ins-spotlight` fills the contents one
     :clear      take this pane's chain away
     :both       clear both chains
-    :paste      print what you have as a `shaders { }` block
+    :paste      print what you have as a `shaders { }` block -- or, after a
+                `:load`, the one `include` line that keeps it
     :help       this list
     :quit       leave (the chain stays until the pane closes)
+
+`:load` hands the *path* to the session, which reads it with the parser that
+already knows this format. Nothing here parses KDL: a second reader of a config
+file is a second opinion about what it says, and comments and quoted strings are
+exactly where those two would differ.
 
 The prompt is readline's, so it has the editing and history you already know --
 up/down through what you tried, ctrl-r to search it, and history kept across runs
 in `$XDG_DATA_HOME/sl0ppty/shader-repl.history`. Tab completes the commands, the
-shader names, the property keys and the expression language's own variables and
-functions, which is most of what there is to remember.
+shader names, the property keys and the expression language's own variables,
+constants and functions -- and filenames after `:load`, which is most of what
+there is to remember.
 
 Python 3, standard library only.
 """
 import atexit
+import glob
 import os
 import select
 import sys
@@ -50,7 +64,8 @@ OSC = "\033]5577;1;"
 ST = "\033\\"
 TIMEOUT = 2.0
 
-COMMANDS = [":chrome", ":content", ":clear", ":both", ":paste", ":help", ":quit"]
+COMMANDS = [":chrome", ":content", ":load", ":clear", ":both", ":paste",
+            ":help", ":quit"]
 
 # What there is to complete. Written here rather than asked for, because there is
 # nothing to ask: the session has no verb that lists them. Kept honest by
@@ -75,10 +90,32 @@ HISTORY = os.path.join(
 
 
 def complete(text, state):
-    """One flat vocabulary. A shader name is only valid first and a variable only
+    """One flat vocabulary -- except after `:load`, where the answer is filenames.
+
+    A prompt that offers `amount=` where a path belongs is worse than one that
+    offers nothing, and readline hands over the whole line, so telling the two
+    apart costs one test. A shader name is only valid first and a variable only
     inside an expression, but a prompt that guesses which you meant and offers
     nothing when it guesses wrong is worse company than one that offers
     everything starting with what you typed."""
+    line = readline.get_line_buffer() if readline else ""
+    if line.lstrip().startswith(":load"):
+        hits = []
+        for pat in (text + "*", os.path.join(PRESET_DIRS[0], text + "*"),
+                    os.path.join(PRESET_DIRS[1], text + "*")):
+            for hit in sorted(glob.glob(pat)):
+                # Bare names for the presets that ship here, real paths otherwise:
+                # `:load sine-c<tab>` should finish the name, not spell out a
+                # directory nobody typed.
+                base = os.path.basename(hit)
+                hits.append(hit + "/" if os.path.isdir(hit)
+                            else (base if os.path.dirname(pat) != "" else hit))
+        seen = []
+        for hit in hits:
+            if hit not in seen:
+                seen.append(hit)
+        return seen[state] if state < len(seen) else None
+
     words = COMMANDS + SHADERS + PROPS + VALUES + VARS + CONSTS + FUNCS
     hits = [w for w in words if w.startswith(text)]
     return hits[state] if state < len(hits) else None
@@ -149,9 +186,55 @@ def ask(fd, where, chain):
     return (answer.replace("error;", "", 1), False)
 
 
-def paste(chains):
+PRESET_DIRS = [os.path.join(os.path.dirname(os.path.abspath(__file__)), d)
+               for d in ("chrome", "shaders")]
+
+
+def resolve(arg):
+    """A path, or the name of a preset that ships with sl0ppty.
+
+    `:load contrib/chrome/sine-comet.kdl` and `:load sine-comet` are the same
+    thing, the second one from any directory: the preset folders sit next to this
+    script, so it can find them without being told where it was run from."""
+    tries = [arg, arg + ".kdl"]
+    for d in PRESET_DIRS:
+        tries += [os.path.join(d, arg), os.path.join(d, arg + ".kdl")]
+    for t in tries:
+        if os.path.isfile(t):
+            return os.path.abspath(t)
+    return None
+
+
+def load(fd, path):
+    """Hand the session a file and let it do the reading.
+
+    It has the parser -- comments, strings, `where=` routing, the lot -- and a
+    second reader here would be a second opinion about what a preset says. So this
+    resolves the name, makes the path absolute (the session's working directory is
+    not ours) and sends it."""
+    send("shader-load;%s" % path)
+    answer = reply(fd)
+    if answer is None:
+        termios.tcflush(fd, termios.TCIFLUSH)
+        return ("no answer -- is this pane inside sl0ppty?", False)
+    if answer.startswith("ok"):
+        _, _, detail = answer.partition(";")
+        return (detail or "ok", True)
+    return (answer.replace("error;", "", 1), False)
+
+
+def paste(chains, loaded=None):
     """What a config file would say. Two `where=` entries rather than two blocks,
-    because one `shaders { }` holds both and that is the shape to copy."""
+    because one `shaders { }` holds both and that is the shape to copy.
+
+    After a `:load` the answer is one `include` line. The file is already on disk,
+    already a `shaders { }` block and already commented -- reprinting thirty lines
+    of it would scroll away the pane you are looking at, and rebuilding it from the
+    chains would lose the comments that say what the effect is. `include` is the
+    config's own way of saying "that file, as written".
+    """
+    if loaded:
+        return '// %s\ninclude "%s"' % (os.path.basename(loaded), loaded)
     if not any(chains.values()):
         return "shaders { }  // nothing set"
     lines = ["shaders {"]
@@ -174,6 +257,7 @@ def main():
     saved = termios.tcgetattr(fd)
     where = "chrome"
     chains = {"chrome": "", "content": ""}
+    loaded = None  # the preset file in force, for `:paste`
 
     setup_readline()
     print("shader-repl: a chain in config syntax, applied to this pane.")
@@ -202,7 +286,30 @@ def main():
                 where = line[1:]
                 continue
             if line == ":paste":
-                print(paste(chains))
+                print(paste(chains, loaded))
+                continue
+            if line.startswith(":load"):
+                arg = line[len(":load"):].strip()
+                if not arg:
+                    print("  :load <file.kdl>, or the name of one in chrome/ or "
+                          "shaders/ beside this script")
+                    continue
+                path = resolve(arg)
+                if not path:
+                    print("  no such file: %s" % arg)
+                    continue
+                tty.setraw(fd)
+                try:
+                    msg, ok = load(fd, path)
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+                if ok:
+                    # The file replaces both chains, so the typed ones are gone
+                    # and `:paste` should answer with the file rather than with
+                    # something half true.
+                    loaded = path
+                    chains["chrome"] = chains["content"] = ""
+                print("  %s: %s" % (os.path.basename(path), msg))
                 continue
             if line in (":help", ":h", "?"):
                 print("  " + "  ".join(COMMANDS))
@@ -212,6 +319,7 @@ def main():
                 print("  consts:  " + " ".join(CONSTS)
                       + "   (degrees, so PI is a half turn)")
                 print("  funcs:   " + " ".join(f.rstrip("(") for f in FUNCS))
+                print("  :load takes a path, or a preset name from chrome/ or shaders/")
                 print("  tab completes all of it; up/down and ctrl-r are history")
                 continue
             if line in (":clear", ":both"):
@@ -224,6 +332,7 @@ def main():
                 finally:
                     termios.tcsetattr(fd, termios.TCSADRAIN, saved)
                 if ok:
+                    loaded = None
                     if target:
                         chains[target] = ""
                     else:
@@ -239,6 +348,7 @@ def main():
                 termios.tcsetattr(fd, termios.TCSADRAIN, saved)
             if ok:
                 chains[where] = line
+                loaded = None  # hand-typed now: `:paste` should say so
             print(msg)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)

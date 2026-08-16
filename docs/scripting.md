@@ -64,7 +64,10 @@ shader chain for the pane that asked, in the config's own syntax, and needs
 `in_band_shaders true` because a program restyling your session is a hazard
 before it is a convenience. `shader;` with no rect named clears both of that
 pane's chains, which is never refused -- and `clear-shaders` above is the same
-thing from outside, for a program that will not do it itself.
+thing from outside, for a program that will not do it itself. `shader-load;<path>`
+hands over a `shaders { }` file instead of a chain and answers with how much of it
+ran (`ok;1 chrome, 0 content`), so a script can apply a preset without knowing how
+to read one.
 See [shaders](shaders.md#prototyping-in-a-pane).
 
 Anything the session sends *back* to a program ends its verb in `-reply` --

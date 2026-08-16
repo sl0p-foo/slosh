@@ -390,6 +390,73 @@ static void parse_shader_list(config_t *c, const kdl_node_t *node,
  *
  * Expressions come back in `exprs` for the caller to free. Returns how many
  * shaders were understood; `err` gets the first reason one was not. */
+/* A preset file into two chains: the same `shaders { }` block a config carries,
+ * routed by each entry's `where=` exactly as the config routes it.
+ *
+ * Here rather than in the caller because the parsing is already here, and a second
+ * reader of this format -- a scanner counting braces and skipping `//` outside
+ * quotes -- would be a second answer to "what does this file say". The KDL parser
+ * knows about comments and strings; nobody else needs to.
+ *
+ * Anything else at the top level is ignored, so a whole config.kdl can be handed
+ * over and only its shaders apply: `theme` and `keys` are not this pane's business
+ * and refusing the file over them would make the useful case the awkward one. */
+size_t config_parse_chain_file(const char *path, color_t default_color,
+                               shader_t *content, size_t *ncontent,
+                               shader_t *chrome, size_t *nchrome,
+                               expr_prog_t **exprs, size_t *nexprs,
+                               char *err, size_t errcap) {
+  *ncontent = 0;
+  *nchrome = 0;
+  *nexprs = 0;
+  if (err && errcap) err[0] = 0;
+
+  char perr[192] = {0};
+  kdl_node_t *root = kdl_parse_file(path, perr, sizeof perr);
+  if (!root) {
+    if (err && errcap)
+      snprintf(err, errcap, "%s", perr[0] ? perr : "cannot read it");
+    return 0;
+  }
+
+  size_t total = 0;
+  bool found = false;
+  for (size_t i = 0; i < root->nkids; i++) {
+    const kdl_node_t *block = root->kids[i];
+    if (!block || !block->name || strcmp(block->name, "shaders") != 0) continue;
+    found = true;
+    for (size_t j = 0; j < block->nkids; j++) {
+      const kdl_node_t *k = block->kids[j];
+      if (!k || !k->name) continue;
+
+      bool on_chrome = false;
+      shader_t made;
+      expr_prog_t *aexpr = NULL;
+      char why[160] = {0};
+      /* `content` is the default here, as it is in a config file: the entries are
+       * the file's own words and mean what they meant there. */
+      bool ok = parse_shader_entry(k, default_color, false, &on_chrome, &made,
+                                   &aexpr, why, sizeof why);
+      if (why[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", why);
+      if (!ok) continue;
+
+      shader_t *out = on_chrome ? chrome : content;
+      size_t *n = on_chrome ? nchrome : ncontent;
+      if (*n >= SHADE_MAX) {
+        expr_free(aexpr);
+        continue;
+      }
+      out[(*n)++] = made;
+      if (aexpr) exprs[(*nexprs)++] = aexpr;
+      total++;
+    }
+  }
+  kdl_free(root);
+  if (!found && err && errcap && !err[0])
+    snprintf(err, errcap, "no shaders { } block in it");
+  return total;
+}
+
 size_t config_parse_chain(const char *text, color_t default_color, bool chrome,
                           shader_t *out, size_t max, expr_prog_t **exprs,
                           size_t *nexprs, char *err, size_t errcap) {

@@ -148,6 +148,16 @@ uint32_t app_current_tab_id(app_t *a);
 bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
                           const char *text, char *err, size_t errcap);
 
+/* A preset file -- `contrib/chrome/sine-comet.kdl` and its neighbours -- applied
+ * to one pane, both chains at once, routed by each entry's own `where=`. The
+ * session reads the file so that nothing else has to know this format; a relative
+ * path resolves against the session's working directory. Counts come back so a
+ * caller can say what happened. Gated on `in_band_shaders` like setting a chain by
+ * hand: it is the same act with a shorter spelling. */
+bool app_load_pane_shaders(app_t *a, uint32_t pane_id, const char *path,
+                           size_t *nchrome, size_t *ncontent, char *err,
+                           size_t errcap);
+
 /* Undo both of one pane's own chains. 0 means the focused pane. False when there
  * was nothing to undo, so a caller can say so rather than flash a frame nobody
  * changed.
