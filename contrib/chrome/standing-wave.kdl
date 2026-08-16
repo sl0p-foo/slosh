@@ -1,0 +1,20 @@
+// standing wave — chrome
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up when
+// you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane state
+// instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// Three lobes that do not travel: the nodes stay where they are and the whole
+// pattern breathes in place. Every other preset here moves something round the
+// ring, and this is the other half of what waves do -- position decides the
+// shape, the clock decides the amplitude, one multiply apart.
+//
+// `p` below is distance clockwise round the border from the top-left, written
+// out in full because there is no way to name a subexpression -- which is why a
+// small effect is a long line. `2*cols + 2*rows - 4` is the whole ring.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="abs(sin(TAU * ((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)) * 3 / (2 * cols + 2 * rows - 4))) * abs(sin(t / 6)) / 255"
+}

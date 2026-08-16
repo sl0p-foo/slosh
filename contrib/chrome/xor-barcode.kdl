@@ -1,0 +1,16 @@
+// xor barcode — chrome
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up when
+// you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane state
+// instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// The top rule only, where the title sits: four brightnesses out of two bits of
+// `x ^ clock`, which slides the whole barcode sideways a character at a time.
+// `y == 0` picks the rule out and leaves the rest of the frame alone, so this
+// stacks with anything that lights the sides.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffcc00" amount="(y == 0) * ((x ^ t / 90) & 3) * 60"
+}

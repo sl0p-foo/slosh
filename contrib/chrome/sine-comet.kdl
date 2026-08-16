@@ -1,0 +1,21 @@
+// sine comet — chrome
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up when
+// you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane state
+// instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// A bright arc gliding round the border with a sine's soft shoulders instead of a
+// linear ramp's corner -- the difference between a light moving and a triangle
+// sliding. `TAU * p / perim` turns a position on the ring into an angle, so one
+// lap is one cycle; `* 14 - 3000` keeps only the top of the crest, which is what
+// makes it an arc rather than a glow over everything.
+//
+// `p` below is distance clockwise round the border from the top-left, written
+// out in full because there is no way to name a subexpression -- which is why a
+// small effect is a long line. `2*cols + 2*rows - 4` is the whole ring.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="clamp(sin(TAU * (((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)) - t / 9) / (2 * cols + 2 * rows - 4)) * 14 - 3000, 0, 255)"
+}

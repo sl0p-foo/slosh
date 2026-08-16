@@ -1,0 +1,20 @@
+// bit drift — chrome
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up when
+// you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane state
+// instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// XOR the position on the ring with a slice of the clock and keep three bits.
+// There is no randomness in the language and none is needed: a motif walked past
+// itself by a stride that does not divide the perimeter reshuffles rather than
+// slides. Reads as a machine thinking.
+//
+// `p` below is distance clockwise round the border from the top-left, written
+// out in full because there is no way to name a subexpression -- which is why a
+// small effect is a long line. `2*cols + 2*rows - 4` is the whole ring.
+
+shaders {
+    tint where="chrome" channel="fg" color="#7aa2f7" amount="((((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)) ^ (t / 120)) & 7) * 30"
+}

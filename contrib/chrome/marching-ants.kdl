@@ -1,0 +1,20 @@
+// marching ants — chrome
+//
+// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up when
+// you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane state
+// instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// Two cells on, two cells off, stepping round the border: the selection marquee
+// every drawing program has. `>> 1 & 1` is the entire dash pattern -- bit one of
+// the position -- and adding a slice of the clock walks it. Cheap enough to leave
+// on: no multiply, no table, one shift and one mask per cell.
+//
+// `p` below is distance clockwise round the border from the top-left, written
+// out in full because there is no way to name a subexpression -- which is why a
+// small effect is a long line. `2*cols + 2*rows - 4` is the whole ring.
+
+shaders {
+    tint where="chrome" channel="fg" color="#ffffff" amount="((((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)) + t / 60) >> 1 & 1) * 200"
+}

@@ -22,6 +22,12 @@ real session and asserts that the frame moves and the contents do not.
 | `gradient.kdl` | not animated: lit from the top-left, so the frame reads as a surface |
 | `corner-glints.kdl` | the four corners breathing together |
 | `title-sheen.kdl` | the top rule only, where the title sits |
+| `sine-comet.kdl` | an arc gliding round with a sine's shoulders, not a ramp's corner |
+| `marching-ants.kdl` | two on, two off, stepping round — the selection marquee |
+| `standing-wave.kdl` | three lobes that do not travel; the pattern breathes in place |
+| `bit-drift.kdl` | position XOR clock, three bits — a machine thinking |
+| `heartbeat.kdl` | lub-dub, then a rest. For a state |
+| `xor-barcode.kdl` | the top rule as a barcode, sliding a character at a time |
 
 ## the perimeter trick
 
@@ -46,6 +52,23 @@ The perimeter itself is `2 * cols + 2 * rows - 4`. Two things fall out of it:
 There is no way to name a subexpression, so the formula is written out in full
 in each file. That is the ugly part of these, and the reason the files are long
 when the effects are small.
+
+## the angle idiom
+
+`sin` and `cos` take **degrees**, and `PI` is 180 because pi in an angle language
+is a half turn. So `TAU * p / perim` is "this cell's position, as an angle round
+one lap", which is the line under most of the newer presets:
+
+- `sin(TAU * p / perim)` — one cycle over the whole ring, and it wraps at the
+  corner for free, because so does a sine.
+- `sin(TAU * p * 3 / perim)` — three lobes. Any whole number fits the ring
+  exactly, which is what keeps a standing wave standing.
+- `* 14 - 3000` after it keeps only the top of the crest: an arc rather than a
+  glow over everything. Overdrive then clip is how you sharpen anything here.
+
+A sine costs a table lookup and no more than the triangle wave
+`abs(t / 6 % 510 - 255)` it replaces — but it has no corner in it, which is the
+difference between a frame that pulses and one that flickers.
 
 ## two rules worth knowing
 
