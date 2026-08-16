@@ -24,6 +24,11 @@ def cfg(text):
     return f.name
 
 
+# `None` means the cell carries no colour of its own -- the terminal's default,
+# which is what a cell the pass never touched still looks like. A cell whose
+# strength worked out to zero reads as None rather than as our idea of the
+# default, because a pass at zero strength is skipped rather than run to no
+# effect: that is the difference between "left alone" and "repainted the same".
 def fg_row(snap, pane, row=0):
     y = pane["content_y"] + row
     return [(snap.style_at(pane["content_x"] + x, y) or {}).get("fg")
@@ -37,8 +42,8 @@ def test_an_expression_decides_the_amount_per_cell():
         row = fg_row(snap, s.pane())
         check("the first ten columns are dimmed",
               all(c == row[0] and c != "#ffffff" for c in row[:10]), str(row[:12]))
-        check("and the rest are not",
-              all(c == "#ffffff" for c in row[10:20]), str(row[10:20]))
+        check("and the rest are untouched, not repainted the same",
+              all(c is None for c in row[10:20]), str(row[10:20]))
 
 
 def test_a_constant_expression_is_just_a_number():
@@ -62,7 +67,7 @@ def test_the_rect_is_known_to_the_expression():
         pane = s.pane()
         row = fg_row(snap, pane)
         check("the last columns are dimmed, not the first",
-              row[0] == "#ffffff" and row[-1] != "#ffffff",
+              row[0] is None and row[-1] not in (None, "#ffffff"),
               f"{row[0]} .. {row[-1]}")
 
 
@@ -78,7 +83,7 @@ def test_it_follows_a_resize():
         # The cached map has to be rebuilt for the new rect, or the dimmed
         # band would still be sitting where the old right-hand edge was.
         check("the band moved with the edge",
-              row[-1] != "#ffffff" and row[len(row) - 8] == "#ffffff",
+              row[-1] not in (None, "#ffffff") and row[len(row) - 8] is None,
               str(row[-10:]))
 
 
@@ -106,7 +111,7 @@ def test_states_take_expressions_too():
         snap = s.snapshot()
         r0 = fg_row(snap, unfocused, 0)
         r1 = fg_row(snap, unfocused, 1)
-        check("even rows are left alone", r0[0] == "#ffffff", str(r0[:3]))
+        check("even rows are left alone", r0[0] is None, str(r0[:3]))
         check("odd rows are dimmed", r1[0] != "#ffffff" and r1[0] is not None,
               str(r1[:3]))
 

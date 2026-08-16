@@ -324,7 +324,9 @@ int main(void) {
       for (uint16_t x = 0; x < 8; x++)
         put(&s, x, y, rgb(0x11, 0x22, 0x33), rgb(0, 0, 0));
 
-    shader_t sh = {.kind = "probe", .fn = probe_fn};
+    /* Strength 255: the probe ignores it, but a pass at 0 is an identity and
+     * identities are skipped, so a traversal test has to ask for a real one. */
+    shader_t sh = {.kind = "probe", .fn = probe_fn, .amount = 255};
     shade_ctx_t base = base_ctx();
     base.now_ms = 1234;
     base.focused = true;
@@ -338,6 +340,7 @@ int main(void) {
        probe.x == 1 && probe.y == 1, "");
     ok("and the cell at that position is the right one",
        ceq(probe.saw_fg, 0x11, 0x22, 0x33), shown(probe.saw_fg));
+
     ok("time is passed through for animation", probe.now_ms == 1234, "");
     ok("so is focus", probe.focused, "");
 
@@ -349,13 +352,33 @@ int main(void) {
     screen_free(&s);
   }
 
+  /* ---- zero strength is not a pass at all ---- */
+  {
+    memset(&probe, 0, sizeof probe);
+    screen_init(&s, 4, 2); /* every colour unset: the terminal's own */
+    shader_t idle = {.kind = "probe", .fn = probe_fn}; /* amount 0 */
+    shade_ctx_t base = base_ctx();
+    shade_apply(&s, &idle, 1, (rect_t){0, 0, 4, 2}, NULL, &base);
+
+    ok("a pass at zero strength visits nothing", probe.calls == 0, "");
+    /* `0 is identity` in the ABI, and the pass used to materialise a cell's
+     * default colours before honouring that -- so a chain like `focused * 200`
+     * repainted the frame of the pane it was leaving alone. */
+    ok("and a default-coloured cell is left saying so",
+       screen_at(&s, 0, 0)->fg.set == false && screen_at(&s, 0, 0)->bg.set == false,
+       "an identity pass materialised the terminal's default into ours");
+    screen_free(&s);
+  }
+
   /* ---- the hole: a frame is a rect minus its contents ---- */
   {
     memset(&probe, 0, sizeof probe);
     screen_init(&s, 6, 5);
     fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
 
-    shader_t sh = {.kind = "probe", .fn = probe_fn};
+    /* Strength 255: the probe ignores it, but a pass at 0 is an identity and
+     * identities are skipped, so a traversal test has to ask for a real one. */
+    shader_t sh = {.kind = "probe", .fn = probe_fn, .amount = 255};
     shade_ctx_t base = base_ctx();
     rect_t hole = {1, 1, 4, 3};
     shade_apply(&s, &sh, 1, (rect_t){0, 0, 6, 5}, &hole, &base);
@@ -381,7 +404,9 @@ int main(void) {
     memset(&probe, 0, sizeof probe);
     screen_init(&s, 4, 2);
     fill(&s, rgb(0xff, 0xff, 0xff), rgb(0xff, 0xff, 0xff));
-    shader_t sh = {.kind = "probe", .fn = probe_fn};
+    /* Strength 255: the probe ignores it, but a pass at 0 is an identity and
+     * identities are skipped, so a traversal test has to ask for a real one. */
+    shader_t sh = {.kind = "probe", .fn = probe_fn, .amount = 255};
     shade_ctx_t base = base_ctx();
     rect_t empty = {1, 1, 0, 0};
     shade_apply(&s, &sh, 1, (rect_t){0, 0, 4, 2}, &empty, &base);

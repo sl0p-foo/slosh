@@ -111,7 +111,11 @@ struct shader {
   shade_fn fn;
   expr_prog_t *amount_expr; /* NULL when `amount` is just a number */
   color_t color;  /* the target colour, for shaders that have one */
-  uint8_t amount; /* strength, 0..255; 0 is identity, 255 is fully applied */
+  /* Strength, 0..255; 0 is identity, 255 is fully applied. A cell whose
+   * strength works out to 0 is skipped by the pass rather than handed to the
+   * shader, so a plugin is never called to do nothing -- and a cell the
+   * terminal was drawing in its own default colour stays that way. */
+  uint8_t amount;
   /* One number whose meaning is the shader's own, because a second parameter
    * that is a column for one effect and a radius for another is not really
    * two things:

@@ -367,6 +367,15 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
      * once per pass rather than per cell, because copying a shader_t for every
      * cell would cost more than evaluating the expression. */
     shader_t local = *sh;
+    /* `0 is identity` (shader_abi.h), so a pass at zero strength is not a pass
+     * that runs and changes nothing -- it is one that does not run. The
+     * difference is visible: the loop below materialises a cell's default
+     * colours before calling a shader, so an identity pass would leave the
+     * terminal's own background written out as ours. A chain like
+     * `focused * 200` on an unfocused pane, or `(since < 500) * 255` half a
+     * second later, would faintly repaint the pane it is meant to be leaving
+     * alone. */
+    if (!sh->amount_expr && !sh->amount) continue;
     const uint8_t *map = NULL;
     expr_env_t env = {0};
     bool per_cell = false;
@@ -416,6 +425,19 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
          * it would be computing a colour nothing can display. */
         if (!c->width) continue;
 
+        /* Strength first, because zero means this cell is not this pass's
+         * business and materialising it below would be the whole of the
+         * effect. */
+        ctx.x = x;
+        if (map) {
+          local.amount = map[(size_t)y * w + x];
+        } else if (per_cell) {
+          env.x = x;
+          env.y = y;
+          local.amount = (uint8_t)clamp255(expr_eval(sh->amount_expr, &env));
+        }
+        if (!local.amount) continue;
+
         /* What the cell was, for whichever colour this pass does not keep.
          * Taken before materialising, so a colour the terminal was drawing in
          * its own default goes back to *unset* rather than to our idea of it —
@@ -429,14 +451,6 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
         if (!c->fg.set) c->fg = ctx.default_fg;
         if (!c->bg.set) c->bg = ctx.default_bg;
 
-        ctx.x = x;
-        if (map) {
-          local.amount = map[(size_t)y * w + x];
-        } else if (per_cell) {
-          env.x = x;
-          env.y = y;
-          local.amount = (uint8_t)clamp255(expr_eval(sh->amount_expr, &env));
-        }
         local.fn(&local, &ctx, c);
 
         if (!keep_fg) c->fg = was_fg;
