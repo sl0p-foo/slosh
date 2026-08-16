@@ -218,6 +218,105 @@ def test_a_refused_chain_leaves_the_last_good_one_standing():
     os.unlink(path)
 
 
+def test_naming_no_rect_clears_both():
+    """`shader;` with no rect is every rect: one exchange puts the whole pane
+    back, rather than two that can leave it half done."""
+    path = cfg("in_band_shaders true\n")
+    with Session(staged((osc('1;shader;chrome;tint color="#ff0033" amount=255')
+                         + osc('1;shader;content;tint color="#ff0033" amount=255'),
+                         "painted"),
+                        (osc("1;shader;"), "bare")),
+                 cols=64, rows=10, config=path) as s:
+        s.until_text("painted")
+        snap, p = s.snapshot(), s.pane()
+        check("both chains ran",
+              frame(snap, p)["fg"] == "#ff0033"
+              and snap.style_at(p["x"] + 1, p["y"] + 1)["fg"] == "#ff0033",
+              str(frame(snap, p)))
+        s.raw("\\n")
+        s.until_text("bare")
+        snap = s.snapshot()
+        body = snap.style_at(p["x"] + 1, p["y"] + 1)
+        check("naming no rect takes the frame back",
+              frame(snap, p)["fg"] != "#ff0033", str(frame(snap, p)))
+        check("...and the contents with it", not body or body["fg"] != "#ff0033",
+              str(body))
+    os.unlink(path)
+
+
+def test_it_can_be_cleared_from_outside_the_pane():
+    """The operator's way out. A program that painted a pane unreadable may not
+    be in any state to put it back -- and `cleared` says whether there was
+    anything there, because asking for a clean pane and getting one is not an
+    error."""
+    path = cfg("in_band_shaders true\n")
+    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+                 cols=64, rows=10, config=path) as s:
+        s.until_text("shader-reply")
+        p = s.pane()
+        check("painted", frame(s.snapshot(), p)["fg"] == "#ff0033", "")
+        first = s.api("clear-shaders", id=p["id"])
+        s.settle(60)
+        check("the control API clears it", first.get("cleared") == 1, str(first))
+        check("and the frame is the session's again",
+              frame(s.snapshot(), p)["fg"] != "#ff0033",
+              str(frame(s.snapshot(), p)))
+        again = s.api("clear-shaders", id=p["id"])
+        check("a second call says there was nothing to clear",
+              again.get("ok") and again.get("cleared") == 0, str(again))
+    os.unlink(path)
+
+
+def test_a_key_can_undo_what_a_pane_did_to_itself():
+    """Bound to nothing by default -- it is in the palette like every action --
+    but it has to work on a key, because a pane you cannot read is not a pane you
+    want to go looking through a menu for."""
+    path = cfg('in_band_shaders true\nkeys {\n  bind "z" "clear-shaders"\n}\n')
+    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+                 cols=64, rows=10, config=path) as s:
+        s.until_text("shader-reply")
+        p = s.pane()
+        check("painted", frame(s.snapshot(), p)["fg"] == "#ff0033", "")
+        s.key("z")
+        s.settle(80)
+        snap = s.snapshot()
+        check("the key clears it", frame(snap, p)["fg"] != "#ff0033",
+              str(frame(snap, p)))
+        check("and says so", "shaders cleared" in snap.screen(),
+              repr(snap.screen()[-160:]))
+        s.key("z")
+        s.settle(80)
+        check("pressing it again says there was nothing to undo",
+              "no shaders on this pane" in s.snapshot().screen(),
+              repr(s.snapshot().screen()[-160:]))
+    os.unlink(path)
+
+
+def test_clearing_works_even_with_the_setting_off():
+    """A chain can outlive the consent that allowed it: painted while the setting
+    was on, and the session reloaded with it off. The way out must not be the
+    thing the setting controls."""
+    path = cfg('in_band_shaders true\nkeys {\n  bind "z" "clear-shaders"\n}\n')
+    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+                 cols=64, rows=10, config=path) as s:
+        s.until_text("shader-reply")
+        p = s.pane()
+        check("painted while it was allowed",
+              frame(s.snapshot(), p)["fg"] == "#ff0033", "")
+        open(path, "w").write('in_band_shaders false\nkeys {\n  bind "z" "clear-shaders"\n}\n')
+        s.api("reload")
+        s.settle(60)
+        check("the paint survives the reload, being the pane's and not the file's",
+              frame(s.snapshot(), p)["fg"] == "#ff0033",
+              str(frame(s.snapshot(), p)))
+        s.key("z")
+        s.settle(80)
+        check("and it can still be cleared",
+              frame(s.snapshot(), p)["fg"] != "#ff0033",
+              str(frame(s.snapshot(), p)))
+    os.unlink(path)
+
+
 def test_it_is_off_unless_the_config_says_otherwise():
     """The D13 default. A program that tries gets told no, which is the part
     that matters: silence would look like a build without the feature."""
@@ -283,6 +382,10 @@ if __name__ == "__main__":
     test_an_empty_chain_puts_the_pane_back()
     test_a_chain_that_does_not_read_is_refused_with_a_reason()
     test_a_refused_chain_leaves_the_last_good_one_standing()
+    test_naming_no_rect_clears_both()
+    test_it_can_be_cleared_from_outside_the_pane()
+    test_a_key_can_undo_what_a_pane_did_to_itself()
+    test_clearing_works_even_with_the_setting_off()
     test_it_is_off_unless_the_config_says_otherwise()
     test_a_pane_can_only_paint_itself()
     test_an_expression_animates()

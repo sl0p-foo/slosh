@@ -24,6 +24,7 @@ static const struct {
     {"resize-left", ACT_RESIZE_LEFT}, {"resize-right", ACT_RESIZE_RIGHT},
     {"resize-up", ACT_RESIZE_UP},     {"resize-down", ACT_RESIZE_DOWN},
     {"equalize", ACT_EQUALIZE},
+    {"clear-shaders", ACT_CLEAR_SHADERS},
     {"rotate-layout", ACT_ROTATE_LAYOUT},
     {"scroll-up", ACT_SCROLL_UP},     {"scroll-down", ACT_SCROLL_DOWN},
     {"scroll-page-up", ACT_SCROLL_PAGE_UP},
@@ -829,6 +830,9 @@ static const struct {
     /* Short enough to fit the palette's label column, which truncates at 26 —
      * "give every pane an even share" read as "give every pane an even sh". */
     {ACT_EQUALIZE, "size", "even out every split"},
+    /* Under `panes`, not `size`: it undoes what the program in the pane did to
+     * the pane, which is a fact about that pane and not about the layout. */
+    {ACT_CLEAR_SHADERS, "panes", "clear this pane's shaders"},
     {ACT_ROTATE_LAYOUT, "size", "turn the layout a quarter"},
 
     {ACT_NEW_TAB, "tabs", "new tab"},

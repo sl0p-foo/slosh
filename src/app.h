@@ -148,6 +148,16 @@ uint32_t app_current_tab_id(app_t *a);
 bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
                           const char *text, char *err, size_t errcap);
 
+/* Undo both of one pane's own chains. 0 means the focused pane. False when there
+ * was nothing to undo, so a caller can say so rather than flash a frame nobody
+ * changed.
+ *
+ * Deliberately not gated on `in_band_shaders`: a chain can outlive the consent
+ * that allowed it, and the way out must not be the thing the setting controls.
+ * Leaves the config's chains and the session's policy passes alone -- neither is
+ * this pane's doing. */
+bool app_clear_pane_shaders(app_t *a, uint32_t pane_id);
+
 /* The session written back out as a layout file: tabs, splits, proportions,
  * directories and commands. The inverse of app_apply_layout_text(), and what
  * makes "quit, rebuild, come back to the same screen" possible. Caller frees.

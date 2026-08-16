@@ -211,16 +211,20 @@ def main():
                 print("  tab completes all of it; up/down and ctrl-r are history")
                 continue
             if line in (":clear", ":both"):
-                targets = ["chrome", "content"] if line == ":both" else [where]
-                for target in targets:
-                    tty.setraw(fd)
-                    try:
-                        msg, ok = ask(fd, target, "")
-                    finally:
-                        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-                    if ok:
+                # `:both` names no rect, which the session reads as all of them:
+                # one exchange, and the pane cannot be left half put-back.
+                target = "" if line == ":both" else where
+                tty.setraw(fd)
+                try:
+                    msg, ok = ask(fd, target, "")
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+                if ok:
+                    if target:
                         chains[target] = ""
-                    print("%s: %s" % (target, msg))
+                    else:
+                        chains["chrome"] = chains["content"] = ""
+                print(msg)
                 continue
 
             # raw only around the exchange, so the prompt keeps its line editing

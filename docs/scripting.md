@@ -29,6 +29,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `split` | `dir:"cols"\|"rows"`, `id` for which pane to split |
 | `focus` | `id` |
 | `close` `rerun` | `id`, or 0 for the focused pane |
+| `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1` — the way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` `set-name` | tabs, by `id` or `index` |
 | `set-purpose` | `target:"pane"\|"tab"`, `id`, `purpose` |
 | `dump-layout` `apply-layout` | see [layouts](layouts.md) |
@@ -61,7 +62,10 @@ declared by a layout or the control API wins and cannot be overwritten this way.
 `shader` is the third, and the only one the session can refuse: it sets the
 shader chain for the pane that asked, in the config's own syntax, and needs
 `in_band_shaders true` because a program restyling your session is a hazard
-before it is a convenience. See [shaders](shaders.md#prototyping-in-a-pane).
+before it is a convenience. `shader;` with no rect named clears both of that
+pane's chains, which is never refused -- and `clear-shaders` above is the same
+thing from outside, for a program that will not do it itself.
+See [shaders](shaders.md#prototyping-in-a-pane).
 
 Anything the session sends *back* to a program ends its verb in `-reply` --
 `hello-reply`, `shader-reply` -- and no request verb may. A pane that echoes what

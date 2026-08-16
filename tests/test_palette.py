@@ -10,6 +10,8 @@ It shares its box, its keys and its mouse handling with the pane finder (they
 are one picker with a subject), so the navigation and editing checks live in
 test_finder.py and are not repeated here.
 """
+import pathlib
+import re
 import sys
 import tempfile
 
@@ -213,7 +215,24 @@ def test_the_finder_is_still_its_own_thing():
         check("and the palette lists commands", is_open(s))
 
 
+def test_every_label_fits_the_column():
+    """The palette's label column truncates at 26 and `config.c` says so beside
+    the table. A label one word too long does not fail anything -- it just reads
+    as a typo on screen ("undo this pane's own shade"), which is how this check
+    came to exist."""
+    src = pathlib.Path(__file__).resolve().parent.parent / "src" / "config.c"
+    table = src.read_text()
+    table = table[table.index("ACTION_HELP[]"):]
+    table = table[:table.index("\n};")]
+    rows = re.findall(r'\{ACT_[A-Z_0-9]+, "([a-z]+)", "([^"]+)"\}', table)
+    long = [(g, l) for g, l in rows if len(l) > 26]
+    check("every action label fits the palette's column", not long,
+          str([(l, len(l)) for _, l in long]))
+    check("and the table was actually read", len(rows) > 20, str(len(rows)))
+
+
 if __name__ == "__main__":
+    test_every_label_fits_the_column()
     test_it_opens_and_lists_commands()
     test_it_lists_actions_that_have_no_key()
     test_typing_filters_it()

@@ -168,6 +168,14 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
       return jerr("no such pane");
     return jok_int(NULL, 0);
   }
+  /* The way in from outside the pane, for when the program that painted it will
+   * not or cannot put it back. `ok` either way, with `cleared` saying whether
+   * there was anything there: a script asking for a clean pane got one, and that
+   * is not an error. */
+  if (strcmp(cmd, "clear-shaders") == 0) {
+    bool had = app_clear_pane_shaders(a, (uint32_t)jv_geti(req, "id", 0));
+    return jok_int("cleared", had ? 1 : 0);
+  }
   if (strcmp(cmd, "new-tab") == 0) {
     uint32_t id = app_new_tab(a, jv_gets(req, "name", ""));
     if (!id) return jerr("cannot create tab");

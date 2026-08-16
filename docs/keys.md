@@ -95,7 +95,7 @@ being bound at all.
 
 | group | actions |
 |---|---|
-| panes | `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` |
+| panes | `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` |
 | focus | `focus-left` `focus-right` `focus-up` `focus-down` `focus-next` `finder` |
 | size | `resize-left` `resize-right` `resize-up` `resize-down` `equalize` |
 | tabs | `new-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |
@@ -103,4 +103,7 @@ being bound at all.
 | session | `palette` `help` `edit-config` `detach` `quit` `literal-prefix` |
 
 `scroll-up` and `scroll-down` have no default key — the wheel does that job —
-which is exactly the case the palette exists for.
+which is exactly the case the palette exists for. So does `clear-shaders`, which
+undoes whatever the program in a pane painted on it
+([shaders](shaders.md#prototyping-in-a-pane)); bind it if you leave
+`in_band_shaders` on.

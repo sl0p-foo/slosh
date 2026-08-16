@@ -432,16 +432,26 @@ static void on_pane_shader(app_t *a, pane_t *p, const char *payload) {
   bool content = wlen == 7 && memcmp(payload, "content", 7) == 0;
 
   char reply[256];
+  struct bypane b = {p, NULL};
+  walk_all(a, bypane_cb, &b);
+  if (!b.found) return;
+
+  /* Naming no rect means all of them: `shader;` puts the pane back in one
+   * exchange. The degenerate case of "which rect" rather than a verb of its own,
+   * because `shader;chrome;` and `shader;content;` already mean "this rect, this
+   * chain" and "" is the honest name for both of them. */
+  if (!wlen) {
+    app_clear_pane_shaders(a, b.found->id);
+    snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;ok\033\\");
+    pane_write(p, reply, strlen(reply));
+    return;
+  }
   if (!chrome && !content) {
     snprintf(reply, sizeof reply,
              "\033]5577;1;shader-reply;error;where must be content or chrome\033\\");
     pane_write(p, reply, strlen(reply));
     return;
   }
-
-  struct bypane b = {p, NULL};
-  walk_all(a, bypane_cb, &b);
-  if (!b.found) return;
 
   char err[192] = {0};
   const char *text = semi ? semi + 1 : "";
@@ -2885,6 +2895,26 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
  * Refused, with a reason, when `in_band_shaders` is off -- a program restyling
  * itself by accident is exactly what that decision was about, and the answer is
  * a line of config rather than a rule nobody can lift. */
+/* Everything this pane painted on itself, gone: both chains at once.
+ *
+ * Not gated on `in_band_shaders`, unlike setting one. A chain can outlive the
+ * consent that allowed it -- set it, then turn the setting off, and the paint is
+ * still there -- so the way out must not be the thing the setting controls. It is
+ * also the operator's answer to a pane that has made itself unreadable, and an
+ * answer you have to edit a config to reach is not one.
+ *
+ * Says nothing about the config's own chains or the session's policy passes:
+ * those are not this pane's doing and are derived every frame anyway. */
+bool app_clear_pane_shaders(app_t *a, uint32_t pane_id) {
+  node_t *n = pane_by_id(a, pane_id ? pane_id : app_focused_pane_id(a));
+  if (!n) return false;
+  bool had = n->content_chain.n || n->chrome_chain.n;
+  chain_clear(&n->content_chain);
+  chain_clear(&n->chrome_chain);
+  if (had) pane_touch(n->pane);
+  return had;
+}
+
 bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool chrome,
                           const char *text, char *err, size_t errcap) {
   if (err && errcap) err[0] = 0;
@@ -4789,6 +4819,13 @@ static bool run_action(app_t *a, action_t act) {
     case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
     case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
     case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
+    case ACT_CLEAR_SHADERS:
+      /* Says which of the two happened. "Nothing to undo" and "undone" look
+       * identical on a pane that was never painted, and a key that might have
+       * done nothing is a key you press again. */
+      app_toast(a, app_clear_pane_shaders(a, 0) ? "shaders cleared"
+                                               : "no shaders on this pane");
+      return true;
     case ACT_EQUALIZE:
       if (!app_equalize_splits(a)) app_toast(a, "nothing to even out");
       return true;

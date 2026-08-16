@@ -96,7 +96,8 @@ set the chains for the pane it is running in, in the same syntax the config uses
 ```bash
 printf '\033]5577;1;shader;chrome;tint color="#ff5fd7" amount="abs(t / 8 %% 510 - 255)"\033\\'
 printf '\033]5577;1;shader;content;dim amount=90\033\\'
-printf '\033]5577;1;shader;chrome;\033\\'   # nothing: back to normal
+printf '\033]5577;1;shader;chrome;\033\\'   # that rect: back to normal
+printf '\033]5577;1;shader;\033\\'          # no rect named, so both of them
 ```
 
 The field after `shader` is which rect (`content` or `chrome`), and the rest of
@@ -104,6 +105,20 @@ the payload is the chain, verbatim -- `;` separates entries, so several passes f
 on one line. The session answers on the program's stdin, `\033]5577;1;shader-reply;ok\033\\`
 or `shader-reply;error;bad amount for tint: ...`, so a typo says so instead of
 looking like a shader that does nothing.
+
+**Three ways to take it all back**, because the program that painted a pane is
+not always in a state to put it back:
+
+| | |
+|---|---|
+| `printf '\033]5577;1;shader;\033\\'` | from the program, one exchange, both rects |
+| `sl0ppty cmd '{"cmd":"clear-shaders","id":3}'` | from outside; `id` 0 or absent means the focused pane |
+| the `clear-shaders` action | on a key you bind, or from the palette |
+
+None of them is gated on `in_band_shaders`. A chain can outlive the setting that
+allowed it -- paint a pane, then turn the setting off -- and a way out that the
+setting can take away is not one. They clear what the *pane* set: the config's own
+chains and the session's own dimming are not this pane's doing.
 
 `contrib/shader-repl` is that loop with a prompt on it: type a chain, see the
 pane change, and `:paste` prints what you have as a `shaders { }` block for your
