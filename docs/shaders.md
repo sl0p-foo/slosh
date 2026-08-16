@@ -61,6 +61,7 @@ shaders {
 | | `since` — milliseconds the pane has been in its current state |
 | operators | `+ - * / %` (integer; division by zero is 0, not a crash) |
 | | `< > <= >= == != && \|\| !` give 0 or 1, so `(x < 10) * 200` is a rule |
+| | `& \| ^ ~ << >>` on the 32-bit value, binding **tighter** than comparison — so `x & 7 == 0` asks what it looks like, unlike C |
 | | `a ? b : c` — both sides are evaluated, then one is chosen |
 | functions | `min(a,b)` `max(a,b)` `abs(a)` `clamp(v,lo,hi)` |
 | | `dist(x1,y1,x2,y2)` — counts a row double, because a cell is about twice as tall as it is wide |

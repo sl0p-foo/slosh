@@ -106,6 +106,8 @@
     <code>+ - * / %</code> integer only; division by zero is 0<br>
     <code>&lt; &gt; &lt;= &gt;= == != &amp;&amp; || !</code> give 0 or 1, so
     <code>(x &lt; 10) * 200</code> is a rule<br>
+    <code>&amp; | ^ ~ &lt;&lt; &gt;&gt;</code> on the 32-bit value, binding tighter
+    than comparison, so <code>x &amp; 7 == 0</code> reads as it looks<br>
     <code>a ? b : c</code> &nbsp; <code>min max abs clamp dist</code><br>
     <code>dist</code> counts a row double, because a cell is about twice as
     tall as it is wide.
@@ -158,6 +160,7 @@ function compile(src) {
      * forgetting it here made `!x` throw instead of evaluating, which the
      * conformance test caught on its first run. */
     if (src[i] === "-") { i++; const a = primary(); return (e) => -a(e); }
+    if (src[i] === "~") { i++; const a = primary(); return (e) => ~a(e); }
     if (src[i] === "!") { i++; const a = primary(); return (e) => a(e) ? 0 : 1; }
     if (/[0-9]/.test(src[i] || "")) {
       let s = i; while (/[0-9]/.test(src[i] || "")) i++;
@@ -219,6 +222,14 @@ function compile(src) {
       case "!=": return (e) => (l(e) !== r(e)) | 0;
       case "&&": return (e) => (l(e) && r(e)) ? 1 : 0;
       case "||": return (e) => (l(e) || r(e)) ? 1 : 0;
+      /* JS's own bitwise operators are int32 with a five-bit shift count, which
+         is exactly what the compiler in src/expr.c does -- deliberately, so that
+         this preview and the real thing cannot disagree. */
+      case "&": return (e) => l(e) & r(e);
+      case "^": return (e) => l(e) ^ r(e);
+      case "|": return (e) => l(e) | r(e);
+      case "<<": return (e) => l(e) << r(e);
+      case ">>": return (e) => l(e) >> r(e);
     }
   };
 
@@ -238,14 +249,45 @@ function compile(src) {
       i++; l = binop(c, l, mul());
     }
   }
-  function cmp() {
+  /* Bitwise binds tighter than comparison, unlike C: `x & 7 == 0` asks what it
+     looks like. Same ladder as src/expr.c, which is the point. */
+  function shift() {
     let l = add();
+    for (;;) { ws();
+      const two = src.substr(i, 2);
+      if (two !== "<<" && two !== ">>") return l;
+      i += 2; l = binop(two, l, add());
+    }
+  }
+  function band() {
+    let l = shift();
+    for (;;) { ws();
+      if (src[i] !== "&" || src[i + 1] === "&") return l;   /* not `&&` */
+      i++; l = binop("&", l, shift());
+    }
+  }
+  function bxor() {
+    let l = band();
+    for (;;) { ws();
+      if (src[i] !== "^") return l;
+      i++; l = binop("^", l, band());
+    }
+  }
+  function bor() {
+    let l = bxor();
+    for (;;) { ws();
+      if (src[i] !== "|" || src[i + 1] === "|") return l;   /* not `||` */
+      i++; l = binop("|", l, bxor());
+    }
+  }
+  function cmp() {
+    let l = bor();
     for (;;) { ws();
       /* Longest first, or `<` eats the `<` of `<=` and leaves an `=`. */
       const two = src.substr(i, 2);
-      if (["<=", ">=", "==", "!="].includes(two)) { i += 2; l = binop(two, l, add()); continue; }
+      if (["<=", ">=", "==", "!="].includes(two)) { i += 2; l = binop(two, l, bor()); continue; }
       const c = src[i];
-      if (c === "<" || c === ">") { i++; l = binop(c, l, add()); continue; }
+      if (c === "<" || c === ">") { i++; l = binop(c, l, bor()); continue; }
       return l;
     }
   }

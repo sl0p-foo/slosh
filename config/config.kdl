@@ -456,6 +456,14 @@ states {
 //   operators   + - * / %      integer only; division by zero is 0, not a crash
 //               < > <= >= == != and && || !, which give 0 or 1 -- so
 //                              `(x < 10) * 200` is how you write a rule
+//               & | ^ ~ << >>  on the 32-bit value. They bind *tighter* than
+//                              comparison, so `x & 7 == 0` means what it looks
+//                              like -- C reads that as `x & (7 == 0)`, which
+//                              Ritchie called a mistake and it is. The shift
+//                              count is masked to five bits and `>>` keeps the
+//                              sign, both matching the browser preview exactly.
+//                              `(x ^ y) & 1` is the cheapest interesting texture
+//                              there is.
 //               ? :            both sides are evaluated, then one is chosen
 //   functions   min(a,b) max(a,b) abs(a) clamp(v,lo,hi)
 //               dist(x1,y1,x2,y2)  counts a row double, because a cell is

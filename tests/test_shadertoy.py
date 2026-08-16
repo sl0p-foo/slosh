@@ -88,6 +88,32 @@ EXPRS = [
     "(x + y) % 7 * 30",
     "cols - x",
     "rows * 2 - y",
+    # bitwise, where the two implementations agree by construction: int32, a
+    # five-bit shift count, an arithmetic `>>`, and -- unlike C -- bits binding
+    # tighter than comparison.
+    "x & 7",
+    "x | 8",
+    "x ^ y",
+    "~x",
+    "~0",
+    "x << 3",
+    "x >> 1",
+    "-8 >> 1",
+    "-1 >> 28",
+    "1 << 31",
+    "1 << 33",
+    "x << 40",
+    "x >> 40",
+    "0 - 5 & 3",
+    "x & 7 == 5",
+    "x ^ y | 1",
+    "x | y & 1",
+    "x ^ y ^ x",
+    "(x ^ y) % 16 < 2",
+    "(x & 1) ^ (y & 1)",
+    "~x & 255",
+    "t >> 6 & 15",
+    "(x * 7 ^ y * 13) & 31",
 ]
 
 
@@ -100,7 +126,9 @@ def rand_exprs(n, seed=20260814):
     for _ in range(n):
         a, b, c = (rng.choice(atoms) for _ in range(3))
         out.append(rng.choice([
-            f"({a} {rng.choice(['+', '-', '*', '/', '%'])} {b}) * 2",
+            f"({a} {rng.choice(['+', '-', '*', '/', '%', '&', '|', '^'])} {b}) * 2",
+            f"{a} {rng.choice(['<<', '>>'])} ({b} % 6)",
+            f"({a} ^ {b}) & {c}",
             f"clamp({a} * {rng.choice([2, 3, 9])} - {b}, 0, 255)",
             f"({a} {rng.choice(['<', '>', '==', '<=', '!='])} {b}) * {c}",
             f"min({a}, {b}) + max({b}, {c})",

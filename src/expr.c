@@ -14,6 +14,11 @@ enum {
   OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_NEG,
   OP_LT, OP_GT, OP_LE, OP_GE, OP_EQ, OP_NE,
   OP_AND, OP_OR, OP_NOT,
+  /* On the 32-bit value, with JavaScript's semantics to the letter: the shift
+   * count is masked to five bits and `>>` keeps the sign. Not a free choice --
+   * contrib/shadertoy.html reimplements this language in JS and a test compares
+   * the two, so `x << 33` has to mean the same thing in both. */
+  OP_BAND, OP_BXOR, OP_BOR, OP_BNOT, OP_SHL, OP_SHR,
   OP_MIN, OP_MAX, OP_ABS, OP_CLAMP, OP_DIST,
   OP_SELECT, /* cond a b -> a or b, both already evaluated */
 };
@@ -140,6 +145,12 @@ static void parse_primary(parser_t *ps, expr_prog_t *pr) {
     emit(ps, pr, OP_NEG, 0);
     return;
   }
+  if (*ps->p == '~') {
+    ps->p++;
+    parse_primary(ps, pr);
+    emit(ps, pr, OP_BNOT, 0);
+    return;
+  }
   if (*ps->p == '!') {
     ps->p++;
     parse_primary(ps, pr);
@@ -251,8 +262,66 @@ static void parse_add(parser_t *ps, expr_prog_t *pr) {
   }
 }
 
-static void parse_cmp(parser_t *ps, expr_prog_t *pr) {
+/* Bitwise, between arithmetic and comparison.
+ *
+ * C puts `&` `^` `|` *below* comparison, so `x & 7 == 0` there means
+ * `x & (7 == 0)`. Ritchie called that a mistake and it is one; a small language
+ * copying it would be inheriting a wart for the sake of familiarity, so here the
+ * bits bind tighter and the line asks what it looks like it asks. Shifts sit
+ * where C puts them, just under `+ -`. */
+static void parse_shift(parser_t *ps, expr_prog_t *pr) {
   parse_add(ps, pr);
+  for (;;) {
+    if (ps->failed) return;
+    skip_ws(ps);
+    uint8_t op;
+    if (eat(ps, "<<")) op = OP_SHL;
+    else if (eat(ps, ">>")) op = OP_SHR;
+    else return;
+    parse_add(ps, pr);
+    emit(ps, pr, op, 0);
+  }
+}
+
+static void parse_band(parser_t *ps, expr_prog_t *pr) {
+  parse_shift(ps, pr);
+  for (;;) {
+    if (ps->failed) return;
+    skip_ws(ps);
+    /* Not the `&` of `&&`: that one belongs to the logical rung above. */
+    if (*ps->p != '&' || ps->p[1] == '&') return;
+    ps->p++;
+    parse_shift(ps, pr);
+    emit(ps, pr, OP_BAND, 0);
+  }
+}
+
+static void parse_bxor(parser_t *ps, expr_prog_t *pr) {
+  parse_band(ps, pr);
+  for (;;) {
+    if (ps->failed) return;
+    skip_ws(ps);
+    if (*ps->p != '^') return;
+    ps->p++;
+    parse_band(ps, pr);
+    emit(ps, pr, OP_BXOR, 0);
+  }
+}
+
+static void parse_bor(parser_t *ps, expr_prog_t *pr) {
+  parse_bxor(ps, pr);
+  for (;;) {
+    if (ps->failed) return;
+    skip_ws(ps);
+    if (*ps->p != '|' || ps->p[1] == '|') return;
+    ps->p++;
+    parse_bxor(ps, pr);
+    emit(ps, pr, OP_BOR, 0);
+  }
+}
+
+static void parse_cmp(parser_t *ps, expr_prog_t *pr) {
+  parse_bor(ps, pr);
   for (;;) {
     if (ps->failed) return;
     skip_ws(ps);
@@ -266,7 +335,7 @@ static void parse_cmp(parser_t *ps, expr_prog_t *pr) {
     else if (*ps->p == '<') { ps->p++; op = OP_LT; }
     else if (*ps->p == '>') { ps->p++; op = OP_GT; }
     else return;
-    parse_add(ps, pr);
+    parse_bor(ps, pr);
     emit(ps, pr, op, 0);
   }
 }
@@ -337,6 +406,7 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
       case OP_VAR: st[sp++] = vars[in->imm]; break;
       case OP_NEG: if (sp) st[sp - 1] = -st[sp - 1]; break;
       case OP_NOT: if (sp) st[sp - 1] = !st[sp - 1]; break;
+      case OP_BNOT: if (sp) st[sp - 1] = (int32_t)~(uint32_t)st[sp - 1]; break;
       case OP_ABS: if (sp) st[sp - 1] = st[sp - 1] < 0 ? -st[sp - 1] : st[sp - 1]; break;
       default: {
         int need = in->op == OP_CLAMP ? 3 : in->op == OP_DIST ? 4
@@ -358,6 +428,27 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
           case OP_EQ: st[sp - 2] = a == b; sp--; break;
           case OP_NE: st[sp - 2] = a != b; sp--; break;
           case OP_AND: st[sp - 2] = a && b; sp--; break;
+          case OP_BAND: st[sp - 2] = (int32_t)((uint32_t)a & (uint32_t)b); sp--; break;
+          case OP_BXOR: st[sp - 2] = (int32_t)((uint32_t)a ^ (uint32_t)b); sp--; break;
+          case OP_BOR: st[sp - 2] = (int32_t)((uint32_t)a | (uint32_t)b); sp--; break;
+          /* Count masked to five bits, like JS, so a silly shift is defined
+           * rather than undefined. Shifted unsigned because moving a bit into
+           * the sign of a signed value is undefined in C and simply wraps in JS,
+           * which is what the preview will show. */
+          case OP_SHL:
+            st[sp - 2] = (int32_t)((uint32_t)a << (b & 31));
+            sp--;
+            break;
+          /* Arithmetic: the sign is kept, so `-8 >> 1` is -4. Written out rather
+           * than left to the compiler, because a signed right shift is
+           * implementation-defined in C and this one has to match JS. */
+          case OP_SHR: {
+            unsigned k = (unsigned)(b & 31);
+            uint32_t u = (uint32_t)a;
+            st[sp - 2] = (int32_t)(a < 0 ? ~((~u) >> k) : u >> k);
+            sp--;
+            break;
+          }
           case OP_OR: st[sp - 2] = a || b; sp--; break;
           case OP_MIN: st[sp - 2] = a < b ? a : b; sp--; break;
           case OP_MAX: st[sp - 2] = a > b ? a : b; sp--; break;
@@ -413,6 +504,7 @@ static bool stack_fits(const expr_prog_t *pr) {
       case OP_VAR: sp++; break;
       case OP_NEG:
       case OP_NOT:
+      case OP_BNOT:
       case OP_ABS: break;
       case OP_CLAMP:
       case OP_SELECT: sp -= 2; break;

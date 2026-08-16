@@ -71,6 +71,41 @@ int main(void) {
   /* The reason comparisons return numbers: masking is how you write a rule. */
   eq("(3 < 4) * 200", 200);
 
+  printf("\n-- bitwise, on the 32-bit value\n");
+  eq("12 & 10", 8);
+  eq("12 | 10", 14);
+  eq("12 ^ 10", 6);
+  eq("~0", -1);
+  eq("~12", -13);
+  eq("1 << 4", 16);
+  eq("48 >> 2", 12);
+  /* `>>` keeps the sign, so it halves a negative rather than turning it into a
+   * large positive. Written out in the VM because C leaves it
+   * implementation-defined and JavaScript does not -- and the browser preview is
+   * JavaScript. */
+  eq("0 - 8 >> 1", -4);
+  eq("0 - 1 >> 28", -1);
+  /* The count is masked to five bits, which is what JS does with it: a shift
+   * nobody meant is defined rather than undefined. */
+  eq("1 << 33", 2);
+  eq("1 << 32", 1);
+  eq("8 >> 33", 4);
+  /* Bits bind tighter than comparison, unlike C, where `12 & 8 == 8` means
+   * `12 & (8 == 8)` and answers 0. Ritchie's own regret; not worth inheriting. */
+  eq("12 & 8 == 8", 1);
+  eq("5 ^ 3 == 6", 1);
+  /* And among themselves: & then ^ then |, as everywhere else. */
+  eq("1 | 6 & 4", 5);
+  eq("1 ^ 6 & 4", 5);
+  eq("3 & 1 | 4 & 4", 5);
+  /* `&&` and `||` still parse as themselves, one character longer. */
+  eq("1 & 3 && 2 & 1", 0);
+  eq("(1 & 3) && (2 & 2)", 1);
+  eq("0 | 0 || 1 & 1", 1);
+  /* The XOR texture, which is the reason to want any of this. */
+  eq("x ^ y", 7);
+  eq("(x ^ y) & 1", 1);
+
   printf("\n-- variables\n");
   eq("x", 3);
   eq("y", 4);
