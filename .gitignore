@@ -7,3 +7,7 @@ __pycache__/
 
 # built plugins
 *.so
+
+# the formatter venv (make tools). Modern python writes .venv/.gitignore too,
+# but not every version does, and the intent belongs in our file.
+.venv/

@@ -56,6 +56,27 @@ selection, images and key encoding; everything above is ours.
 `make fmt-check` only reports, and `make hooks` installs a pre-commit hook that
 formats what you staged, so what lands in git is already formatted.
 
+Getting the two tools:
+
+```
+make tools            # a venv in .venv with the pinned ruff
+apt install clang-format          # ...or brew, or your package manager
+```
+
+clang-format is a system package everywhere. ruff usually is not, and
+`pip install --user ruff` is refused outright on a distro python (PEP 668), so
+`make tools` builds a venv in `.venv/` and everything looks there **before**
+`$PATH`. That order matters: `ruff.toml` pins the version with ruff's own
+`required-version`, so a system ruff of the wrong one refuses to run -- and
+preferring `$PATH` would strand somebody whose `.venv` has exactly the version the
+repo asked for. The venv survives `make clean`; `rm -rf .venv` starts over.
+
+The pin is there because a formatter whose output moves between releases turns
+"formatted" into "formatted by whoever committed last", and the diff lands on the
+next person. A mismatch is refused with both versions named rather than quietly
+reformatting the tree. Bumping it is one line in `ruff.toml`, one in the Makefile,
+and a reformat commit -- which is the honest cost of a new version.
+
 The base is LLVM, because that is what this code was written in by hand — two
 spaces, 80 columns, `char *p`, braces attached. The settings that differ from it
 were chosen by measuring the reformat rather than by taste: LLVM alone rewrote 38%
