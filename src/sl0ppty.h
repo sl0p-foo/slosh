@@ -88,6 +88,19 @@ char *screen_dump_json(screen_t *s);
 /* Expand a leading `~`, using `buf` when it has to. Returns `path` itself when
  * there is nothing to do, so `buf` only has to outlive the result's use. */
 const char *path_expand(const char *path, char *buf, size_t cap);
+/* `~`, then a relative path against `base` -- the directory the file that wrote
+ * it lives in, so a layout checked in with a project can say `cwd="."`. A NULL
+ * or empty `base` leaves a relative path alone, which is what it meant before
+ * there was a base to be relative to. */
+const char *path_resolve(const char *path, const char *base, char *buf,
+                         size_t cap);
+/* The directory part of a path: the base `path_resolve` wants. `.` when there
+ * is no `/` in it. */
+const char *path_dir(const char *path, char *buf, size_t cap);
+/* The inverse of `path_resolve` for writing one back out: a path under `base`
+ * relative to it, `.` for `base` itself, and anything not under it unchanged.
+ * Points into `path` or a literal, so it needs no buffer. */
+const char *path_relative(const char *path, const char *base);
 /* mkdir -p, for the directory a config or a session socket wants to live in. */
 bool path_mkdirs(const char *dir);
 
@@ -146,6 +159,20 @@ const char *pane_label(const pane_t *p);
 pid_t pane_pid(const pane_t *p);
 /* Where it was started, which is not where it *is*: see pane_pid(). */
 const char *pane_start_cwd(const pane_t *p);
+/* What the pane's terminal is running now, as a command line, or NULL when the
+ * answer is "your shell, at a prompt". Read from the pty's foreground process
+ * group, so it is the job that owns the terminal rather than a guess: `label`
+ * only knows what a layout said, which left a pane you split and typed a command
+ * into with nothing to write down. Shell-quoted, because `command=` is run
+ * through `/bin/sh -c`. */
+const char *pane_foreground(const pane_t *p, char *buf, size_t cap);
+/* How much history the pane keeps: a line count, and a byte ceiling that stops
+ * one wide, heavily styled pane from spending the machine to honour it. 0 lines
+ * is no scrollback; 0 bytes is no ceiling. Both are estimates -- lib-vt prunes a
+ * page at a time, so a pane keeps a little more than it was told, never less --
+ * and lowering either drops history at once, which is what makes this safe to
+ * apply to a running pane. */
+void pane_set_scrollback(pane_t *p, size_t lines, size_t bytes);
 bool pane_start(pane_t *p);
 void pane_free(pane_t *p);
 int pane_fd(const pane_t *p);

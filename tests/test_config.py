@@ -501,16 +501,26 @@ def test_a_setting_nobody_knows_is_said_out_loud():
 
 
 def test_the_two_documents_are_told_apart():
-    """A config and a layout share a syntax -- one parser reads both -- so a
-    filename is the only hint, and a filename cannot enforce anything. Each loader
-    says which document it was handed, and both answers come from the same list of
-    settings so they cannot disagree."""
+    """A config and a layout share a syntax -- one parser reads both -- so each
+    loader has to say which document it was handed, and both answers come from the
+    same list of settings so they cannot disagree. `--check` goes one better than
+    saying so: it holds the file to whichever schema it turned out to be."""
     lay = cfg('layout {\n  tab name="x" { pane }\n}\n')
     out = subprocess.run([BIN, "--check", lay], capture_output=True, text=True)
     said = out.stderr + out.stdout
-    check("a layout handed to --check says it is a layout",
-          "this is a layout, not a config" in said, repr(said))
-    check("...and points at the flag that reads one", "--layout" in said, repr(said))
+    check("a layout handed to --check is checked as a layout",
+          "ok, a layout" in said, repr(said))
+    check("...and a clean one exits zero", out.returncode == 0, str(out.returncode))
+
+    # Held to the layout schema, not the config one: the proof is that it names a
+    # property only the layout loader has ever heard of.
+    typo = cfg('layout {\n  tab name="x" { pane cmd="htop" }\n}\n')
+    out1 = subprocess.run([BIN, "--check", typo], capture_output=True, text=True)
+    said1 = out1.stderr + out1.stdout
+    check("a mistyped pane property is named", "unknown pane property: cmd" in said1,
+          repr(said1))
+    check("and the line it is on", ":2:" in said1, repr(said1))
+    check("and it exits non-zero", out1.returncode == 1, str(out1.returncode))
 
     conf = cfg("gap 2\ntheme { frame_focus \"#00ff88\" }\n")
     out2 = subprocess.run(
@@ -533,7 +543,7 @@ def test_the_two_documents_are_told_apart():
     check("a layout with no tabs still says that",
           "layout declares no tabs" in (out3.stderr + out3.stdout),
           repr(out3.stderr[:120]))
-    for p in (lay, conf, broken):
+    for p in (lay, typo, conf, broken):
         os.unlink(p)
 
 
@@ -547,6 +557,9 @@ def test_the_shipped_files_are_what_they_claim():
           repr(conf.stderr[:160]))
     lay = root / "config" / "example.layout.kdl"
     check("the example layout is named `*.layout.kdl`", lay.exists(), str(lay))
+    exl = subprocess.run([BIN, "--check", str(lay)], capture_output=True, text=True)
+    check("and it lints clean as a layout", exl.returncode == 0,
+          repr(exl.stderr[:200]))
     out = subprocess.run(
         [BIN, "--script", "--cols", "60", "--rows", "12", "--layout", str(lay),
          "--", "/bin/sh", "-c", "read x"],

@@ -15,9 +15,10 @@ smaller than that — an unknown shader, a binding that does not parse, an
 [`include`](#include) that is not there — applies the rest of the file and says
 which line it could not honour.
 
-Two settings are read later than the rest, because of *when* they are needed:
-`shell` applies to the next pane you open, and a shader plugin that replaced one
-already loaded needs a new session.
+Three settings are read later than the rest, because of *when* they are needed:
+`shell` and `scrollback` apply to the next pane you open — shrinking a pane's
+history retroactively would throw away output somebody is reading — and a shader
+plugin that replaced one already loaded needs a new session.
 
 ## Two files worth knowing
 
@@ -38,8 +39,7 @@ $ sl0ppty --check themes/mine.kdl     # or one you have not installed yet
 ```
 
 Every problem it found, one per line, with the file and line it happened at —
-including a setting it does not know, and a file that turns out to be a
-[layout](layouts.md#what-to-call-them) rather than a config:
+including a setting it does not know:
 
 ```
   cannot open /home/you/.config/sl0ppty/themes/nope.kdl
@@ -110,7 +110,7 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 |---|---|
 | geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
 | chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` `bell_indicator` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
-| behaviour | `focus_follows_mouse` `scroll_lines` `toast_ms` `hover_delay_ms` `double_click_ms` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
+| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `hover_delay_ms` `double_click_ms` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
 | colour | `theme { }` |
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |
@@ -133,6 +133,42 @@ A number means the same thing however many of them you write, so `padding 1`,
 `padding 1 1` and `padding 1 1 1 1` are one padding rather than three. Three
 values is refused — CSS reads it as top/horizontal/bottom, and a line whose
 meaning you have to look up is a line nobody can read.
+
+## Scrollback
+
+```kdl
+scrollback 10000            // lines of history per pane; 0 keeps none
+scrollback_bytes 16777216   // ...and the ceiling that count runs into
+```
+
+**The default was a library's, not a decision.** lib-vt is handed no limit and
+picks its own — 10,000 *bytes*, which measures at 622 lines of an 80-column pane,
+less than one `make` run. `scrollback` is that number replaced with the one every
+other multiplexer settled on.
+
+The two limits work together because either can be reached first and neither can
+see what the other depends on: a line count cannot know how wide your terminal is
+or how many styles a program used, and a byte count cannot know how many lines
+that bought. Whichever bites first wins. Both are estimates — history is pruned a
+page at a time (a page is about 400KB of grid), so a pane keeps a little more
+than it was told, never less.
+
+What the ceiling costs, measured on a pane filled with styled output:
+
+| pane width | 10,000 lines costs | with the default ceiling |
+|---|---|---|
+| 80 columns | ~6 MB | every line |
+| 200 columns | ~15 MB | about 2% fewer |
+| 400 columns | ~32 MB | about half |
+
+So it is invisible at ordinary widths and a brake at extraordinary ones, which is
+its job. It is per **pane**: sixty panes full of history is sixty times it, which
+is why there is no `unlimited` — at that many panes it would be a memory leak with
+a friendly name. `scrollback_bytes 0` removes the ceiling if you have one very wide
+pane and want every line of it.
+
+Both apply to **the next pane you open**, not to panes already holding history:
+shrinking one retroactively would throw away output somebody is reading.
 
 ## Pane states
 

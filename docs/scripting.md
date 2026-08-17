@@ -32,8 +32,12 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1` — the way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` `set-name` | tabs, by `id` or `index` |
 | `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`. The pane keeps running — same pty, same scrollback |
-| `set-purpose` | `target:"pane"\|"tab"`, `id`, `purpose` |
-| `dump-layout` `apply-layout` | see [layouts](layouts.md) |
+| `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program — a lock held over an empty string was a state nothing could get out of |
+| `dump-layout` `apply-layout` | see [layouts](layouts.md). `dump-layout` takes `tab` (0 for every tab), `relative_to` to write every `cwd=` under that directory instead of absolute, and `suspend` (`as-is` `none` `commands` `all`); it answers `kdl` `panes` `suspended`, and an unknown `tab` is an error rather than an empty document |
+| `workspaces` | the projects on disk and which of them are open: `roots` says whether any are configured at all, and each entry has `name` `path` `purpose` `layout` (a file path, or "") `mtime` `tab` (0 when closed) — see [workspaces](workspaces.md) |
+| `open-workspace` | `name` or `path`, and `suspended`; answers `tab` `purpose` `path` `created` `tabs` `honoured`. Already open means focused, with `created:false` |
+| `close-workspace` | `name` or `purpose`; answers `closed`, how many tabs went |
+| `save-workspace` | write this tab as the project's layout: `tab` (0 for the current one), `path` for a tab that is not a workspace yet, `suspend`, and `force` to overwrite a layout the project already has; answers `path` `purpose` `panes` `suspended` `replaced` |
 | `notify` | put a line in the session's status area |
 | `graphics` | the kitty placements on screen, or the bytes sent for them |
 | `clipboard` | what the session has copied |
@@ -41,6 +45,42 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `edit-config` | open the config in a pane |
 | `alive` | is it running, and how many panes and tabs |
 | `quit` | end the session |
+
+## Driving a project
+
+Everything a program needs in a project it has never seen — open it, ask what is
+in it, act on the purposes the project's own layout declared:
+
+```bash
+$ sl0ppty -s work cmd '{"cmd":"open-workspace","name":"api"}'
+{"ok":true,"tab":3,"purpose":"project:api.5c1f0a3b","path":"/home/you/dev/api","created":true,"tabs":1,"honoured":0}
+$ sl0ppty -s work cmd '{"cmd":"open-workspace","name":"api"}'
+{"ok":true,"tab":3,"purpose":"project:api.5c1f0a3b","path":"/home/you/dev/api","created":false,"tabs":0,"honoured":0}
+```
+
+**The second call focuses what is there and says `created:false`.** Opening is
+idempotent, so a script drives it in a loop without asking first — and "have I
+opened this already" is the question a script gets wrong after a crash or a
+re-attach.
+
+Then read the tab it handed back:
+
+```bash
+$ sl0ppty -s work cmd '{"cmd":"panes"}' \
+    | jq -c '.panes[] | select(.tab_id == 3) | {id, purpose, suspended}'
+{"id":7,"purpose":"agent:main","suspended":false}
+{"id":8,"purpose":"service:web","suspended":true}
+$ sl0ppty -s work cmd '{"cmd":"rerun","id":8}'    # start the dev server
+```
+
+The project's own layout file decided that `service:web` is the dev server and
+that it starts asleep; nothing in the session, the config or the calling program
+had to know that.
+
+`workspaces` reports each project's layout file `mtime`, so a tool that kept the
+mtime it opened a workspace with can tell the file has moved on since — without
+the session storing a byte on its behalf. Re-applying the changed layout is
+deliberately not offered: the panes it would replace have processes in them.
 
 ## A pane can draw its own chrome
 

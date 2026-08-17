@@ -19,7 +19,8 @@ static const struct {
     {"split-cols", ACT_SPLIT_COLS},   {"split-rows", ACT_SPLIT_ROWS},
     {"close-pane", ACT_CLOSE_PANE},   {"rerun", ACT_RERUN},
     {"zoom", ACT_ZOOM},
-    {"minimize", ACT_MINIMIZE},   {"focus-left", ACT_FOCUS_LEFT},
+    {"minimize", ACT_MINIMIZE},   {"set-purpose", ACT_SET_PURPOSE},
+    {"focus-left", ACT_FOCUS_LEFT},
     {"focus-right", ACT_FOCUS_RIGHT}, {"focus-up", ACT_FOCUS_UP},
     {"focus-down", ACT_FOCUS_DOWN},   {"focus-next", ACT_FOCUS_NEXT},
     {"resize-left", ACT_RESIZE_LEFT}, {"resize-right", ACT_RESIZE_RIGHT},
@@ -35,8 +36,11 @@ static const struct {
     {"scroll-page-down", ACT_SCROLL_PAGE_DOWN},
     {"scroll-top", ACT_SCROLL_TOP},   {"scroll-bottom", ACT_SCROLL_BOTTOM},
     {"new-tab", ACT_NEW_TAB},         {"next-tab", ACT_NEXT_TAB},
+    {"close-tab", ACT_CLOSE_TAB},
     {"prev-tab", ACT_PREV_TAB},       {"finder", ACT_FINDER},
     {"palette", ACT_PALETTE},
+    {"workspaces", ACT_WORKSPACES},
+    {"save-workspace", ACT_SAVE_WORKSPACE},
     {"detach", ACT_DETACH},           {"quit", ACT_QUIT},
     {"literal-prefix", ACT_LITERAL_PREFIX},
     {"help", ACT_HELP},
@@ -685,6 +689,16 @@ void config_defaults(config_t *c) {
   c->min_split_cols = 32;
   c->min_split_rows = 8;
   c->scroll_lines = 3;
+  /* What every other multiplexer settled on, and what lib-vt does not give you:
+   * its own default is 10,000 *bytes*, which measured at 622 lines of an
+   * 80-column pane. See config/config.kdl for the ceiling's arithmetic. */
+  c->scrollback = 10000;
+  c->scrollback_bytes = 16u * 1024 * 1024;
+  /* Two levels, because `~/dev/work/api` is as common as `~/dev/api` and a
+   * directory that is itself a project is never descended into -- so the second
+   * level costs one readdir per non-project directory and never walks a
+   * checkout. No roots by default: the feature is dormant until you say where. */
+  c->project_depth = 2;
   c->toast_ms = 2500;
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
@@ -883,6 +897,11 @@ void config_defaults(config_t *c) {
   /* `b` for break out, which is the word tmux taught everybody for this. */
   bind_add(c, GHOSTTY_KEY_B, 0, ACT_PANE_TO_NEW_TAB, false);
   bind_add(c, GHOSTTY_KEY_C, 0, ACT_NEW_TAB, false);
+  /* Shifted beside `x`, which closes a pane: the same verb on the bigger thing.
+   * A tab with four panes in it used to take four presses of `x` and the tab
+   * evaporating when the last one went, which is a side effect rather than a
+   * verb. */
+  bind_add(c, GHOSTTY_KEY_X, MOD_SHIFT, ACT_CLOSE_TAB, false);
   /* Cycling tabs is on tab/shift+tab, not on n/p: `p` is the palette, which is
    * pressed far more often than "the tab before this one" and had the only
    * shifted letter in the defaults. Tab is the key every other tabbed thing
@@ -890,8 +909,16 @@ void config_defaults(config_t *c) {
    * this costs nothing on a client without the kitty protocol. */
   bind_add(c, GHOSTTY_KEY_TAB, 0, ACT_NEXT_TAB, false);
   bind_add(c, GHOSTTY_KEY_TAB, MOD_SHIFT, ACT_PREV_TAB, false);
+  /* `w` for the projects picker and `W` to write this tab as one's layout: the
+   * same shifted-pair shape as `p`/`P`, on the letter people reach for. */
+  bind_add(c, GHOSTTY_KEY_W, 0, ACT_WORKSPACES, false);
+  bind_add(c, GHOSTTY_KEY_W, MOD_SHIFT, ACT_SAVE_WORKSPACE, false);
   bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER, false);
   bind_add(c, GHOSTTY_KEY_P, 0, ACT_PALETTE, false);
+  /* Shifted, beside the palette on the same letter: `p` runs a command, `P`
+   * tags this pane. A purpose was reachable only from a layout or the socket,
+   * which is why panes people arrange by hand have none. */
+  bind_add(c, GHOSTTY_KEY_P, MOD_SHIFT, ACT_SET_PURPOSE, false);
   bind_add(c, GHOSTTY_KEY_PAGE_UP, 0, ACT_SCROLL_PAGE_UP, false);
   bind_add(c, GHOSTTY_KEY_PAGE_DOWN, 0, ACT_SCROLL_PAGE_DOWN, false);
   bind_add(c, GHOSTTY_KEY_HOME, 0, ACT_SCROLL_TOP, false);
@@ -910,6 +937,8 @@ void config_free(config_t *c) {
   free(c->shell);
   free(c->editor);
   free(c->shader_dir);
+  free(c->project_layout);
+  for (size_t i = 0; i < c->nproject_roots; i++) free(c->project_roots[i]);
   for (size_t i = 0; i < c->nfiles; i++) free(c->files[i]);
   memset(c, 0, sizeof *c);
 }
@@ -934,6 +963,10 @@ static const struct {
     {ACT_RERUN, "panes", "run a finished pane again"},
     {ACT_ZOOM, "panes", "fill the tab with it"},
     {ACT_MINIMIZE, "panes", "put it away in the strip"},
+    /* Under `panes` because a purpose is a fact about this pane, and the label
+     * says "tag" rather than "set purpose": the word people arrive with is the
+     * one for what it is *for*, which is finding the pane again later. */
+    {ACT_SET_PURPOSE, "panes", "tag it with a purpose"},
 
     {ACT_FOCUS_LEFT, "focus", "go left"},
     {ACT_FOCUS_RIGHT, "focus", "go right"},
@@ -961,6 +994,7 @@ static const struct {
     {ACT_ROTATE_LAYOUT, "size", "turn the layout a quarter"},
 
     {ACT_NEW_TAB, "tabs", "new tab"},
+    {ACT_CLOSE_TAB, "tabs", "close this tab"},
     {ACT_NEXT_TAB, "tabs", "next tab"},
     {ACT_PREV_TAB, "tabs", "previous tab"},
     {ACT_SELECT_TAB_1, "tabs", "go to that tab"},
@@ -971,6 +1005,11 @@ static const struct {
     {ACT_SCROLL_PAGE_DOWN, "scroll", "down a page"},
     {ACT_SCROLL_TOP, "scroll", "to the oldest line"},
     {ACT_SCROLL_BOTTOM, "scroll", "back to the present"},
+
+    /* Their own group: a project is neither a pane nor this session, and the
+     * two verbs are the same pair -- go to one, write one down. */
+    {ACT_WORKSPACES, "projects", "go to a project"},
+    {ACT_SAVE_WORKSPACE, "projects", "save this tab as a layout"},
 
     {ACT_PALETTE, "session", "run a command"},
     {ACT_HELP, "session", "this list"},
@@ -1246,6 +1285,10 @@ char *config_render(const config_t *c) {
   cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
   cb_add(&b, "in_band_shaders %s\n", yesno(c->in_band_shaders));
   cb_add(&b, "scroll_lines %u\n", c->scroll_lines);
+  cb_add(&b, "scrollback %zu           // lines of history per pane; 0 for none\n",
+         c->scrollback);
+  cb_add(&b, "scrollback_bytes %zu  // the ceiling that count runs into; 0 for none\n",
+         c->scrollback_bytes);
   cb_add(&b, "toast_ms %u\n", c->toast_ms);
   cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
   cb_add(&b, "double_click_ms %u\n", c->double_click_ms);
@@ -1264,6 +1307,17 @@ char *config_render(const config_t *c) {
   else cb_add(&b, "// editor \"nvim\"        // unset: $EDITOR, then vi\n");
   if (c->shader_dir) cb_add(&b, "shader_dir \"%s\"\n", c->shader_dir);
   else cb_add(&b, "// shader_dir \"~/.config/sl0ppty/shaders\"\n");
+  if (c->nproject_roots) {
+    cb_add(&b, "project_roots");
+    for (size_t i = 0; i < c->nproject_roots; i++)
+      cb_add(&b, " \"%s\"", c->project_roots[i]);
+    cb_add(&b, " depth=%d\n", c->project_depth);
+  } else {
+    cb_add(&b, "// project_roots \"~/dev\" \"~/work\" depth=%d\n",
+           c->project_depth);
+  }
+  if (c->project_layout) cb_add(&b, "project_layout \"%s\"\n", c->project_layout);
+  else cb_add(&b, "// project_layout \"~/.config/sl0ppty/project.layout.kdl\"\n");
 
   cb_add(&b, "\n// ---- colour ----\ntheme {\n");
   for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)
@@ -1426,8 +1480,12 @@ static const char *const KNOWN_TOP[] = {
     "newtab_mark",
     "padding",
     "pane_buttons",
+    "project_layout",
+    "project_roots",
     "rounded",
     "scroll_lines",
+    "scrollback",
+    "scrollback_bytes",
     "shader_dir",
     "shaders",
     "shell",
@@ -1702,6 +1760,25 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   }
   c->scroll_lines =
       (uint16_t)kdl_arg_int(kdl_child(root, "scroll_lines"), 0, c->scroll_lines);
+  /* Read as a `long` so a negative is *refused* rather than wrapping into a
+   * limit of eighteen quintillion lines, which is how "unlimited" gets into a
+   * program by accident. There is no unlimited on purpose: with 64 panes it is a
+   * memory leak with a friendly name. */
+  const kdl_node_t *sbn = kdl_child(root, "scrollback");
+  if (sbn) {
+    long v = kdl_arg_int(sbn, 0, (long)c->scrollback);
+    if (v < 0) complain(c, err, errcap, sbn->line,
+                        "scrollback is a number of lines, 0 for none, not %ld", v);
+    else c->scrollback = (size_t)v;
+  }
+  const kdl_node_t *sbb = kdl_child(root, "scrollback_bytes");
+  if (sbb) {
+    long v = kdl_arg_int(sbb, 0, (long)c->scrollback_bytes);
+    if (v < 0) complain(c, err, errcap, sbb->line,
+                        "scrollback_bytes is a byte ceiling, 0 for none, not %ld",
+                        v);
+    else c->scrollback_bytes = (size_t)v;
+  }
   c->toast_ms = (uint16_t)kdl_arg_int(kdl_child(root, "toast_ms"), 0, c->toast_ms);
   c->hover_delay_ms = (uint16_t)kdl_arg_int(kdl_child(root, "hover_delay_ms"), 0,
                                             c->hover_delay_ms);
@@ -1753,6 +1830,41 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
     /* A plugin that will not load is worth a line, and worth nothing more:
      * the config it came with still works, minus that effect (D9). */
     if (lerr[0]) complain(c, err, errcap, 0, "%s", lerr);
+  }
+
+  /* Where projects live. Several roots because people have `~/dev` and `~/work`,
+   * and a `depth` property rather than a second node because it is one small
+   * fixed record -- the same shape `min_pane cols=24 rows=6` uses.
+   *
+   * Naming the node at all replaces the roots it inherited, the way a `shaders`
+   * block does: a list you can only add to is a list you cannot correct. */
+  const kdl_node_t *proots = kdl_child(root, "project_roots");
+  if (proots) {
+    for (size_t i = 0; i < c->nproject_roots; i++) free(c->project_roots[i]);
+    c->nproject_roots = 0;
+    for (size_t i = 0; i < proots->nargs; i++) {
+      if (c->nproject_roots >= PROJECT_ROOTS_MAX) {
+        complain(c, err, errcap, proots->line,
+                 "project_roots takes at most %d directories", PROJECT_ROOTS_MAX);
+        break;
+      }
+      c->project_roots[c->nproject_roots++] = strdup(proots->args[i]);
+    }
+    if (!proots->nargs)
+      complain(c, err, errcap, proots->line,
+               "project_roots takes one or more directories");
+    long d = kdl_prop_int(proots, "depth", c->project_depth);
+    if (d < 1 || d > 8)
+      complain(c, err, errcap, proots->line,
+               "depth is between 1 and 8, not %ld", d);
+    else
+      c->project_depth = (int)d;
+  }
+
+  const char *play = kdl_arg(kdl_child(root, "project_layout"), 0, NULL);
+  if (play) {
+    free(c->project_layout);
+    c->project_layout = strdup(play);
   }
 
   /* One node per pass, in the order written, because a chain is a sequence.

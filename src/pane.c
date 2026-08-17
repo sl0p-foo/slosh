@@ -397,6 +397,108 @@ void pane_free(pane_t *p) {
 int pane_fd(const pane_t *p) { return p->pty.fd; }
 pid_t pane_pid(const pane_t *p) { return p->pty.pid; }
 const char *pane_start_cwd(const pane_t *p) { return p->cwd; }
+
+/* What this pane's terminal is *running*, as a command line, or NULL.
+ *
+ * `label` is only what a layout gave the pane, so a pane you split and then
+ * typed `npm run dev` into had nothing to say for itself and was written back
+ * out as a bare shell. The kernel knows what the label does not: the pty has a
+ * foreground process group, and that group is by definition the job that owns
+ * the terminal -- which is exactly what "what is running in this pane" means.
+ *
+ * The pane's own shell sitting at a prompt is *not* a command, and is reported
+ * as none: its process group is the pane's own, and writing `command="zsh"`
+ * into a layout would turn every idle pane into one that re-runs your shell
+ * inside your shell. A background job is not reported either -- it does not own
+ * the terminal, and a layout that resurrected `&` jobs in the foreground would
+ * be describing a session nobody had.
+ *
+ * argv is joined with shell quoting, because `command=` is handed to `/bin/sh
+ * -c` and an argument with a space in it would otherwise come back as two. */
+static void sq_append(char *out, size_t cap, size_t *len, const char *arg) {
+  bool safe = *arg != 0;
+  for (const char *c = arg; *c && safe; c++)
+    safe = (*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') ||
+           (*c >= '0' && *c <= '9') || strchr("_./:=@%+-,", *c) != NULL;
+  if (*len && *len + 1 < cap) out[(*len)++] = ' ';
+  if (safe) {
+    *len += (size_t)snprintf(out + *len, cap - *len, "%s", arg);
+    return;
+  }
+  if (*len + 1 < cap) out[(*len)++] = '\'';
+  for (const char *c = arg; *c && *len + 5 < cap; c++) {
+    if (*c != '\'') {
+      out[(*len)++] = *c;
+      continue;
+    }
+    /* A single quote cannot appear inside single quotes: close, escape, reopen. */
+    memcpy(out + *len, "'\\''", 4);
+    *len += 4;
+  }
+  if (*len + 1 < cap) out[(*len)++] = '\'';
+  out[*len < cap ? *len : cap - 1] = 0;
+}
+
+const char *pane_foreground(const pane_t *p, char *buf, size_t cap) {
+  if (!p || p->pty.fd < 0 || p->pty.pid <= 0) return NULL;
+  pid_t fg = tcgetpgrp(p->pty.fd);
+  if (fg <= 0 || fg == p->pty.pid) return NULL; /* the pane's own shell */
+
+  char path[64];
+  snprintf(path, sizeof path, "/proc/%d/cmdline", (int)fg);
+  FILE *f = fopen(path, "rb");
+  if (!f) return NULL; /* gone between asking and reading, or not Linux */
+  char raw[4096];
+  size_t n = fread(raw, 1, sizeof raw - 1, f);
+  fclose(f);
+  if (!n) return NULL; /* a zombie or a kernel thread has no command line */
+  raw[n] = 0;
+
+  size_t len = 0;
+  buf[0] = 0;
+  for (size_t i = 0; i < n; i += strlen(raw + i) + 1) {
+    if (!raw[i]) break;
+    sq_append(buf, cap, &len, raw + i);
+    if (len + 2 >= cap) break;
+  }
+  return buf[0] ? buf : NULL;
+}
+
+/* How much history this pane keeps.
+ *
+ * lib-vt's own default is 10,000 *bytes* and no line limit, which measured at
+ * 622 lines of an 80-column pane -- less than a screenful of `make` output, and
+ * not a number anybody chose. Both limits are set here because either can bite
+ * first and lib-vt applies whichever does: a line count is what a person means
+ * by "scrollback", and the byte ceiling is what stops one very wide, heavily
+ * styled pane from spending the machine's memory to honour it.
+ *
+ * Both are estimates. Pruning happens a page at a time (a page is ~400KB of
+ * grid), so what a pane actually keeps is a little more than it was told to,
+ * never less. Lowering either drops history immediately, which is what makes
+ * this safe to apply to running panes on a config reload rather than only to the
+ * next pane opened.
+ *
+ * `lines` 0 is no scrollback at all, and goes through the byte limit because
+ * that is the one lib-vt documents as erasing retained history. */
+void pane_set_scrollback(pane_t *p, size_t lines, size_t bytes) {
+  if (!p || !p->term) return;
+  if (!lines) {
+    size_t none = 0;
+    ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES,
+                         &none);
+    ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES,
+                         &none);
+    return;
+  }
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES,
+                       &lines);
+  /* A NULL value removes the byte limit, which is the honest way to say "no
+   * ceiling": a very large number would still be a number we invented. */
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES,
+                       bytes ? &bytes : NULL);
+}
+
 bool pane_alive(const pane_t *p) { return p->alive; }
 bool pane_dirty(pane_t *p) { return p->dirty; }
 const char *pane_title(const pane_t *p) {

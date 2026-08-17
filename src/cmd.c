@@ -81,6 +81,18 @@ static char *jok_raw(const char *key, char *raw) {
   return out;
 }
 
+/* `suspend` on a dump: which panes are written as not-yet-started. A word
+ * rather than a flag because there are four honest answers and three of them
+ * are wanted -- see dump_suspended() for which is the default where. */
+static int suspend_policy(const char *word, int fallback) {
+  if (!word) return fallback;
+  if (strcmp(word, "as-is") == 0) return DUMP_SUSPEND_ASIS;
+  if (strcmp(word, "none") == 0) return DUMP_SUSPEND_NONE;
+  if (strcmp(word, "commands") == 0) return DUMP_SUSPEND_COMMANDS;
+  if (strcmp(word, "all") == 0) return DUMP_SUSPEND_ALL;
+  return -1;
+}
+
 static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                       const jv_t *req, bool *quit) {
   const char *cmd = jv_gets(req, "cmd", NULL);
@@ -235,12 +247,22 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     return ok ? jok_int(NULL, 0) : jerr("refused");
   }
   if (strcmp(cmd, "dump-layout") == 0) {
-    char *kdl = app_dump_layout(a);
+    dump_layout_t o = {.tab = (uint32_t)jv_geti(req, "tab", 0),
+                       .base = jv_gets(req, "relative_to", NULL)};
+    o.suspend = suspend_policy(jv_gets(req, "suspend", NULL), DUMP_SUSPEND_ASIS);
+    if (o.suspend < 0) return jerr("suspend is as-is, none, commands or all");
+    char *kdl = app_dump_layout(a, &o);
+    if (o.tab && !o.tabs) {
+      free(kdl);
+      return jerr("no such tab");
+    }
     json_t j;
     json_init(&j);
     json_obj_open(&j, NULL);
     json_bool(&j, "ok", true);
     json_str(&j, "kdl", kdl, strlen(kdl));
+    json_int(&j, "panes", (long long)o.panes);
+    json_int(&j, "suspended", (long long)o.suspended);
     json_obj_close(&j);
     free(kdl);
     return j.buf;
@@ -257,6 +279,107 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     app_resize(a, s->cols, s->rows);
     s->force_full = true;
     return jok_raw("tabs", app_tabs_json(a));
+  }
+  /* ---- workspaces ------------------------------------------------------- *
+   *
+   * `workspaces` lists what is on disk and which of it is open; the other three
+   * are open, close and write one. Everything a tool needs to drive a project
+   * without knowing anything about that project: open it, ask `panes` what is
+   * in it, and act on the purposes the project's own layout declared. */
+  if (strcmp(cmd, "workspaces") == 0) {
+    project_t all[PROJECTS_MAX];
+    size_t n = app_projects(all, PROJECTS_MAX);
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    /* Said out loud rather than answered with an empty list: "you have no
+     * projects" and "you never said where they are" are different facts. */
+    json_bool(&j, "roots", app_project_roots_set());
+    json_arr_open(&j, "workspaces");
+    for (size_t i = 0; i < n; i++) {
+      json_obj_open(&j, NULL);
+      json_str(&j, "name", all[i].name, strlen(all[i].name));
+      json_str(&j, "path", all[i].path, strlen(all[i].path));
+      json_str(&j, "purpose", all[i].slug, strlen(all[i].slug));
+      json_str(&j, "layout", all[i].layout, strlen(all[i].layout));
+      /* The file's mtime, so a tool can compare it against a pane's `since` and
+       * decide the open workspace has drifted -- without this session storing a
+       * byte to remember, or pretending it could re-apply a layout over running
+       * processes. */
+      json_int(&j, "mtime", (long long)all[i].mtime);
+      json_int(&j, "tab", (long long)app_workspace_tab(a, all[i].slug));
+      json_obj_close(&j);
+    }
+    json_arr_close(&j);
+    json_obj_close(&j);
+    return j.buf;
+  }
+  if (strcmp(cmd, "open-workspace") == 0) {
+    const char *name = jv_gets(req, "name", jv_gets(req, "path", NULL));
+    if (!name) return jerr("need a name or a path");
+    app_workspace_open_t w;
+    char err[256] = {0};
+    if (!app_workspace_open(a, name, jv_getb(req, "suspended", false), &w, err,
+                            sizeof err))
+      return jerr(err[0] ? err : "cannot open that");
+    app_resize(a, s->cols, s->rows);
+    s->force_full = true;
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_int(&j, "tab", (long long)w.tab);
+    json_str(&j, "purpose", w.purpose, strlen(w.purpose));
+    json_str(&j, "path", w.path, strlen(w.path));
+    json_bool(&j, "created", w.created);
+    json_int(&j, "tabs", (long long)w.tabs);
+    /* A layout tab that declared a purpose of its own keeps it and is not a
+     * member. Counted here rather than left silent, because a tab that is not
+     * in the workspace it looks like it is in would be a surprise later. */
+    json_int(&j, "honoured", (long long)w.honoured);
+    json_obj_close(&j);
+    return j.buf;
+  }
+  if (strcmp(cmd, "close-workspace") == 0) {
+    const char *purpose = jv_gets(req, "purpose", NULL);
+    char slug[64] = {0};
+    if (!purpose) {
+      const char *name = jv_gets(req, "name", NULL);
+      if (!name) return jerr("need a name or a purpose");
+      /* Resolved by the same function opening uses, so the two cannot disagree
+       * about which workspace a name means. */
+      project_t p;
+      if (!app_workspace_find(name, &p)) return jerr("no such project");
+      snprintf(slug, sizeof slug, "%s", p.slug);
+      purpose = slug;
+    }
+    size_t n = app_workspace_close(a, purpose);
+    app_resize(a, s->cols, s->rows);
+    s->force_full = true;
+    return jok_int("closed", (long long)n);
+  }
+  if (strcmp(cmd, "save-workspace") == 0) {
+    int suspend = suspend_policy(jv_gets(req, "suspend", NULL),
+                                 DUMP_SUSPEND_COMMANDS);
+    if (suspend < 0) return jerr("suspend is as-is, none, commands or all");
+    app_workspace_save_t w;
+    char err[256] = {0};
+    if (!app_workspace_save(a, (uint32_t)jv_geti(req, "tab", 0),
+                            jv_gets(req, "path", NULL), suspend,
+                            jv_getb(req, "force", false), &w, err, sizeof err))
+      return jerr(err[0] ? err : "cannot save that");
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_str(&j, "path", w.path, strlen(w.path));
+    json_str(&j, "purpose", w.purpose, strlen(w.purpose));
+    json_int(&j, "panes", (long long)w.panes);
+    json_int(&j, "suspended", (long long)w.suspended);
+    json_bool(&j, "replaced", w.replaced);
+    json_obj_close(&j);
+    return j.buf;
   }
   if (strcmp(cmd, "notify") == 0) {
     const char *text = jv_gets(req, "text", NULL);
@@ -393,7 +516,64 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
   }
   if (strcmp(verb, "dump-layout") == 0) {
     app_compose(a, s); /* the layout is a function of the frame: compose first */
-    return app_dump_layout(a);
+    return app_dump_layout(a, NULL);
+  }
+  /* The bare forms the harness and a person at a shell use. Same functions, so
+   * a script and a test cannot drift from what the API does. */
+  if (strcmp(verb, "workspaces") == 0) {
+    project_t all[PROJECTS_MAX];
+    size_t n = app_projects(all, PROJECTS_MAX);
+    /* One row per project, each bounded by the fields it prints: name, marker
+     * and path are all fixed-size in project_t, so the whole answer is too. */
+    size_t cap = n * (sizeof all[0].name + sizeof all[0].path + 32) + 128;
+    char *out = malloc(cap);
+    size_t len = 0;
+    if (!app_project_roots_set())
+      len += (size_t)snprintf(out + len, cap - len,
+                              "no project roots: set project_roots in your "
+                              "config\n");
+    for (size_t i = 0; i < n && len < cap; i++) {
+      uint32_t tab = app_workspace_tab(a, all[i].slug);
+      len += (size_t)snprintf(out + len, cap - len, "%-24s %-9s %s%s\n",
+                              all[i].name, all[i].layout[0] ? "layout" : ".git",
+                              all[i].path, tab ? "  (open)" : "");
+    }
+    return out;
+  }
+  if (strcmp(verb, "open-workspace") == 0) {
+    app_workspace_open_t w;
+    char err[256] = {0};
+    if (!app_workspace_open(a, arg, false, &w, err, sizeof err))
+      return strdup(err[0] ? err : "cannot open that");
+    app_resize(a, s->cols, s->rows);
+    s->force_full = true;
+    char out[128];
+    snprintf(out, sizeof out, "%s tab %u", w.created ? "opened" : "focused",
+             w.tab);
+    return strdup(out);
+  }
+  if (strcmp(verb, "close-workspace") == 0) {
+    project_t p;
+    if (!app_workspace_find(arg, &p)) return strdup("no such project");
+    size_t n = app_workspace_close(a, p.slug);
+    app_resize(a, s->cols, s->rows);
+    s->force_full = true;
+    char out[64];
+    snprintf(out, sizeof out, "closed %zu tab%s", n, n == 1 ? "" : "s");
+    return strdup(out);
+  }
+  if (strcmp(verb, "save-workspace") == 0) {
+    app_workspace_save_t w;
+    char err[256] = {0};
+    /* The bare form takes the path a tab is not yet a workspace for, since that
+     * is the one thing it cannot work out on its own. */
+    if (!app_workspace_save(a, 0, *arg ? arg : NULL, DUMP_SUSPEND_COMMANDS,
+                            false, &w, err, sizeof err))
+      return strdup(err[0] ? err : "cannot save that");
+    char out[640];
+    snprintf(out, sizeof out, "%s (%zu panes, %zu suspended)", w.path, w.panes,
+             w.suspended);
+    return strdup(out);
   }
   if (strcmp(verb, "reload") == 0) {
     char err[256] = {0};

@@ -103,7 +103,7 @@ def test_no_room_says_so_rather_than_splitting_anyway():
 
 def test_the_cheatsheet_lists_it():
     c = conf()
-    with Session(SH, cols=92, rows=28, config=c) as s:
+    with Session(SH, cols=92, rows=40, config=c) as s:
         s.settle()
         s.send(r"\x01?")
         s.settle()

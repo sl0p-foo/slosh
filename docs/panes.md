@@ -11,6 +11,12 @@ looking at is drawn.
   fit and saying which way it went. `C-a \` and `C-a -` when you mean one.
   Splitting the same direction again gives three equal shares rather than
   1/2 + 1/4 + 1/4.
+- **A new pane starts in the directory the pane it came out of is in**, not where
+  the session was started. Splitting inside a project to run one more thing and
+  landing in whatever directory the server was launched from is wrong on its own;
+  it was wrong on disk as well, because a saved
+  [project layout](workspaces.md) then carried an absolute `cwd=` pointing at
+  somewhere else entirely.
 - **Resize** with `C-a H J K L`: the boundary moves the way you press, whichever
   side of it you are on. Sizes are *weights*, so a resized layout survives the
   window changing size.
@@ -42,10 +48,19 @@ nothing you click can disagree with what is on screen.
   toast says where it went, since the pane lands somewhere you are not looking.
 - **Double-click a name to rename it in place** — a pane's title or a tab in the
   strip. Enter keeps it, Escape abandons it, empty gives it back to the program.
+  A name is not a [purpose](layouts.md#purposes): the purpose is a separate label
+  with a key of its own, `C-a P`, so a rename and a tag cannot be confused with
+  each other. The purpose editor draws in the same title cell but labels itself
+  `purpose <what you type>`, so you can see which of the two you are editing.
 - **Drag a tab along the strip** to reorder it. The strip rearranges as you go
   rather than dropping it at the end.
 - Click a tab to switch, `+` to open one, a pane to focus it, and the marks in a
   frame's corner to minimise (`▬`), zoom (`□`) or close (`✕`) it.
+- **A tab in the strip has no `✕`** and closes with `C-a X` instead. A mark per tab
+  would cost two columns of every tab on every frame, forever, for a verb pressed
+  rarely — the same arithmetic that took the per-pane `+` away. A pane's marks
+  earn their cells because there is one set of them and it is where you are
+  looking.
 - Hovering anything says what it does, in a word, in the status line.
 
 ## Finding a pane
@@ -56,6 +71,10 @@ out of sight. Type to narrow it by pane title, tab name or
 [purpose](layouts.md#purposes); arrows, `C-n`/`C-p` or tab to move, `C-u` to clear
 what you typed, enter to go.
 A dot marks where you already are.
+
+The finder searches what this session has; `C-a w` lists what is on disk —
+every project under your roots, open or not ([workspaces](workspaces.md)). A
+project you have not opened yet has no pane for the finder to match.
 
 ## Panes that were given a command
 

@@ -117,6 +117,59 @@ def test_closing_a_tab():
               s.tabs()[0]["active"] and s.api("alive")["alive"])
 
 
+def test_closing_a_whole_tab_is_one_verb():
+    """Closing a tab used to be a *side effect*: press `x` once per pane and the
+    tab evaporates when the last one goes. Four panes meant four presses and
+    counting, so the thing you meant had no way to be said."""
+    # Room for three panes: a rows split inside a cols split needs the height,
+    # and `min_split` refuses one that would not fit.
+    with Session(SH, cols=90, rows=24) as s:
+        s.settle()
+        s.key("c")
+        s.settle()
+        s.key("\\\\")
+        s.key("-")
+        s.settle()
+        check("tab 2 has three panes", s.tabs()[1]["panes"] == 3, str(s.tabs()))
+
+        s.key("X")
+        s.settle()
+        check("one press closes the whole tab", len(s.tabs()) == 1, str(s.tabs()))
+        screen = s.snapshot().screen()
+        check("and says how much went with it",
+              "closed tab" in screen and "3 panes" in screen, screen)
+        check("the session is still running", s.api("alive")["alive"])
+
+
+def test_the_last_tab_is_refused_rather_than_obeyed():
+    """`close-tab` over the socket ends the session when nothing is left, which is
+    right for a request. A key that closes a tab four times and ends your session
+    the fifth is one you cannot press without counting first."""
+    with Session(SH, cols=76, rows=14) as s:
+        s.settle()
+        s.key("X")
+        s.settle()
+        check("the tab is still there", len(s.tabs()) == 1, str(s.tabs()))
+        check("the session is still running", s.api("alive")["alive"])
+        check("and it says what to press instead", "quit" in s.snapshot().screen(),
+              s.snapshot().screen())
+
+
+def test_close_tab_is_reachable_without_the_key():
+    with Session(SH, cols=92, rows=36) as s:
+        s.settle()
+        s.send(r"\x01?")
+        s.settle()
+        check("the cheatsheet lists it", "close this tab" in s.snapshot().screen(),
+              s.snapshot().screen())
+        s.send(r"\x01q")  # any key dismisses the sheet; this one is swallowed
+        s.settle()
+        s.key("p")
+        s.send("close this tab")
+        check("so does the palette", "close this tab" in s.snapshot().screen(),
+              s.snapshot().screen())
+
+
 def test_purpose_trust_model():
     """D8: a declared purpose outranks an in-band one and cannot be overridden."""
     with Session(SH, cols=60, rows=12) as s:
@@ -520,6 +573,9 @@ if __name__ == "__main__":
     test_background_tabs_keep_running()
     test_tab_click()
     test_closing_a_tab()
+    test_closing_a_whole_tab_is_one_verb()
+    test_the_last_tab_is_refused_rather_than_obeyed()
+    test_close_tab_is_reachable_without_the_key()
     test_purpose_trust_model()
     test_json_api()
     test_hovering_the_strip_lights_what_is_under_the_pointer()

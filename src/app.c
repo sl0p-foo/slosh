@@ -324,7 +324,18 @@ struct app {
    * rather than two that would drift apart, for the same reason the rename
    * editor is. Only one can be open, which is what makes sharing the query
    * and the selection honest rather than a saving. */
-  enum { PICK_NONE = 0, PICK_FINDER, PICK_PALETTE } picker;
+  enum {
+    PICK_NONE = 0,
+    PICK_FINDER,
+    PICK_PALETTE,
+    PICK_WORKSPACES
+  } picker;
+  /* What the project picker is listing: scanned once when it opens, because
+   * draw_picker asks for its rows every frame and a readdir per repaint is a
+   * filesystem walk at 120Hz. Once per opening is when the answer has to be
+   * right, which is why nothing is kept for longer. */
+  project_t *projects;
+  size_t nprojects;
   char query[64];
   size_t sel;
 
@@ -332,7 +343,7 @@ struct app {
    * where it will live rather than in a dialog somewhere else. A pane's title
    * and a tab's label are the same gesture on two different things, so this is
    * one editor with a subject rather than two machines that would drift. */
-  enum { RENAME_NONE = 0, RENAME_PANE, RENAME_TAB } renaming;
+  enum { RENAME_NONE = 0, RENAME_PANE, RENAME_TAB, RENAME_PURPOSE } renaming;
   uint32_t rename_id;
   /* As wide as a pane title, so seeding the editor never truncates one (and so
    * never truncates one mid-UTF-8). */
@@ -351,6 +362,14 @@ struct app {
   /* Which tab a layout said was active, resolved after every tab exists --
    * the index is only meaningful once the array has stopped growing. */
   size_t restore_tab;
+
+  /* Set for the duration of one app_apply_layout: every pane it builds starts
+   * suspended whatever the file said. `open-workspace suspended:true` is the
+   * "open ten projects, run zero processes" case, which is a different question
+   * from the one a project's layout answered about which of *its* panes are
+   * expensive -- and it has to be decided before anything spawns, because a pane
+   * is created suspended or created running and there is no un-running one. */
+  bool force_suspend;
   const char *const *argv;
   /* What this session is called. The server knows it because it opened the
    * socket under that name; the app only knows it because it is worth saying
@@ -622,6 +641,7 @@ static const char *hint_for(app_t *a, const char *action) {
   if (strncmp(action, "corner:", 7) == 0) return "drag to resize both ways";
   if (strncmp(action, "focus:", 6) == 0) return "open this pane";
   if (strncmp(action, "find:", 5) == 0) return "go to this pane";
+  if (strncmp(action, "open:", 5) == 0) return "go to this project";
   /* Not "click to switch": that is the one of the three nobody needs telling.
    * Same rule as a pane's title, which advertises the rename and the drag. */
   if (strncmp(action, "tab:", 4) == 0)
@@ -895,6 +915,10 @@ static node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
   pane_set_clipboard_handler(p, on_pane_clipboard, a);
   pane_set_notify_handler(p, on_pane_notify, a);
   pane_set_cell_px(p, a->cell_w, a->cell_h);
+  /* Every pane is made here, so this is the one place history has to be sized.
+   * lib-vt's own default is 10,000 bytes -- 622 lines of an 80-column pane --
+   * which is not a number anybody chose. */
+  pane_set_scrollback(p, CFG.scrollback, CFG.scrollback_bytes);
   return n;
 }
 
@@ -914,19 +938,17 @@ static const char *const *default_argv(app_t *a) {
   return argv;
 }
 
+/* Where the program in a pane *is*, which after any amount of `cd` is not where
+ * it was started. Defined with the dumper, declared here because a split wants
+ * it too: a new pane opens where the one it came out of stands. */
+static const char *live_cwd(const pane_t *p, char *buf, size_t cap);
+
+/* A plain pane running the session's shell. One line, because everything a pane
+ * needs setting up is in leaf_new_ex and a second copy of that list is a second
+ * place to forget something -- which is exactly how panes came to have every
+ * handler attached and no history limit. */
 static node_t *leaf_new(app_t *a) {
-  pane_t *p = pane_new(default_argv(a), 1, 1, NULL);
-  if (!p) return NULL;
-  node_t *n = calloc(1, sizeof *n);
-  n->kind = NODE_LEAF;
-  n->weight = WEIGHT_UNIT;
-  n->pane = p;
-  n->id = ++a->next_id;
-  pane_set_osc_handler(p, on_pane_osc, a);
-  pane_set_clipboard_handler(p, on_pane_clipboard, a);
-  pane_set_notify_handler(p, on_pane_notify, a);
-  pane_set_cell_px(p, a->cell_w, a->cell_h);
-  return n;
+  return leaf_new_ex(a, default_argv(a), NULL, false, "");
 }
 
 /* Empty a chain, freeing the programs it owned. */
@@ -1005,6 +1027,7 @@ void app_free(app_t *a) {
   gfx_free(a->gfx);
   free(a->clipboard);
   free(a->clipboard_pending);
+  free(a->projects);
   for (size_t i = 0; i < a->ntabs; i++) node_free(a->tabs[i].root);
   free(a->tabs);
   free(a);
@@ -1556,7 +1579,14 @@ static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
                                bool before, const char *const *argv,
                                const char *label) {
   if (!leaf) return NULL;
-  node_t *fresh = argv ? leaf_new_ex(a, argv, NULL, false, label) : leaf_new(a);
+  /* A new pane opens where the pane it came out of *is*, not where the session
+   * was started. Splitting inside a project and landing in whatever directory
+   * the server happened to be launched from is wrong on its own, and it made a
+   * saved project layout carry an absolute path to somewhere else entirely. */
+  char cwdbuf[4096];
+  const char *cwd = live_cwd(leaf->pane, cwdbuf, sizeof cwdbuf);
+  node_t *fresh = argv ? leaf_new_ex(a, argv, cwd, false, label)
+                       : leaf_new_ex(a, default_argv(a), cwd, false, "");
   if (!fresh) return NULL;
 
   place_beside(a, cur(a), leaf, fresh, dir, before);
@@ -1811,29 +1841,50 @@ bool app_close_tab(app_t *a, uint32_t id) {
 
 /* D8's trust model: a purpose declared by a layout outranks an in-band one and
  * cannot be overridden, so `cat hostile.txt` in a pane cannot relabel a
- * project tab. `declared` is only ever true on the control path. */
+ * project tab. `declared` is only ever true on the control path.
+ *
+ * Clearing a declared purpose *unlocks* it. Setting it to nothing means "this
+ * pane has no purpose of mine", and a lock held over an empty string would be
+ * the one state nobody can get out of -- the program can no longer label
+ * itself and there is nothing there to have outranked it. Same shape as
+ * clearing a pane's name, which hands the title back to the program. */
+static void set_purpose(char *slot, size_t cap, bool *locked,
+                        const char *purpose, bool declared) {
+  sanitise_purpose(purpose, slot, cap);
+  if (declared) *locked = slot[0] != 0;
+}
+
+/* `id` 0 is the focused pane, and the tab you are looking at, the way it is
+ * everywhere else a verb takes one (`close`, `rerun`, `clear-shaders`). It was
+ * the one addressable thing that refused it, which read as "that purpose is
+ * not allowed" rather than "say which pane". */
 bool app_set_pane_purpose(app_t *a, uint32_t id, const char *purpose,
                           bool declared) {
-  struct byid b = {id, NULL};
-  walk_all(a, byid_cb, &b);
-  if (!b.found) return false;
-  if (b.found->purpose_locked && !declared) return false;
-  sanitise_purpose(purpose, b.found->purpose, sizeof b.found->purpose);
-  if (declared) b.found->purpose_locked = true;
+  node_t *found = NULL;
+  if (!id) {
+    found = cur(a)->focus;
+  } else {
+    struct byid b = {id, NULL};
+    walk_all(a, byid_cb, &b);
+    found = b.found;
+  }
+  if (!found) return false;
+  if (found->purpose_locked && !declared) return false;
+  set_purpose(found->purpose, sizeof found->purpose, &found->purpose_locked,
+              purpose, declared);
   return true;
 }
 
 bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
                          bool declared) {
-  for (size_t i = 0; i < a->ntabs; i++) {
-    tab_t *t = &a->tabs[i];
-    if (t->id != id) continue;
-    if (t->purpose_locked && !declared) return false;
-    sanitise_purpose(purpose, t->purpose, sizeof t->purpose);
-    if (declared) t->purpose_locked = true;
-    return true;
-  }
-  return false;
+  tab_t *t = id ? NULL : cur(a);
+  for (size_t i = 0; !t && i < a->ntabs; i++)
+    if (a->tabs[i].id == id) t = &a->tabs[i];
+  if (!t) return false;
+  if (t->purpose_locked && !declared) return false;
+  set_purpose(t->purpose, sizeof t->purpose, &t->purpose_locked, purpose,
+              declared);
+  return true;
 }
 
 static tab_t *tab_by_id(app_t *a, uint32_t id) {
@@ -2195,15 +2246,24 @@ uint32_t app_current_tab_id(app_t *a) { return a->ntabs ? cur(a)->id : 0; }
  * A `pane` with children is a split; `split` on it picks the direction. Every
  * purpose a layout declares is locked, which is the point: identity comes from
  * the layout, not from whatever the program inside decides to print (D8).
+ *
+ * `base` is the directory the file came from, and a relative `cwd=` resolves
+ * against it, so a layout can be checked in beside the project it describes
+ * (path_resolve). A layout that arrived as text has no base and keeps the old
+ * meaning: relative to wherever the session is.
  */
 
-static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
-  /* Expanded once here, so both the pane spawned from this node and every
+static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
+                          const char *base) {
+  /* Resolved once here, so both the pane spawned from this node and every
    * child that inherits the value get the same real directory. The buffer
-   * outlives the recursion below it: children finish before we return. */
+   * outlives the recursion below it: children finish before we return. An
+   * inherited value is already resolved, so it is passed through untouched --
+   * resolving it twice would re-root a path against itself. */
   char cwdbuf[1024];
-  const char *node_cwd =
-      path_expand(kdl_prop(node, "cwd", cwd), cwdbuf, sizeof cwdbuf);
+  const char *own = kdl_prop(node, "cwd", NULL);
+  const char *node_cwd = own ? path_resolve(own, base, cwdbuf, sizeof cwdbuf)
+                             : cwd;
 
   /* a split: children, in order, in one direction */
   size_t kids = 0;
@@ -2222,7 +2282,7 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
                                                                    : SPLIT_COLS;
     for (size_t i = 0; i < node->nkids; i++) {
       if (strcmp(node->kids[i]->name, "pane") != 0) continue;
-      node_t *kid = build_pane(a, node->kids[i], node_cwd);
+      node_t *kid = build_pane(a, node->kids[i], node_cwd, base);
       if (!kid) continue;
       sp->kids = realloc(sp->kids, (sp->nkids + 1) * sizeof *sp->kids);
       sp->kids[sp->nkids++] = kid;
@@ -2243,7 +2303,7 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
   }
 
   const char *command = kdl_prop(node, "command", NULL);
-  bool suspended = kdl_prop_bool(node, "suspended", false);
+  bool suspended = a->force_suspend || kdl_prop_bool(node, "suspended", false);
   const char *argv[4];
   if (command) {
     argv[0] = "/bin/sh";
@@ -2251,10 +2311,10 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
     argv[2] = command;
     argv[3] = NULL;
   } else {
-    const char *const *base = default_argv(a);
-    argv[0] = base[0];
+    const char *const *shell = default_argv(a);
+    argv[0] = shell[0];
     argv[1] = NULL;
-    for (size_t i = 1; base[i] && i < 3; i++) argv[i] = base[i];
+    for (size_t i = 1; shell[i] && i < 3; i++) argv[i] = shell[i];
   }
 
   node_t *leaf = leaf_new_ex(a, command ? argv : default_argv(a), node_cwd,
@@ -2274,8 +2334,8 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd) {
   return leaf;
 }
 
-bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
-                      size_t errcap) {
+bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace,
+                      const char *base, char *err, size_t errcap) {
   a->restore_tab = (size_t)-1;
   const kdl_node_t *lay = kdl_child(root, "layout");
   if (!lay) lay = root; /* allow a bare list of tabs */
@@ -2294,11 +2354,14 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
       tab->purpose_locked = true;
     }
 
-    /* the tab body is a split of its pane children */
+    /* The tab body is a split of its pane children, and the tab's own props
+     * are its root's -- including `cwd`, which build_pane reads off the body
+     * for itself. `base` as the inherited value is what makes a layout with no
+     * `cwd` anywhere in it start in the directory it was checked into. */
     kdl_node_t body = {.name = (char *)"pane", .kids = t->kids,
                        .nkids = t->nkids, .props = t->props,
                        .nprops = t->nprops};
-    node_t *tree = build_pane(a, &body, kdl_prop(t, "cwd", NULL));
+    node_t *tree = build_pane(a, &body, base, base);
     if (!tree) tree = leaf_new(a);
     if (!tree) {
       a->ntabs--;
@@ -2357,22 +2420,473 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace, char *err,
   return true;
 }
 
-bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
-                           size_t errcap) {
+bool app_apply_layout_text_at(app_t *a, const char *text, bool replace,
+                              const char *base, char *err, size_t errcap) {
   kdl_node_t *root = kdl_parse(text, err, errcap);
   if (!root) return false;
-  bool ok = app_apply_layout(a, root, replace, err, errcap);
+  bool ok = app_apply_layout(a, root, replace, base, err, errcap);
   kdl_free(root);
   return ok;
 }
 
+bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
+                           size_t errcap) {
+  /* No base: text has no directory it came from, so a relative `cwd=` in it
+   * keeps meaning what it meant before there was a base to be relative to. */
+  return app_apply_layout_text_at(a, text, replace, NULL, err, errcap);
+}
+
 bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
                            size_t errcap) {
-  kdl_node_t *root = kdl_parse_file(path, err, errcap);
+  /* Expanded here rather than left to a shell: `--layout "~/x.layout.kdl"` in
+   * quotes, and every path arriving over the control socket, reach fopen with
+   * the tilde still on them. */
+  char pathbuf[1024], dirbuf[1024];
+  const char *file = path_expand(path, pathbuf, sizeof pathbuf);
+  kdl_node_t *root = kdl_parse_file(file, err, errcap);
   if (!root) return false;
-  bool ok = app_apply_layout(a, root, replace, err, errcap);
+  bool ok = app_apply_layout(a, root, replace,
+                             path_dir(file, dirbuf, sizeof dirbuf), err, errcap);
   kdl_free(root);
   return ok;
+}
+
+/* ---- checking one -------------------------------------------------------- *
+ *
+ * The other half of D2's promise: a document says which one it is, and a name
+ * the loader does not read is reported rather than skipped. build_pane() above
+ * asks for props by name and ignores the rest, which is right for loading --
+ * a session should start -- and useless for the person who wrote `cmd=` where
+ * `command=` was meant and got a shell.
+ *
+ * These lists sit next to the code that reads them on purpose, and
+ * `tests/test_layout_check.py` greps this file for every `kdl_prop*(node, ...)`
+ * the layout section asks for and fails if one is missing here -- the same
+ * arrangement that keeps KNOWN_TOP honest in config.c.
+ */
+
+/* Read by build_pane, on a `pane` node or on a tab acting as its own root. */
+static const char *const PANE_PROPS[] = {"split",     "weight", "cwd",
+                                         "command",   "focus",  "purpose",
+                                         "suspended"};
+/* Read by app_apply_layout off the tab itself. */
+static const char *const TAB_PROPS[] = {"name", "active"};
+
+static bool in_list(const char *const *list, size_t n, const char *name) {
+  for (size_t i = 0; i < n; i++)
+    if (strcmp(list[i], name) == 0) return true;
+  return false;
+}
+
+#define NELEM(x) (sizeof(x) / sizeof(*(x)))
+
+typedef struct {
+  const char *file;
+  layout_msg_t *msgs;
+  size_t max, n, dropped;
+} lcheck_t;
+
+static void lc_say(lcheck_t *c, int line, const char *fmt, ...) {
+  if (c->n >= c->max) {
+    c->dropped++;
+    return;
+  }
+  char text[160];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(text, sizeof text, fmt, ap);
+  va_end(ap);
+  snprintf(c->msgs[c->n++], sizeof *c->msgs, "%s:%d: %s", c->file, line, text);
+}
+
+/* `true`/`false` and nothing else: kdl_prop_bool falls back silently, so
+ * `suspended=yes` is a pane that quietly starts. */
+static void lc_bool(lcheck_t *c, const kdl_node_t *n, const char *key) {
+  const char *v = kdl_prop(n, key, NULL);
+  if (v && strcmp(v, "true") != 0 && strcmp(v, "false") != 0)
+    lc_say(c, n->line, "%s takes true or false, not `%s`", key, v);
+}
+
+static void lc_props(lcheck_t *c, const kdl_node_t *n, bool is_tab) {
+  size_t kids = 0;
+  for (size_t i = 0; i < n->nkids; i++)
+    if (strcmp(n->kids[i]->name, "pane") == 0) kids++;
+
+  for (size_t i = 0; i < n->nprops; i++) {
+    const char *k = n->props[i].key;
+    bool known = in_list(PANE_PROPS, NELEM(PANE_PROPS), k) ||
+                 (is_tab && in_list(TAB_PROPS, NELEM(TAB_PROPS), k));
+    if (!known) {
+      lc_say(c, n->line, "unknown %s property: %s", is_tab ? "tab" : "pane", k);
+      continue;
+    }
+    /* A split reads `split=` and its children; a leaf reads what it runs. The
+     * wrong half is dropped without a word, which is how `purpose=` on a split
+     * comes to tag nothing at all. A tab reads its own name and purpose either
+     * way, so those are never the ignored ones. */
+    bool leaf_only = strcmp(k, "command") == 0 || strcmp(k, "suspended") == 0 ||
+                     strcmp(k, "focus") == 0 ||
+                     (!is_tab && strcmp(k, "purpose") == 0);
+    if (kids && leaf_only)
+      lc_say(c, n->line, "%s is ignored on a %s with panes in it", k,
+             is_tab ? "tab" : "pane");
+    if (!kids && strcmp(k, "split") == 0)
+      lc_say(c, n->line, "split is ignored on a pane with nothing to split");
+  }
+
+  const char *dir = kdl_prop(n, "split", NULL);
+  if (dir && strcmp(dir, "cols") != 0 && strcmp(dir, "rows") != 0)
+    lc_say(c, n->line, "split is cols or rows, not `%s`", dir);
+
+  const char *w = kdl_prop(n, "weight", NULL);
+  if (w) {
+    char *end = NULL;
+    long v = strtol(w, &end, 10);
+    if (!end || *end || v < WEIGHT_MIN)
+      lc_say(c, n->line, "weight is a number of %d or more, not `%s`",
+             WEIGHT_MIN, w);
+  }
+
+  lc_bool(c, n, "suspended");
+  lc_bool(c, n, "focus");
+  if (is_tab) lc_bool(c, n, "active");
+
+  for (size_t i = 0; i < n->nkids; i++) {
+    const kdl_node_t *k = n->kids[i];
+    if (strcmp(k->name, "pane") != 0) {
+      lc_say(c, k->line, "a %s holds panes, not `%s`", is_tab ? "tab" : "pane",
+             k->name);
+      continue;
+    }
+    lc_props(c, k, false);
+  }
+}
+
+size_t layout_check(const kdl_node_t *root, const char *file,
+                    layout_msg_t *msgs, size_t max, size_t *dropped) {
+  lcheck_t c = {.file = file, .msgs = msgs, .max = max};
+  const kdl_node_t *lay = kdl_child(root, "layout");
+  size_t tabs = 0;
+
+  for (size_t i = 0; i < root->nkids; i++) {
+    const kdl_node_t *n = root->kids[i];
+    if (!n || !n->name) continue;
+    if (lay && n == lay) continue;
+    if (strcmp(n->name, "tab") == 0) continue; /* a bare list of tabs is legal */
+    if (config_is_setting(n->name)) {
+      lc_say(&c, n->line, "this is a config, not a layout: `%s` is a setting",
+             n->name);
+      continue;
+    }
+    lc_say(&c, n->line, "unknown node: %s", n->name);
+  }
+
+  if (!lay) lay = root;
+  for (size_t i = 0; i < lay->nkids; i++) {
+    const kdl_node_t *n = lay->kids[i];
+    if (!n || !n->name) continue;
+    if (strcmp(n->name, "tab") != 0) {
+      if (lay != root) lc_say(&c, n->line, "a layout holds tabs, not `%s`", n->name);
+      continue;
+    }
+    tabs++;
+    lc_props(&c, n, true);
+  }
+
+  /* Last, so it reads as the summary it is rather than the first surprise. */
+  if (!tabs) lc_say(&c, lay->line, "this layout declares no tabs");
+  if (dropped) *dropped = c.dropped;
+  return c.n;
+}
+
+size_t layout_check_file(const char *path, layout_msg_t *msgs, size_t max,
+                         size_t *dropped) {
+  char pathbuf[1024];
+  const char *file = path_expand(path, pathbuf, sizeof pathbuf);
+  const char *base = strrchr(file, '/');
+  base = base ? base + 1 : file;
+
+  char err[256] = {0};
+  kdl_node_t *root = kdl_parse_file(file, err, sizeof err);
+  if (!root) {
+    /* kdl reports `line N: what`, with no filename because it never saw one,
+     * and `cannot open X` for the other kind of failure -- which carries its
+     * own path and no line. Same `file:line: text` shape as everything else
+     * either way, so an editor's compile step reads all of them. */
+    if (max) {
+      int line = 0;
+      if (sscanf(err, "line %d:", &line) == 1)
+        snprintf(msgs[0], sizeof *msgs, "%s:%d:%s", base, line,
+                 strchr(err, ':') + 1);
+      else
+        snprintf(msgs[0], sizeof *msgs, "%s", err);
+    }
+    if (dropped) *dropped = 0;
+    return max ? 1 : 0;
+  }
+  size_t n = layout_check(root, base, msgs, max, dropped);
+  kdl_free(root);
+  return n;
+}
+
+/* ---- workspaces ---------------------------------------------------------- *
+ *
+ * A project is a directory (project.c). A workspace is the tab it occupies here.
+ * Membership is the tab's *purpose*, in the `project:` namespace -- the shape
+ * this repo has published as a project tab's identity since D3 -- so there is no
+ * second answer to "what is this tab" and a dumped layout restores membership
+ * for free, because a dump already writes tab purposes and apply-layout already
+ * locks them (D8).
+ *
+ * Opening is idempotent, which is `sl0ppi up`'s property carried over: the same
+ * request twice is one workspace, focused. Everything else follows from that --
+ * a script can drive it in a loop without asking first, and so can a keystroke.
+ */
+
+/* Which roots to scan and how deep, from the config in force. Read fresh each
+ * time rather than cached, because saving the config is allowed to change where
+ * projects live and a cache would answer with yesterday's ~/dev. */
+static const char *const *workspace_roots(int *depth) {
+  static const char *roots[PROJECT_ROOTS_MAX + 1];
+  size_t n = 0;
+  for (; n < CFG.nproject_roots && n < PROJECT_ROOTS_MAX; n++)
+    roots[n] = CFG.project_roots[n];
+  roots[n] = NULL;
+  if (depth) *depth = CFG.project_depth;
+  return roots;
+}
+
+bool app_project_roots_set(void) { return CFG.nproject_roots > 0; }
+
+size_t app_projects(project_t *out, size_t max) {
+  int depth = 2;
+  const char *const *roots = workspace_roots(&depth);
+  return project_scan(roots, depth, out, max);
+}
+
+/* The first tab holding this workspace, or NULL: a workspace whose layout
+ * declared several tabs has several, and the first is the one to land in. */
+static tab_t *workspace_tab(app_t *a, const char *slug) {
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (strcmp(a->tabs[i].purpose, slug) == 0) return &a->tabs[i];
+  return NULL;
+}
+
+uint32_t app_workspace_tab(app_t *a, const char *slug) {
+  tab_t *t = workspace_tab(a, slug);
+  return t ? t->id : 0;
+}
+
+/* Make every tab this apply just built a member of the workspace.
+ *
+ * A tab the layout gave a purpose of its own keeps it and is not a member --
+ * honoured rather than overwritten, because overwriting a declared purpose is
+ * the one thing D8 forbids. The count comes back so the caller can say so
+ * instead of it being a silent surprise. */
+static void adopt_tabs(app_t *a, size_t from, const project_t *p,
+                       app_workspace_open_t *out) {
+  for (size_t i = from; i < a->ntabs; i++) {
+    tab_t *t = &a->tabs[i];
+    if (t->purpose[0] && strncmp(t->purpose, "project:", 8) != 0) {
+      out->honoured++;
+      continue;
+    }
+    sanitise_purpose(p->slug, t->purpose, sizeof t->purpose);
+    t->purpose_locked = true;
+    /* A tab with no name of its own takes the project's: a strip reading
+     * `1 2 3` is not navigation, which is the whole complaint workspaces
+     * answer. */
+    if (!t->name[0]) snprintf(t->name, sizeof t->name, "%s", p->name);
+    if (!out->tab) out->tab = t->id;
+    out->tabs++;
+  }
+}
+
+bool app_workspace_find(const char *name, project_t *out) {
+  int depth = 2;
+  const char *const *roots = workspace_roots(&depth);
+  return project_find(roots, depth, name, out);
+}
+
+bool app_workspace_open(app_t *a, const char *name, bool suspended,
+                        app_workspace_open_t *out, char *err, size_t errcap) {
+  memset(out, 0, sizeof *out);
+  project_t p;
+  if (!app_workspace_find(name, &p)) {
+    snprintf(err, errcap,
+             CFG.nproject_roots ? "no project called %s"
+                                : "no project roots: set project_roots in your "
+                                  "config (asked for %s)",
+             name);
+    return false;
+  }
+  snprintf(out->purpose, sizeof out->purpose, "%s", p.slug);
+  snprintf(out->path, sizeof out->path, "%s", p.path);
+
+  /* Already open: focus it. The same request twice is one workspace, and the
+   * answer says which branch it took so a caller never has to ask first. */
+  tab_t *have = workspace_tab(a, p.slug);
+  if (have) {
+    out->tab = have->id;
+    app_select_tab_id(a, have->id);
+    return true;
+  }
+
+  /* `suspended` has to be decided before anything spawns: a pane is created
+   * suspended or it is created running, and there is no un-running a process.
+   * Carried on the app for the duration of one apply, the way restore_focus and
+   * restore_tab already are, rather than widening two signatures for it. */
+  a->force_suspend = suspended;
+  size_t before = a->ntabs;
+  bool ok;
+  if (p.layout[0]) {
+    ok = app_apply_layout_file(a, p.layout, false, err, errcap);
+  } else if (CFG.project_layout) {
+    /* The base is the *project*, not the directory this file came from: the
+     * point of a shared project layout is that `cwd="."` means whichever
+     * project is being opened. Relative to itself it would open every project
+     * in ~/.config. */
+    char buf[1024];
+    kdl_node_t *root = kdl_parse_file(
+        path_expand(CFG.project_layout, buf, sizeof buf), err, errcap);
+    ok = root && app_apply_layout(a, root, false, p.path, err, errcap);
+    kdl_free(root);
+  } else {
+    /* No file anywhere: one pane, your shell, in the project. Which is the
+     * least a `.git` with nothing else in it can honestly be opened as. */
+    char kdl[256];
+    snprintf(kdl, sizeof kdl, "layout { tab { pane } }");
+    ok = app_apply_layout_text_at(a, kdl, false, p.path, err, errcap);
+  }
+  a->force_suspend = false;
+  if (!ok) return false;
+
+  adopt_tabs(a, before, &p, out);
+  out->created = true;
+  if (out->tab) app_select_tab_id(a, out->tab);
+  layout(a);
+  return true;
+}
+
+size_t app_workspace_close(app_t *a, const char *slug) {
+  size_t closed = 0;
+  /* Re-found each time rather than collected first: closing a tab moves every
+   * index after it, and a list of pointers taken beforehand would be stale by
+   * the second one. */
+  for (;;) {
+    tab_t *t = workspace_tab(a, slug);
+    if (!t || !app_close_tab(a, t->id)) break;
+    closed++;
+  }
+  return closed;
+}
+
+/* Which project a tab belongs to, or is standing in.
+ *
+ * Three answers in order: the path asked for, the project whose slug this tab
+ * already carries, and the directory the focused pane is in. All three are
+ * resolved by *scanning*, which is also the containment check -- a directory no
+ * root holds is one this session will not write a layout into, and that falls
+ * out of asking the same question the picker asks rather than being a rule of
+ * its own. */
+static bool tab_project(app_t *a, const tab_t *t, const char *path,
+                       project_t *out) {
+  int depth = 2;
+  const char *const *roots = workspace_roots(&depth);
+  if (path && *path) return project_find(roots, depth, path, out);
+
+  if (strncmp(t->purpose, "project:", 8) == 0) {
+    project_t all[PROJECTS_MAX];
+    size_t n = project_scan(roots, depth, all, PROJECTS_MAX);
+    for (size_t i = 0; i < n; i++)
+      if (strcmp(all[i].slug, t->purpose) == 0) {
+        *out = all[i];
+        return true;
+      }
+  }
+
+  if (!t->focus) return false;
+  char cwdbuf[4096];
+  return project_find(roots, depth, live_cwd(t->focus->pane, cwdbuf, sizeof cwdbuf),
+                      out);
+}
+
+bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
+                        bool force, app_workspace_save_t *out, char *err,
+                        size_t errcap) {
+  memset(out, 0, sizeof *out);
+  tab_t *t = tab ? tab_by_id(a, tab) : cur(a);
+  if (!t) {
+    snprintf(err, errcap, "no such tab");
+    return false;
+  }
+
+  project_t p;
+  if (!tab_project(a, t, path, &p)) {
+    snprintf(err, errcap, "this tab is not in a project root");
+    return false;
+  }
+  /* A tab that is already *a* workspace may only be saved into its own project.
+   * Saving it elsewhere would leave one tab claiming two projects -- named for
+   * one, carrying the other's purpose -- which is the second source of truth
+   * this whole design exists to avoid. Almost always it is a `path` typed while
+   * the wrong tab was focused, so it is said rather than obeyed. */
+  if (strncmp(t->purpose, "project:", 8) == 0 &&
+      strcmp(t->purpose, p.slug) != 0) {
+    snprintf(err, errcap,
+             "this tab is another project's workspace (%s): save it from its own"
+             " tab, or pass that tab's id",
+             t->purpose);
+    return false;
+  }
+  snprintf(out->path, sizeof out->path, "%s/%s", p.path, PROJECT_LAYOUT_FILE);
+  out->replaced = p.layout[0] != 0;
+  if (out->replaced && !force) {
+    snprintf(err, errcap, "%s already has a layout: pass force to replace it",
+             p.name);
+    return false;
+  }
+
+  dump_layout_t o = {.tab = t->id, .base = p.path, .suspend = suspend,
+                     .for_project = true};
+  char *kdl = app_dump_layout(a, &o);
+  if (!kdl || !o.tabs) {
+    free(kdl);
+    snprintf(err, errcap, "nothing to write");
+    return false;
+  }
+  FILE *f = fopen(out->path, "w");
+  if (!f) {
+    free(kdl);
+    snprintf(err, errcap, "cannot write %s", out->path);
+    return false;
+  }
+  /* One line of provenance, and the thing to run when it stops working. No
+   * timestamp, for the same reason the dump has none: a file that differs every
+   * time is a bad diff, and this one is meant to be committed. */
+  fputs("// What this project needs open, written by `save-workspace`.\n"
+        "// Checked by `sl0ppty --check`; opened by `open-workspace`.\n",
+        f);
+  fputs(kdl, f);
+  bool wrote = fclose(f) == 0;
+  free(kdl);
+  if (!wrote) {
+    snprintf(err, errcap, "cannot write %s", out->path);
+    return false;
+  }
+
+  out->panes = o.panes;
+  out->suspended = o.suspended;
+  /* Saving is also adopting: the tab that wrote the file is that project's
+   * workspace from now on, so `C-a W` in a tab you happened to build in a
+   * checkout is the whole of onboarding one. */
+  if (!t->purpose[0] || strncmp(t->purpose, "project:", 8) == 0) {
+    sanitise_purpose(p.slug, t->purpose, sizeof t->purpose);
+    t->purpose_locked = true;
+    if (!t->name[0]) snprintf(t->name, sizeof t->name, "%s", p.name);
+  }
+  snprintf(out->purpose, sizeof out->purpose, "%s", t->purpose);
+  return true;
 }
 
 /* ---- resizing and reordering -------------------------------------------- */
@@ -2960,11 +3474,18 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   }
 
   const char *title = pane_title(leaf->pane);
-  bool editing = a->renaming == RENAME_PANE && a->rename_id == leaf->id;
+  bool naming = a->renaming == RENAME_PANE && a->rename_id == leaf->id;
+  bool tagging = a->renaming == RENAME_PURPOSE && a->rename_id == leaf->id;
+  bool editing = naming || tagging;
   if ((editing || (title && *title)) && avail >= 3) {
     char buf[320]; /* a full-length name, plus the caret and its spaces */
-    int len = editing ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
-                      : snprintf(buf, sizeof buf, " %s ", title);
+    /* The purpose editor says which label it is: typed into the same cell as a
+     * rename, an unlabelled caret would leave you guessing which one you are
+     * changing -- and the two are edited from keys one shift apart. */
+    int len = tagging
+                  ? snprintf(buf, sizeof buf, " purpose %s\u2588 ", a->rename_buf)
+                  : naming ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
+                           : snprintf(buf, sizeof buf, " %s ", title);
     /* snprintf reports what it *would* have written; clamp to what it did, or
      * the scroll below would move bytes that are not there. */
     if (len < 0) len = 0;
@@ -3991,8 +4512,9 @@ typedef struct {
 } help_row_t;
 
 static size_t help_rows(help_row_t *out, size_t cap) {
-  static const char *const GROUPS[] = {"panes", "focus", "size", "tabs",
-                                       "scroll", "session"};
+  static const char *const GROUPS[] = {"panes",  "focus",    "size",
+                                       "tabs",   "projects", "scroll",
+                                       "session"};
   size_t n = 0;
   for (size_t g = 0; g < sizeof GROUPS / sizeof *GROUPS && n < cap; g++) {
     bool titled = false;
@@ -4386,8 +4908,61 @@ static size_t palette_rows(app_t *a, pick_row_t *out, size_t max) {
   return n;
 }
 
+/* ---- the project picker --------------------------------------------------
+ *
+ * The third subject, and the one that answers a different question from the
+ * other two: the finder searches what *exists* in this session, while this
+ * lists what exists on *disk* -- including the projects with no workspace open
+ * yet, which is most of them and the whole point.
+ *
+ * The scan happens once, when the picker opens, into a->projects. Not per frame:
+ * draw_picker asks for its rows every frame, and a readdir of ~/dev at 120Hz
+ * would be a filesystem walk per repaint. Once per opening is also exactly when
+ * the answer has to be right, so nothing is remembered for longer than that.
+ */
+static size_t workspace_rows(app_t *a, pick_row_t *out, size_t max) {
+  size_t n = 0;
+  for (size_t i = 0; i < a->nprojects && n < max; i++) {
+    const project_t *p = &a->projects[i];
+    uint32_t tab = app_workspace_tab(a, p->slug);
+    /* Matched on the name, the path and what kind it is, so `.git` narrows to
+     * the ones with no layout yet -- which is the list you want when you are
+     * about to write one. */
+    char hay[640];
+    snprintf(hay, sizeof hay, "%s %s %s", p->name, p->path,
+             p->layout[0] ? PROJECT_LAYOUT_FILE : ".git");
+    if (!ci_contains(hay, a->query)) continue;
+
+    pick_row_t *r = &out[n++];
+    memset(r, 0, sizeof *r);
+    /* The root it came from rather than the whole path: which of `~/dev` and
+     * `~/work` a project is in is the part that distinguishes two of the same
+     * name, and the rest is the name again. */
+    const char *slash = strrchr(p->path, '/');
+    size_t keep = slash ? (size_t)(slash - p->path) : strlen(p->path);
+    const char *root_end = p->path + keep;
+    const char *root_start = root_end;
+    while (root_start > p->path && root_start[-1] != '/') root_start--;
+    snprintf(r->left, sizeof r->left, "%.*s",
+             (int)(root_end - root_start), root_start);
+    snprintf(r->mid, sizeof r->mid, "%s", p->name);
+    /* What it is, or what it already is: an open workspace says how many panes
+     * it has, and a project with no layout says so, which reads as the
+     * invitation it is. */
+    if (tab)
+      snprintf(r->right, sizeof r->right, "%s", p->slug);
+    else
+      snprintf(r->right, sizeof r->right, "%s",
+               p->layout[0] ? PROJECT_LAYOUT_FILE : ".git \u00b7 no layout");
+    r->here = tab != 0 && tab == cur(a)->id;
+    snprintf(r->action, sizeof r->action, "open:%zu", i);
+  }
+  return n;
+}
+
 static size_t picker_rows(app_t *a, pick_row_t *out, size_t max) {
   if (a->picker == PICK_PALETTE) return palette_rows(a, out, max);
+  if (a->picker == PICK_WORKSPACES) return workspace_rows(a, out, max);
   return finder_rows(a, out, max);
 }
 
@@ -4412,8 +4987,10 @@ static void draw_picker(app_t *a, screen_t *s) {
   if (a->sel >= n) a->sel = n ? n - 1 : 0;
 
   bool palette = a->picker == PICK_PALETTE;
-  const char *title = palette ? "commands" : "find";
-  const char *close = palette ? "closepalette" : "closefind";
+  bool projects = a->picker == PICK_WORKSPACES;
+  const char *title = palette ? "commands" : projects ? "projects" : "find";
+  const char *close = palette ? "closepalette"
+                              : projects ? "closeprojects" : "closefind";
 
   /* The window of results on screen. Kept around the selection rather than
    * anchored at the top, so arrowing past the bottom scrolls instead of
@@ -4587,6 +5164,20 @@ static void picker_accept(app_t *a, const char *action) {
     app_focus_pane(a, (uint32_t)strtoul(action + 5, NULL, 10));
   else if (strncmp(action, "run:", 4) == 0)
     run_action(a, (action_t)strtol(action + 4, NULL, 10));
+  else if (strncmp(action, "open:", 5) == 0) {
+    /* By index into the snapshot the picker is showing, so the row that was
+     * clicked is the project that opens even if the disk has changed since --
+     * a scan between the paint and the click would otherwise open its
+     * neighbour. */
+    size_t i = (size_t)strtoul(action + 5, NULL, 10);
+    if (i >= a->nprojects) return;
+    app_workspace_open_t w;
+    char err[256] = {0};
+    if (app_workspace_open(a, a->projects[i].path, false, &w, err, sizeof err))
+      app_toast(a, w.created ? "opened" : "already open");
+    else
+      app_toast(a, err[0] ? err : "cannot open that");
+  }
 }
 
 /* Move the selection by `d`, wrapping.
@@ -4720,6 +5311,25 @@ static void rename_begin(app_t *a, uint32_t id) {
   app_focus_pane(a, id);
 }
 
+/* The same editor, on the pane's other label. A purpose is what tooling finds a
+ * pane by (D8), and until now it could only be declared by a layout or set over
+ * the socket -- so every pane anybody arranged by hand had none, and a layout
+ * dumped from one was a shape with no tags in it. Typed here it counts as
+ * *declared*, because D8's `declared` means "from a layout or an operator" and
+ * a person at the keyboard is the operator. */
+static void purpose_begin(app_t *a, uint32_t id) {
+  node_t *n = pane_by_id(a, id);
+  if (!n) return;
+  a->renaming = RENAME_PURPOSE;
+  a->rename_id = id;
+  /* Seeded, unlike a tab's name: here the purpose *is* the thing being edited,
+   * and the usual edit is adding `:2` to the end of one. */
+  snprintf(a->rename_buf, sizeof a->rename_buf, "%s", n->purpose);
+  a->name_click_ms = 0;
+  a->name_click_id = 0;
+  app_focus_pane(a, id);
+}
+
 static void rename_tab_begin(app_t *a, uint32_t id) {
   tab_t *t = tab_by_id(a, id);
   if (!t) return;
@@ -4740,7 +5350,11 @@ static void rename_end(app_t *a, bool keep) {
   if (!a->renaming) return;
   if (keep) {
     bool done = false;
-    if (a->renaming == RENAME_PANE) {
+    const char *what = "name";
+    if (a->renaming == RENAME_PURPOSE) {
+      what = "purpose";
+      done = app_set_pane_purpose(a, a->rename_id, a->rename_buf, true);
+    } else if (a->renaming == RENAME_PANE) {
       node_t *n = pane_by_id(a, a->rename_id);
       if (n) {
         pane_set_name(n->pane, a->rename_buf);
@@ -4749,7 +5363,17 @@ static void rename_end(app_t *a, bool keep) {
     } else {
       done = app_set_tab_name(a, a->rename_id, a->rename_buf);
     }
-    if (done) app_toast(a, a->rename_buf[0] ? "renamed" : "name cleared");
+    if (done) {
+      char said[40];
+      snprintf(said, sizeof said, "%s %s", what,
+               a->rename_buf[0] ? "set" : "cleared");
+      /* "renamed" for a name, because that is the word for it; "purpose set"
+       * for the other, because "renamed" would be a lie about which label
+       * moved. */
+      app_toast(a, a->renaming == RENAME_PURPOSE
+                       ? said
+                       : (a->rename_buf[0] ? "renamed" : "name cleared"));
+    }
   }
   a->renaming = RENAME_NONE;
   a->rename_id = 0;
@@ -5104,7 +5728,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     if (ev->maction == MOUSE_PRESS) app_new_tab(a, "");
     return;
   }
-  if (strncmp(action, "find:", 5) == 0 || strncmp(action, "run:", 4) == 0) {
+  if (strncmp(action, "find:", 5) == 0 || strncmp(action, "run:", 4) == 0 ||
+      strncmp(action, "open:", 5) == 0) {
     if (ev->maction != MOUSE_PRESS) return;
     /* Closed first, so an action that opens something else -- the cheatsheet,
      * or the palette again -- is not shut by the picker it came from. */
@@ -5112,7 +5737,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     picker_accept(a, action);
     return;
   }
-  if (strcmp(action, "closefind") == 0 || strcmp(action, "closepalette") == 0) {
+  if (strcmp(action, "closefind") == 0 || strcmp(action, "closepalette") == 0 ||
+      strcmp(action, "closeprojects") == 0) {
     if (ev->maction == MOUSE_PRESS) a->picker = PICK_NONE;
     return;
   }
@@ -5251,6 +5877,11 @@ static bool run_action(app_t *a, action_t act) {
     case ACT_CLOSE_PANE:
       if (cur(a)->focus) close_leaf(a, cur(a)->focus);
       return true;
+    case ACT_SET_PURPOSE:
+      /* Nothing to tag in an empty tab, and a purpose belongs to a pane rather
+       * than to the space one would occupy. */
+      if (cur(a)->focus) purpose_begin(a, cur(a)->focus->id);
+      return true;
     case ACT_RERUN:
       /* The keyboard's half of a dead pane's [re-run] button. Refused on a
        * live pane rather than restarting it: "run it again" would mean
@@ -5268,6 +5899,26 @@ static bool run_action(app_t *a, action_t act) {
     case ACT_FOCUS_DOWN: focus_dir(a, 0, 1); return true;
     case ACT_FOCUS_NEXT: focus_next(a); return true;
     case ACT_NEW_TAB: app_new_tab(a, ""); return true;
+    case ACT_CLOSE_TAB: {
+      /* The last tab is refused rather than obeyed. `app_close_tab` ends the
+       * session when nothing is left, which is right for a *request* -- a script
+       * asking to close the only tab means it -- and a trap for a key: one that
+       * closes a tab four times and ends your session the fifth is a key you
+       * cannot press without counting first. `quit` is how you mean that, and it
+       * is one letter away. */
+      if (a->ntabs < 2) {
+        app_toast(a, "last tab: quit the session instead");
+        return true;
+      }
+      /* Said out loud with the count, because everything in it goes with it and
+       * the panes it kills are the ones you were not looking at. */
+      size_t n = count_leaves(cur(a)->root);
+      char said[64];
+      snprintf(said, sizeof said, "closed tab \u00b7 %zu pane%s", n,
+               n == 1 ? "" : "s");
+      if (app_close_tab(a, cur(a)->id)) app_toast(a, said);
+      return true;
+    }
     case ACT_NEXT_TAB: app_cycle_tab(a, 1); return true;
     case ACT_PREV_TAB: app_cycle_tab(a, -1); return true;
     case ACT_RESIZE_LEFT: resize_focus(a, -1, 0); return true;
@@ -5310,6 +5961,44 @@ static bool run_action(app_t *a, action_t act) {
       a->query[0] = 0;
       a->sel = 0;
       return true;
+    case ACT_WORKSPACES: {
+      /* Scanned here, once, and kept only while the picker is up: draw_picker
+       * asks for its rows every frame. Opening is also exactly when the list
+       * has to be right, which is why nothing older than this keystroke is
+       * ever shown. */
+      if (!app_project_roots_set()) {
+        app_toast(a, "no project roots: set project_roots in your config");
+        return true;
+      }
+      free(a->projects);
+      a->projects = calloc(PROJECTS_MAX, sizeof *a->projects);
+      a->nprojects = a->projects ? app_projects(a->projects, PROJECTS_MAX) : 0;
+      if (!a->nprojects) {
+        app_toast(a, "no projects under your project_roots");
+        return true;
+      }
+      a->picker = PICK_WORKSPACES;
+      a->query[0] = 0;
+      a->sel = 0;
+      return true;
+    }
+    case ACT_SAVE_WORKSPACE: {
+      app_workspace_save_t w;
+      char err[256] = {0};
+      /* `commands` rather than as-is: the pane running this morning's dev server
+       * should be in the file asleep, not started on every open. */
+      if (!app_workspace_save(a, 0, NULL, DUMP_SUSPEND_COMMANDS, true, &w, err,
+                              sizeof err)) {
+        app_toast(a, err[0] ? err : "cannot save that");
+        return true;
+      }
+      char said[96];
+      snprintf(said, sizeof said, "%s %s \u00b7 %zu pane%s, %zu suspended",
+               w.replaced ? "replaced" : "wrote", PROJECT_LAYOUT_FILE, w.panes,
+               w.panes == 1 ? "" : "s", w.suspended);
+      app_toast(a, said);
+      return true;
+    }
     case ACT_EDIT_CONFIG:
       app_edit_config(a);
       return true;
@@ -5570,8 +6259,10 @@ void app_event(app_t *a, const input_event_t *ev) {
       if (a->picker && ev->maction != MOUSE_MOTION) {
         bool own = action && (strncmp(action, "find:", 5) == 0 ||
                               strncmp(action, "run:", 4) == 0 ||
+                              strncmp(action, "open:", 5) == 0 ||
                               strcmp(action, "closefind") == 0 ||
-                              strcmp(action, "closepalette") == 0);
+                              strcmp(action, "closepalette") == 0 ||
+                              strcmp(action, "closeprojects") == 0);
         if (!own) {
           if (ev->maction == MOUSE_PRESS) a->picker = PICK_NONE;
           break;
@@ -5654,11 +6345,63 @@ static const char *live_cwd(const pane_t *p, char *buf, size_t cap) {
   return pane_start_cwd(p); /* not running, or not Linux: what it was given */
 }
 
+/* Everything one dump needs to know, so dump_node does not have to ask the app
+ * which tab it is in the middle of. The focused pane belongs to *its* tab, not
+ * to the one you happen to be looking at -- reading `cur(a)->focus` here meant
+ * a dump of three tabs restored the focus of one. */
+typedef struct {
+  const tab_t *tab;
+  const char *base;
+  int suspend;
+  size_t panes, suspended;
+} dumpctx_t;
+
+/* The command this pane is written back out with, or NULL for a plain shell.
+ *
+ * Two sources, in this order. The **label** is what a layout told this pane to
+ * run, and it outranks everything: it survives the program exiting (D14), and
+ * re-saving a project must not degrade `npm run dev` into whatever node's argv
+ * happens to look like this minute. Failing that, **what the pane's terminal is
+ * actually running** -- because a pane you split and typed a command into had
+ * nothing to say for itself and came back as a bare shell, which made setting a
+ * project up by hand and writing it down two different jobs instead of one.
+ *
+ * An ephemeral pane is a task that happened to be open when the dump was taken,
+ * and is written with no command either way: restoring it would reopen somebody's
+ * editor on a file they finished with. */
+static const char *dump_command(const node_t *n, char *buf, size_t cap) {
+  if (pane_ephemeral(n->pane)) return NULL;
+  const char *label = pane_label(n->pane);
+  if (label && *label) return label;
+  return pane_foreground(n->pane, buf, cap);
+}
+
+/* Whether this pane is written as one that has not started yet.
+ *
+ * `as-is` is the honest answer for a session dump: what is suspended now is
+ * suspended in the file. It is the wrong answer for a project's layout, where
+ * the pane running the dev server you started this morning would start one on
+ * every open -- which is the thing `suspended` exists to prevent. So a saved
+ * project defaults to `commands`: a pane that has a command is written asleep, a
+ * shell is not. Same distinction, and the same word, as `keep_dead`.
+ *
+ * "Has a command" is whatever the file is about to say, captured or declared, so
+ * the two cannot disagree -- a pane written with a `command=` and no
+ * `suspended=true` under this policy would start a dev server on every open. */
+static bool dump_suspended(const char *command, const node_t *n, int policy) {
+  switch (policy) {
+    case DUMP_SUSPEND_NONE: return false;
+    case DUMP_SUSPEND_ALL: return true;
+    case DUMP_SUSPEND_COMMANDS: return command && *command;
+    default: return pane_suspended(n->pane);
+  }
+}
+
 /* `split=` belongs on the node that *has* the children -- that is where
  * build_pane() reads it -- and a tab's own props are the props of its root,
  * so a root split says so on the tab. Getting this backwards produces a file
  * that loads without complaint and rebuilds the wrong tree. */
-static void dump_node(app_t *a, node_t *n, strbuf_t *b, int depth) {
+static void dump_node(node_t *n, strbuf_t *b, int depth, dumpctx_t *ctx) {
   char pad[64];
   int p = depth * 4 < 60 ? depth * 4 : 60;
   memset(pad, ' ', (size_t)p);
@@ -5670,36 +6413,54 @@ static void dump_node(app_t *a, node_t *n, strbuf_t *b, int depth) {
 
   if (n->kind == NODE_SPLIT) {
     sb_add(b, " split=\"%s\" {\n", n->dir == SPLIT_ROWS ? "rows" : "cols");
-    for (size_t i = 0; i < n->nkids; i++) dump_node(a, n->kids[i], b, depth + 1);
+    for (size_t i = 0; i < n->nkids; i++)
+      dump_node(n->kids[i], b, depth + 1, ctx);
     sb_add(b, "%s}\n", pad);
     return;
   }
 
+  ctx->panes++;
   char cwdbuf[4096];
-  sb_quoted(b, "cwd", live_cwd(n->pane, cwdbuf, sizeof cwdbuf));
-  /* The label is the command a layout gave it; a pane running the session's
-   * default shell has none, and gets none back. An ephemeral pane is a task
-   * that happened to be open when the dump was taken — restoring it would
-   * reopen somebody's editor on a file they finished with. */
-  if (!pane_ephemeral(n->pane))
-    sb_quoted(b, "command", pane_label(n->pane));
+  /* Relative to the project when there is one, so the file is the same file on
+   * another machine. A directory outside the base stays absolute: it is not a
+   * fact about the project. */
+  sb_quoted(b, "cwd",
+            path_relative(live_cwd(n->pane, cwdbuf, sizeof cwdbuf), ctx->base));
+  char cmdbuf[4096];
+  const char *command = dump_command(n, cmdbuf, sizeof cmdbuf);
+  sb_quoted(b, "command", command);
   sb_quoted(b, "purpose", n->purpose);
-  if (pane_suspended(n->pane)) sb_add(b, " suspended=true");
-  if (n == cur(a)->focus) sb_add(b, " focus=true");
+  if (dump_suspended(command, n, ctx->suspend)) {
+    sb_add(b, " suspended=true");
+    ctx->suspended++;
+  }
+  if (n == ctx->tab->focus) sb_add(b, " focus=true");
   sb_add(b, "\n");
 }
 
-char *app_dump_layout(app_t *a) {
+char *app_dump_layout(app_t *a, dump_layout_t *o) {
+  dump_layout_t all = {0};
+  if (!o) o = &all;
+  o->tabs = o->panes = o->suspended = 0;
+
   strbuf_t b = {0};
-  sb_add(&b, "// sl0ppty session, dumped %s", "");
-  b.len = 0; /* no timestamp: a layout that differs every time is a bad diff */
-  sb_add(&b, "layout {\n");
+  sb_add(&b, "layout {\n"); /* no timestamp: a layout that differs every time
+                             * is a bad diff */
   for (size_t i = 0; i < a->ntabs; i++) {
     tab_t *t = &a->tabs[i];
+    if (o->tab && t->id != o->tab) continue;
+    dumpctx_t ctx = {.tab = t, .base = o->base, .suspend = o->suspend};
     sb_add(&b, "    tab");
     sb_quoted(&b, "name", t->name);
-    sb_quoted(&b, "purpose", t->purpose);
-    if (i == a->cur) sb_add(&b, " active=true");
+    /* The workspace's own purpose is derived from where the project is, so a
+     * file that lives there does not repeat it -- and a copy of the project
+     * elsewhere becomes its own workspace rather than claiming this one's. */
+    if (!(o->for_project && strncmp(t->purpose, "project:", 8) == 0))
+      sb_quoted(&b, "purpose", t->purpose);
+    /* Which tab you were looking at is a fact about a session. Asked for one
+     * tab, the answer is that tab, and `active` would be noise in a file
+     * checked in beside a project. */
+    if (!o->tab && i == a->cur) sb_add(&b, " active=true");
     /* The tab's props are its root's props, so a root that is a split says
      * which way it goes here rather than on a `pane` node of its own. */
     if (t->root && t->root->kind == NODE_SPLIT)
@@ -5708,11 +6469,14 @@ char *app_dump_layout(app_t *a) {
     if (t->root) {
       if (t->root->kind == NODE_SPLIT)
         for (size_t k = 0; k < t->root->nkids; k++)
-          dump_node(a, t->root->kids[k], &b, 2);
+          dump_node(t->root->kids[k], &b, 2, &ctx);
       else
-        dump_node(a, t->root, &b, 2);
+        dump_node(t->root, &b, 2, &ctx);
     }
     sb_add(&b, "    }\n");
+    o->tabs++;
+    o->panes += ctx.panes;
+    o->suspended += ctx.suspended;
   }
   sb_add(&b, "}\n");
   return b.buf;

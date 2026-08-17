@@ -299,6 +299,38 @@ min_split cols=32 rows=8
 // Rows per wheel notch, and per scroll-up/scroll-down.
 scroll_lines 3
 
+// How many lines of history a pane keeps. `0` keeps none: the screen and
+// nothing behind it.
+//
+// lib-vt is handed no limit by default and picks its own -- 10,000 *bytes*,
+// which measured at 622 lines of an 80-column pane, less than one `make` run.
+// This is that number replaced with the one every other multiplexer settled on.
+//
+// Read when a pane is created, so it applies to the next pane you open rather
+// than to the ones already holding history. Same as `shell`, and for the same
+// reason: retroactively shrinking a pane's scrollback would throw away output
+// somebody is reading.
+scrollback 10000
+
+// ...and the ceiling that line count runs into, per pane, in bytes. The two
+// limits work together because either can be reached first and neither can see
+// what the other depends on: a line count cannot know how wide your terminal is
+// or how many styles a program used, and a byte count cannot know how many lines
+// that bought. `0` removes the ceiling.
+//
+// Measured, 10,000 lines of a pane filled with styled output:
+//
+//    80 columns   ~6 MB    the ceiling is never reached
+//   200 columns   ~15 MB   it costs about 2% of the lines
+//   400 columns   ~32 MB   it costs about half of them
+//
+// So it is invisible at ordinary widths and a brake at extraordinary ones, which
+// is its whole job. It is per *pane*: sixty panes full of history is sixty times
+// this, which is the reason there is no "unlimited" -- with this many panes that
+// is a memory leak with a friendly name. Raise it if you have one very wide pane
+// and want every line of it; lower `scrollback` if you have very many.
+scrollback_bytes 16777216
+
 // How long the pointer must rest on a pane border before the split guide
 // arms. Contact alone is not enough: a pointer crossing a border on its way
 // somewhere else should not make the screen flash. 0 arms immediately.
@@ -335,6 +367,37 @@ modal_scrim 120
 // contrib/shader-plugin/
 //
 // shader_dir "~/.config/sl0ppty/shaders"
+
+// ── projects ────────────────────────────────────────────────────────────────
+//
+// Where you keep your work. Each of these is scanned for subdirectories that
+// are projects, and a project opens as a *workspace* -- a tab dedicated to it,
+// reached with `C-a w`. `depth` is how many levels below each root to look; a
+// directory that *is* a project is never descended into, which is what keeps
+// the scan off node_modules without a rule about node_modules.
+//
+// A subdirectory is a project when it has a `sl0ppty.layout.kdl` saying what it
+// needs -- or a `.git`, which is the project that has not said yet. Both,
+// because a ~/dev of forty checkouts and three layout files would otherwise be
+// a picker with three rows, and `C-a W` writes the missing file from whatever
+// you arranged by hand.
+//
+// Nothing is watched. The list is worked out when something asks for it, which
+// is one readdir per root and a stat or two per entry -- next to the keystroke
+// that asked, nothing -- and an answer nobody remembered cannot be stale.
+//
+// Unset, so nothing is scanned until you say where to look:
+// project_roots "~/dev" "~/work" depth=2
+
+// The layout a project with no file of its own opens as: yours, rather than a
+// guess about your stack from whatever config files it happens to contain. A
+// relative `cwd=` in it binds to whichever project is being opened, not to the
+// directory this file lives in, so one file is the shape you start every
+// checkout in -- and a project that grows its own `sl0ppty.layout.kdl` wins
+// over it, the way an included file is the base and the file including it wins.
+//
+// Unset, so a project with no layout is one pane running your shell in it:
+// project_layout "~/.config/sl0ppty/project.layout.kdl"
 
 // ── shaders ─────────────────────────────────────────────────────────────────
 //

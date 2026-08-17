@@ -18,6 +18,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "app.h"
 #include "proto.h"
 #include "server.h"
 #include "config.h"
@@ -36,6 +37,42 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
     *cols = 80;
     *rows = 24;
   }
+}
+
+/* Whether a file is a layout rather than a config, decided the same way both
+ * loaders decide it: by what its top-level names are. A file that will not
+ * parse has no top-level names, and then the extension is all there is -- which
+ * is exactly the job D2 gave it, and better than telling somebody their layout
+ * is a config whose "defaults would stand". */
+static bool looks_like_layout(const char *path) {
+  char buf[1024];
+  kdl_node_t *root = kdl_parse_file(path_expand(path, buf, sizeof buf), NULL, 0);
+  if (!root) return strstr(path, ".layout.") != NULL;
+  bool layout = false;
+  for (size_t i = 0; i < root->nkids && !layout; i++) {
+    const char *name = root->kids[i] ? root->kids[i]->name : NULL;
+    if (!name) continue;
+    if (strcmp(name, "layout") == 0 || strcmp(name, "tab") == 0) layout = true;
+  }
+  kdl_free(root);
+  return layout;
+}
+
+/* `sl0ppty --check FILE` on a layout. Telling somebody they handed a layout to
+ * the config checker was honest and unhelpful: the file they want checked is
+ * the one they were told to check. Same output shape, same exit status. */
+static int check_layout(const char *path) {
+  layout_msg_t msgs[LAYOUT_MSGS_MAX];
+  size_t dropped = 0;
+  size_t n = layout_check_file(path, msgs, LAYOUT_MSGS_MAX, &dropped);
+  for (size_t i = 0; i < n; i++) fprintf(stderr, "  %s\n", msgs[i]);
+  if (dropped) fprintf(stderr, "  ...and %zu more\n", dropped);
+  if (n)
+    fprintf(stderr, "%s: %zu problem%s\n", path, n + dropped,
+            n + dropped == 1 ? "" : "s");
+  else
+    printf("%s: ok, a layout\n", path);
+  return n ? 1 : 0;
 }
 
 /* `sl0ppty --check [FILE]`: read a config the way a session would and say what
@@ -121,9 +158,11 @@ int main(int argc, char **argv) {
     else if (strcmp(a, "--check") == 0) {
       /* An optional path, so it lints a file you have not installed yet:
        * `sl0ppty --check theme.kdl`. Without one it checks the config a session
-       * would actually read. */
+       * would actually read. A layout is checked as a layout: one flag, and the
+       * file decides which schema it is held to. */
       const char *path = (i + 1 < argc && argv[i + 1][0] != '-') ? argv[++i] : NULL;
-      return check_config(path);
+      return path && looks_like_layout(path) ? check_layout(path)
+                                            : check_config(path);
     }
     else if (strcmp(a, "--dump-config") == 0) {
       /* Every setting with the value it currently has, as a file you could

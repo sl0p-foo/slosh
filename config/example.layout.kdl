@@ -13,7 +13,10 @@
 
 layout {
     // A tab is a project. `purpose` is its identity — declared here, it is
-    // locked: no program running inside can relabel itself into it.
+    // locked: no program running inside can relabel itself into it. A workspace
+    // opened from a project root stamps this itself, so a file checked in with
+    // the project leaves it out and lets where the file *is* say which project
+    // it belongs to.
     tab name="api" purpose="project:api.a1b2c3" cwd="/home/user/dev/api" {
 
         // The tab's panes split into columns by default.
@@ -34,6 +37,21 @@ layout {
         pane command="nvim ." suspended=true
     }
 }
+
+// The same file, checked in beside the project it describes: no absolute paths
+// anywhere in it, because a relative `cwd=` means the directory *this file* is
+// in and a pane with no `cwd=` at all starts there too. Which is what
+// `save-workspace` writes, and what makes it the same file on another machine.
+//
+//   layout {
+//       tab name="api" {
+//           pane purpose="agent:main" command="pi"
+//           pane split="rows" {
+//               pane purpose="service:web" cwd="web" command="npm run dev" suspended=true
+//               pane purpose="shell:scratch"
+//           }
+//       }
+//   }
 
 // Note on escapes: strings understand \n \t \r \e \\ \" — \e is an ESC, and
 // there is no \033. A command that needs an escape should use \e.

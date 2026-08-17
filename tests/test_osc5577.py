@@ -175,10 +175,20 @@ def test_hostile_input():
         s.api("set-purpose", target="pane", id=pid, purpose="project:real",
               declared=True)
         s.settle()
-        s.raw(f'printf "{osc("1;purpose;evil:relabelled")}"\\r\\n')
+        # `\e`, not `\033`: the driver's unescaper reads `\0` as NUL, so a `\033`
+        # written here reached the pane as NUL + "33" and printf emitted no ESC
+        # at all -- which made this check pass without ever testing anything.
+        s.raw(emit_cmd("1;purpose;evil:relabelled"))
         s.settle()
         check("a pane cannot relabel a declared purpose",
               s.pane()["purpose"] == "project:real", str(s.pane()))
+        # ...and the refusal is the lock, not the delivery: the same sequence
+        # lands once the declared purpose is cleared.
+        s.api("set-purpose", target="pane", id=pid, purpose="", declared=True)
+        s.raw(emit_cmd("1;purpose;in-band:again"))
+        s.settle()
+        check("and the sequence itself was arriving all along",
+              s.pane()["purpose"] == "in-band:again", str(s.pane()))
 
 
 def test_split_across_reads():

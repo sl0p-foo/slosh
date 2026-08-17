@@ -42,7 +42,10 @@ def open_help(s):
 
 
 def test_it_opens_and_lists_the_bindings():
-    with Session(SH, cols=92, rows=28) as s:
+    # Tall enough for the whole sheet: this test is about what the sheet lists,
+    # and truncation has its own test below. A binding added to the defaults
+    # should not fail this one by pushing a heading off the bottom.
+    with Session(SH, cols=92, rows=36) as s:
         s.settle()
         check("nothing is up to begin with", "split into columns" not in
               s.snapshot().screen())
@@ -109,7 +112,7 @@ def test_the_box_is_not_taller_than_its_contents():
     """The fold falls on a heading, which strands the blank row above it at the
     bottom of the first column -- a row that draws nothing and made the box a
     line taller than it needed to be."""
-    with Session(SH, cols=92, rows=34) as s:
+    with Session(SH, cols=92, rows=36) as s:
         s.settle()
         snap = open_help(s)
         bottom = None

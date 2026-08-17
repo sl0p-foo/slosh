@@ -49,6 +49,7 @@ typedef enum {
   ACT_RERUN,
   ACT_ZOOM,
   ACT_MINIMIZE,
+  ACT_SET_PURPOSE,
   ACT_ROTATE_LAYOUT,
   ACT_FOCUS_LEFT,
   ACT_FOCUS_RIGHT,
@@ -56,10 +57,13 @@ typedef enum {
   ACT_FOCUS_DOWN,
   ACT_FOCUS_NEXT,
   ACT_NEW_TAB,
+  ACT_CLOSE_TAB,
   ACT_NEXT_TAB,
   ACT_PREV_TAB,
   ACT_FINDER,
   ACT_PALETTE,
+  ACT_WORKSPACES,
+  ACT_SAVE_WORKSPACE,
   ACT_SCROLL_UP,
   ACT_SCROLL_DOWN,
   ACT_SCROLL_PAGE_UP,
@@ -100,6 +104,11 @@ typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
  * and fixed, because a config assembled from more than this many pieces is a
  * thing nobody can read. */
 #define CONFIG_FILES_MAX 16
+
+/* How many project roots one config may name. `~/dev` and `~/work` is the case;
+ * a person with more than this many places they keep code has a search problem
+ * rather than a list problem. */
+#define PROJECT_ROOTS_MAX 8
 
 /* How many complaints one load keeps. A config with more than this many
  * problems in it has one problem, and the list is long enough to say so. */
@@ -175,6 +184,16 @@ typedef struct {
    * offer something the layout would collapse anyway is the floor. */
   uint16_t min_split_cols, min_split_rows;
   uint16_t scroll_lines;
+  /* How much history a pane keeps. `scrollback` is the number people mean --
+   * lines -- and `scrollback_bytes` is the ceiling that keeps one very wide,
+   * heavily styled pane from spending the machine to honour it: lib-vt applies
+   * whichever limit is reached first, and both depend on things a line count
+   * cannot see. 0 lines is no scrollback; 0 bytes is no ceiling.
+   *
+   * Not a `uint16_t`, because 65,535 is a number somebody will want to exceed
+   * and a silently wrapped limit is worse than a refused one. */
+  size_t scrollback;
+  size_t scrollback_bytes;
   uint16_t toast_ms;
   uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
@@ -351,6 +370,24 @@ typedef struct {
    * `states` blocks are parsed, because what they are allowed to name depends
    * on what has been loaded. */
   char *shader_dir;
+
+  /* Where projects live: `project_roots "~/dev" "~/work" depth=2`. A project is
+   * a subdirectory of one of these with a `sl0ppty.layout.kdl` in it -- or a
+   * `.git`, which gets `project_layout` instead. Empty means the feature is
+   * dormant and costs nothing.
+   *
+   * `depth` is levels below each root, and a directory that *is* a project is
+   * never descended into, so 2 covers `~/dev/work/api` without walking any
+   * checkout's insides. */
+  char *project_roots[PROJECT_ROOTS_MAX];
+  size_t nproject_roots;
+  int project_depth;
+
+  /* The layout a project with no file of its own opens as. Yours rather than a
+   * guess about your stack: relative paths in it bind to whichever project is
+   * being opened, so one file is the shape you start every project in. NULL is
+   * one pane running your shell. */
+  char *project_layout;
 
   /* Every file this config was built from, in the order they were read: the one
    * that was loaded and everything it included, whether or not each existed.

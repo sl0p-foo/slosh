@@ -5,6 +5,8 @@
 #ifndef SL0PPTY_APP_H
 #define SL0PPTY_APP_H
 
+#include "kdl.h"
+#include "project.h"
 #include "shader.h"
 #include "sl0ppty.h"
 
@@ -85,7 +87,10 @@ bool app_set_tab_name(app_t *a, uint32_t id, const char *name);
 bool app_move_tab(app_t *a, uint32_t id, size_t index);
 
 /* Purposes (D8). `declared` means "from a layout/control API": it outranks an
- * in-band purpose and locks it, so a pane cannot relabel itself afterwards.
+ * in-band purpose and locks it, so a pane cannot relabel itself afterwards --
+ * except by being cleared, which unlocks the slot and hands the label back,
+ * because a lock over an empty string is a state nothing can escape.
+ * `id` 0 is the focused pane and the current tab, as everywhere else.
  * Returns false when a locked purpose refuses an in-band change. */
 bool app_set_pane_purpose(app_t *a, uint32_t id, const char *purpose,
                           bool declared);
@@ -93,11 +98,87 @@ bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
                          bool declared);
 
 /* Build tabs and panes from a KDL layout. `replace` drops what was there.
- * Purposes a layout declares are locked (D8). */
+ * Purposes a layout declares are locked (D8). A relative `cwd=` in a *file*
+ * resolves against that file's directory, so a project's layout can be checked
+ * in beside the project; text has no directory and keeps meaning what it said. */
 bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
                            size_t errcap);
 bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
                            size_t errcap);
+/* The same, with an explicit base -- for a layout whose text came from one place
+ * and whose relative paths mean another: a shared project layout in ~/.config
+ * opening a project in ~/dev. */
+bool app_apply_layout_text_at(app_t *a, const char *text, bool replace,
+                              const char *base, char *err, size_t errcap);
+
+/* What a session would not honour in a layout document, one problem per entry,
+ * `file:line: text` -- the same shape `--check` prints for a config, because a
+ * project's layout is a file people edit by hand and `cmd=` where `command=`
+ * was meant is silently a shell. Returns how many it filled in; `dropped` is
+ * how many more there were, so a summary can say so. Neither allocates. */
+#define LAYOUT_MSGS_MAX 32
+typedef char layout_msg_t[192];
+size_t layout_check(const kdl_node_t *root, const char *file,
+                    layout_msg_t *msgs, size_t max, size_t *dropped);
+size_t layout_check_file(const char *path, layout_msg_t *msgs, size_t max,
+                         size_t *dropped);
+
+/* ---- workspaces ---------------------------------------------------------- *
+ *
+ * A project is a directory (project.h). A workspace is the tab it occupies in
+ * this session, and membership is that tab's `purpose` in the `project:`
+ * namespace -- so there is no second answer to "what is this tab", and a dumped
+ * layout restores membership for free because a dump already writes tab purposes
+ * and applying one already locks them (D8).
+ */
+
+/* Whether the config names anywhere to look. False means the feature is dormant
+ * and every verb below says so rather than answering with nothing. */
+bool app_project_roots_set(void);
+/* One project by name, or by a path under a root. False when no root holds it,
+ * which is also the containment check: a path this session will not write to. */
+bool app_workspace_find(const char *name, project_t *out);
+/* Every project the configured roots hold, sorted by name. */
+size_t app_projects(project_t *out, size_t max);
+/* The tab holding a workspace, or 0. */
+uint32_t app_workspace_tab(app_t *a, const char *slug);
+
+typedef struct {
+  uint32_t tab;      /* the tab to land in */
+  char purpose[64];  /* the workspace's identity */
+  char path[512];    /* the project on disk */
+  size_t tabs;       /* tabs it adopted */
+  size_t honoured;   /* tabs whose own declared purpose was left alone */
+  bool created;      /* false when it was already open and was focused */
+} app_workspace_open_t;
+
+/* Open a project's layout as a workspace, or focus the one already open --
+ * idempotent, so the same request twice is one workspace and a caller never has
+ * to ask first. `name` is a project name or a path under a root. `suspended`
+ * starts every pane asleep whatever the layout said, which is the "open ten
+ * projects, run zero processes" case. */
+bool app_workspace_open(app_t *a, const char *name, bool suspended,
+                        app_workspace_open_t *out, char *err, size_t errcap);
+
+/* Close every tab carrying this workspace's purpose; returns how many. */
+size_t app_workspace_close(app_t *a, const char *slug);
+
+typedef struct {
+  char path[512];    /* the file written */
+  char purpose[64];  /* the workspace the tab now carries */
+  size_t panes, suspended;
+  bool replaced;     /* there was a layout there before */
+} app_workspace_save_t;
+
+/* Write one tab out as a project's layout: the same dump `dump-layout` answers
+ * with, relative to the project, into `sl0ppty.layout.kdl` beside it. `tab` 0 is
+ * the current one; `path` names the project for a tab that is not yet a
+ * workspace (and saving adopts it, which is the whole of onboarding one).
+ * Refused without `force` when the project already has a layout: that file is
+ * checked in. */
+bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
+                        bool force, app_workspace_save_t *out, char *err,
+                        size_t errcap);
 
 /* What this session is called, for the status line. The server knows it
  * because it opened the socket under that name. */
@@ -191,13 +272,44 @@ bool app_load_pane_shaders(app_t *a, uint32_t pane_id, const char *path,
  * this pane's doing. */
 bool app_clear_pane_shaders(app_t *a, uint32_t pane_id);
 
+/* What to write when a session is written back out. `tab` 0 is every tab;
+ * `base` relativises every `cwd=` under it, which is what makes a project's
+ * layout the same file on another machine; `suspend` decides which panes are
+ * written as not-yet-started. `panes` and `suspended` come back filled in, so
+ * a caller can say what it wrote. NULL means all of it, verbatim, absolute. */
+typedef enum {
+  DUMP_SUSPEND_ASIS = 0, /* what is suspended now */
+  DUMP_SUSPEND_NONE,
+  DUMP_SUSPEND_COMMANDS, /* every pane that was given a command */
+  DUMP_SUSPEND_ALL
+} dump_suspend_t;
+
+typedef struct {
+  uint32_t tab;
+  const char *base;
+  int suspend;
+  /* This dump *is* a project's own layout file, so leave out what the project's
+   * location already says: a tab's `project:` purpose is derived from the path,
+   * and a checked-in file carrying one would hand another checkout of the same
+   * repo the original's identity. Every other purpose is somebody's label and is
+   * written as usual. */
+  bool for_project;
+  /* out. `tabs` is how a caller tells "that tab has no panes" from "there is no
+   * such tab", which are the same empty document. */
+  size_t tabs, panes, suspended;
+} dump_layout_t;
+
 /* The session written back out as a layout file: tabs, splits, proportions,
  * directories and commands. The inverse of app_apply_layout_text(), and what
- * makes "quit, rebuild, come back to the same screen" possible. Caller frees.
+ * `dump-layout` and `save-workspace` both answer with -- one of them writes it
+ * to a file, which is the only difference between them.
  *
- * The shape is restorable; what is running inside a program is not, and this
+ * What a dump can honestly restore is the shape. Not the state inside a
+ * program: a shell's history, a running editor. A pane running the session's
+ * default shell is dumped as a pane with no command, so restoring it gives a
+ * fresh one, and a pane whose program has exited is dumped as what it ran. It
  * does not pretend otherwise. */
-char *app_dump_layout(app_t *a);
+char *app_dump_layout(app_t *a, dump_layout_t *o);
 
 /* State as JSON, for the control API and the harness. Caller frees. */
 char *app_panes_json(app_t *a);

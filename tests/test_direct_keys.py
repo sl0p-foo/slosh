@@ -116,7 +116,7 @@ def test_an_overlay_still_owns_the_keyboard():
 
 
 def test_the_cheatsheet_lists_them_apart():
-    with Session(SH, cols=96, rows=30, config=DIRECT) as s:
+    with Session(SH, cols=96, rows=40, config=DIRECT) as s:
         s.settle()
         s.send(r"\x01?")
         s.settle()

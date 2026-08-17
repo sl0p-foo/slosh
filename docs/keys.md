@@ -24,20 +24,35 @@ it did not — `+7 more, in docs/keys.md`, which is the table below.
 | `z` | zoom this pane to fill the tab, and back |
 | `m` | minimise it into the strip along the bottom |
 | `x` | close this pane |
+| `X` | close this tab, and everything in it |
 | `r` | run a finished pane's command again |
+| `P` | set this pane's [purpose](layouts.md#purposes) |
 | `>` `<` | push this pane to the next / previous tab (a toast says where it went) |
 | `b` | break this pane out into a tab of its own |
 | `c` | new tab |
 | `Tab` `shift+Tab` | next / previous tab |
 | `1`…`9` | go to that tab |
 | `f` | find a pane by name |
+| `w` | the projects picker — every project under your roots, open or not ([workspaces](workspaces.md)) |
+| `W` | write this tab out as this project's layout ([workspaces](workspaces.md)) |
 | `p` | the command palette |
-| `PgUp` `PgDn` `Home` `End` | scrollback (the wheel works too) |
+| `PgUp` `PgDn` `Home` `End` | [scrollback](config.md#scrollback) (the wheel works too) |
 | `e` | edit the config, in a pane |
 | `?` | this list |
 | `d` | detach, leave it running |
 | `q` | quit the session |
 | `C-a` | send a literal `C-a` |
+
+**`x`/`X`, `p`/`P` and `w`/`W` are deliberately shifted pairs on one letter.**
+Close this pane / close this tab; run a command / tag this pane; go to a project /
+write this project down. The shifted half is the same verb on a bigger thing, or
+the thing you reach for within a moment of the other, so the shift is less to
+remember than a second letter would have been.
+
+`X` says how many panes went with the tab, since most of them were not the one you
+were looking at. On the **last** tab it refuses and points at `q` instead: a key
+that closes a tab four times and ends your session the fifth is one you cannot
+press without counting first.
 
 ## Rebinding
 
@@ -101,10 +116,11 @@ being bound at all.
 
 | group | actions |
 |---|---|
-| panes | `split` `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` |
+| panes | `split` `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` `set-purpose` |
 | focus | `focus-left` `focus-right` `focus-up` `focus-down` `focus-next` `finder` |
 | size | `resize-left` `resize-right` `resize-up` `resize-down` `equalize` |
-| tabs | `new-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |
+| tabs | `new-tab` `close-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |
+| projects | `workspaces` `save-workspace` |
 | scroll | `scroll-up` `scroll-down` `scroll-page-up` `scroll-page-down` `scroll-top` `scroll-bottom` |
 | session | `palette` `help` `edit-config` `detach` `quit` `literal-prefix` |
 
@@ -117,3 +133,7 @@ which is exactly the case the palette exists for. So does `clear-shaders`, which
 undoes whatever the program in a pane painted on it
 ([shaders](shaders.md#prototyping-in-a-pane)); bind it if you leave
 `in_band_shaders` on.
+
+`workspaces`, `save-workspace` and `set-purpose` are the other way round: all
+three are bound by default, to `w`, `W` and `P`, so the palette is a second way
+to reach them rather than the only one.
