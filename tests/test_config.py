@@ -5,6 +5,7 @@ Everything here was a compiled-in constant until now. The important property
 is not that settings apply — it is that a broken config costs a warning and
 never a terminal.
 """
+
 import os
 import pathlib
 import re
@@ -13,7 +14,7 @@ import sys
 import tempfile
 import time
 
-from harness import Session, check, report, BIN
+from harness import BIN, Session, check, report
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;cfg\\007"; stty raw -echo; cat']
 
@@ -41,10 +42,16 @@ def test_geometry():
         snap, p = s.snapshot(), s.pane()
         check("gap is applied", p["x"] == 2 and p["y"] == 3, str(p))
         row = snap.line(p["y"])
-        check("rounded false gives square corners",
-              "┌" in row and "╭" not in row, repr(row))
-        check("title_align left puts the title at the left",
-              row.index("cfg") < len(row) // 3, repr(row))
+        check(
+            "rounded false gives square corners",
+            "┌" in row and "╭" not in row,
+            repr(row),
+        )
+        check(
+            "title_align left puts the title at the left",
+            row.index("cfg") < len(row) // 3,
+            repr(row),
+        )
     os.unlink(path)
 
 
@@ -52,10 +59,12 @@ def insets(pane):
     """A pane's content rect as four insets from its frame: top, right, bottom,
     left. What `padding` is actually about, and the only way to see it is to
     measure both rects."""
-    return (pane["content_y"] - pane["y"],
-            (pane["x"] + pane["w"]) - (pane["content_x"] + pane["content_w"]),
-            (pane["y"] + pane["h"]) - (pane["content_y"] + pane["content_h"]),
-            pane["content_x"] - pane["x"])
+    return (
+        pane["content_y"] - pane["y"],
+        (pane["x"] + pane["w"]) - (pane["content_x"] + pane["content_w"]),
+        (pane["y"] + pane["h"]) - (pane["content_y"] + pane["content_h"]),
+        pane["content_x"] - pane["x"],
+    )
 
 
 def pad_insets(text, cols=60, rows=16):
@@ -71,23 +80,34 @@ def test_padding_takes_one_two_or_four_values():
     """One for every side, two for vertical and horizontal, four in CSS order.
     A number means the same thing however many of them were written, which is
     why all three of these are the same padding."""
-    check("no padding is just the border", pad_insets("padding 0\n") == (1, 1, 1, 1),
-          str(pad_insets("padding 0\n")))
+    check(
+        "no padding is just the border",
+        pad_insets("padding 0\n") == (1, 1, 1, 1),
+        str(pad_insets("padding 0\n")),
+    )
 
     one = pad_insets("padding 1\n")
     check("one value pads every side", one == (2, 3, 2, 3), str(one))
-    check("...and two equal values say the same thing",
-          pad_insets("padding 1 1\n") == one, str(pad_insets("padding 1 1\n")))
-    check("...as do four", pad_insets("padding 1 1 1 1\n") == one,
-          str(pad_insets("padding 1 1 1 1\n")))
+    check(
+        "...and two equal values say the same thing",
+        pad_insets("padding 1 1\n") == one,
+        str(pad_insets("padding 1 1\n")),
+    )
+    check(
+        "...as do four",
+        pad_insets("padding 1 1 1 1\n") == one,
+        str(pad_insets("padding 1 1 1 1\n")),
+    )
 
     # Horizontal padding is aspect-corrected, like the gap: the numbers are rows,
     # so a ring that looks square is one number rather than arithmetic.
     two = pad_insets("padding 0 2\n")
     check("two values are vertical then horizontal", two == (1, 5, 1, 5), str(two))
-    check("and gap_aspect 1 makes the units plain cells",
-          pad_insets("gap_aspect 1\npadding 0 2\n") == (1, 3, 1, 3),
-          str(pad_insets("gap_aspect 1\npadding 0 2\n")))
+    check(
+        "and gap_aspect 1 makes the units plain cells",
+        pad_insets("gap_aspect 1\npadding 0 2\n") == (1, 3, 1, 3),
+        str(pad_insets("gap_aspect 1\npadding 0 2\n")),
+    )
 
     four = pad_insets("padding 2 0 0 1\n")
     check("four values are top right bottom left", four == (3, 1, 1, 3), str(four))
@@ -100,12 +120,18 @@ def test_a_padding_nobody_can_read_is_refused():
     path = cfg("padding 1 2 3\ngap 2\n")
     with Session(SH, cols=60, rows=16, config=path) as s:
         s.settle()
-        check("the padding was not applied", insets(s.pane()) == (1, 1, 1, 1),
-              str(insets(s.pane())))
+        check(
+            "the padding was not applied",
+            insets(s.pane()) == (1, 1, 1, 1),
+            str(insets(s.pane())),
+        )
         check("but the rest of the file was", s.pane()["y"] == 3, str(s.pane()))
         reply = s.api("reload")
-        check("and it says what it wanted", "padding takes 1, 2 or 4" in
-              reply.get("warning", ""), str(reply))
+        check(
+            "and it says what it wanted",
+            "padding takes 1, 2 or 4" in reply.get("warning", ""),
+            str(reply),
+        )
     os.unlink(path)
 
 
@@ -114,8 +140,11 @@ def test_status_bar_off():
     with Session(SH, cols=50, rows=10, config=path) as s:
         s.settle()
         snap, p = s.snapshot(), s.pane()
-        check("no status bar means no strip row", "panes" not in snap.screen(),
-              repr(snap.line(1)))
+        check(
+            "no status bar means no strip row",
+            "panes" not in snap.screen(),
+            repr(snap.line(1)),
+        )
         check("and the panes get the row back", p["y"] == 1, str(p))
     os.unlink(path)
 
@@ -131,8 +160,11 @@ def test_theme():
         s.settle()
         p = s.pane()
         run = s.snapshot().style_at(p["x"], p["y"])
-        check("the focused frame takes the configured colour",
-              run and run["fg"] == "#00ff00", str(run))
+        check(
+            "the focused frame takes the configured colour",
+            run and run["fg"] == "#00ff00",
+            str(run),
+        )
 
         s.key("\\\\")
         s.settle()
@@ -140,8 +172,11 @@ def test_theme():
         snap = s.snapshot()
         idle = [q for q in panes if not q["focused"]][0]
         run = snap.style_at(idle["x"], idle["y"])
-        check("an unfocused frame takes the other one",
-              run and run["fg"] == "#333333", str(run))
+        check(
+            "an unfocused frame takes the other one",
+            run and run["fg"] == "#333333",
+            str(run),
+        )
     os.unlink(path)
 
 
@@ -157,18 +192,24 @@ def test_keys():
         s.settle()
         s.send(r"\x02v")  # C-b v
         s.settle()
-        check("a custom prefix and binding work", len(s.panes()) == 2,
-              str(len(s.panes())))
+        check(
+            "a custom prefix and binding work", len(s.panes()) == 2, str(len(s.panes()))
+        )
 
         s.send("\\x02\\\\")  # C-b \  -> unbound now
         s.settle()
-        check("a binding set to none does nothing", len(s.panes()) == 2,
-              str(len(s.panes())))
+        check(
+            "a binding set to none does nothing",
+            len(s.panes()) == 2,
+            str(len(s.panes())),
+        )
 
         s.send(r"\x01")  # the old prefix is just a keystroke now
         s.settle()
-        check("the old prefix is passed through to the pane",
-              len(s.panes()) == 2 and s.api("alive")["alive"])
+        check(
+            "the old prefix is passed through to the pane",
+            len(s.panes()) == 2 and s.api("alive")["alive"],
+        )
 
         s.send(r"\x02\x02")  # prefix twice is still a literal prefix
         s.settle()
@@ -197,17 +238,15 @@ def test_a_chord_can_be_written_the_way_the_cheatsheet_prints_it():
         # `?` is shift+slash, which is what the key says on the keyboard.
         s.send(r"\x02?")
         s.settle()
-        check("`?` binds the key you press", len(s.panes()) == 2,
-              str(len(s.panes())))
+        check("`?` binds the key you press", len(s.panes()) == 2, str(len(s.panes())))
 
-        s.send(r"\x02\e[Z")   # C-b shift+tab
+        s.send(r"\x02\e[Z")  # C-b shift+tab
         s.settle()
         check("`S-tab` is shift+tab", len(s.panes()) == 3, str(len(s.panes())))
 
-        s.send(r"\x02\e[C")   # C-b right arrow
+        s.send(r"\x02\e[C")  # C-b right arrow
         s.settle()
-        check("an arrow glyph is that arrow", len(s.panes()) == 2,
-              str(len(s.panes())))
+        check("an arrow glyph is that arrow", len(s.panes()) == 2, str(len(s.panes())))
     os.unlink(path)
 
     # A capital letter is that letter with shift, not that letter: the sheet
@@ -215,14 +254,16 @@ def test_a_chord_can_be_written_the_way_the_cheatsheet_prints_it():
     path = cfg('keys {\n    bind "H" "split-cols"\n}\n')
     with Session(SH, cols=100, rows=30, config=path) as s:
         s.settle()
-        s.send(r"\x01h")       # plain h still moves focus, it does not split
+        s.send(r"\x01h")  # plain h still moves focus, it does not split
         s.settle()
-        check("a plain letter is left alone", len(s.panes()) == 1,
-              str(len(s.panes())))
+        check("a plain letter is left alone", len(s.panes()) == 1, str(len(s.panes())))
         s.send(r"\x01H")
         s.settle()
-        check("and the capital is the shifted one", len(s.panes()) == 2,
-              str(len(s.panes())))
+        check(
+            "and the capital is the shifted one",
+            len(s.panes()) == 2,
+            str(len(s.panes())),
+        )
     os.unlink(path)
 
 
@@ -237,14 +278,20 @@ def test_min_pane_drives_collapse():
         s.settle()
         s.api("split", dir="cols")
         s.settle()
-        check("a low floor keeps both panes visible",
-              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "a low floor keeps both panes visible",
+            not any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
     with Session(SH, cols=70, rows=16, config=tight) as s:
         s.settle()
         s.api("split", dir="cols")
         s.settle()
-        check("a high floor collapses the same split",
-              any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "a high floor collapses the same split",
+            any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
     os.unlink(roomy)
     os.unlink(tight)
 
@@ -254,17 +301,20 @@ def test_fail_open():
     broken = cfg('gap 1\ntheme {\n  frame_focus "#00ff00"\n')  # unclosed block
     with Session(SH, cols=60, rows=14, config=broken) as s:
         s.settle()
-        check("a session still starts on a broken config",
-              s.api("alive")["alive"], "")
+        check("a session still starts on a broken config", s.api("alive")["alive"], "")
         p = s.pane()
-        check("and uses the compiled-in defaults", p["x"] == 2 and p["y"] == 2,
-              str(p))
-    proc = subprocess.run([BIN, "--headless", "--cols", "20", "--rows", "3",
-                           "--", "/bin/echo", "hi"],
-                          capture_output=True, text=True,
-                          env=dict(os.environ, SL0PPTY_CONFIG=broken))
-    check("the reason is reported on stderr",
-          "line" in proc.stderr or "parse" in proc.stderr, repr(proc.stderr))
+        check("and uses the compiled-in defaults", p["x"] == 2 and p["y"] == 2, str(p))
+    proc = subprocess.run(
+        [BIN, "--headless", "--cols", "20", "--rows", "3", "--", "/bin/echo", "hi"],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, SL0PPTY_CONFIG=broken),
+    )
+    check(
+        "the reason is reported on stderr",
+        "line" in proc.stderr or "parse" in proc.stderr,
+        repr(proc.stderr),
+    )
     check("but the run succeeds", proc.returncode == 0, proc.stderr)
     os.unlink(broken)
 
@@ -275,15 +325,20 @@ def test_fail_open():
     with Session(SH, cols=60, rows=14, config=partial) as s:
         s.settle()
         # gap 3, aspect 2 (default) -> 6 columns of margin
-        check("a bad binding does not discard the rest of the file",
-              s.pane()["x"] == 6, str(s.pane()))
+        check(
+            "a bad binding does not discard the rest of the file",
+            s.pane()["x"] == 6,
+            str(s.pane()),
+        )
     os.unlink(partial)
 
     missing = "/nonexistent/definitely/not/here.kdl"
-    proc = subprocess.run([BIN, "--headless", "--cols", "20", "--rows", "3",
-                           "--", "/bin/echo", "hi"],
-                          capture_output=True, text=True,
-                          env=dict(os.environ, SL0PPTY_CONFIG=missing))
+    proc = subprocess.run(
+        [BIN, "--headless", "--cols", "20", "--rows", "3", "--", "/bin/echo", "hi"],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, SL0PPTY_CONFIG=missing),
+    )
     check("a missing config is silent", proc.stderr == "", repr(proc.stderr))
 
 
@@ -296,16 +351,18 @@ def test_reload():
             f.write("gap 3\n")
         r = s.api("reload")
         s.settle()
-        check("reload applies the new file", r["ok"] and s.pane()["x"] == 6,
-              f"{r} {s.pane()}")
+        check(
+            "reload applies the new file",
+            r["ok"] and s.pane()["x"] == 6,
+            f"{r} {s.pane()}",
+        )
 
         with open(path, "w") as f:
             f.write("gap 5\ntheme {\n")  # broken
         r = s.api("reload")
         s.settle()
         check("a broken reload is refused", not r["ok"], str(r))
-        check("and the working config is kept", s.pane()["x"] == 6,
-              str(s.pane()))
+        check("and the working config is kept", s.pane()["x"] == 6, str(s.pane()))
     os.unlink(path)
 
 
@@ -317,54 +374,74 @@ def test_status_line_reserves_a_row_at_the_bottom():
         with Session(SH, cols=50, rows=12, config=path) as s:
             s.settle()
             heights[name] = s.pane()["h"]
-    check("turning the status line off gives the row back to the panes",
-          heights["off"] == heights["on"] + 1, str(heights))
+    check(
+        "turning the status line off gives the row back to the panes",
+        heights["off"] == heights["on"] + 1,
+        str(heights),
+    )
     os.unlink(on)
     os.unlink(off)
 
 
 def test_status_line_says_what_you_are_looking_at():
     lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
-    lay.write('layout {\n tab name="api" purpose="project:api.a1" {\n'
-              '  pane purpose="agent:main"\n'
-              '  pane suspended=true command="top"\n }\n}\n')
+    lay.write(
+        'layout {\n tab name="api" purpose="project:api.a1" {\n'
+        '  pane purpose="agent:main"\n'
+        '  pane suspended=true command="top"\n }\n}\n'
+    )
     lay.close()
     with Session(SH, cols=90, rows=18, layout=lay.name) as s:
         s.settle(20)
         bottom = s.snapshot().text[-2]
-        check("it names the tab and the focused pane",
-              "api" in bottom and "agent:main" in bottom, repr(bottom))
+        check(
+            "it names the tab and the focused pane",
+            "api" in bottom and "agent:main" in bottom,
+            repr(bottom),
+        )
         # The bottom carries a count too, but it is this tab's rather than the
         # session's (see test_the_two_pane_counts_answer_different_questions).
         # What it must not do is restate the strip itself.
-        check("and is not a second copy of the tab strip",
-              "pane 1/2" in bottom and "1:api" not in bottom, repr(bottom))
+        check(
+            "and is not a second copy of the tab strip",
+            "pane 1/2" in bottom and "1:api" not in bottom,
+            repr(bottom),
+        )
 
         ids = [p["id"] for p in s.panes()]
         s.api("focus", id=ids[1])
         s.settle(20)
-        check("a pane that has not started says so",
-              "not started" in s.snapshot().text[-2],
-              repr(s.snapshot().text[-2]))
+        check(
+            "a pane that has not started says so",
+            "not started" in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
     os.unlink(lay.name)
 
 
 def test_status_line_reports_scrollback():
-    noisy = ["/bin/sh", "-c",
-             'printf "\\033]2;p\\007"; i=0; while [ $i -lt 200 ]; do '
-             'echo "line $i"; i=$((i+1)); done; stty raw -echo; cat']
+    noisy = [
+        "/bin/sh",
+        "-c",
+        'printf "\\033]2;p\\007"; i=0; while [ $i -lt 200 ]; do '
+        'echo "line $i"; i=$((i+1)); done; stty raw -echo; cat',
+    ]
     with Session(noisy, cols=90, rows=18) as s:
         s.settle(30)
-        check("nothing is said while you are in the present",
-              "scrolled" not in s.snapshot().text[-2],
-              repr(s.snapshot().text[-2]))
+        check(
+            "nothing is said while you are in the present",
+            "scrolled" not in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
         p = s.pane()
         for _ in range(6):
             s.send(rf"\e[<64;{p['content_x'] + 2};{p['content_y'] + 2}M")
         s.settle(30)
-        check("looking at the past is said out loud",
-              "scrolled" in s.snapshot().text[-2],
-              repr(s.snapshot().text[-2]))
+        check(
+            "looking at the past is said out loud",
+            "scrolled" in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
 
 
 def test_the_two_pane_counts_answer_different_questions():
@@ -372,40 +449,53 @@ def test_the_two_pane_counts_answer_different_questions():
     tab's panes you are in, which is the question you actually have once a tab
     has collapsed into a list and only one of them is open."""
     lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
-    lay.write('layout {\n tab name="api" {\n  pane\n  pane\n }\n'
-              ' tab name="notes" {\n  pane\n }\n}\n')
+    lay.write(
+        'layout {\n tab name="api" {\n  pane\n  pane\n }\n'
+        ' tab name="notes" {\n  pane\n }\n}\n'
+    )
     lay.close()
     with Session(SH, cols=80, rows=16, layout=lay.name) as s:
         s.settle(20)
         top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
-        check("the strip counts every pane in the session",
-              "3 panes" in top, repr(top))
-        check("the line says which of this tab's panes is open",
-              "pane 1/2" in bottom, repr(bottom))
+        check("the strip counts every pane in the session", "3 panes" in top, repr(top))
+        check(
+            "the line says which of this tab's panes is open",
+            "pane 1/2" in bottom,
+            repr(bottom),
+        )
 
         ids = [p["id"] for p in s.panes() if p["tab"] == 1]
         s.api("focus", id=ids[1])
         s.settle(20)
-        check("the index moves with the focus",
-              "pane 2/2" in s.snapshot().text[-2],
-              repr(s.snapshot().text[-2]))
-        check("while the session count does not",
-              "3 panes" in s.snapshot().line(1), repr(s.snapshot().line(1)))
+        check(
+            "the index moves with the focus",
+            "pane 2/2" in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
+        check(
+            "while the session count does not",
+            "3 panes" in s.snapshot().line(1),
+            repr(s.snapshot().line(1)),
+        )
 
         tabs = s.tabs()
         s.api("select-tab", id=tabs[1]["id"])
         s.settle(20)
         top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
         check("a one-pane tab says so", "pane 1/1" in bottom, repr(bottom))
-        check("and the session count still counts the session",
-              "3 panes" in top, repr(top))
+        check(
+            "and the session count still counts the session",
+            "3 panes" in top,
+            repr(top),
+        )
 
         s.api("split", dir="cols")
         s.settle(20)
-        check("splitting moves both numbers, each in its own way",
-              "pane 2/2" in s.snapshot().text[-2]
-              and "4 panes" in s.snapshot().line(1),
-              repr(s.snapshot().text[-2]) + " / " + repr(s.snapshot().line(1)))
+        check(
+            "splitting moves both numbers, each in its own way",
+            "pane 2/2" in s.snapshot().text[-2] and "4 panes" in s.snapshot().line(1),
+            repr(s.snapshot().text[-2]) + " / " + repr(s.snapshot().line(1)),
+        )
     os.unlink(lay.name)
 
 
@@ -419,57 +509,73 @@ def test_status_pad_holds_both_bars_off_the_edge():
         with Session(SH, cols=80, rows=16, config=path, layout=lay.name) as s:
             s.settle(20)
             top, bottom = s.snapshot().line(1), s.snapshot().text[-2]
-            seen[pad] = (len(top) - len(top.lstrip()),
-                         len(top.rstrip()),
-                         len(bottom) - len(bottom.lstrip()),
-                         len(bottom.rstrip()))
+            seen[pad] = (
+                len(top) - len(top.lstrip()),
+                len(top.rstrip()),
+                len(bottom) - len(bottom.lstrip()),
+                len(bottom.rstrip()),
+            )
         os.unlink(path)
-    check("a bigger pad indents the strip further from the left",
-          seen[8][0] == seen[2][0] + 6, str(seen))
-    check("and holds it further off the right",
-          seen[8][1] == seen[2][1] - 6, str(seen))
-    check("the line below is padded the same on the left",
-          seen[8][2] == seen[2][2] + 6, str(seen))
+    check(
+        "a bigger pad indents the strip further from the left",
+        seen[8][0] == seen[2][0] + 6,
+        str(seen),
+    )
+    check("and holds it further off the right", seen[8][1] == seen[2][1] - 6, str(seen))
+    check(
+        "the line below is padded the same on the left",
+        seen[8][2] == seen[2][2] + 6,
+        str(seen),
+    )
     check("and on the right", seen[8][3] == seen[2][3] - 6, str(seen))
     os.unlink(lay.name)
-
 
 
 def test_every_surface_has_its_own_theme_name():
     """The point of splitting six names into thirty-five: recolouring one
     surface must not recolour another that happened to share an entry."""
-    conf = cfg('theme {\n'
-               '  guide "#00ff00"\n'
-               '  tab_active_bg "#0000ff"\n'
-               '  status "#ff8800"\n'
-               '  header "#ff00ff"\n'
-               '}\n')
+    conf = cfg(
+        "theme {\n"
+        '  guide "#00ff00"\n'
+        '  tab_active_bg "#0000ff"\n'
+        '  status "#ff8800"\n'
+        '  header "#ff00ff"\n'
+        "}\n"
+    )
     with Session(SH, cols=80, rows=16, config=conf) as s:
         s.settle(20)
         snap = s.snapshot()
 
         tab = [h for h in snap.hits if h["action"].startswith("tab:")][0]
-        check("tab_active_bg fills the tab you are in",
-              (snap.style_at(tab["x"] + 1, tab["y"]) or {}).get("bg") == "#0000ff",
-              str(snap.style_at(tab["x"] + 1, tab["y"])))
-        check("status colours the bottom line",
-              (snap.style_at(4, snap.rows - 2) or {}).get("fg") == "#ff8800",
-              str(snap.style_at(4, snap.rows - 2)))
+        check(
+            "tab_active_bg fills the tab you are in",
+            (snap.style_at(tab["x"] + 1, tab["y"]) or {}).get("bg") == "#0000ff",
+            str(snap.style_at(tab["x"] + 1, tab["y"])),
+        )
+        check(
+            "status colours the bottom line",
+            (snap.style_at(4, snap.rows - 2) or {}).get("fg") == "#ff8800",
+            str(snap.style_at(4, snap.rows - 2)),
+        )
 
         # ...and the frame, which shares a *default* with guide, did not move.
         p = s.pane()
-        check("the focused frame keeps its own colour",
-              (snap.style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#ff5fd7",
-              str(snap.style_at(p["x"], p["y"] + 1)))
+        check(
+            "the focused frame keeps its own colour",
+            (snap.style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#ff5fd7",
+            str(snap.style_at(p["x"], p["y"] + 1)),
+        )
 
         # The guide is the one that used to be the same entry as the frame.
         hover(s, p["x"], p["y"] + 3)
         time.sleep(0.35)
         s.settle(40)
         snap = s.snapshot()
-        check("and the split guide takes the colour named for it",
-              (snap.style_at(p["x"], p["y"] + 3) or {}).get("fg") == "#00ff00",
-              str(snap.style_at(p["x"], p["y"] + 3)))
+        check(
+            "and the split guide takes the colour named for it",
+            (snap.style_at(p["x"], p["y"] + 3) or {}).get("fg") == "#00ff00",
+            str(snap.style_at(p["x"], p["y"] + 3)),
+        )
     os.unlink(conf)
 
 
@@ -479,10 +585,11 @@ def test_an_unknown_theme_name_is_refused_not_ignored():
         s.settle(20)
         check("a bad colour costs a warning, not a terminal", s.alive(), "")
         p = s.pane()
-        check("and the compiled-in default is kept",
-              (s.snapshot().style_at(p["x"], p["y"] + 1) or {}).get("fg")
-              == "#ff5fd7",
-              str(s.snapshot().style_at(p["x"], p["y"] + 1)))
+        check(
+            "and the compiled-in default is kept",
+            (s.snapshot().style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#ff5fd7",
+            str(s.snapshot().style_at(p["x"], p["y"] + 1)),
+        )
     os.unlink(conf)
 
 
@@ -493,8 +600,11 @@ def test_a_setting_nobody_knows_is_said_out_loud():
     path = cfg("gap 2\nwobble 3\n")
     out = subprocess.run([BIN, "--check", path], capture_output=True, text=True)
     said = out.stderr + out.stdout
-    check("it names the setting it does not know", "unknown setting: wobble" in said,
-          repr(said))
+    check(
+        "it names the setting it does not know",
+        "unknown setting: wobble" in said,
+        repr(said),
+    )
     check("and the line it is on", ":2:" in said, repr(said))
     check("and exits non-zero", out.returncode == 1, str(out.returncode))
     os.unlink(path)
@@ -508,8 +618,11 @@ def test_the_two_documents_are_told_apart():
     lay = cfg('layout {\n  tab name="x" { pane }\n}\n')
     out = subprocess.run([BIN, "--check", lay], capture_output=True, text=True)
     said = out.stderr + out.stdout
-    check("a layout handed to --check is checked as a layout",
-          "ok, a layout" in said, repr(said))
+    check(
+        "a layout handed to --check is checked as a layout",
+        "ok, a layout" in said,
+        repr(said),
+    )
     check("...and a clean one exits zero", out.returncode == 0, str(out.returncode))
 
     # Held to the layout schema, not the config one: the proof is that it names a
@@ -517,32 +630,73 @@ def test_the_two_documents_are_told_apart():
     typo = cfg('layout {\n  tab name="x" { pane cmd="htop" }\n}\n')
     out1 = subprocess.run([BIN, "--check", typo], capture_output=True, text=True)
     said1 = out1.stderr + out1.stdout
-    check("a mistyped pane property is named", "unknown pane property: cmd" in said1,
-          repr(said1))
+    check(
+        "a mistyped pane property is named",
+        "unknown pane property: cmd" in said1,
+        repr(said1),
+    )
     check("and the line it is on", ":2:" in said1, repr(said1))
     check("and it exits non-zero", out1.returncode == 1, str(out1.returncode))
 
-    conf = cfg("gap 2\ntheme { frame_focus \"#00ff88\" }\n")
+    conf = cfg('gap 2\ntheme { frame_focus "#00ff88" }\n')
     out2 = subprocess.run(
-        [BIN, "--script", "--cols", "40", "--rows", "8", "--layout", conf,
-         "--", "/bin/sh", "-c", "read x"],
-        input="quit\n", capture_output=True, text=True)
+        [
+            BIN,
+            "--script",
+            "--cols",
+            "40",
+            "--rows",
+            "8",
+            "--layout",
+            conf,
+            "--",
+            "/bin/sh",
+            "-c",
+            "read x",
+        ],
+        input="quit\n",
+        capture_output=True,
+        text=True,
+    )
     said2 = out2.stderr + out2.stdout
-    check("a config handed to --layout says it is a config",
-          "this is a config, not a layout" in said2, repr(said2))
-    check("...and names the setting that gave it away", "`gap` is a setting" in said2,
-          repr(said2))
+    check(
+        "a config handed to --layout says it is a config",
+        "this is a config, not a layout" in said2,
+        repr(said2),
+    )
+    check(
+        "...and names the setting that gave it away",
+        "`gap` is a setting" in said2,
+        repr(said2),
+    )
 
     # A layout whose own tabs are misspelled is a different mistake, and keeps its
     # own message rather than being told it is a config.
     broken = cfg('layout {\n  tabb name="x" { pane }\n}\n')
     out3 = subprocess.run(
-        [BIN, "--script", "--cols", "40", "--rows", "8", "--layout", broken,
-         "--", "/bin/sh", "-c", "read x"],
-        input="quit\n", capture_output=True, text=True)
-    check("a layout with no tabs still says that",
-          "layout declares no tabs" in (out3.stderr + out3.stdout),
-          repr(out3.stderr[:120]))
+        [
+            BIN,
+            "--script",
+            "--cols",
+            "40",
+            "--rows",
+            "8",
+            "--layout",
+            broken,
+            "--",
+            "/bin/sh",
+            "-c",
+            "read x",
+        ],
+        input="quit\n",
+        capture_output=True,
+        text=True,
+    )
+    check(
+        "a layout with no tabs still says that",
+        "layout declares no tabs" in (out3.stderr + out3.stdout),
+        repr(out3.stderr[:120]),
+    )
     for p in (lay, typo, conf, broken):
         os.unlink(p)
 
@@ -551,32 +705,60 @@ def test_the_shipped_files_are_what_they_claim():
     """The example layout is a layout and the reference config is a config, checked
     by the program rather than by their names."""
     root = pathlib.Path(__file__).resolve().parent.parent
-    conf = subprocess.run([BIN, "--check", str(root / "config" / "config.kdl")],
-                          capture_output=True, text=True)
-    check("config/config.kdl lints clean", conf.returncode == 0,
-          repr(conf.stderr[:160]))
+    conf = subprocess.run(
+        [BIN, "--check", str(root / "config" / "config.kdl")],
+        capture_output=True,
+        text=True,
+    )
+    check(
+        "config/config.kdl lints clean", conf.returncode == 0, repr(conf.stderr[:160])
+    )
     lay = root / "config" / "example.layout.kdl"
     check("the example layout is named `*.layout.kdl`", lay.exists(), str(lay))
     exl = subprocess.run([BIN, "--check", str(lay)], capture_output=True, text=True)
-    check("and it lints clean as a layout", exl.returncode == 0,
-          repr(exl.stderr[:200]))
+    check("and it lints clean as a layout", exl.returncode == 0, repr(exl.stderr[:200]))
     out = subprocess.run(
-        [BIN, "--script", "--cols", "60", "--rows", "12", "--layout", str(lay),
-         "--", "/bin/sh", "-c", "read x"],
-        input="tabs\nquit\n", capture_output=True, text=True)
-    check("and it loads as one", '"tabs"' in out.stdout or "api" in out.stdout,
-          repr(out.stdout[:160]) + repr(out.stderr[:120]))
+        [
+            BIN,
+            "--script",
+            "--cols",
+            "60",
+            "--rows",
+            "12",
+            "--layout",
+            str(lay),
+            "--",
+            "/bin/sh",
+            "-c",
+            "read x",
+        ],
+        input="tabs\nquit\n",
+        capture_output=True,
+        text=True,
+    )
+    check(
+        "and it loads as one",
+        '"tabs"' in out.stdout or "api" in out.stdout,
+        repr(out.stdout[:160]) + repr(out.stderr[:120]),
+    )
 
 
 def test_the_known_settings_list_cannot_go_stale():
     """`KNOWN_TOP` is what "unknown setting" is measured against, so a setting added
     to the loader and not to that list would be reported as unknown -- which is the
     same silent-ish wrongness one step along."""
-    src = (pathlib.Path(__file__).resolve().parent.parent / "src" / "config.c").read_text()
+    src = (
+        pathlib.Path(__file__).resolve().parent.parent / "src" / "config.c"
+    ).read_text()
     asked = set(re.findall(r'kdl_child\(root, "([a-z_]+)"\)', src))
-    listed = set(re.findall(r'^    "([a-z_]+)",', src[src.index("KNOWN_TOP[] = {"):], re.M))
-    check("every setting the loader reads is in KNOWN_TOP", asked <= listed,
-          "missing: %s" % sorted(asked - listed))
+    listed = set(
+        re.findall(r'^    "([a-z_]+)",', src[src.index("KNOWN_TOP[] = {") :], re.M)
+    )
+    check(
+        "every setting the loader reads is in KNOWN_TOP",
+        asked <= listed,
+        "missing: %s" % sorted(asked - listed),
+    )
     check("and the list was actually found", len(listed) > 20, str(len(listed)))
 
 

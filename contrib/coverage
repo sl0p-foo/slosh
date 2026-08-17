@@ -12,6 +12,7 @@ It is a number to look at, not a number to chase. A line that no test executes
 is worth knowing about; a line executed by a test that asserts nothing is
 worth nothing, and no coverage tool can tell the two apart.
 """
+
 import os
 import re
 import subprocess
@@ -26,7 +27,10 @@ def gcov_one(src):
     """gcov prints a summary per file; the counters are in build/cov."""
     out = subprocess.run(
         ["gcov", "-o", COV, "-n", os.path.join("src", src)],
-        capture_output=True, text=True, cwd=ROOT).stdout
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    ).stdout
     # File 'src/app.c'
     # Lines executed:62.34% of 1234
     pct = lines = None
@@ -57,8 +61,9 @@ def main():
         rows.append((src, pct, lines))
 
     if not rows:
-        print("no counters: did the suite run against build/cov/sl0ppty?",
-              file=sys.stderr)
+        print(
+            "no counters: did the suite run against build/cov/sl0ppty?", file=sys.stderr
+        )
         return 1
 
     total = sum(l for _, _, l in rows)

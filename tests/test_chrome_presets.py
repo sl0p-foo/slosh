@@ -11,6 +11,7 @@ Two things are asserted of each, and the second matters as much as the first:
 the frame moves, and the pane's own output does not. A chrome pass that leaked
 into the contents would be a shader bug wearing a preset's clothes.
 """
+
 import glob
 import os
 import sys
@@ -23,16 +24,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FILES = sorted(glob.glob(os.path.join(HERE, "..", "contrib", "chrome", "*.kdl")))
 
 # Prints a screenful of known-coloured text, then waits.
-SH = ["/bin/sh", "-c",
-      'printf "\\033]2;p\\007"; '
-      'printf "\\033[38;2;0;255;0mBLOCK\\033[0m\\n"; stty raw -echo; cat']
+SH = [
+    "/bin/sh",
+    "-c",
+    'printf "\\033]2;p\\007"; '
+    'printf "\\033[38;2;0;255;0mBLOCK\\033[0m\\n"; stty raw -echo; cat',
+]
 
 # Announcements stack up from the bottom right and are drawn over everything,
 # including a pane's bottom rule -- and this test reloads eight times. A toast
 # that outlived its reload would be measured as the frame having changed, so
 # they are told to expire immediately.
-THEME = ('theme { default_fg "#ffffff" default_bg "#000000" }\n'
-         'toast_ms 1\n')
+THEME = 'theme { default_fg "#ffffff" default_bg "#000000" }\ntoast_ms 1\n'
 
 
 def frame_cells(snap, pane):
@@ -51,8 +54,11 @@ def frame_cells(snap, pane):
 
 
 def content_cells(snap, pane):
-    return [(snap.style_at(pane["content_x"] + c, pane["content_y"] + r) or {}).get("fg")
-            for r in range(pane["content_h"]) for c in range(pane["content_w"])]
+    return [
+        (snap.style_at(pane["content_x"] + c, pane["content_y"] + r) or {}).get("fg")
+        for r in range(pane["content_h"])
+        for c in range(pane["content_w"])
+    ]
 
 
 def test_every_chrome_preset_moves_the_frame():
@@ -89,8 +95,10 @@ def test_every_chrome_preset_moves_the_frame():
                 snap = s.snapshot()
                 pane = s.pane()
                 seen.update(
-                    i for i, (a, b) in enumerate(zip(base_frame, frame_cells(snap, pane)))
-                    if a != b)
+                    i
+                    for i, (a, b) in enumerate(zip(base_frame, frame_cells(snap, pane)))
+                    if a != b
+                )
                 if content_cells(snap, pane) != base_content:
                     content_moved = True
                 # The frame answer can stop the clock; the contents answer is
@@ -100,7 +108,11 @@ def test_every_chrome_preset_moves_the_frame():
                 time.sleep(0.03)
 
             check(f"{name} colours the frame", len(seen) > 0, "no cell changed")
-            check(f"{name} leaves the contents alone", not content_moved, "content changed")
+            check(
+                f"{name} leaves the contents alone",
+                not content_moved,
+                "content changed",
+            )
 
         # ...and taking it out again puts the frame back, so one preset cannot
         # leave a mark on the next.
@@ -108,8 +120,11 @@ def test_every_chrome_preset_moves_the_frame():
             f.write(THEME)
         s.api("reload")
         s.settle(40)
-        check("removing the last one restores the frame",
-              frame_cells(s.snapshot(), s.pane()) == base_frame, "still shaded")
+        check(
+            "removing the last one restores the frame",
+            frame_cells(s.snapshot(), s.pane()) == base_frame,
+            "still shaded",
+        )
 
     os.unlink(cfg.name)
 

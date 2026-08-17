@@ -64,6 +64,7 @@ functions, and filenames after `:load`.
 
 Python 3, standard library only.
 """
+
 import atexit
 import glob
 import os
@@ -83,29 +84,55 @@ OSC = "\033]5577;1;"
 ST = "\033\\"
 TIMEOUT = 2.0
 
-COMMANDS = [":chrome", ":content", ":load", ":clear", ":both", ":paste",
-            ":help", ":quit"]
+COMMANDS = [
+    ":chrome",
+    ":content",
+    ":load",
+    ":clear",
+    ":both",
+    ":paste",
+    ":help",
+    ":quit",
+]
 
 # What there is to complete. Written here rather than asked for, because there is
 # nothing to ask: the session has no verb that lists them. Kept honest by
 # `tests/test_shader_repl.py`, which fails if `src/shader.c` or `src/expr.c`
 # grows a name this list does not have -- a completion list that quietly goes
 # stale is worse than none, because it reads as "that is all there is".
-SHADERS = ["dim", "grayscale", "tint", "vignette", "gradient", "zebra", "ruler",
-           "margin", "spotlight"]
-PROPS = ["amount=", "color=", "channel=", "where=", "at=", "radius=", "band=",
-         "direction="]
+SHADERS = [
+    "dim",
+    "grayscale",
+    "tint",
+    "vignette",
+    "gradient",
+    "zebra",
+    "ruler",
+    "margin",
+    "spotlight",
+]
+PROPS = [
+    "amount=",
+    "color=",
+    "channel=",
+    "where=",
+    "at=",
+    "radius=",
+    "band=",
+    "direction=",
+]
 # Values worth offering: the two rects, the three channels.
 VALUES = ['"chrome"', '"content"', '"fg"', '"bg"', '"both"']
-VARS = ["x", "y", "cols", "rows", "curx", "cury", "cursor", "focused", "t",
-        "since"]
+VARS = ["x", "y", "cols", "rows", "curx", "cury", "cursor", "focused", "t", "since"]
 # Angles are degrees, so pi is a half turn: `PI` is 180 and `TAU` is 360.
 CONSTS = ["PI", "TAU"]
 FUNCS = ["min(", "max(", "abs(", "clamp(", "dist(", "sin(", "cos("]
 
 HISTORY = os.path.join(
     os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"),
-    "sl0ppty", "shader-repl.history")
+    "sl0ppty",
+    "shader-repl.history",
+)
 
 
 def complete(text, state):
@@ -120,15 +147,21 @@ def complete(text, state):
     line = readline.get_line_buffer() if readline else ""
     if line.lstrip().startswith(":load"):
         hits = []
-        for pat in (text + "*", os.path.join(PRESET_DIRS[0], text + "*"),
-                    os.path.join(PRESET_DIRS[1], text + "*")):
+        for pat in (
+            text + "*",
+            os.path.join(PRESET_DIRS[0], text + "*"),
+            os.path.join(PRESET_DIRS[1], text + "*"),
+        ):
             for hit in sorted(glob.glob(pat)):
                 # Bare names for the presets that ship here, real paths otherwise:
                 # `:load sine-c<tab>` should finish the name, not spell out a
                 # directory nobody typed.
                 base = os.path.basename(hit)
-                hits.append(hit + "/" if os.path.isdir(hit)
-                            else (base if os.path.dirname(pat) != "" else hit))
+                hits.append(
+                    hit + "/"
+                    if os.path.isdir(hit)
+                    else (base if os.path.dirname(pat) != "" else hit)
+                )
         seen = []
         for hit in hits:
             if hit not in seen:
@@ -214,8 +247,10 @@ def ask(fd, where, chain):
     return answer_of(fd, reply(fd))
 
 
-PRESET_DIRS = [os.path.join(os.path.dirname(os.path.abspath(__file__)), d)
-               for d in ("chrome", "shaders")]
+PRESET_DIRS = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), d)
+    for d in ("chrome", "shaders")
+]
 
 
 def resolve(arg):
@@ -284,8 +319,11 @@ def paste(chains, loaded=None, typed=None):
         return '// %s\ninclude "%s"' % (os.path.basename(loaded), loaded)
     if typed:
         # A block you typed is already the block to keep, `where=` and all.
-        return typed if typed.lstrip().startswith("shaders") else (
-            "shaders {\n%s\n}" % typed)
+        return (
+            typed
+            if typed.lstrip().startswith("shaders")
+            else ("shaders {\n%s\n}" % typed)
+        )
     if not any(chains.values()):
         return "shaders { }  // nothing set"
     lines = ["shaders {"]
@@ -295,8 +333,9 @@ def paste(chains, loaded=None, typed=None):
                 lines.append("    %s" % entry)
             else:
                 head, _, rest = entry.partition(" ")
-                lines.append('    %s where="%s"%s'
-                             % (head, where, (" " + rest) if rest else ""))
+                lines.append(
+                    '    %s where="%s"%s' % (head, where, (" " + rest) if rest else "")
+                )
     lines.append("}")
     return "\n".join(lines)
 
@@ -317,7 +356,7 @@ def unclosed(text):
             quoted = c != '"'
         elif c == '"':
             quoted = True
-        elif c == "/" and text[i:i + 2] == "//":
+        elif c == "/" and text[i : i + 2] == "//":
             nl = text.find("\n", i)
             if nl < 0:
                 break
@@ -340,8 +379,9 @@ def spool(text):
     """
     fd, path = tempfile.mkstemp(prefix="shader-repl-", suffix=".kdl")
     with os.fdopen(fd, "w") as f:
-        f.write(text if text.lstrip().startswith("shaders")
-                else "shaders {\n%s\n}\n" % text)
+        f.write(
+            text if text.lstrip().startswith("shaders") else "shaders {\n%s\n}\n" % text
+        )
     return path
 
 
@@ -352,9 +392,9 @@ def main():
     saved = termios.tcgetattr(fd)
     where = "chrome"
     chains = {"chrome": "", "content": ""}
-    loaded = None   # a preset file is in force: `:paste` is an include of it
-    typed = None    # a block was typed: `:paste` is that block, as given
-    pending = []    # lines of a document whose braces have not closed yet
+    loaded = None  # a preset file is in force: `:paste` is an include of it
+    typed = None  # a block was typed: `:paste` is that block, as given
+    pending = []  # lines of a document whose braces have not closed yet
 
     def exchange(fn, *args):
         """Raw only around one request, so the prompt keeps its line editing."""
@@ -368,8 +408,10 @@ def main():
         """`:load x`, `include "x"`, `load x` -- all the same act."""
         nonlocal loaded, typed
         if not arg:
-            print("  :load <file.kdl>, or the name of one in chrome/ or "
-                  "shaders/ beside this script")
+            print(
+                "  :load <file.kdl>, or the name of one in chrome/ or "
+                "shaders/ beside this script"
+            )
             return
         path = resolve(arg)
         if not path:
@@ -422,7 +464,7 @@ def main():
         if ok:
             loaded = None
             if whole:
-                typed = text            # already the document to keep
+                typed = text  # already the document to keep
                 chains["chrome"] = chains["content"] = ""
             else:
                 typed = None
@@ -473,20 +515,27 @@ def main():
                 print(paste(chains, loaded, typed))
                 continue
             if line.startswith(":load"):
-                apply_load(line[len(":load"):].strip())
+                apply_load(line[len(":load") :].strip())
                 continue
             if line in (":help", ":h", "?"):
                 print("  " + "  ".join(COMMANDS))
                 print("  shaders: " + " ".join(SHADERS))
                 print("  keys:    " + " ".join(p.rstrip("=") for p in PROPS))
                 print("  vars:    " + " ".join(VARS))
-                print("  consts:  " + " ".join(CONSTS)
-                      + "   (degrees, so PI is a half turn)")
+                print(
+                    "  consts:  "
+                    + " ".join(CONSTS)
+                    + "   (degrees, so PI is a half turn)"
+                )
                 print("  funcs:   " + " ".join(f.rstrip("(") for f in FUNCS))
-                print("  anything a config's shaders section holds: an entry, "
-                      "several with `;`,")
-                print('  a whole `shaders { }` block over as many lines as it '
-                      'takes, or `include "f.kdl"`')
+                print(
+                    "  anything a config's shaders section holds: an entry, "
+                    "several with `;`,"
+                )
+                print(
+                    "  a whole `shaders { }` block over as many lines as it "
+                    'takes, or `include "f.kdl"`'
+                )
                 print("  tab completes all of it; up/down and ctrl-r are history")
                 continue
             if line in (":clear", ":both"):

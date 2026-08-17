@@ -9,6 +9,7 @@ session restores membership for free.
 The list is derived when it is asked for rather than watched: an answer nobody
 remembered cannot be stale.
 """
+
 import json
 import os
 import re
@@ -68,6 +69,7 @@ def session(cfg, argv=None, **kw):
 
 # ---- discovery -------------------------------------------------------------
 
+
 def test_a_project_is_a_layout_file_or_a_git():
     """Both, because `~/dev` with forty checkouts and three layout files would
     otherwise be a picker with three rows -- and a `.git` is exactly the project
@@ -77,15 +79,22 @@ def test_a_project_is_a_layout_file_or_a_git():
         got = {w["name"]: w for w in s.api("workspaces")["workspaces"]}
         check("a directory with a layout file is a project", "api" in got, str(got))
         check("and one with a .git is too", "web" in got, str(got))
-        check("a directory that is neither is not listed", "notes" not in got,
-              str(got))
-        check("the declared one names its file",
-              got["api"]["layout"].endswith("sl0ppty.layout.kdl"),
-              str(got["api"]))
-        check("the inferred one has no file to name", got["web"]["layout"] == "",
-              str(got["web"]))
-        check("and it reports the file's mtime, so drift is derivable outside",
-              got["api"]["mtime"] > 0 and got["web"]["mtime"] == 0, str(got))
+        check("a directory that is neither is not listed", "notes" not in got, str(got))
+        check(
+            "the declared one names its file",
+            got["api"]["layout"].endswith("sl0ppty.layout.kdl"),
+            str(got["api"]),
+        )
+        check(
+            "the inferred one has no file to name",
+            got["web"]["layout"] == "",
+            str(got["web"]),
+        )
+        check(
+            "and it reports the file's mtime, so drift is derivable outside",
+            got["api"]["mtime"] > 0 and got["web"]["mtime"] == 0,
+            str(got),
+        )
 
 
 def test_it_looks_below_the_root_but_never_inside_a_project():
@@ -112,20 +121,26 @@ def test_two_projects_of_the_same_name_are_two_workspaces():
         slugs = {w["purpose"] for w in ws}
         check("both are listed", len(ws) == 2, str(ws))
         check("with different identities", len(slugs) == 2, str(slugs))
-        check("and both are named for their directory",
-              all(w["purpose"].startswith("project:api.") for w in ws), str(slugs))
+        check(
+            "and both are named for their directory",
+            all(w["purpose"].startswith("project:api.") for w in ws),
+            str(slugs),
+        )
 
 
 def test_saying_nothing_about_roots_is_said_out_loud():
-    """"You have no projects" and "you never said where they are" are different
+    """ "You have no projects" and "you never said where they are" are different
     facts, and answering both with an empty list makes the feature look broken."""
     with Session(SH) as s:
         r = s.api("workspaces")
         check("the list is empty", r["workspaces"] == [], str(r))
         check("and it says why", r["roots"] is False, str(r))
         bad = s.api("open-workspace", name="api")
-        check("opening says so too", bad["ok"] is False and "project_roots" in
-              bad["error"], str(bad))
+        check(
+            "opening says so too",
+            bad["ok"] is False and "project_roots" in bad["error"],
+            str(bad),
+        )
 
 
 def test_a_path_outside_every_root_is_refused():
@@ -139,28 +154,40 @@ def test_a_path_outside_every_root_is_refused():
 
 # ---- opening ---------------------------------------------------------------
 
+
 def test_opening_a_project_builds_its_layout_and_tags_the_tab():
     base, dev, cfg = roots(api=API_LAYOUT)
     with session(cfg) as s:
         r = s.api("open-workspace", name="api")
         check("it says which tab you landed in", r["tab"] > 0, str(r))
         check("and that it made one", r["created"] is True, str(r))
-        check("the tab carries the workspace's identity",
-              r["purpose"].startswith("project:api."), str(r))
+        check(
+            "the tab carries the workspace's identity",
+            r["purpose"].startswith("project:api."),
+            str(r),
+        )
 
         tab = [t for t in s.tabs() if t["id"] == r["tab"]][0]
         check("the tab is named for the project", tab["name"] == "api", str(tab))
-        check("and its purpose is declared, so no program can relabel it",
-              tab["purpose"] == r["purpose"] and tab["purpose_declared"] is True,
-              str(tab))
+        check(
+            "and its purpose is declared, so no program can relabel it",
+            tab["purpose"] == r["purpose"] and tab["purpose_declared"] is True,
+            str(tab),
+        )
 
         panes = [p for p in s.panes() if p["tab_id"] == r["tab"]]
         check("the layout's panes are there", len(panes) == 3, str(panes))
         tags = {p["purpose"] for p in panes}
-        check("carrying the tags the project declared",
-              {"agent:main", "shell:scratch"} <= tags, str(tags))
-        check("and the expensive one has not started",
-              sum(1 for p in panes if p["suspended"]) == 1, str(panes))
+        check(
+            "carrying the tags the project declared",
+            {"agent:main", "shell:scratch"} <= tags,
+            str(tags),
+        )
+        check(
+            "and the expensive one has not started",
+            sum(1 for p in panes if p["suspended"]) == 1,
+            str(panes),
+        )
 
 
 def test_opening_the_same_project_twice_is_one_workspace():
@@ -172,8 +199,7 @@ def test_opening_the_same_project_twice_is_one_workspace():
         before = len(s.tabs())
         again = s.api("open-workspace", name="api")
         check("the same tab comes back", again["tab"] == first["tab"], str(again))
-        check("and it says it did not make one", again["created"] is False,
-              str(again))
+        check("and it says it did not make one", again["created"] is False, str(again))
         check("no second tab appeared", len(s.tabs()) == before, str(s.tabs()))
 
 
@@ -191,13 +217,19 @@ def test_a_project_with_no_layout_opens_as_your_project_layout():
         r = s.api("open-workspace", name="web")
         panes = [p for p in s.panes() if p["tab_id"] == r["tab"]]
         check("the shared layout was used", len(panes) == 2, str(panes))
-        check("and its tags came with it",
-              any(p["purpose"] == "agent:main" for p in panes), str(panes))
+        check(
+            "and its tags came with it",
+            any(p["purpose"] == "agent:main" for p in panes),
+            str(panes),
+        )
 
         kdl = s.api("dump-layout", tab=r["tab"])["kdl"]
         want = os.path.join(dev, "web")
-        check("its panes are in the project, not beside the shared file",
-              kdl.count(want) == 2, kdl + " want " + want)
+        check(
+            "its panes are in the project, not beside the shared file",
+            kdl.count(want) == 2,
+            kdl + " want " + want,
+        )
 
 
 def test_a_project_with_nothing_at_all_opens_as_one_shell_in_it():
@@ -217,32 +249,37 @@ def test_opening_suspended_starts_nothing():
     with session(cfg) as s:
         r = s.api("open-workspace", name="api", suspended=True)
         panes = [p for p in s.panes() if p["tab_id"] == r["tab"]]
-        check("every pane is laid out and asleep",
-              all(p["suspended"] for p in panes) and len(panes) == 3, str(panes))
+        check(
+            "every pane is laid out and asleep",
+            all(p["suspended"] for p in panes) and len(panes) == 3,
+            str(panes),
+        )
 
 
 def test_a_tab_that_declared_its_own_purpose_keeps_it():
     """Overwriting a declared purpose is the one thing D8 forbids, so such a tab is
     honoured and is simply not a member -- and the reply counts it rather than
     leaving it to be a surprise later."""
-    base, dev, cfg = roots(api='layout {\n'
-                               '    tab name="a" { pane }\n'
-                               '    tab name="b" purpose="notes" { pane }\n'
-                               '}\n')
+    base, dev, cfg = roots(
+        api="layout {\n"
+        '    tab name="a" { pane }\n'
+        '    tab name="b" purpose="notes" { pane }\n'
+        "}\n"
+    )
     with session(cfg) as s:
         r = s.api("open-workspace", name="api")
         check("one tab was adopted", r["tabs"] == 1, str(r))
         check("and one was left alone", r["honoured"] == 1, str(r))
         purposes = {t["name"]: t["purpose"] for t in s.tabs()}
-        check("the declared purpose survived", purposes.get("b") == "notes",
-              str(purposes))
+        check(
+            "the declared purpose survived", purposes.get("b") == "notes", str(purposes)
+        )
 
 
 def test_closing_a_workspace_closes_its_tabs():
-    base, dev, cfg = roots(api='layout {\n'
-                               '    tab name="one" { pane }\n'
-                               '    tab name="two" { pane }\n'
-                               '}\n')
+    base, dev, cfg = roots(
+        api='layout {\n    tab name="one" { pane }\n    tab name="two" { pane }\n}\n'
+    )
     with session(cfg) as s:
         s.api("open-workspace", name="api")
         before = len(s.tabs())
@@ -253,30 +290,44 @@ def test_closing_a_workspace_closes_its_tabs():
 
 # ---- saving ----------------------------------------------------------------
 
+
 def test_saving_a_tab_writes_a_portable_layout_file():
     """The whole of onboarding: arrange a tab in a checkout, press one key, and the
     project owns a layout that works on any machine."""
     base, dev, cfg = roots(web="git")
     with session(cfg) as s:
         r = s.api("open-workspace", name="web")
-        s.key("\\\\")          # split into columns
-        s.key("P")             # ...and tag the new pane
+        s.key("\\\\")  # split into columns
+        s.key("P")  # ...and tag the new pane
         s.send("service:web\\r")
         saved = s.api("save-workspace")
-        check("it says where it wrote", saved["path"] ==
-              os.path.join(dev, "web", "sl0ppty.layout.kdl"), str(saved))
-        check("and that there was nothing there before",
-              saved["replaced"] is False, str(saved))
+        check(
+            "it says where it wrote",
+            saved["path"] == os.path.join(dev, "web", "sl0ppty.layout.kdl"),
+            str(saved),
+        )
+        check(
+            "and that there was nothing there before",
+            saved["replaced"] is False,
+            str(saved),
+        )
 
         text = open(saved["path"]).read()
-        check("every directory is relative to the project",
-              "cwd=\".\"" in text and dev not in text, text)
+        check(
+            "every directory is relative to the project",
+            'cwd="."' in text and dev not in text,
+            text,
+        )
         check("the tag came with it", 'purpose="service:web"' in text, text)
-        check("the derived workspace purpose did not",
-              "project:" not in text, text)
-        check("and it lints as a layout",
-              subprocess.run([BIN, "--check", saved["path"]],
-                             capture_output=True).returncode == 0, text)
+        check("the derived workspace purpose did not", "project:" not in text, text)
+        check(
+            "and it lints as a layout",
+            subprocess.run(
+                [BIN, "--check", saved["path"]], capture_output=True
+            ).returncode
+            == 0,
+            text,
+        )
 
 
 def test_saving_adopts_an_ad_hoc_tab():
@@ -285,14 +336,19 @@ def test_saving_adopts_an_ad_hoc_tab():
     base, dev, cfg = roots(web="git")
     with session(cfg) as s:
         r = s.api("save-workspace", path=os.path.join(dev, "web"))
-        check("it wrote the project's file",
-              r["path"].startswith(os.path.join(dev, "web")), str(r))
-        check("and the tab now carries the workspace",
-              r["purpose"].startswith("project:web."), str(r))
+        check(
+            "it wrote the project's file",
+            r["path"].startswith(os.path.join(dev, "web")),
+            str(r),
+        )
+        check(
+            "and the tab now carries the workspace",
+            r["purpose"].startswith("project:web."),
+            str(r),
+        )
         listed = {w["name"]: w for w in s.api("workspaces")["workspaces"]}
         check("so the picker shows it open", listed["web"]["tab"] > 0, str(listed))
-        check("and it has a layout now", listed["web"]["layout"] != "",
-              str(listed))
+        check("and it has a layout now", listed["web"]["layout"] != "", str(listed))
 
 
 def test_saving_will_not_quietly_replace_a_checked_in_file():
@@ -300,13 +356,13 @@ def test_saving_will_not_quietly_replace_a_checked_in_file():
     with session(cfg) as s:
         s.api("open-workspace", name="api")
         first = s.api("save-workspace")
-        check("a project that has a layout is refused", first["ok"] is False,
-              str(first))
+        check(
+            "a project that has a layout is refused", first["ok"] is False, str(first)
+        )
         check("and told how to mean it", "force" in first["error"], str(first))
         forced = s.api("save-workspace", force=True)
         check("with force it writes", forced["ok"] is True, str(forced))
-        check("and says it replaced something", forced["replaced"] is True,
-              str(forced))
+        check("and says it replaced something", forced["replaced"] is True, str(forced))
 
 
 def test_a_saved_project_defaults_to_suspending_its_commands():
@@ -321,11 +377,11 @@ def test_a_saved_project_defaults_to_suspending_its_commands():
         s.api("apply-layout", kdl='layout { tab name="t" { pane command="sleep 60" } }')
         t = [x for x in s.tabs() if x["name"] == "t"][0]
         r = s.api("save-workspace", path=os.path.join(dev, "web"), tab=t["id"])
-        check("the pane with a command is written asleep", r["suspended"] == 1,
-              str(r))
+        check("the pane with a command is written asleep", r["suspended"] == 1, str(r))
         text = open(r["path"]).read()
-        check("so opening it will not start a dev server",
-              "suspended=true" in text, text)
+        check(
+            "so opening it will not start a dev server", "suspended=true" in text, text
+        )
 
 
 def test_setting_a_project_up_by_hand_and_writing_it_down():
@@ -347,33 +403,49 @@ def test_setting_a_project_up_by_hand_and_writing_it_down():
 
         saved = s.api("save-workspace")
         text = open(saved["path"]).read()
-        check("the dev server is in the file",
-              'command="sleep 300"' in text, text)
+        check("the dev server is in the file", 'command="sleep 300"' in text, text)
         check("so is the tailer", 'command="tail -f /dev/null"' in text, text)
-        check("both are tagged", 'purpose="service:web"' in text and
-              'purpose="logs:web"' in text, text)
-        check("and both are written asleep, so tomorrow lays them out",
-              text.count("suspended=true") == 2, text)
+        check(
+            "both are tagged",
+            'purpose="service:web"' in text and 'purpose="logs:web"' in text,
+            text,
+        )
+        check(
+            "and both are written asleep, so tomorrow lays them out",
+            text.count("suspended=true") == 2,
+            text,
+        )
         check("counted in the reply", saved["suspended"] == 2, str(saved))
-        check("it still lints", subprocess.run(
-            [BIN, "--check", saved["path"]], capture_output=True).returncode == 0,
-            text)
+        check(
+            "it still lints",
+            subprocess.run(
+                [BIN, "--check", saved["path"]], capture_output=True
+            ).returncode
+            == 0,
+            text,
+        )
 
     # ...and opening it tomorrow gives the shape with nothing running.
     with session(cfg, argv=["/bin/sh"]) as s2:
         r = s2.api("open-workspace", name="web")
         panes = [p for p in s2.panes() if p["tab_id"] == r["tab"]]
         check("the panes come back", len(panes) == 2, str(panes))
-        check("carrying their tags",
-              {p["purpose"] for p in panes} == {"service:web", "logs:web"},
-              str(panes))
-        check("laid out and not running",
-              all(p["suspended"] for p in panes), str(panes))
+        check(
+            "carrying their tags",
+            {p["purpose"] for p in panes} == {"service:web", "logs:web"},
+            str(panes),
+        )
+        check(
+            "laid out and not running", all(p["suspended"] for p in panes), str(panes)
+        )
         s2.api("rerun", id=panes[0]["id"])
         s2.settle(150)
         again = s2.api("dump-layout", tab=r["tab"])["kdl"]
-        check("and starting one runs what was saved, not a shell",
-              'command="sleep 300"' in again, again)
+        check(
+            "and starting one runs what was saved, not a shell",
+            'command="sleep 300"' in again,
+            again,
+        )
 
 
 def test_a_saved_workspace_round_trips():
@@ -389,20 +461,29 @@ def test_a_saved_workspace_round_trips():
         s.key("P")
         s.send("shell:scratch\\r")
         saved = s.api("save-workspace")
-        before = s.api("dump-layout", tab=first["tab"],
-                       relative_to=os.path.join(dev, "web"),
-                       suspend="commands")["kdl"]
+        before = s.api(
+            "dump-layout",
+            tab=first["tab"],
+            relative_to=os.path.join(dev, "web"),
+            suspend="commands",
+        )["kdl"]
         s.api("close-workspace", name="web")
 
         again = s.api("open-workspace", name="web")
-        after = s.api("dump-layout", tab=again["tab"],
-                      relative_to=os.path.join(dev, "web"),
-                      suspend="commands")["kdl"]
+        after = s.api(
+            "dump-layout",
+            tab=again["tab"],
+            relative_to=os.path.join(dev, "web"),
+            suspend="commands",
+        )["kdl"]
         # The reopened tab carries the workspace purpose the file does not name.
         before_body = re.sub(r' purpose="project:[^"]*"', "", before)
         after_body = re.sub(r' purpose="project:[^"]*"', "", after)
-        check("what was saved is what comes back", before_body == after_body,
-              before_body + "\n--- became ---\n" + after_body)
+        check(
+            "what was saved is what comes back",
+            before_body == after_body,
+            before_body + "\n--- became ---\n" + after_body,
+        )
         check("and it says it built it", again["created"] is True, str(again))
 
 
@@ -437,38 +518,67 @@ def test_every_verb_has_a_bare_form():
     base, dev, cfg = roots(api=API_LAYOUT, web="git")
     with session(cfg) as s:
         listed = bare_list(s, "workspaces")
-        check("workspaces lists every project with its marker",
-              "api" in listed and "layout" in listed and ".git" in listed,
-              repr(listed))
+        check(
+            "workspaces lists every project with its marker",
+            "api" in listed and "layout" in listed and ".git" in listed,
+            repr(listed),
+        )
 
-        check("open-workspace says what it did",
-              "opened tab" in bare1(s, "open-workspace api"), "open")
-        check("and it really opened one",
-              any(t["name"] == "api" for t in s.tabs()), str(s.tabs()))
-        check("asking again focuses rather than building",
-              "focused tab" in bare1(s, "open-workspace api"), "again")
+        check(
+            "open-workspace says what it did",
+            "opened tab" in bare1(s, "open-workspace api"),
+            "open",
+        )
+        check(
+            "and it really opened one",
+            any(t["name"] == "api" for t in s.tabs()),
+            str(s.tabs()),
+        )
+        check(
+            "asking again focuses rather than building",
+            "focused tab" in bare1(s, "open-workspace api"),
+            "again",
+        )
 
         # Saving `web` from `api`'s tab would leave one tab named for one project
         # and carrying the other's purpose. Refused, not obeyed.
         wrong = bare1(s, "save-workspace " + os.path.join(dev, "web"))
-        check("a workspace tab cannot be saved into another project",
-              "another project's workspace" in wrong, repr(wrong))
+        check(
+            "a workspace tab cannot be saved into another project",
+            "another project's workspace" in wrong,
+            repr(wrong),
+        )
 
         # ...and `web`, whose own tab is not open, is saved by naming its tab.
         bare1(s, "open-workspace web")
         wrote = bare1(s, "save-workspace")
-        check("save-workspace names the file it wrote",
-              "sl0ppty.layout.kdl" in wrote, repr(wrote))
-        check("and it wrote the project it was in",
-              os.path.join(dev, "web") in wrote, repr(wrote))
+        check(
+            "save-workspace names the file it wrote",
+            "sl0ppty.layout.kdl" in wrote,
+            repr(wrote),
+        )
+        check(
+            "and it wrote the project it was in",
+            os.path.join(dev, "web") in wrote,
+            repr(wrote),
+        )
 
-        check("close-workspace counts what went",
-              "closed 1 tab" in bare1(s, "close-workspace api"), "close")
-        check("and the tab is gone",
-              not any(t["name"] == "api" for t in s.tabs()), str(s.tabs()))
+        check(
+            "close-workspace counts what went",
+            "closed 1 tab" in bare1(s, "close-workspace api"),
+            "close",
+        )
+        check(
+            "and the tab is gone",
+            not any(t["name"] == "api" for t in s.tabs()),
+            str(s.tabs()),
+        )
 
-        check("a project nobody has says so",
-              "no project" in bare1(s, "open-workspace nope"), "missing")
+        check(
+            "a project nobody has says so",
+            "no project" in bare1(s, "open-workspace nope"),
+            "missing",
+        )
 
 
 def test_a_dumped_session_restores_workspace_membership():
@@ -483,11 +593,15 @@ def test_a_dumped_session_restores_workspace_membership():
         f.write(whole)
     with Session(SH, config=cfg, layout=restored, cols=100, rows=30) as s2:
         listed = {w["name"]: w for w in s2.api("workspaces")["workspaces"]}
-        check("the restored session knows the workspace is open",
-              listed["api"]["tab"] > 0, str(listed))
+        check(
+            "the restored session knows the workspace is open",
+            listed["api"]["tab"] > 0,
+            str(listed),
+        )
 
 
 # ---- the picker ------------------------------------------------------------
+
 
 def test_the_picker_lists_projects_and_opens_one():
     base, dev, cfg = roots(api=API_LAYOUT, web="git")
@@ -495,8 +609,9 @@ def test_the_picker_lists_projects_and_opens_one():
         s.key("w")
         screen = s.snapshot().screen()
         check("it is titled as projects", "projects" in screen, screen)
-        check("a declared project shows its file",
-              "sl0ppty.layout.kdl" in screen, screen)
+        check(
+            "a declared project shows its file", "sl0ppty.layout.kdl" in screen, screen
+        )
         check("and one without says so", "no layout" in screen, screen)
 
         s.send("web")
@@ -505,8 +620,11 @@ def test_the_picker_lists_projects_and_opens_one():
         s.send("\\r")
         tabs = s.tabs()
         check("enter opens it", any(t["name"] == "web" for t in tabs), str(tabs))
-        check("the picker is gone", "projects" not in s.snapshot().screen(),
-              s.snapshot().screen())
+        check(
+            "the picker is gone",
+            "projects" not in s.snapshot().screen(),
+            s.snapshot().screen(),
+        )
 
 
 def test_the_picker_says_when_there_is_nowhere_to_look():
@@ -524,8 +642,7 @@ def test_the_actions_are_in_the_palette():
         s.send("project")
         screen = s.snapshot().screen()
         check("going to one is listed", "go to a project" in screen, screen)
-        check("and saving one is too", "save this tab as a layout" in screen,
-              screen)
+        check("and saving one is too", "save this tab as a layout" in screen, screen)
 
 
 def test_saving_from_the_keyboard_says_what_it_did():
@@ -536,9 +653,11 @@ def test_saving_from_the_keyboard_says_what_it_did():
         screen = s.snapshot().screen()
         check("the toast names the file", "sl0ppty.layout.kdl" in screen, screen)
         check("and counts what it wrote", "1 pane" in screen, screen)
-        check("the file is there",
-              os.path.exists(os.path.join(dev, "web", "sl0ppty.layout.kdl")),
-              screen)
+        check(
+            "the file is there",
+            os.path.exists(os.path.join(dev, "web", "sl0ppty.layout.kdl")),
+            screen,
+        )
 
 
 if __name__ == "__main__":

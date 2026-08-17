@@ -8,6 +8,7 @@ two is a third of the width and not half of it. Weighting per child would make
 "even" mean something different at every depth, which is the layout this action
 exists to get away from.
 """
+
 import sys
 
 from harness import Session, check, report
@@ -18,8 +19,7 @@ SH = ["/bin/sh", "-c", "stty raw -echo; cat"]
 def by_pos(s):
     """Panes on screen, left to right then top to bottom. A minimised pane gets
     no rect at all — the strip draws it — so it is not one of these."""
-    return sorted((p for p in s.panes() if p["w"] > 1),
-                  key=lambda p: (p["x"], p["y"]))
+    return sorted((p for p in s.panes() if p["w"] > 1), key=lambda p: (p["x"], p["y"]))
 
 
 def widths(s):
@@ -33,21 +33,22 @@ def test_a_nudged_row_of_columns_goes_back_to_even():
         s.key("\\\\")
         s.settle()
         even = widths(s)
-        check("three columns start out even", max(even) - min(even) <= 1,
-              str(even))
+        check("three columns start out even", max(even) - min(even) <= 1, str(even))
 
         for _ in range(4):
             s.key("L")  # shift+l: move the boundary right
         s.settle()
         nudged = widths(s)
-        check("nudging the boundary makes them uneven",
-              max(nudged) - min(nudged) > 2, str(nudged))
+        check(
+            "nudging the boundary makes them uneven",
+            max(nudged) - min(nudged) > 2,
+            str(nudged),
+        )
 
         s.key("=")
         s.settle()
         back = widths(s)
-        check("equalize puts them back to even",
-              max(back) - min(back) <= 1, str(back))
+        check("equalize puts them back to even", max(back) - min(back) <= 1, str(back))
         check("and it kept every pane", len(back) == 3, str(back))
 
 
@@ -55,27 +56,39 @@ def test_it_divides_a_split_between_the_panes_behind_it():
     """A pane beside a stack of two: a third of the width, not half of it."""
     with Session(SH, cols=120, rows=30) as s:
         s.settle()
-        s.key("\\\\")          # left | right
-        s.key("-")             # right becomes right-top / right-bottom
+        s.key("\\\\")  # left | right
+        s.key("-")  # right becomes right-top / right-bottom
         s.settle()
         left, top, bottom = by_pos(s)
-        check("the split starts out halved per child",
-              abs(left["w"] - top["w"]) <= 1,
-              f"{left['w']} vs {top['w']}")
+        check(
+            "the split starts out halved per child",
+            abs(left["w"] - top["w"]) <= 1,
+            f"{left['w']} vs {top['w']}",
+        )
 
         s.key("=")
         s.settle()
         left, top, bottom = by_pos(s)
-        check("the stack of two gets twice the lone pane's width",
-              abs(top["w"] - 2 * left["w"]) <= 2,
-              f"{left['w']} vs {top['w']}")
-        check("the two panes sharing that width still match",
-              top["w"] == bottom["w"], f"{top['w']} vs {bottom['w']}")
-        check("and they still split their column in half",
-              abs(top["h"] - bottom["h"]) <= 1,
-              f"{top['h']} vs {bottom['h']}")
-        check("the lone pane still spans the tab",
-              left["h"] > top["h"], f"{left['h']} vs {top['h']}")
+        check(
+            "the stack of two gets twice the lone pane's width",
+            abs(top["w"] - 2 * left["w"]) <= 2,
+            f"{left['w']} vs {top['w']}",
+        )
+        check(
+            "the two panes sharing that width still match",
+            top["w"] == bottom["w"],
+            f"{top['w']} vs {bottom['w']}",
+        )
+        check(
+            "and they still split their column in half",
+            abs(top["h"] - bottom["h"]) <= 1,
+            f"{top['h']} vs {bottom['h']}",
+        )
+        check(
+            "the lone pane still spans the tab",
+            left["h"] > top["h"],
+            f"{left['h']} vs {top['h']}",
+        )
 
 
 def test_a_minimised_pane_is_not_counted():
@@ -90,14 +103,16 @@ def test_a_minimised_pane_is_not_counted():
         s.api("focus", id=top["id"])
         s.key("m")
         s.settle()
-        check("one pane is away in the strip", len(widths(s)) == 2,
-              str(widths(s)))
+        check("one pane is away in the strip", len(widths(s)) == 2, str(widths(s)))
 
         s.key("=")
         s.settle()
         seen = widths(s)
-        check("the two on screen share the tab evenly",
-              max(seen) - min(seen) <= 1, str(seen))
+        check(
+            "the two on screen share the tab evenly",
+            max(seen) - min(seen) <= 1,
+            str(seen),
+        )
 
 
 def test_one_pane_has_nothing_to_even_out():
@@ -107,13 +122,18 @@ def test_one_pane_has_nothing_to_even_out():
         s.key("=")
         s.settle()
         snap = s.snapshot()
-        check("it says so rather than doing nothing quietly",
-              "nothing to even out" in snap.screen(), repr(snap.screen()[-200:]))
+        check(
+            "it says so rather than doing nothing quietly",
+            "nothing to even out" in snap.screen(),
+            repr(snap.screen()[-200:]),
+        )
         after = s.pane()
-        check("and the pane is untouched",
-              (after["x"], after["y"], after["w"], after["h"]) ==
-              (before["x"], before["y"], before["w"], before["h"]),
-              str((before, after)))
+        check(
+            "and the pane is untouched",
+            (after["x"], after["y"], after["w"], after["h"])
+            == (before["x"], before["y"], before["w"], before["h"]),
+            str((before, after)),
+        )
 
 
 def test_it_is_in_the_palette_and_the_cheatsheet():
@@ -124,22 +144,32 @@ def test_it_is_in_the_palette_and_the_cheatsheet():
         s.key("?")
         s.settle()
         sheet = s.snapshot().screen()
-        check("the cheatsheet lists it under size, with its key",
-              "=      even out every split" in sheet, repr(sheet[:400]))
+        check(
+            "the cheatsheet lists it under size, with its key",
+            "=      even out every split" in sheet,
+            repr(sheet[:400]),
+        )
         s.send("q")  # any key closes the sheet
 
         s.key("p")
         s.send("equalize")
         s.settle()
         pal = s.snapshot()
-        check("the palette finds it by its config name",
-              "even out every split" in pal.screen(),
-              repr(pal.screen()[:400]))
-        check("with the key it would have skipped", "C-a =" in pal.screen(),
-              repr(pal.screen()[:400]))
-        check("and the row runs it",
-              any(h["action"].startswith("run:") for h in pal.hits),
-              str([h["action"] for h in pal.hits][:8]))
+        check(
+            "the palette finds it by its config name",
+            "even out every split" in pal.screen(),
+            repr(pal.screen()[:400]),
+        )
+        check(
+            "with the key it would have skipped",
+            "C-a =" in pal.screen(),
+            repr(pal.screen()[:400]),
+        )
+        check(
+            "and the row runs it",
+            any(h["action"].startswith("run:") for h in pal.hits),
+            str([h["action"] for h in pal.hits][:8]),
+        )
 
 
 if __name__ == "__main__":

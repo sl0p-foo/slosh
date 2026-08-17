@@ -7,9 +7,10 @@ against a pane count that a stack lies about. Here the layout is recomputed
 from the tree and the rect every frame, so the equivalent bug has nowhere to
 live — and these tests are what says so.
 """
+
 import os
-import tempfile
 import sys
+import tempfile
 
 from harness import Session, check, report
 
@@ -40,8 +41,11 @@ def invariants(s, label):
         for j in range(i + 1, len(rs)):
             bx, by, bw, bh = rs[j]
             if not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay):
-                check(f"{label}: visible panes do not overlap", False,
-                      f"{rs[i]} vs {rs[j]}")
+                check(
+                    f"{label}: visible panes do not overlap",
+                    False,
+                    f"{rs[i]} vs {rs[j]}",
+                )
                 return panes
     check(f"{label}: {len(rs)} visible, no overlap, all on screen", True)
     return panes
@@ -50,26 +54,36 @@ def invariants(s, label):
 def test_collapse():
     with Session(SH, cols=120, rows=32) as s:
         grid(s)
-        check("nothing is hidden when there is room",
-              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "nothing is hidden when there is room",
+            not any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
         invariants(s, "roomy")
 
         s.resize(56, 16)
         s.settle()
         panes = s.panes()
-        check("a squeezed layout collapses instead of shrinking to nothing",
-              any(p["hidden"] for p in panes), str([p["hidden"] for p in panes]))
+        check(
+            "a squeezed layout collapses instead of shrinking to nothing",
+            any(p["hidden"] for p in panes),
+            str([p["hidden"] for p in panes]),
+        )
         invariants(s, "squeezed")
 
         snap = s.snapshot()
-        check("the focused pane keeps a usable size",
-              [p for p in panes if p["focused"]][0]["content_h"] >= 3,
-              str([p for p in panes if p["focused"]]))
+        check(
+            "the focused pane keeps a usable size",
+            [p for p in panes if p["focused"]][0]["content_h"] >= 3,
+            str([p for p in panes if p["focused"]]),
+        )
         hidden = [q for q in s.panes() if q["hidden"]]
         tops = sum(1 for row in snap.text if row.strip().startswith("\u256d"))
-        check("every collapsed pane is drawn as the top edge of a pane",
-              tops == len(hidden) + 1,   # the headers, plus the open pane
-              f"{tops} tops for {len(hidden)} hidden: " + repr(snap.screen()))
+        check(
+            "every collapsed pane is drawn as the top edge of a pane",
+            tops == len(hidden) + 1,  # the headers, plus the open pane
+            f"{tops} tops for {len(hidden)} hidden: " + repr(snap.screen()),
+        )
 
 
 def test_collapse_expand_cycle():
@@ -84,18 +98,26 @@ def test_collapse_expand_cycle():
         s.resize(120, 32)
         s.settle()
         after = [(p["x"], p["y"], p["w"], p["h"]) for p in s.panes()]
-        check("wide again: nothing is hidden",
-              not any(p["hidden"] for p in s.panes()), str(s.panes()))
-        check("the layout is exactly what it was before the cycle",
-              before == after, f"{before}\n     != {after}")
+        check(
+            "wide again: nothing is hidden",
+            not any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
+        check(
+            "the layout is exactly what it was before the cycle",
+            before == after,
+            f"{before}\n     != {after}",
+        )
 
         # the fork's actual symptom: a pane added after the cycle got stacked
         s.key("-")
         s.settle()
         panes = invariants(s, "after the cycle")
-        check("a pane added after a narrow/wide cycle is not stacked",
-              len(panes) == 5 and not any(p["hidden"] for p in s.panes()),
-              str([(p["id"], p["hidden"]) for p in s.panes()]))
+        check(
+            "a pane added after a narrow/wide cycle is not stacked",
+            len(panes) == 5 and not any(p["hidden"] for p in s.panes()),
+            str([(p["id"], p["hidden"]) for p in s.panes()]),
+        )
 
 
 def test_focus_expands():
@@ -112,10 +134,15 @@ def test_focus_expands():
         s.api("focus", id=target)
         s.settle()
         now = {p["id"]: p for p in s.panes()}
-        check("focusing a collapsed pane expands it", not now[target]["hidden"],
-              str(now[target]))
-        check("and something else collapsed in its place",
-              any(p["hidden"] for p in s.panes()))
+        check(
+            "focusing a collapsed pane expands it",
+            not now[target]["hidden"],
+            str(now[target]),
+        )
+        check(
+            "and something else collapsed in its place",
+            any(p["hidden"] for p in s.panes()),
+        )
         invariants(s, "after expanding")
 
 
@@ -131,12 +158,15 @@ def test_click_a_header():
         h = hidden[0]
         snap = s.snapshot()
         action = snap.hit_at(h["x"] + 1, h["y"])
-        check("a collapsed header is clickable", action == f"focus:{h['id']}",
-              str(action))
+        check(
+            "a collapsed header is clickable", action == f"focus:{h['id']}", str(action)
+        )
         s.click(h["x"] + 1, h["y"])
         s.settle()
-        check("clicking a header expands that pane",
-              not [p for p in s.panes() if p["id"] == h["id"]][0]["hidden"])
+        check(
+            "clicking a header expands that pane",
+            not [p for p in s.panes() if p["id"] == h["id"]][0]["hidden"],
+        )
 
 
 def test_hidden_panes_keep_running():
@@ -154,19 +184,26 @@ def test_hidden_panes_keep_running():
         s.resize(50, 14)
         s.settle()
         now = {p["id"]: p for p in s.panes()}
-        check("the pane we wrote to is hidden", now[first["id"]]["hidden"],
-              str(now[first["id"]]))
-        check("a hidden pane is not resized, so its program does not reflow",
-              (now[first["id"]]["content_w"], now[first["id"]]["content_h"])
-              == size_before,
-              f"{size_before} -> {(now[first['id']]['content_w'], now[first['id']]['content_h'])}")
+        check(
+            "the pane we wrote to is hidden",
+            now[first["id"]]["hidden"],
+            str(now[first["id"]]),
+        )
+        check(
+            "a hidden pane is not resized, so its program does not reflow",
+            (now[first["id"]]["content_w"], now[first["id"]]["content_h"])
+            == size_before,
+            f"{size_before} -> {(now[first['id']]['content_w'], now[first['id']]['content_h'])}",
+        )
 
         s.resize(120, 32)
         s.api("focus", id=first["id"])
         s.settle()
-        check("its content survived being collapsed",
-              "written-before-collapse" in s.snapshot().screen(),
-              repr(s.snapshot().screen()[:200]))
+        check(
+            "its content survived being collapsed",
+            "written-before-collapse" in s.snapshot().screen(),
+            repr(s.snapshot().screen()[:200]),
+        )
 
 
 def test_tiny_terminal():
@@ -182,11 +219,14 @@ def test_tiny_terminal():
 
 # ---- collapsing flattens the hierarchy -------------------------------------
 
+
 def nested_layout():
     """left column of three stacked panes, plus one on the right."""
     f = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
-    f.write('layout {\n tab name="t" {\n  pane split="rows" { pane\n'
-            '   pane\n   pane }\n  pane\n }\n}\n')
+    f.write(
+        'layout {\n tab name="t" {\n  pane split="rows" { pane\n'
+        "   pane\n   pane }\n  pane\n }\n}\n"
+    )
     f.close()
     return f.name
 
@@ -202,17 +242,28 @@ def test_collapsing_flattens_the_tree():
         hidden = [p for p in panes if p["hidden"]]
         shown = [p for p in panes if not p["hidden"]]
 
-        check("everything but the focused pane becomes a header",
-              len(hidden) == 3 and len(shown) == 1, str(panes))
-        check("each header is exactly one row",
-              all(p["h"] == 1 for p in hidden), str([p["h"] for p in hidden]))
+        check(
+            "everything but the focused pane becomes a header",
+            len(hidden) == 3 and len(shown) == 1,
+            str(panes),
+        )
+        check(
+            "each header is exactly one row",
+            all(p["h"] == 1 for p in hidden),
+            str([p["h"] for p in hidden]),
+        )
         # The nesting is what there is no room to express, so it stops
         # existing: no two panes sit side by side while collapsed.
-        check("no two panes share a row",
-              len({p["y"] for p in hidden}) == len(hidden),
-              str([p["y"] for p in hidden]))
-        check("the headers come first and the body below them",
-              shown[0]["y"] > max(p["y"] for p in hidden), str(panes))
+        check(
+            "no two panes share a row",
+            len({p["y"] for p in hidden}) == len(hidden),
+            str([p["y"] for p in hidden]),
+        )
+        check(
+            "the headers come first and the body below them",
+            shown[0]["y"] > max(p["y"] for p in hidden),
+            str(panes),
+        )
     os.unlink(lay)
 
 
@@ -229,19 +280,27 @@ def test_every_collapsed_pane_is_clickable():
         hidden = [p for p in s.panes() if p["hidden"]]
 
         actions = [snap.hit_at(p["x"] + 2, p["y"]) for p in hidden]
-        check("every header carries its own pane's focus action",
-              actions == [f"focus:{p['id']}" for p in hidden], str(actions))
-        check("and they are all different", len(set(actions)) == len(actions),
-              str(actions))
+        check(
+            "every header carries its own pane's focus action",
+            actions == [f"focus:{p['id']}" for p in hidden],
+            str(actions),
+        )
+        check(
+            "and they are all different",
+            len(set(actions)) == len(actions),
+            str(actions),
+        )
 
         # Clicking the *last* header must reach that pane, not the first one.
         target = hidden[-1]
         s.click(target["x"] + 2, target["y"])
         s.settle(20)
         now = {p["id"]: p for p in s.panes()}
-        check("clicking the last header expands that exact pane",
-              not now[target["id"]]["hidden"] and now[target["id"]]["h"] > 1,
-              str(s.panes()))
+        check(
+            "clicking the last header expands that exact pane",
+            not now[target["id"]]["hidden"] and now[target["id"]]["h"] > 1,
+            str(s.panes()),
+        )
     os.unlink(lay)
 
 
@@ -255,8 +314,7 @@ def test_a_flattened_stack_offers_no_resize_handles():
         s.settle(20)
         snap = s.snapshot()
         edges = [h for h in snap.hits if h["action"].startswith("edge:")]
-        check("a collapsed stack registers no resize edges", edges == [],
-              str(edges))
+        check("a collapsed stack registers no resize edges", edges == [], str(edges))
     os.unlink(lay)
 
 
@@ -280,33 +338,41 @@ def test_a_tab_is_laid_out_or_it_is_a_list_never_both():
         hidden = [p for p in panes if p["hidden"]]
 
         check("exactly one pane is open", len(shown) == 1, str(panes))
-        check("every other pane is a header, including the one that did fit",
-              len(hidden) == len(panes) - 1, str(panes))
-        check("the headers all span the full width",
-              len({p["w"] for p in hidden}) == 1
-              and hidden[0]["w"] == shown[0]["w"],
-              str([(p["id"], p["w"]) for p in panes]))
+        check(
+            "every other pane is a header, including the one that did fit",
+            len(hidden) == len(panes) - 1,
+            str(panes),
+        )
+        check(
+            "the headers all span the full width",
+            len({p["w"] for p in hidden}) == 1 and hidden[0]["w"] == shown[0]["w"],
+            str([(p["id"], p["w"]) for p in panes]),
+        )
         # The give-away for the old behaviour: a full-height pane beside a
         # stack. Nothing may sit next to a header any more.
-        check("no pane sits beside a header",
-              all(p["x"] == hidden[0]["x"] for p in panes),
-              str([(p["id"], p["x"]) for p in panes]))
+        check(
+            "no pane sits beside a header",
+            all(p["x"] == hidden[0]["x"] for p in panes),
+            str([(p["id"], p["x"]) for p in panes]),
+        )
     os.unlink(conf.name)
     os.unlink(lay)
 
 
 # ---- hovering a row in the stack -------------------------------------------
 
-FRAME_FOCUS = "#ff5fd7"   # the rule, while hovered
-TITLE_FOCUS = "#ffffff"   # the title, while hovered
+FRAME_FOCUS = "#ff5fd7"  # the rule, while hovered
+TITLE_FOCUS = "#ffffff"  # the title, while hovered
 FRAME_IDLE = "#45454a"
 
 
 def stacked_session():
     """A tab small enough to be a list, with two headers and one body."""
     lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
-    lay.write('layout {\n tab name="t" {\n  pane\n'
-              '  pane split="rows" { pane\n   pane }\n }\n}\n')
+    lay.write(
+        'layout {\n tab name="t" {\n  pane\n'
+        '  pane split="rows" { pane\n   pane }\n }\n}\n'
+    )
     lay.close()
     conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
     conf.write("min_pane cols=24 rows=17\n")
@@ -331,31 +397,43 @@ def test_hovering_a_row_lights_it_up():
     with stacked_session() as s:
         s.settle(20)
         headers = [p for p in s.panes() if p["hidden"]]
-        check("the tab is a list with rows to hover", len(headers) >= 2,
-              str(s.panes()))
+        check("the tab is a list with rows to hover", len(headers) >= 2, str(s.panes()))
         if len(headers) < 2:
             return
 
         snap = s.snapshot()
-        check("nothing is lit before the pointer arrives",
-              all(rule_fg(snap, p) == FRAME_IDLE for p in headers),
-              str([rule_fg(snap, p) for p in headers]))
+        check(
+            "nothing is lit before the pointer arrives",
+            all(rule_fg(snap, p) == FRAME_IDLE for p in headers),
+            str([rule_fg(snap, p) for p in headers]),
+        )
 
         hover(s, headers[0]["x"] + 4, headers[0]["y"])
         snap = s.snapshot()
-        check("the row under the pointer is lit",
-              rule_fg(snap, headers[0]) == FRAME_FOCUS,
-              str(rule_fg(snap, headers[0])))
-        check("and only that row",
-              all(rule_fg(snap, p) == FRAME_IDLE for p in headers[1:]), "")
-        check("by its foreground: no bar is painted behind it",
-              row_bg(snap, headers[0]) is None, str(row_bg(snap, headers[0])))
+        check(
+            "the row under the pointer is lit",
+            rule_fg(snap, headers[0]) == FRAME_FOCUS,
+            str(rule_fg(snap, headers[0])),
+        )
+        check(
+            "and only that row",
+            all(rule_fg(snap, p) == FRAME_IDLE for p in headers[1:]),
+            "",
+        )
+        check(
+            "by its foreground: no bar is painted behind it",
+            row_bg(snap, headers[0]) is None,
+            str(row_bg(snap, headers[0])),
+        )
 
         hover(s, headers[1]["x"] + 4, headers[1]["y"])
         snap = s.snapshot()
-        check("the light follows the pointer down the list",
-              rule_fg(snap, headers[1]) == FRAME_FOCUS
-              and rule_fg(snap, headers[0]) == FRAME_IDLE, "")
+        check(
+            "the light follows the pointer down the list",
+            rule_fg(snap, headers[1]) == FRAME_FOCUS
+            and rule_fg(snap, headers[0]) == FRAME_IDLE,
+            "",
+        )
 
 
 def test_leaving_the_stack_puts_the_light_out():
@@ -368,8 +446,11 @@ def test_leaving_the_stack_puts_the_light_out():
         hover(s, headers[0]["x"] + 4, headers[0]["y"])
         hover(s, body["content_x"] + 2, body["content_y"] + 2)
         snap = s.snapshot()
-        check("no row is lit once the pointer is off the list",
-              all(rule_fg(snap, p) == FRAME_IDLE for p in headers), "")
+        check(
+            "no row is lit once the pointer is off the list",
+            all(rule_fg(snap, p) == FRAME_IDLE for p in headers),
+            "",
+        )
 
 
 def test_hovering_a_row_does_not_open_it():
@@ -385,17 +466,26 @@ def test_hovering_a_row_does_not_open_it():
             hover(s, h["x"] + 4, h["y"])
         s.settle(20)
         after = [p["id"] for p in s.panes() if p["focused"]]
-        check("hovering every row changes nothing about which is open",
-              before == after, f"{before} -> {after}")
-        check("and they are all still headers",
-              len([p for p in s.panes() if p["hidden"]]) == len(headers), "")
+        check(
+            "hovering every row changes nothing about which is open",
+            before == after,
+            f"{before} -> {after}",
+        )
+        check(
+            "and they are all still headers",
+            len([p for p in s.panes() if p["hidden"]]) == len(headers),
+            "",
+        )
 
         # ...but clicking one still does open it.
         s.click(headers[-1]["x"] + 4, headers[-1]["y"])
         s.settle(20)
         now = {p["id"]: p for p in s.panes()}
-        check("clicking the row it lit is what opens that pane",
-              not now[headers[-1]["id"]]["hidden"], str(s.panes()))
+        check(
+            "clicking the row it lit is what opens that pane",
+            not now[headers[-1]["id"]]["hidden"],
+            str(s.panes()),
+        )
 
 
 def test_a_header_is_shaped_like_a_pane_top():
@@ -407,37 +497,49 @@ def test_a_header_is_shaped_like_a_pane_top():
         if not headers:
             return
         for h in headers:
-            row = snap.line(h["y"])[h["x"]:h["x"] + h["w"]]
-            check(f"row at y={h['y']} opens and closes with a corner",
-                  row.startswith("\u256d") and row.endswith("\u256e"), repr(row))
-            check(f"row at y={h['y']} keeps air around its title",
-                  " pane " in row or " p " in row, repr(row))
+            row = snap.line(h["y"])[h["x"] : h["x"] + h["w"]]
+            check(
+                f"row at y={h['y']} opens and closes with a corner",
+                row.startswith("\u256d") and row.endswith("\u256e"),
+                repr(row),
+            )
+            check(
+                f"row at y={h['y']} keeps air around its title",
+                " pane " in row or " p " in row,
+                repr(row),
+            )
             # The title must not be welded to the rule on either side.
             i = row.find("pane")
-            check(f"row at y={h['y']} has a rule, a space, then the title",
-                  i > 2 and row[i - 1] == " " and row[i - 2] == "\u2500",
-                  repr(row))
+            check(
+                f"row at y={h['y']} has a rule, a space, then the title",
+                i > 2 and row[i - 1] == " " and row[i - 2] == "\u2500",
+                repr(row),
+            )
 
 
 def test_the_title_inset_is_configurable():
     lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
-    lay.write('layout {\n tab name="t" {\n  pane\n'
-              '  pane split="rows" { pane\n   pane }\n }\n}\n')
+    lay.write(
+        'layout {\n tab name="t" {\n  pane\n'
+        '  pane split="rows" { pane\n   pane }\n }\n}\n'
+    )
     lay.close()
     seen = {}
     for inset in (0, 6):
         conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
         conf.write(f"min_pane cols=24 rows=17\ntitle_inset {inset}\n")
         conf.close()
-        with Session(SH, cols=100, rows=20, config=conf.name,
-                     layout=lay.name) as s:
+        with Session(SH, cols=100, rows=20, config=conf.name, layout=lay.name) as s:
             s.settle(20)
             h = [p for p in s.panes() if p["hidden"]][0]
-            row = s.snapshot().line(h["y"])[h["x"]:h["x"] + h["w"]]
+            row = s.snapshot().line(h["y"])[h["x"] : h["x"] + h["w"]]
             seen[inset] = row.find("pane")
         os.unlink(conf.name)
-    check("a bigger inset pushes the title further from the corner",
-          seen[6] == seen[0] + 6, str(seen))
+    check(
+        "a bigger inset pushes the title further from the corner",
+        seen[6] == seen[0] + 6,
+        str(seen),
+    )
     os.unlink(lay.name)
 
 
@@ -452,40 +554,58 @@ def test_width_collapses_a_stacked_layout_too():
     """
     with Session(SH, cols=100, rows=24) as s:
         s.settle(20)
-        s.api("split", dir="rows")          # stacked: width is the perpendicular axis
+        s.api("split", dir="rows")  # stacked: width is the perpendicular axis
         s.settle(20)
-        check("two stacked panes, both open, at a comfortable width",
-              len([p for p in s.panes() if not p["hidden"]]) == 2, str(s.panes()))
+        check(
+            "two stacked panes, both open, at a comfortable width",
+            len([p for p in s.panes() if not p["hidden"]]) == 2,
+            str(s.panes()),
+        )
 
         s.resize(60, 24)
         s.settle(20)
-        check("still open while each pane clears the floor",
-              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "still open while each pane clears the floor",
+            not any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
 
         s.resize(26, 24)
         s.settle(20)
-        check("narrow enough, and a stacked layout collapses like any other",
-              any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "narrow enough, and a stacked layout collapses like any other",
+            any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
 
         s.resize(100, 24)
         s.settle(20)
-        check("and comes back when there is room again",
-              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "and comes back when there is room again",
+            not any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
 
 
 def test_height_collapses_a_side_by_side_layout_too():
     """The same hole, the other way round."""
     with Session(SH, cols=100, rows=24) as s:
         s.settle(20)
-        s.api("split", dir="cols")          # side by side: height is perpendicular
+        s.api("split", dir="cols")  # side by side: height is perpendicular
         s.settle(20)
-        check("two panes side by side at a comfortable height",
-              not any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "two panes side by side at a comfortable height",
+            not any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
 
         s.resize(100, 9)
         s.settle(20)
-        check("short enough, and a side-by-side layout collapses",
-              any(p["hidden"] for p in s.panes()), str(s.panes()))
+        check(
+            "short enough, and a side-by-side layout collapses",
+            any(p["hidden"] for p in s.panes()),
+            str(s.panes()),
+        )
 
 
 if __name__ == "__main__":

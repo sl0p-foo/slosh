@@ -5,6 +5,7 @@ A bell exists for the pane you are *not* looking at, so most of what matters is
 where it shows up when the pane is off-screen, and that looking at it is what
 puts it out.
 """
+
 import os
 import sys
 import tempfile
@@ -30,8 +31,10 @@ def lay(text):
 
 
 TWO_PANES = 'layout {\n tab name="api" {\n  pane\n  pane\n }\n}\n'
-TWO_TABS = ('layout {\n tab name="api" {\n  pane\n  pane\n }\n'
-            ' tab name="notes" {\n  pane\n }\n}\n')
+TWO_TABS = (
+    'layout {\n tab name="api" {\n  pane\n  pane\n }\n'
+    ' tab name="notes" {\n  pane\n }\n}\n'
+)
 
 
 def ring(s, pane_id, back_to):
@@ -45,7 +48,7 @@ def ring(s, pane_id, back_to):
 
 
 def titlebar(snap, p, n=10):
-    return snap.line(p["y"])[p["x"]:p["x"] + n]
+    return snap.line(p["y"])[p["x"] : p["x"] + n]
 
 
 def test_a_bel_marks_the_pane_that_rang():
@@ -56,16 +59,23 @@ def test_a_bel_marks_the_pane_that_rang():
         mine = [p for p in panes if p["focused"]][0]
         other = [p for p in panes if not p["focused"]][0]
 
-        check("no mark before anything rings",
-              MARK not in titlebar(s.snapshot(), other), "")
+        check(
+            "no mark before anything rings",
+            MARK not in titlebar(s.snapshot(), other),
+            "",
+        )
 
         ring(s, other["id"], mine["id"])
-        check("the pane that rang is marked",
-              MARK in titlebar(s.snapshot(), other),
-              repr(titlebar(s.snapshot(), other)))
-        check("and the pane that did not is untouched",
-              MARK not in titlebar(s.snapshot(), mine),
-              repr(titlebar(s.snapshot(), mine)))
+        check(
+            "the pane that rang is marked",
+            MARK in titlebar(s.snapshot(), other),
+            repr(titlebar(s.snapshot(), other)),
+        )
+        check(
+            "and the pane that did not is untouched",
+            MARK not in titlebar(s.snapshot(), mine),
+            repr(titlebar(s.snapshot(), mine)),
+        )
     os.unlink(l)
 
 
@@ -82,16 +92,20 @@ def test_looking_at_it_is_what_puts_it_out():
 
         s.api("focus", id=other["id"])
         s.settle(30)
-        check("focusing it clears the mark",
-              MARK not in titlebar(s.snapshot(), other),
-              repr(titlebar(s.snapshot(), other)))
+        check(
+            "focusing it clears the mark",
+            MARK not in titlebar(s.snapshot(), other),
+            repr(titlebar(s.snapshot(), other)),
+        )
 
         # It must stay out; a bell is not a thing that comes back on its own.
         s.api("focus", id=mine["id"])
         s.settle(30)
-        check("and it stays cleared once answered",
-              MARK not in titlebar(s.snapshot(), other),
-              repr(titlebar(s.snapshot(), other)))
+        check(
+            "and it stays cleared once answered",
+            MARK not in titlebar(s.snapshot(), other),
+            repr(titlebar(s.snapshot(), other)),
+        )
     os.unlink(l)
 
 
@@ -104,8 +118,11 @@ def test_a_bell_in_another_tab_shows_on_the_strip():
         here = [p for p in s.panes() if p["focused"]][0]
         away = [p for p in s.panes() if p["tab"] == 2][0]
 
-        check("the strip is unmarked to start",
-              MARK not in s.snapshot().line(1), repr(s.snapshot().line(1)))
+        check(
+            "the strip is unmarked to start",
+            MARK not in s.snapshot().line(1),
+            repr(s.snapshot().line(1)),
+        )
 
         s.api("select-tab", id=tabs[1]["id"])
         s.settle(20)
@@ -118,15 +135,20 @@ def test_a_bell_in_another_tab_shows_on_the_strip():
         s.settle(30)
 
         strip = s.snapshot().line(1)
-        check("the tab holding the rung pane is marked", MARK in strip,
-              repr(strip))
-        check("and the mark sits with that tab's own label",
-              strip.index(MARK) > strip.index("notes"), repr(strip))
+        check("the tab holding the rung pane is marked", MARK in strip, repr(strip))
+        check(
+            "and the mark sits with that tab's own label",
+            strip.index(MARK) > strip.index("notes"),
+            repr(strip),
+        )
 
         s.api("select-tab", id=tabs[1]["id"])
         s.settle(30)
-        check("visiting the tab clears it",
-              MARK not in s.snapshot().line(1), repr(s.snapshot().line(1)))
+        check(
+            "visiting the tab clears it",
+            MARK not in s.snapshot().line(1),
+            repr(s.snapshot().line(1)),
+        )
     os.unlink(l)
 
 
@@ -144,9 +166,11 @@ def test_the_strip_and_the_pane_clear_together():
         s.api("focus", id=other["id"])
         s.settle(30)
         snap = s.snapshot()
-        check("neither the titlebar nor the strip is left marked",
-              MARK not in titlebar(snap, other) and MARK not in snap.line(1),
-              repr(titlebar(snap, other)) + " / " + repr(snap.line(1)))
+        check(
+            "neither the titlebar nor the strip is left marked",
+            MARK not in titlebar(snap, other) and MARK not in snap.line(1),
+            repr(titlebar(snap, other)) + " / " + repr(snap.line(1)),
+        )
     os.unlink(l)
 
 
@@ -160,9 +184,11 @@ def test_it_can_be_turned_off_and_the_mark_chosen():
         other = [p for p in panes if not p["focused"]][0]
         ring(s, other["id"], mine["id"])
         snap = s.snapshot()
-        check("bell_indicator false says nothing anywhere",
-              MARK not in titlebar(snap, other) and MARK not in snap.line(1),
-              repr(titlebar(snap, other)))
+        check(
+            "bell_indicator false says nothing anywhere",
+            MARK not in titlebar(snap, other) and MARK not in snap.line(1),
+            repr(titlebar(snap, other)),
+        )
     os.unlink(off)
 
     custom = cfg('bell_mark "!"\n')
@@ -172,18 +198,22 @@ def test_it_can_be_turned_off_and_the_mark_chosen():
         mine = [p for p in panes if p["focused"]][0]
         other = [p for p in panes if not p["focused"]][0]
         ring(s, other["id"], mine["id"])
-        check("a chosen mark is the one drawn",
-              "!" in titlebar(s.snapshot(), other),
-              repr(titlebar(s.snapshot(), other)))
+        check(
+            "a chosen mark is the one drawn",
+            "!" in titlebar(s.snapshot(), other),
+            repr(titlebar(s.snapshot(), other)),
+        )
     os.unlink(custom)
     os.unlink(l)
 
 
 # ---- a pane you have put away ----------------------------------------------
 
-RINGER = ["/bin/sh", "-c",
-          'printf "\\033]2;ringer\\007"; sleep 1; printf "\\007"; '
-          'stty raw -echo; cat']
+RINGER = [
+    "/bin/sh",
+    "-c",
+    'printf "\\033]2;ringer\\007"; sleep 1; printf "\\007"; stty raw -echo; cat',
+]
 
 
 def bar_row(s):
@@ -204,34 +234,44 @@ def test_a_minimised_pane_rings_on_the_bar():
         gone = s.panes()[0]["id"]
         s.api("focus", id=gone)
         s.settle(10)
-        s.send(r"\x01m")           # put it away before it rings
+        s.send(r"\x01m")  # put it away before it rings
         s.settle(20)
-        check("it is on the bar and not on screen",
-              [p["w"] for p in s.panes() if p["id"] == gone] == [0],
-              str(s.panes()))
+        check(
+            "it is on the bar and not on screen",
+            [p["w"] for p in s.panes() if p["id"] == gone] == [0],
+            str(s.panes()),
+        )
         row = s.snapshot().text[bar_row(s)]
         check("with no mark yet", MARK not in row, repr(row))
 
-        for _ in range(60):        # gate on the mark rather than guess at it
+        for _ in range(60):  # gate on the mark rather than guess at it
             s.settle(30)
             if MARK in s.snapshot().text[bar_row(s)]:
                 break
         row = s.snapshot().text[bar_row(s)]
         check("ringing while put away marks its entry", MARK in row, repr(row))
-        check("and the tab it lives in", MARK in s.snapshot().line(1),
-              repr(s.snapshot().line(1)))
+        check(
+            "and the tab it lives in",
+            MARK in s.snapshot().line(1),
+            repr(s.snapshot().line(1)),
+        )
 
-        entry = [h for h in s.snapshot().hits
-                 if h["action"] == f"focus:{gone}" and h["h"] == 1]
+        entry = [
+            h
+            for h in s.snapshot().hits
+            if h["action"] == f"focus:{gone}" and h["h"] == 1
+        ]
         check("the entry is still one target", len(entry) == 1, str(entry))
         if not entry:
             return
         s.click(entry[0]["x"] + 1, entry[0]["y"])
         s.settle(30)
-        check("restoring it answers the bell everywhere",
-              MARK not in s.snapshot().line(1)
-              and [p["w"] for p in s.panes() if p["id"] == gone] != [0],
-              repr(s.snapshot().line(1)))
+        check(
+            "restoring it answers the bell everywhere",
+            MARK not in s.snapshot().line(1)
+            and [p["w"] for p in s.panes() if p["id"] == gone] != [0],
+            repr(s.snapshot().line(1)),
+        )
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ teaches you to distrust the thing that is telling you which mode you are in.
 So this is mostly one assertion made in several places: rebind it, and the
 badge, the cheatsheet, the swallowing and the pass-through all follow.
 """
+
 import sys
 import tempfile
 
@@ -31,41 +32,42 @@ def strip(s):
 
 
 def test_the_badge_names_the_key_you_bound():
-    for prefix, chord, shown in (("ctrl+a", r"\x01", "C-a"),
-                                 ("ctrl+b", r"\x02", "C-b"),
-                                 ("ctrl+space", r"\x00", "C-space"),
-                                 ("alt+x", r"\ex", "M-x")):
+    for prefix, chord, shown in (
+        ("ctrl+a", r"\x01", "C-a"),
+        ("ctrl+b", r"\x02", "C-b"),
+        ("ctrl+space", r"\x00", "C-space"),
+        ("alt+x", r"\ex", "M-x"),
+    ):
         with Session(SH, cols=60, rows=8, config=cfg(prefix)) as s:
             s.settle()
-            check(f"{prefix}: no badge until it is pressed",
-                  shown not in strip(s), strip(s))
+            check(
+                f"{prefix}: no badge until it is pressed",
+                shown not in strip(s),
+                strip(s),
+            )
             s.send(chord)
             s.settle()
-            check(f"{prefix}: the badge says {shown}", shown in strip(s),
-                  strip(s))
+            check(f"{prefix}: the badge says {shown}", shown in strip(s), strip(s))
 
 
 def test_a_rebound_prefix_actually_works():
     with Session(SH, cols=80, rows=14, config=cfg("ctrl+b")) as s:
         s.settle()
         check("one pane to start", len(s.panes()) == 1)
-        s.send(r"\x02\\")               # C-b \ : split
+        s.send(r"\x02\\")  # C-b \ : split
         s.settle()
-        check("the new prefix runs commands", len(s.panes()) == 2,
-              str(s.panes()))
+        check("the new prefix runs commands", len(s.panes()) == 2, str(s.panes()))
 
 
 def test_the_old_prefix_goes_to_the_program_instead():
     """The reason to move it: C-a is start-of-line to half the world."""
     with Session(SH, cols=80, rows=14, config=cfg("ctrl+b")) as s:
         s.settle()
-        s.send(r"\x01")                 # C-a, no longer ours
+        s.send(r"\x01")  # C-a, no longer ours
         s.settle(40)
-        check("C-a is not swallowed as a prefix", "C-a" not in strip(s),
-              strip(s))
+        check("C-a is not swallowed as a prefix", "C-a" not in strip(s), strip(s))
         snap = s.until(lambda sn: "^A" in sn.screen())
-        check("it reached the program", "^A" in snap.screen(),
-              snap.screen()[:200])
+        check("it reached the program", "^A" in snap.screen(), snap.screen()[:200])
 
 
 def test_pressing_the_prefix_twice_sends_it_on():
@@ -75,8 +77,9 @@ def test_pressing_the_prefix_twice_sends_it_on():
         s.settle(40)
         check("the badge is gone again", "C-b" not in strip(s), strip(s))
         snap = s.until(lambda sn: "^B" in sn.screen())
-        check("and the pane got the keystroke", "^B" in snap.screen(),
-              snap.screen()[:200])
+        check(
+            "and the pane got the keystroke", "^B" in snap.screen(), snap.screen()[:200]
+        )
 
 
 def test_the_cheatsheet_agrees_with_the_badge():
@@ -85,8 +88,7 @@ def test_the_cheatsheet_agrees_with_the_badge():
         s.send(r"\x02?")
         s.settle()
         screen = s.snapshot().screen()
-        check("the cheatsheet names the same key", "C-b then:" in screen,
-              screen)
+        check("the cheatsheet names the same key", "C-b then:" in screen, screen)
         check("and not the old one", "C-a then:" not in screen, screen)
 
 

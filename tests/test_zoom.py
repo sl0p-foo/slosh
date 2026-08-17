@@ -6,6 +6,7 @@ its tab, you said so. So the things worth checking are that it survives the
 layout being recomputed, that it cannot outlive the pane it names, and that it
 is per tab.
 """
+
 import os
 import re
 import subprocess
@@ -22,8 +23,7 @@ def mark(name):
     `--dump-config`, which is generated from the code, rather than written down
     here -- a test that pins a glyph starts failing the day somebody picks a
     nicer one, and says nothing useful when it does."""
-    out = subprocess.run([BIN, "--dump-config"], capture_output=True,
-                         text=True).stdout
+    out = subprocess.run([BIN, "--dump-config"], capture_output=True, text=True).stdout
     m = re.search(name + r' "(.+)"', out)
     return m.group(1) if m else "?"
 
@@ -66,17 +66,17 @@ def test_zoom_fills_the_tab_and_puts_it_back():
 
         s.send(r"\x01z")
         s.settle(20)
-        check("zooming leaves one pane on screen", len(visible(s)) == 1,
-              str(s.panes()))
-        check("but does not close the other", len(s.panes()) == 2,
-              str(s.panes()))
-        check("and the zoomed pane has the whole tab",
-              visible(s)[0]["w"] > 80, str(visible(s)[0]))
+        check("zooming leaves one pane on screen", len(visible(s)) == 1, str(s.panes()))
+        check("but does not close the other", len(s.panes()) == 2, str(s.panes()))
+        check(
+            "and the zoomed pane has the whole tab",
+            visible(s)[0]["w"] > 80,
+            str(visible(s)[0]),
+        )
 
         s.send(r"\x01z")
         s.settle(20)
-        check("unzooming puts them both back", len(visible(s)) == 2,
-              str(s.panes()))
+        check("unzooming puts them both back", len(visible(s)) == 2, str(s.panes()))
 
 
 def test_the_button_toggles_and_says_which_way():
@@ -92,17 +92,22 @@ def test_the_button_toggles_and_says_which_way():
         s.click(b["x"] + 1, b["y"])
         s.settle(20)
         check("clicking it zooms", len(visible(s)) == 1, str(s.panes()))
-        check("and the mark says so", ZOOM_ON in s.snapshot().line(2),
-              repr(s.snapshot().line(2)[-14:]))
+        check(
+            "and the mark says so",
+            ZOOM_ON in s.snapshot().line(2),
+            repr(s.snapshot().line(2)[-14:]),
+        )
 
         # The button moved: the pane it belongs to just became the whole tab.
         b = button(s, "zoom")
         s.click(b["x"] + 1, b["y"])
         s.settle(20)
-        check("clicking it again puts it back", len(visible(s)) == 2,
-              str(s.panes()))
-        check("and the mark goes back too", ZOOM in s.snapshot().line(2),
-              repr(s.snapshot().line(2)[-14:]))
+        check("clicking it again puts it back", len(visible(s)) == 2, str(s.panes()))
+        check(
+            "and the mark goes back too",
+            ZOOM in s.snapshot().line(2),
+            repr(s.snapshot().line(2)[-14:]),
+        )
 
 
 def test_the_close_button_closes_that_pane():
@@ -119,8 +124,11 @@ def test_the_close_button_closes_that_pane():
         s.click(b["x"] + 1, b["y"])
         s.settle(20)
         left = [p["id"] for p in s.panes()]
-        check("it closes the pane whose frame it is on",
-              victim not in left and len(left) == 1, str(left))
+        check(
+            "it closes the pane whose frame it is on",
+            victim not in left and len(left) == 1,
+            str(left),
+        )
 
 
 def test_a_zoom_cannot_outlive_its_pane():
@@ -134,16 +142,24 @@ def test_a_zoom_cannot_outlive_its_pane():
 
         s.api("close", id=[p for p in s.panes() if p["focused"]][0]["id"])
         s.settle(20)
-        check("closing the zoomed pane leaves the tab usable",
-              len(visible(s)) == 1 and len(s.panes()) == 1, str(s.panes()))
-        check("and the survivor is not stuck hidden",
-              not s.panes()[0]["hidden"], str(s.panes()))
+        check(
+            "closing the zoomed pane leaves the tab usable",
+            len(visible(s)) == 1 and len(s.panes()) == 1,
+            str(s.panes()),
+        )
+        check(
+            "and the survivor is not stuck hidden",
+            not s.panes()[0]["hidden"],
+            str(s.panes()),
+        )
 
 
 def test_zoom_is_per_tab():
     lay = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
-    lay.write('layout {\n tab name="a" {\n  pane\n  pane\n }\n'
-              ' tab name="b" {\n  pane\n  pane\n }\n}\n')
+    lay.write(
+        'layout {\n tab name="a" {\n  pane\n  pane\n }\n'
+        ' tab name="b" {\n  pane\n  pane\n }\n}\n'
+    )
     lay.close()
     with Session(SH, cols=90, rows=18, layout=lay.name) as s:
         s.settle(20)
@@ -154,13 +170,19 @@ def test_zoom_is_per_tab():
         tabs = s.tabs()
         s.api("select-tab", id=tabs[1]["id"])
         s.settle(20)
-        check("tab b is not, because zoom belongs to a tab",
-              len(visible(s)) == 2, str(s.panes()))
+        check(
+            "tab b is not, because zoom belongs to a tab",
+            len(visible(s)) == 2,
+            str(s.panes()),
+        )
 
         s.api("select-tab", id=tabs[0]["id"])
         s.settle(20)
-        check("and tab a is still zoomed when you come back",
-              len(visible(s)) == 1, str(s.panes()))
+        check(
+            "and tab a is still zoomed when you come back",
+            len(visible(s)) == 1,
+            str(s.panes()),
+        )
     os.unlink(lay.name)
 
 
@@ -169,27 +191,37 @@ def test_the_status_line_says_zoomed():
         s.settle(20)
         s.api("split", dir="cols")
         s.settle(20)
-        check("nothing said while it is not", "zoomed" not in s.snapshot().text[-2],
-              repr(s.snapshot().text[-2]))
+        check(
+            "nothing said while it is not",
+            "zoomed" not in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
         s.send(r"\x01z")
         s.settle(20)
-        check("a zoomed pane says so", "zoomed" in s.snapshot().text[-2],
-              repr(s.snapshot().text[-2]))
+        check(
+            "a zoomed pane says so",
+            "zoomed" in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
 
 
 def test_the_buttons_can_be_turned_off():
     conf = cfg("pane_buttons false\n")
     with Session(SH, cols=90, rows=18, config=conf) as s:
         s.settle(20)
-        hits = [h for h in s.snapshot().hits
-                if h["action"].startswith(("zoom:", "close:"))]
+        hits = [
+            h for h in s.snapshot().hits if h["action"].startswith(("zoom:", "close:"))
+        ]
         check("pane_buttons false draws none", hits == [], str(hits))
         # ...but the verb is still there from the keyboard: the setting is
         # about the affordance, not about zooming.
         s.send(r"\x01z")
         s.settle(20)
-        check("while the keybinding still zooms",
-              "zoomed" in s.snapshot().text[-2], repr(s.snapshot().text[-2]))
+        check(
+            "while the keybinding still zooms",
+            "zoomed" in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
     os.unlink(conf)
 
 

@@ -5,6 +5,7 @@ Mostly a guard: a theme file that has fallen behind the config silently keeps
 the compiled-in default for whatever it forgot, which looks like a bug in the
 theme rather than a missing line in it.
 """
+
 import glob
 import os
 import re
@@ -34,21 +35,27 @@ def test_each_sets_every_colour_the_config_knows():
     want = declared_in_config()
     for t in THEMES:
         missing = want - set_by(t)
-        check(f"{os.path.basename(t)} sets all {len(want)} of them",
-              not missing, "missing: " + ", ".join(sorted(missing)))
+        check(
+            f"{os.path.basename(t)} sets all {len(want)} of them",
+            not missing,
+            "missing: " + ", ".join(sorted(missing)),
+        )
 
 
 def test_each_one_parses_and_reaches_the_screen():
     for t in THEMES:
-        declared = dict(re.findall(r'^    ([a-z_]+) "(#[0-9a-fA-F]{6})"',
-                                   open(t).read(), re.M))
+        declared = dict(
+            re.findall(r'^    ([a-z_]+) "(#[0-9a-fA-F]{6})"', open(t).read(), re.M)
+        )
         with Session(SH, cols=50, rows=10, config=os.path.abspath(t)) as s:
             s.settle(30)
             snap, p = s.snapshot(), s.pane()
             drawn = (snap.style_at(p["x"], p["y"] + 1) or {}).get("fg")
-            check(f"{os.path.basename(t)} draws its own frame colour",
-                  drawn == declared["frame_focus"],
-                  f"{drawn} != {declared['frame_focus']}")
+            check(
+                f"{os.path.basename(t)} draws its own frame colour",
+                drawn == declared["frame_focus"],
+                f"{drawn} != {declared['frame_focus']}",
+            )
             check(f"{os.path.basename(t)} leaves the session alive", s.alive(), "")
 
 

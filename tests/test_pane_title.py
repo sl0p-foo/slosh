@@ -11,6 +11,7 @@ still focuses; it just no longer suggests or performs a split. Everything the
 rest of the top row does must keep working, which is most of what is checked
 here.
 """
+
 import sys
 import time
 
@@ -84,19 +85,27 @@ def test_the_title_text_is_its_own_region():
         snap = s.snapshot()
         first, last, mid = title_span(snap, p)
 
-        check("the title text hit-tests as the pane's name",
-              snap.hit_at(mid, p["y"]) == f"panetitle:{p['id']}",
-              str(snap.hit_at(mid, p["y"])))
-        check("both its ends do too",
-              snap.hit_at(first, p["y"]) == f"panetitle:{p['id']}"
-              and snap.hit_at(last, p["y"]) == f"panetitle:{p['id']}",
-              f"{snap.hit_at(first, p['y'])} .. {snap.hit_at(last, p['y'])}")
-        check("the cell just outside it is still the top edge",
-              snap.hit_at(first - 1, p["y"]) == f"title:{p['id']}",
-              str(snap.hit_at(first - 1, p["y"])))
-        check("and so is the rest of the top row",
-              snap.hit_at(off_title(p), p["y"]) == f"title:{p['id']}",
-              str(snap.hit_at(off_title(p), p["y"])))
+        check(
+            "the title text hit-tests as the pane's name",
+            snap.hit_at(mid, p["y"]) == f"panetitle:{p['id']}",
+            str(snap.hit_at(mid, p["y"])),
+        )
+        check(
+            "both its ends do too",
+            snap.hit_at(first, p["y"]) == f"panetitle:{p['id']}"
+            and snap.hit_at(last, p["y"]) == f"panetitle:{p['id']}",
+            f"{snap.hit_at(first, p['y'])} .. {snap.hit_at(last, p['y'])}",
+        )
+        check(
+            "the cell just outside it is still the top edge",
+            snap.hit_at(first - 1, p["y"]) == f"title:{p['id']}",
+            str(snap.hit_at(first - 1, p["y"])),
+        )
+        check(
+            "and so is the rest of the top row",
+            snap.hit_at(off_title(p), p["y"]) == f"title:{p['id']}",
+            str(snap.hit_at(off_title(p), p["y"])),
+        )
 
 
 def test_resting_on_the_title_arms_no_guide():
@@ -107,17 +116,21 @@ def test_resting_on_the_title_arms_no_guide():
 
         rest(s, mid, p["y"])
         s.settle(60)
-        check("resting on the title suggests no split",
-              HEAVY not in s.snapshot().line(p["y"]),
-              repr(s.snapshot().line(p["y"])))
+        check(
+            "resting on the title suggests no split",
+            HEAVY not in s.snapshot().line(p["y"]),
+            repr(s.snapshot().line(p["y"])),
+        )
 
         # The control: the same dwell two cells away must still arm it, or the
         # check above would pass simply because the guide is broken.
         rest(s, off_title(p), p["y"])
         s.settle(60)
-        check("resting on the top edge still does",
-              HEAVY in s.snapshot().line(p["y"]),
-              repr(s.snapshot().line(p["y"])))
+        check(
+            "resting on the top edge still does",
+            HEAVY in s.snapshot().line(p["y"]),
+            repr(s.snapshot().line(p["y"])),
+        )
 
 
 def test_clicking_the_title_does_not_split():
@@ -128,13 +141,19 @@ def test_clicking_the_title_does_not_split():
 
         click(s, mid, p["y"])
         s.settle(80)
-        check("clicking the title splits nothing", len(s.panes()) == 1,
-              str(len(s.panes())))
+        check(
+            "clicking the title splits nothing",
+            len(s.panes()) == 1,
+            str(len(s.panes())),
+        )
 
         click(s, off_title(p), p["y"])
         s.settle(80)
-        check("clicking the top edge still splits up", len(s.panes()) == 2,
-              str(len(s.panes())))
+        check(
+            "clicking the top edge still splits up",
+            len(s.panes()) == 2,
+            str(len(s.panes())),
+        )
 
 
 def test_double_clicking_the_title_does_not_split():
@@ -147,8 +166,11 @@ def test_double_clicking_the_title_does_not_split():
         click(s, mid, p["y"])
         click(s, mid, p["y"])
         s.settle(80)
-        check("a double-click on the title leaves one pane",
-              len(s.panes()) == 1, str(len(s.panes())))
+        check(
+            "a double-click on the title leaves one pane",
+            len(s.panes()) == 1,
+            str(len(s.panes())),
+        )
 
 
 def test_the_title_still_drags_the_pane():
@@ -167,10 +189,11 @@ def test_the_title_still_drags_the_pane():
         s.settle()
 
         panes = {p["id"]: p for p in s.panes()}
-        check("dragging by the title still moves the pane",
-              len(panes) == 2
-              and panes[left["id"]]["x"] > panes[right["id"]]["x"],
-              str([(p["id"], p["x"]) for p in s.panes()]))
+        check(
+            "dragging by the title still moves the pane",
+            len(panes) == 2 and panes[left["id"]]["x"] > panes[right["id"]]["x"],
+            str([(p["id"], p["x"]) for p in s.panes()]),
+        )
 
 
 def test_hovering_the_title_still_focuses():
@@ -185,9 +208,11 @@ def test_hovering_the_title_still_focuses():
 
         hover(s, mid, other["y"])
         s.settle(60)
-        check("hovering the title still focuses its pane",
-              s.focused()["id"] == other["id"],
-              f"{s.focused()['id']} != {other['id']}")
+        check(
+            "hovering the title still focuses its pane",
+            s.focused()["id"] == other["id"],
+            f"{s.focused()['id']} != {other['id']}",
+        )
 
 
 def test_double_click_opens_an_editor_seeded_with_the_name():
@@ -196,10 +221,12 @@ def test_double_click_opens_an_editor_seeded_with_the_name():
         p = s.pane()
         open_editor(s, p)
         row = s.snapshot().line(p["y"])
-        check("double-clicking the title opens an editor", CURSOR in row,
-              repr(row))
-        check("seeded with the current name, so a rename is an edit",
-              "shell" + CURSOR in row, repr(row))
+        check("double-clicking the title opens an editor", CURSOR in row, repr(row))
+        check(
+            "seeded with the current name, so a rename is an edit",
+            "shell" + CURSOR in row,
+            repr(row),
+        )
 
 
 def test_enter_keeps_the_new_name():
@@ -212,9 +239,11 @@ def test_enter_keeps_the_new_name():
         s.send(r"\r")
         s.settle(80)
         check("Enter commits the new name", titles(s) == ["api"], str(titles(s)))
-        check("and the editor is gone",
-              CURSOR not in s.snapshot().line(p["y"]),
-              repr(s.snapshot().line(p["y"])))
+        check(
+            "and the editor is gone",
+            CURSOR not in s.snapshot().line(p["y"]),
+            repr(s.snapshot().line(p["y"])),
+        )
 
 
 def test_escape_abandons_it():
@@ -226,11 +255,14 @@ def test_escape_abandons_it():
         s.send("discarded")
         s.send(r"\e")
         s.settle(80)
-        check("Escape leaves the old name alone", titles(s) == ["shell"],
-              str(titles(s)))
-        check("and closes the editor",
-              CURSOR not in s.snapshot().line(p["y"]),
-              repr(s.snapshot().line(p["y"])))
+        check(
+            "Escape leaves the old name alone", titles(s) == ["shell"], str(titles(s))
+        )
+        check(
+            "and closes the editor",
+            CURSOR not in s.snapshot().line(p["y"]),
+            repr(s.snapshot().line(p["y"])),
+        )
 
 
 def test_clicking_away_keeps_the_name():
@@ -242,8 +274,11 @@ def test_clicking_away_keeps_the_name():
         s.send("elsewhere")
         s.click(p["content_x"] + 2, p["content_y"] + 1)
         s.settle(80)
-        check("clicking away commits, the way leaving a field does",
-              titles(s) == ["elsewhere"], str(titles(s)))
+        check(
+            "clicking away commits, the way leaving a field does",
+            titles(s) == ["elsewhere"],
+            str(titles(s)),
+        )
 
 
 def test_a_typed_name_outranks_the_program():
@@ -258,8 +293,11 @@ def test_a_typed_name_outranks_the_program():
 
         s.raw(r"\e]2;prog-later\x07")
         s.settle(120)
-        check("the program retitling itself does not undo a rename",
-              titles(s) == ["mine"], str(titles(s)))
+        check(
+            "the program retitling itself does not undo a rename",
+            titles(s) == ["mine"],
+            str(titles(s)),
+        )
 
         # Clearing the name hands the pane back — to what the program calls
         # itself *now*, not what it said when the rename began.
@@ -267,8 +305,11 @@ def test_a_typed_name_outranks_the_program():
         backspace(s, 8)
         s.send(r"\r")
         s.settle(80)
-        check("an empty name returns the pane to its program's title",
-              titles(s) == ["prog-later"], str(titles(s)))
+        check(
+            "an empty name returns the pane to its program's title",
+            titles(s) == ["prog-later"],
+            str(titles(s)),
+        )
 
 
 def test_a_script_can_name_a_pane_too():
@@ -279,25 +320,35 @@ def test_a_script_can_name_a_pane_too():
     with Session(SH, cols=60, rows=14) as s:
         s.settle()
         p = s.pane()
-        check("the program's title to start with", titles(s) == ["shell"],
-              str(titles(s)))
+        check(
+            "the program's title to start with", titles(s) == ["shell"], str(titles(s))
+        )
 
         reply = s.api("set-name", target="pane", id=p["id"], name="agent: gbos")
         s.settle(80)
         check("the verb reports ok", reply.get("ok") is True, str(reply))
-        check("and the name is what the frame says", titles(s) == ["agent: gbos"],
-              str(titles(s)))
+        check(
+            "and the name is what the frame says",
+            titles(s) == ["agent: gbos"],
+            str(titles(s)),
+        )
 
         # The whole point: the program keeps shouting and is ignored.
         s.raw(r"\e]2;\xe2\xa0\xb9 Fix toast overlap in frame tests\x07")
         s.settle(120)
-        check("a program retitling itself cannot take the name back",
-              titles(s) == ["agent: gbos"], str(titles(s)))
+        check(
+            "a program retitling itself cannot take the name back",
+            titles(s) == ["agent: gbos"],
+            str(titles(s)),
+        )
 
         s.api("set-name", target="pane", id=p["id"], name="")
         s.settle(120)
-        check("clearing it hands the label back to the program",
-              titles(s) == ["\u2839 Fix toast overlap in frame tests"], str(titles(s)))
+        check(
+            "clearing it hands the label back to the program",
+            titles(s) == ["\u2839 Fix toast overlap in frame tests"],
+            str(titles(s)),
+        )
 
 
 def test_the_verb_and_the_gesture_are_one_store():
@@ -311,8 +362,11 @@ def test_the_verb_and_the_gesture_are_one_store():
         dbl(s, col_of(s.snapshot(), p, "named"), p["y"])
         s.settle(80)
         row = s.snapshot().line(p["y"])
-        check("the editor opens seeded with the scripted name",
-              "named" in row and CURSOR in row, repr(row.strip()))
+        check(
+            "the editor opens seeded with the scripted name",
+            "named" in row and CURSOR in row,
+            repr(row.strip()),
+        )
         s.send(r"\e")
         s.settle(40)
 
@@ -321,7 +375,7 @@ def test_naming_addresses_the_focused_pane_by_default():
     """0 is the focused pane, as it is for every other verb that takes an id."""
     with Session(SH, cols=80, rows=30) as s:
         s.settle()
-        s.key("-")                      # two panes, focus lands on the new one
+        s.key("-")  # two panes, focus lands on the new one
         s.settle(60)
         panes = s.panes()
         check("there are two panes to choose between", len(panes) == 2, str(panes))
@@ -331,10 +385,16 @@ def test_naming_addresses_the_focused_pane_by_default():
         s.api("set-name", target="pane", name="the focused one")
         s.settle(80)
         by_id = {q["id"]: q["title"] for q in s.panes()}
-        check("id 0 means the focused pane", by_id[focused["id"]] == "the focused one",
-              str(by_id))
-        check("and the other pane keeps the title it had",
-              by_id[other["id"]] == other["title"], str(by_id))
+        check(
+            "id 0 means the focused pane",
+            by_id[focused["id"]] == "the focused one",
+            str(by_id),
+        )
+        check(
+            "and the other pane keeps the title it had",
+            by_id[other["id"]] == other["title"],
+            str(by_id),
+        )
 
 
 def test_the_target_says_which_label_and_bad_ids_say_which_thing():
@@ -349,19 +409,33 @@ def test_the_target_says_which_label_and_bad_ids_say_which_thing():
 
         s.api("set-name", id=tab["id"], name="work")
         s.settle(60)
-        check("no target still names the tab", s.tabs()[0]["name"] == "work",
-              str(s.tabs()[0]))
-        check("...and leaves the pane's title alone", titles(s) == ["shell"],
-              str(titles(s)))
+        check(
+            "no target still names the tab",
+            s.tabs()[0]["name"] == "work",
+            str(s.tabs()[0]),
+        )
+        check(
+            "...and leaves the pane's title alone",
+            titles(s) == ["shell"],
+            str(titles(s)),
+        )
 
-        check("a pane id that does not exist says so",
-              s.api("set-name", target="pane", id=4242, name="x")
-              .get("error") == "no such pane", str(s.api("set-name", target="pane", id=4242, name="x")))
-        check("and a tab id that does not exist says the other thing",
-              s.api("set-name", id=4242, name="x").get("error") == "no such tab",
-              str(s.api("set-name", id=4242, name="x")))
-        check("the pane kept its title through both refusals",
-              titles(s) == ["shell"] and s.pane()["id"] == p["id"], str(titles(s)))
+        check(
+            "a pane id that does not exist says so",
+            s.api("set-name", target="pane", id=4242, name="x").get("error")
+            == "no such pane",
+            str(s.api("set-name", target="pane", id=4242, name="x")),
+        )
+        check(
+            "and a tab id that does not exist says the other thing",
+            s.api("set-name", id=4242, name="x").get("error") == "no such tab",
+            str(s.api("set-name", id=4242, name="x")),
+        )
+        check(
+            "the pane kept its title through both refusals",
+            titles(s) == ["shell"] and s.pane()["id"] == p["id"],
+            str(titles(s)),
+        )
 
 
 def test_slow_clicks_are_not_a_double_click():
@@ -377,8 +451,7 @@ def test_slow_clicks_are_not_a_double_click():
         s.settle(80)
         row = s.snapshot().line(p["y"])
         check("two slow clicks open no editor", CURSOR not in row, repr(row))
-        check("and still split nothing", len(s.panes()) == 1,
-              str(len(s.panes())))
+        check("and still split nothing", len(s.panes()) == 1, str(len(s.panes())))
 
 
 def test_typing_a_name_does_not_reach_the_pane():
@@ -391,8 +464,11 @@ def test_typing_a_name_does_not_reach_the_pane():
         s.send(r"\r")
         s.settle(120)
         body = s.snapshot().pane_text(s.pane())
-        check("the editor owns the keyboard: nothing leaked to the shell",
-              "zzz" not in body, repr(body))
+        check(
+            "the editor owns the keyboard: nothing leaked to the shell",
+            "zzz" not in body,
+            repr(body),
+        )
 
 
 def test_closing_the_pane_does_not_wedge_the_keyboard():
@@ -410,8 +486,11 @@ def test_closing_the_pane_does_not_wedge_the_keyboard():
         s.send("after")
         s.settle(120)
         body = s.snapshot().pane_text(s.pane())
-        check("and the keyboard went back to the surviving pane",
-              "after" in body, repr(body))
+        check(
+            "and the keyboard went back to the surviving pane",
+            "after" in body,
+            repr(body),
+        )
 
 
 if __name__ == "__main__":

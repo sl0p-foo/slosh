@@ -7,6 +7,7 @@ settings take effect without a restart. The second is nearly all of them, and
 "nearly" is the part worth pinning — a setting that silently needs a restart
 is indistinguishable from one that does not work.
 """
+
 import os
 import subprocess
 import sys
@@ -48,12 +49,18 @@ def test_the_things_that_take_effect_immediately():
         check("geometry", s.pane()["x"] == 6, str(s.pane()))
 
         reload_with(s, path, "status_bar false\n")
-        check("chrome on and off", "+" not in s.snapshot().line(1),
-              repr(s.snapshot().line(1)))
+        check(
+            "chrome on and off",
+            "+" not in s.snapshot().line(1),
+            repr(s.snapshot().line(1)),
+        )
 
         reload_with(s, path, 'close_mark "@"\n')
-        check("the marks in a frame", "@" in s.snapshot().line(2),
-              repr(s.snapshot().line(2)))
+        check(
+            "the marks in a frame",
+            "@" in s.snapshot().line(2),
+            repr(s.snapshot().line(2)),
+        )
 
         reload_with(s, path, "dim_unfocused 0\n")
         s.key("\\\\")
@@ -69,8 +76,7 @@ def test_the_things_that_take_effect_immediately():
         before = len(s.tabs())
         s.send(r"\x02c")
         s.settle(30)
-        check("the leader key itself", len(s.tabs()) == before + 1,
-              str(s.tabs()))
+        check("the leader key itself", len(s.tabs()) == before + 1, str(s.tabs()))
     os.unlink(path)
 
 
@@ -100,8 +106,12 @@ def test_a_config_written_after_the_session_started_is_noticed():
 
     env = dict(os.environ, SL0PPTY_CONFIG=path)
     name = "reloadtest-%d" % os.getpid()
-    subprocess.run([BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
-                   env=env, capture_output=True, timeout=5)
+    subprocess.run(
+        [BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
+        env=env,
+        capture_output=True,
+        timeout=5,
+    )
 
     # The session *creates* its config directory at startup, precisely so there is
     # always somewhere to watch -- and writing the file before it has is a race
@@ -115,8 +125,11 @@ def test_a_config_written_after_the_session_started_is_noticed():
             made = True
             break
         time.sleep(0.02)
-    check("the session created the directory it needs to watch", made,
-          os.path.dirname(path))
+    check(
+        "the session created the directory it needs to watch",
+        made,
+        os.path.dirname(path),
+    )
     try:
         deadline = time.time() + 3
         got = None
@@ -124,17 +137,24 @@ def test_a_config_written_after_the_session_started_is_noticed():
             with open(path, "w") as f:
                 f.write('theme { frame_focus "#00ff00" }\n')
             time.sleep(0.4)
-            out = subprocess.run([BIN, "-s", name, "cmd",
-                                  '{"cmd":"snapshot","format":"json"}'],
-                                 capture_output=True, text=True, env=env).stdout
+            out = subprocess.run(
+                [BIN, "-s", name, "cmd", '{"cmd":"snapshot","format":"json"}'],
+                capture_output=True,
+                text=True,
+                env=env,
+            ).stdout
             if '"#00ff00"' in out:
                 got = True
                 break
-        check("writing a config later is picked up without a restart", got,
-              "the session never saw the new file")
+        check(
+            "writing a config later is picked up without a restart",
+            got,
+            "the session never saw the new file",
+        )
     finally:
-        subprocess.run([BIN, "-s", name, "cmd", '{"cmd":"quit"}'],
-                       capture_output=True, env=env)
+        subprocess.run(
+            [BIN, "-s", name, "cmd", '{"cmd":"quit"}'], capture_output=True, env=env
+        )
 
 
 def test_an_included_file_is_watched_too():
@@ -154,13 +174,20 @@ def test_an_included_file_is_watched_too():
 
     env = dict(os.environ, SL0PPTY_CONFIG=main)
     name = "inctest-%d" % os.getpid()
-    subprocess.run([BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
-                   env=env, capture_output=True, timeout=5)
+    subprocess.run(
+        [BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
+        env=env,
+        capture_output=True,
+        timeout=5,
+    )
 
     def screen():
-        return subprocess.run([BIN, "-s", name, "cmd",
-                               '{"cmd":"snapshot","format":"json"}'],
-                              capture_output=True, text=True, env=env).stdout
+        return subprocess.run(
+            [BIN, "-s", name, "cmd", '{"cmd":"snapshot","format":"json"}'],
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout
 
     try:
         # Polled for the same reason as the directory above: `-s` returning means
@@ -172,8 +199,7 @@ def test_an_included_file_is_watched_too():
                 started = True
                 break
             time.sleep(0.02)
-        check("the included theme applied at startup", started,
-              "green never appeared")
+        check("the included theme applied at startup", started, "green never appeared")
 
         # The include line is untouched; only the file it points at changes.
         deadline = time.time() + 3
@@ -185,11 +211,15 @@ def test_an_included_file_is_watched_too():
             if '"#ff00ff"' in screen():
                 got = True
                 break
-        check("saving the included file reloads the session", got,
-              "the session never saw the theme change")
+        check(
+            "saving the included file reloads the session",
+            got,
+            "the session never saw the theme change",
+        )
     finally:
-        subprocess.run([BIN, "-s", name, "cmd", '{"cmd":"quit"}'],
-                       capture_output=True, env=env)
+        subprocess.run(
+            [BIN, "-s", name, "cmd", '{"cmd":"quit"}'], capture_output=True, env=env
+        )
 
 
 for name, fn in sorted(list(globals().items())):

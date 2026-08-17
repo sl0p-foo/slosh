@@ -9,6 +9,7 @@ that is not there.
 
 The example in contrib/ is built and loaded here too, so it cannot rot.
 """
+
 import os
 import shutil
 import sys
@@ -50,18 +51,25 @@ def fg_at(snap, pane, row=0, col=0):
 
 
 def test_a_plugin_shader_is_used_like_a_builtin():
-    cfg, d = session_dir([GOOD], 'shader_dir "%s"\nshaders {\n'
-                                 '    testfill amount=255 color="#00ff00"\n}\n')
+    cfg, d = session_dir(
+        [GOOD],
+        'shader_dir "%s"\nshaders {\n    testfill amount=255 color="#00ff00"\n}\n',
+    )
     # the directory is known only after it exists, so write the config now
     with open(cfg, "w") as f:
-        f.write('shader_dir "%s"\nshaders {\n'
-                '    testfill amount=255 color="#00ff00"\n}\n' % d)
+        f.write(
+            'shader_dir "%s"\nshaders {\n'
+            '    testfill amount=255 color="#00ff00"\n}\n' % d
+        )
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")
         pane = s.pane()
-        check("the loaded shader ran", bg_at(snap, pane) == "#00ff00",
-              str(snap.style_at(pane["content_x"], pane["content_y"])))
+        check(
+            "the loaded shader ran",
+            bg_at(snap, pane) == "#00ff00",
+            str(snap.style_at(pane["content_x"], pane["content_y"])),
+        )
 
 
 def test_it_is_found_beside_the_config_by_default():
@@ -71,42 +79,53 @@ def test_it_is_found_beside_the_config_by_default():
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")
-        check("no shader_dir needed", bg_at(snap, s.pane()) == "#0000ff",
-              snap.screen())
+        check("no shader_dir needed", bg_at(snap, s.pane()) == "#0000ff", snap.screen())
 
 
 def test_the_config_number_reaches_the_plugin():
     cfg, d = session_dir([GOOD], "")
     with open(cfg, "w") as f:
-        f.write('shader_dir "%s"\nshaders {\n'
-                '    teststripe amount=255 band=3 color="#ff0000"\n}\n' % d)
+        f.write(
+            'shader_dir "%s"\nshaders {\n'
+            '    teststripe amount=255 band=3 color="#ff0000"\n}\n' % d
+        )
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")
         pane = s.pane()
         got = [bg_at(snap, pane, 0, x) for x in range(6)]
-        check("every third column, as asked",
-              got[0] == "#ff0000" and got[3] == "#ff0000" and
-              got[1] != "#ff0000" and got[2] != "#ff0000", str(got))
+        check(
+            "every third column, as asked",
+            got[0] == "#ff0000"
+            and got[3] == "#ff0000"
+            and got[1] != "#ff0000"
+            and got[2] != "#ff0000",
+            str(got),
+        )
 
 
 def test_a_stale_plugin_is_refused_and_the_rest_still_load():
     cfg, d = session_dir([GOOD, BAD], "")
     with open(cfg, "w") as f:
-        f.write('shader_dir "%s"\nshaders {\n'
-                '    testfill amount=255 color="#00ff00"\n}\n' % d)
+        f.write(
+            'shader_dir "%s"\nshaders {\n'
+            '    testfill amount=255 color="#00ff00"\n}\n' % d
+        )
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")
         check("the session is alive", s.alive())
-        check("the good plugin still loaded",
-              bg_at(snap, s.pane()) == "#00ff00", snap.screen())
+        check(
+            "the good plugin still loaded",
+            bg_at(snap, s.pane()) == "#00ff00",
+            snap.screen(),
+        )
 
 
 def test_an_unknown_shader_is_skipped_not_fatal():
     cfg, d = session_dir([], "")
     with open(cfg, "w") as f:
-        f.write('shaders {\n    nosuchshader amount=255\n    dim amount=0\n}\n')
+        f.write("shaders {\n    nosuchshader amount=255\n    dim amount=0\n}\n")
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")
@@ -117,8 +136,10 @@ def test_an_unknown_shader_is_skipped_not_fatal():
 def test_no_shader_directory_at_all_is_normal():
     cfg, d = session_dir([], "")
     with open(cfg, "w") as f:
-        f.write('shader_dir "/nonexistent/sl0ppty/shaders"\n'
-                'shaders {\n    dim amount=100\n}\n')
+        f.write(
+            'shader_dir "/nonexistent/sl0ppty/shaders"\n'
+            "shaders {\n    dim amount=100\n}\n"
+        )
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")
@@ -130,20 +151,24 @@ def test_the_directory_may_be_written_with_a_tilde():
     cfg, d = session_dir([GOOD], "", shaders_subdir=True)
     home = os.path.dirname(d)
     with open(cfg, "w") as f:
-        f.write('shader_dir "~/shaders"\nshaders {\n'
-                '    testfill amount=255 color="#00ff00"\n}\n')
+        f.write(
+            'shader_dir "~/shaders"\nshaders {\n'
+            '    testfill amount=255 color="#00ff00"\n}\n'
+        )
 
     with Session(SH, cols=40, rows=10, config=cfg, env={"HOME": home}) as s:
         snap = s.until_text("BLOCK")
-        check("~ in shader_dir is the home directory",
-              bg_at(snap, s.pane()) == "#00ff00", snap.screen())
+        check(
+            "~ in shader_dir is the home directory",
+            bg_at(snap, s.pane()) == "#00ff00",
+            snap.screen(),
+        )
 
 
 def test_the_contrib_example_builds_and_loads():
     cfg, d = session_dir([EXAMPLE], "")
     with open(cfg, "w") as f:
-        f.write('shader_dir "%s"\nshaders {\n'
-                '    checker amount=255 band=2\n}\n' % d)
+        f.write('shader_dir "%s"\nshaders {\n    checker amount=255 band=2\n}\n' % d)
 
     with Session(SH, cols=40, rows=10, config=cfg) as s:
         snap = s.until_text("BLOCK")

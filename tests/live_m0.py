@@ -4,9 +4,23 @@
 The headless dump proves composition; this proves the parts headless cannot:
 raw mode, the diff emitter, SIGWINCH, and the quit path.
 """
-import os, pty, uuid, re, select, signal, struct, subprocess, sys, termios, time, fcntl
 
-BIN = os.environ.get("SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty"))
+import fcntl
+import os
+import pty
+import re
+import select
+import signal
+import struct
+import subprocess
+import sys
+import termios
+import time
+import uuid
+
+BIN = os.environ.get(
+    "SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty")
+)
 
 
 # A unique session per run. Without this the tests attach to whatever "main"
@@ -55,8 +69,9 @@ def main():
 
     os.write(fd, b"echo sl0p-marker-42\n")
     out = drain(fd)
-    ok &= check("echoed output reaches the screen", b"sl0p-marker-42" in out,
-                repr(out[-200:]))
+    ok &= check(
+        "echoed output reaches the screen", b"sl0p-marker-42" in out, repr(out[-200:])
+    )
     ok &= check("alt screen entered", b"\x1b[?1049h" in out or True)
 
     # resize: the pane must be told, and the app must see the new width
@@ -76,7 +91,9 @@ def main():
 
     os.write(fd, b"\x01q")  # C-a q
     tail = drain(fd, idle=0.2, limit=1.5)
-    ok &= check("C-a q leaves the alt screen", b"\x1b[?1049l" in tail, repr(tail[-120:]))
+    ok &= check(
+        "C-a q leaves the alt screen", b"\x1b[?1049l" in tail, repr(tail[-120:])
+    )
 
     gone = False
     for _ in range(20):

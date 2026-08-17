@@ -18,6 +18,7 @@ untested code pretending to be a feature.
 The nav — order, grouping — comes from docs/nav. Page titles come from each
 page's own `# heading`, so they cannot drift from the page.
 """
+
 import html
 import os
 import re
@@ -53,8 +54,9 @@ def inline(text):
 
     text = INLINE_CODE.sub(stash, text)
     text = html.escape(text)
-    text = LINK.sub(lambda m: '<a href="%s">%s</a>' % (link_href(m.group(2)),
-                                                       m.group(1)), text)
+    text = LINK.sub(
+        lambda m: '<a href="%s">%s</a>' % (link_href(m.group(2)), m.group(1)), text
+    )
     text = BOLD.sub(r"<strong>\1</strong>", text)
     text = ITALIC.sub(r"<em>\1</em>", text)
     for i, code in enumerate(spans):
@@ -90,7 +92,7 @@ def render(md):
         while stack:
             out.append("</%s>" % stack.pop())
 
-    stack = []          # open list elements, innermost last
+    stack = []  # open list elements, innermost last
     while i < len(lines):
         line = lines[i]
 
@@ -110,8 +112,11 @@ def render(md):
             # rather than declared, because the alternative is a marker in every
             # fence and one of them getting forgotten.
             art = not lang and any(c in text for c in "─│╭╮╰╯├┤┬┴┼")
-            cls = ' class="art"' if art else (
-                ' class="lang-%s"' % html.escape(lang) if lang else "")
+            cls = (
+                ' class="art"'
+                if art
+                else (' class="lang-%s"' % html.escape(lang) if lang else "")
+            )
             out.append("<pre%s><code>%s</code></pre>" % (cls, html.escape(text)))
             continue
 
@@ -124,13 +129,18 @@ def render(md):
                 title = re.sub(r"`", "", text)
             else:
                 toc.append((level, re.sub(r"`", "", text), anchor))
-            out.append('<h%d id="%s">%s<a class="anchor" href="#%s">#</a></h%d>'
-                       % (level, anchor, inline(text), anchor, level))
+            out.append(
+                '<h%d id="%s">%s<a class="anchor" href="#%s">#</a></h%d>'
+                % (level, anchor, inline(text), anchor, level)
+            )
             i += 1
             continue
 
-        if line.startswith("|") and i + 1 < len(lines) and \
-                re.match(r"^\|[\s:|-]+\|$", lines[i + 1]):
+        if (
+            line.startswith("|")
+            and i + 1 < len(lines)
+            and re.match(r"^\|[\s:|-]+\|$", lines[i + 1])
+        ):
             close(stack)
             head = [c.strip() for c in line.strip("|").split("|")]
             i += 2
@@ -138,11 +148,16 @@ def render(md):
             while i < len(lines) and lines[i].startswith("|"):
                 rows.append([c.strip() for c in lines[i].strip("|").split("|")])
                 i += 1
-            out.append("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>"
-                       % ("".join("<th>%s</th>" % inline(c) for c in head),
-                          "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % inline(c)
-                                                          for c in r)
-                                  for r in rows)))
+            out.append(
+                "<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>"
+                % (
+                    "".join("<th>%s</th>" % inline(c) for c in head),
+                    "".join(
+                        "<tr>%s</tr>" % "".join("<td>%s</td>" % inline(c) for c in r)
+                        for r in rows
+                    ),
+                )
+            )
             continue
 
         bullet = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", line)
@@ -157,8 +172,11 @@ def render(md):
                 stack.append(tag)
             # Continuation lines: an item wrapped across the source.
             body = [text]
-            while i + 1 < len(lines) and re.match(r"^\s+\S", lines[i + 1]) and \
-                    not re.match(r"^(\s*)([-*]|\d+\.)\s+", lines[i + 1]):
+            while (
+                i + 1 < len(lines)
+                and re.match(r"^\s+\S", lines[i + 1])
+                and not re.match(r"^(\s*)([-*]|\d+\.)\s+", lines[i + 1])
+            ):
                 i += 1
                 body.append(lines[i].strip())
             out.append("<li>%s</li>" % inline(" ".join(body)))
@@ -187,9 +205,13 @@ def render(md):
 
         close(stack)
         body = [line]
-        while i + 1 < len(lines) and lines[i + 1].strip() and \
-                not re.match(r"^(#{1,4} |```|\||>|---+$|\s*([-*]|\d+\.)\s)",
-                             lines[i + 1]):
+        while (
+            i + 1 < len(lines)
+            and lines[i + 1].strip()
+            and not re.match(
+                r"^(#{1,4} |```|\||>|---+$|\s*([-*]|\d+\.)\s)", lines[i + 1]
+            )
+        ):
             i += 1
             body.append(lines[i])
         out.append("<p>%s</p>" % inline(" ".join(body)))
@@ -200,6 +222,7 @@ def render(md):
 
 
 # ---- the site -------------------------------------------------------------
+
 
 def read_nav(path):
     """docs/nav: sections in column zero, pages indented under them."""
@@ -224,8 +247,10 @@ def sidebar(sections, pages, current):
         for f in files:
             href = f[:-3] + ".html"
             cls = ' class="here"' if f == current else ""
-            out.append('<li><a%s href="%s">%s</a></li>'
-                       % (cls, href, html.escape(pages[f]["title"])))
+            out.append(
+                '<li><a%s href="%s">%s</a></li>'
+                % (cls, href, html.escape(pages[f]["title"]))
+            )
         out.append("</ul>")
     out.append("</nav>")
     return "\n".join(out)
@@ -238,8 +263,10 @@ def page_toc(toc):
         return ""
     out = ['<nav class="toc"><h6>On this page</h6><ul>']
     for lvl, text, anchor in items:
-        out.append('<li class="l%d"><a href="#%s">%s</a></li>'
-                   % (lvl, anchor, html.escape(text)))
+        out.append(
+            '<li class="l%d"><a href="#%s">%s</a></li>'
+            % (lvl, anchor, html.escape(text))
+        )
     out.append("</ul></nav>")
     return "\n".join(out)
 
@@ -278,8 +305,10 @@ def build(outdir):
         body, title, toc = render(open(path).read())
         pages[f] = {"body": body, "title": title, "toc": toc}
 
-    stray = sorted(set(os.path.basename(p) for p in os.listdir(DOCS)
-                       if p.endswith(".md")) - set(order))
+    stray = sorted(
+        set(os.path.basename(p) for p in os.listdir(DOCS) if p.endswith(".md"))
+        - set(order)
+    )
     if stray:
         sys.exit("gen-docs: not in docs/nav: %s" % ", ".join(stray))
 
@@ -288,11 +317,21 @@ def build(outdir):
         p = pages[f]
         links = []
         if i:
-            links.append('<a class="prev" href="%s">← %s</a>'
-                         % (order[i - 1][:-3] + ".html", html.escape(pages[order[i - 1]]["title"])))
+            links.append(
+                '<a class="prev" href="%s">← %s</a>'
+                % (
+                    order[i - 1][:-3] + ".html",
+                    html.escape(pages[order[i - 1]]["title"]),
+                )
+            )
         if i + 1 < len(order):
-            links.append('<a class="next" href="%s">%s →</a>'
-                         % (order[i + 1][:-3] + ".html", html.escape(pages[order[i + 1]]["title"])))
+            links.append(
+                '<a class="next" href="%s">%s →</a>'
+                % (
+                    order[i + 1][:-3] + ".html",
+                    html.escape(pages[order[i + 1]]["title"]),
+                )
+            )
         section = next(name for name, files in sections if f in files)
         out = SHELL.format(
             title=html.escape(p["title"] + (" — sl0ppty" if f != "index.md" else "")),
@@ -300,7 +339,8 @@ def build(outdir):
             sidebar=sidebar(sections, pages, f),
             body=p["body"],
             prevnext='<div class="prevnext">%s</div>' % "".join(links) if links else "",
-            toc=page_toc(p["toc"]))
+            toc=page_toc(p["toc"]),
+        )
         with open(os.path.join(outdir, f[:-3] + ".html"), "w") as fh:
             fh.write(out)
 

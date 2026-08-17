@@ -7,6 +7,7 @@ state, so what is worth checking is that it survives the layout being
 recomputed, that there is always a way back, and that it does not invent a
 state with nothing on screen.
 """
+
 import os
 import sys
 import tempfile
@@ -48,8 +49,9 @@ def bar_entries(s):
     y = bar_row(s)
     if y is None:
         return []
-    return [h for h in s.snapshot().hits
-            if h["y"] == y and h["action"].startswith("focus:")]
+    return [
+        h for h in s.snapshot().hits if h["y"] == y and h["action"].startswith("focus:")
+    ]
 
 
 def minimize_focused(s):
@@ -65,14 +67,18 @@ def test_minimising_takes_a_pane_out_of_the_layout():
         before = max(p["w"] for p in open_panes(s))
 
         minimize_focused(s)
-        check("one pane is gone from the layout", len(put_away(s)) == 1,
-              str(here(s)))
-        check("and the other took the space back",
-              open_panes(s)[0]["w"] > before, str(here(s)))
-        check("it is listed on the bar", len(bar_entries(s)) == 1,
-              str(bar_entries(s)))
-        check("which sits below the panes",
-              bar_entries(s)[0]["y"] == bar_row(s), str(bar_entries(s)))
+        check("one pane is gone from the layout", len(put_away(s)) == 1, str(here(s)))
+        check(
+            "and the other took the space back",
+            open_panes(s)[0]["w"] > before,
+            str(here(s)),
+        )
+        check("it is listed on the bar", len(bar_entries(s)) == 1, str(bar_entries(s)))
+        check(
+            "which sits below the panes",
+            bar_entries(s)[0]["y"] == bar_row(s),
+            str(bar_entries(s)),
+        )
 
 
 def test_the_bar_is_one_row_however_many_are_put_away():
@@ -93,12 +99,15 @@ def test_the_bar_is_one_row_however_many_are_put_away():
         three = open_panes(s)[0]["h"]
 
         check("three are put away", len(put_away(s)) == 3, str(here(s)))
-        check("all three are listed", len(bar_entries(s)) == 3,
-              str(bar_entries(s)))
-        check("and the survivor is no shorter than with one put away",
-              three == one, f"{one} -> {three}")
-        check("because the bar was one row either way", entries_one == 1,
-              str(entries_one))
+        check("all three are listed", len(bar_entries(s)) == 3, str(bar_entries(s)))
+        check(
+            "and the survivor is no shorter than with one put away",
+            three == one,
+            f"{one} -> {three}",
+        )
+        check(
+            "because the bar was one row either way", entries_one == 1, str(entries_one)
+        )
 
 
 def test_clicking_an_entry_brings_that_pane_back():
@@ -111,16 +120,19 @@ def test_clicking_an_entry_brings_that_pane_back():
         minimize_focused(s)
         gone = put_away(s)[0]["id"]
         e = [h for h in bar_entries(s) if h["action"] == f"focus:{gone}"]
-        check("the entry names the pane it stands for", len(e) == 1,
-              str(bar_entries(s)))
+        check(
+            "the entry names the pane it stands for", len(e) == 1, str(bar_entries(s))
+        )
         if not e:
             return
         s.click(e[0]["x"] + 1, e[0]["y"])
         s.settle(20)
         check("clicking it restores the pane", put_away(s) == [], str(here(s)))
-        check("and the layout is the one it left",
-              sorted((p["x"], p["w"]) for p in open_panes(s)) == layout_before,
-              str(here(s)))
+        check(
+            "and the layout is the one it left",
+            sorted((p["x"], p["w"]) for p in open_panes(s)) == layout_before,
+            str(here(s)),
+        )
 
 
 def test_focusing_it_by_any_route_brings_it_back():
@@ -135,8 +147,11 @@ def test_focusing_it_by_any_route_brings_it_back():
 
         s.api("focus", id=gone)
         s.settle(20)
-        check("focusing it over the control API restores it",
-              put_away(s) == [], str(here(s)))
+        check(
+            "focusing it over the control API restores it",
+            put_away(s) == [],
+            str(here(s)),
+        )
 
 
 def test_it_will_not_leave_the_tab_empty():
@@ -144,18 +159,19 @@ def test_it_will_not_leave_the_tab_empty():
         s.settle(20)
         check("one pane to start", len(here(s)) == 1, str(here(s)))
         minimize_focused(s)
-        check("minimising the only pane is refused", put_away(s) == [],
-              str(here(s)))
-        check("and it says why", "nothing else" in s.snapshot().screen(),
-              repr(s.snapshot().screen()[-200:]))
+        check("minimising the only pane is refused", put_away(s) == [], str(here(s)))
+        check(
+            "and it says why",
+            "nothing else" in s.snapshot().screen(),
+            repr(s.snapshot().screen()[-200:]),
+        )
 
         s.api("split", dir="cols")
         s.settle(20)
         minimize_focused(s)
         check("with two, one can go", len(put_away(s)) == 1, str(here(s)))
         minimize_focused(s)
-        check("but the last one standing cannot", len(put_away(s)) == 1,
-              str(here(s)))
+        check("but the last one standing cannot", len(put_away(s)) == 1, str(here(s)))
 
 
 def test_the_button_minimises_that_pane():
@@ -164,15 +180,17 @@ def test_the_button_minimises_that_pane():
         s.api("split", dir="cols")
         s.settle(20)
         target = here(s)[0]["id"]
-        b = [h for h in s.snapshot().hits
-             if h["action"] == f"minimize:{target}"]
+        b = [h for h in s.snapshot().hits if h["action"] == f"minimize:{target}"]
         check("a pane's frame carries a minimise button", len(b) == 1, str(b))
         if not b:
             return
         s.click(b[0]["x"] + 1, b[0]["y"])
         s.settle(20)
-        check("clicking it puts that pane away",
-              [p["id"] for p in put_away(s)] == [target], str(here(s)))
+        check(
+            "clicking it puts that pane away",
+            [p["id"] for p in put_away(s)] == [target],
+            str(here(s)),
+        )
 
 
 def test_it_has_no_say_once_the_tab_is_a_list():
@@ -189,13 +207,19 @@ def test_it_has_no_say_once_the_tab_is_a_list():
         s.settle(20)
         rows = here(s)
         check("the tab is a list", any(p["hidden"] for p in rows), str(rows))
-        check("and every pane is in it, minimised or not",
-              all(p["w"] > 1 for p in rows), str(rows))
+        check(
+            "and every pane is in it, minimised or not",
+            all(p["w"] > 1 for p in rows),
+            str(rows),
+        )
 
         s.resize(90, 20)
         s.settle(20)
-        check("coming back, it is put away again and not lost",
-              len(put_away(s)) == 1 and len(open_panes(s)) == 1, str(here(s)))
+        check(
+            "coming back, it is put away again and not lost",
+            len(put_away(s)) == 1 and len(open_panes(s)) == 1,
+            str(here(s)),
+        )
 
 
 def test_zoom_hides_the_bar():
@@ -208,12 +232,18 @@ def test_zoom_hides_the_bar():
         check("a bar to start", len(bar_entries(s)) == 1, str(bar_entries(s)))
         s.send(r"\x01z")
         s.settle(20)
-        check("zooming shows one pane and nothing else, bar included",
-              bar_entries(s) == [], str(bar_entries(s)))
+        check(
+            "zooming shows one pane and nothing else, bar included",
+            bar_entries(s) == [],
+            str(bar_entries(s)),
+        )
         s.send(r"\x01z")
         s.settle(20)
-        check("and unzooming gives the bar back", len(bar_entries(s)) == 1,
-              str(bar_entries(s)))
+        check(
+            "and unzooming gives the bar back",
+            len(bar_entries(s)) == 1,
+            str(bar_entries(s)),
+        )
 
 
 if __name__ == "__main__":

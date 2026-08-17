@@ -6,9 +6,21 @@ tests/test_screen.py, where it runs deterministically through the headless
 driver. What is left here is the part that only exists with a real tty: raw
 mode, reading stdin, and the prefix key.
 """
-import os, pty, uuid, select, struct, sys, termios, time, fcntl, signal
 
-BIN = os.environ.get("SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty"))
+import fcntl
+import os
+import pty
+import select
+import signal
+import struct
+import sys
+import termios
+import time
+import uuid
+
+BIN = os.environ.get(
+    "SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty")
+)
 INNER = ["--", "/bin/sh", "-c", "stty raw -echo; cat -v"]
 
 fails = 0
@@ -52,7 +64,9 @@ def main():
 
     os.write(fd, b"\x1b[1;5A")
     out = drain(fd).decode("utf-8", "replace")
-    check("a key typed at a real tty reaches the pane", "^[[1;5A" in out, repr(out[-60:]))
+    check(
+        "a key typed at a real tty reaches the pane", "^[[1;5A" in out, repr(out[-60:])
+    )
 
     os.write(fd, b"\x01g")  # prefix + a key that is bound to nothing
     out = drain(fd)

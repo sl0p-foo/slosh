@@ -4,6 +4,7 @@
 The point of the whole milestone is that the session outlives the client, so
 the assertions are about what survives: content, layout, and the process.
 """
+
 import fcntl
 import os
 import pty
@@ -16,7 +17,10 @@ import termios
 import time
 import uuid
 
-BIN = os.environ.get("SL0PPTY_BIN", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"))
+BIN = os.environ.get(
+    "SL0PPTY_BIN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"),
+)
 
 fails = 0
 
@@ -62,8 +66,9 @@ def drain(fd, idle=0.3, limit=3.0):
 
 
 def control(name, line):
-    out = subprocess.run([BIN, "-s", name, "cmd", line],
-                         capture_output=True, text=True, timeout=10)
+    out = subprocess.run(
+        [BIN, "-s", name, "cmd", line], capture_output=True, text=True, timeout=10
+    )
     return out.stdout.strip()
 
 
@@ -88,21 +93,30 @@ def main():
     drain(fd)
     os.write(fd, b"marker-alpha")
     out = drain(fd)
-    check("a session starts and shows typed text", b"marker-alpha" in out,
-          repr(out[-80:]))
+    check(
+        "a session starts and shows typed text", b"marker-alpha" in out, repr(out[-80:])
+    )
 
-    check("the session is listed as running",
-          name in subprocess.run([BIN, "ls"], capture_output=True, text=True).stdout,
-          "")
+    check(
+        "the session is listed as running",
+        name in subprocess.run([BIN, "ls"], capture_output=True, text=True).stdout,
+        "",
+    )
 
     # --- split, so the layout is worth preserving -----------------------
     os.write(fd, b"\x01\\")
     drain(fd)
     panes_before = control(name, "panes")
-    check("control socket answers while attached", panes_before.startswith("["),
-          panes_before[:60])
-    check("the split is visible to the control socket",
-          panes_before.count('"id"') == 2, panes_before[:120])
+    check(
+        "control socket answers while attached",
+        panes_before.startswith("["),
+        panes_before[:60],
+    )
+    check(
+        "the split is visible to the control socket",
+        panes_before.count('"id"') == 2,
+        panes_before[:120],
+    )
 
     # --- probes must not disturb the client -----------------------------
     # Regression: `ls` connects to check liveness. When a connection counted
@@ -118,8 +132,7 @@ def main():
 
     os.write(fd, b"-still-here")
     out = drain(fd)
-    check("the client survived 40 connections", b"still-here" in out,
-          repr(out[-80:]))
+    check("the client survived 40 connections", b"still-here" in out, repr(out[-80:]))
 
     # --- detach ---------------------------------------------------------
     os.write(fd, b"\x01d")
@@ -130,24 +143,32 @@ def main():
     # --- the session must still be there --------------------------------
     time.sleep(0.2)
     panes_after = control(name, "panes")
-    check("the session outlives its client", panes_after.startswith("["),
-          panes_after[:60])
-    check("the layout survived the detach",
-          panes_after.count('"id"') == 2, panes_after[:120])
+    check(
+        "the session outlives its client", panes_after.startswith("["), panes_after[:60]
+    )
+    check(
+        "the layout survived the detach",
+        panes_after.count('"id"') == 2,
+        panes_after[:120],
+    )
 
     snap = control(name, "snapshot text")
-    check("pane content survived the detach", "marker-alpha" in snap,
-          repr(snap[:120]))
-    check("a detached session can still be driven",
-          control(name, "raw \\r\\ntyped-while-detached") == ""
-          and "typed-while-detached" in control(name, "snapshot text"),
-          repr(control(name, "snapshot text")[:200]))
+    check("pane content survived the detach", "marker-alpha" in snap, repr(snap[:120]))
+    check(
+        "a detached session can still be driven",
+        control(name, "raw \\r\\ntyped-while-detached") == ""
+        and "typed-while-detached" in control(name, "snapshot text"),
+        repr(control(name, "snapshot text")[:200]),
+    )
 
     # --- reattach -------------------------------------------------------
     pid2, fd2 = attach(name)
     out = drain(fd2)
-    check("reattaching repaints the whole screen", b"marker-alpha" in out,
-          repr(out[-120:]))
+    check(
+        "reattaching repaints the whole screen",
+        b"marker-alpha" in out,
+        repr(out[-120:]),
+    )
     check("reattached client can still type", True)
     os.write(fd2, b"-beta")
     out = drain(fd2)
@@ -157,8 +178,11 @@ def main():
     pid3, fd3 = attach(name)
     drain(fd3)
     tail = drain(fd2, idle=0.2, limit=2.0)
-    check("the displaced client is told it was replaced",
-          b"replaced" in tail or wait_gone(pid2, 1.0), repr(tail[-60:]))
+    check(
+        "the displaced client is told it was replaced",
+        b"replaced" in tail or wait_gone(pid2, 1.0),
+        repr(tail[-60:]),
+    )
 
     # --- closing the last pane ends the session -------------------------
     os.write(fd3, b"\x01x")  # close pane 2

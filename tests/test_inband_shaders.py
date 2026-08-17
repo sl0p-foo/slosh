@@ -9,6 +9,7 @@ colour pass and editing a file to guess at one.
 The chain is the config's own syntax, and that is the property worth testing:
 what you arrive at by typing has to be a line you can paste.
 """
+
 import os
 import sys
 import tempfile
@@ -20,13 +21,13 @@ ST = "\\033\\\\"
 # A pane's command as a layout file writes it. KDL strings understand \e and have
 # no \033, and every quote inside one is escaped -- twice over for the ones that
 # have to survive as far as the chain parser.
-LAYOUT = r'''layout {
+LAYOUT = r"""layout {
     tab name="t" {
         pane command="/bin/sh -c \"stty raw -echo; printf '\\e]5577;1;shader;chrome;tint color=\\\"#ff0033\\\" amount=255\\x07'; exec cat\""
         pane command="/bin/sh -c \"stty raw -echo; exec cat\""
     }
 }
-'''
+"""
 
 
 def cfg(text):
@@ -50,8 +51,11 @@ def pane(*seqs, body="hello"):
     before I looked at what the pane was actually running.
     """
     emit = "".join("printf '%s';" % s.replace("%", "%%") for s in seqs)
-    return ['/bin/sh', '-c',
-            "printf '%s\\n'; stty raw -echo; %s exec cat -v" % (body, emit)]
+    return [
+        "/bin/sh",
+        "-c",
+        "printf '%s\\n'; stty raw -echo; %s exec cat -v" % (body, emit),
+    ]
 
 
 def staged(*stages, body="hello"):
@@ -71,11 +75,12 @@ def staged(*stages, body="hello"):
     for i, (seq, mark) in enumerate(stages):
         if i:
             parts.append("read -r _;")
-        parts.append("printf '%s'; printf '%s\\n';"
-                     % (seq.replace("%", "%%"), mark))
-    return ['/bin/sh', '-c',
-            "printf '%s\\n'; stty raw -echo; %s exec cat -v"
-            % (body, " ".join(parts))]
+        parts.append("printf '%s'; printf '%s\\n';" % (seq.replace("%", "%%"), mark))
+    return [
+        "/bin/sh",
+        "-c",
+        "printf '%s\\n'; stty raw -echo; %s exec cat -v" % (body, " ".join(parts)),
+    ]
 
 
 def frame(snap, p):
@@ -88,16 +93,25 @@ def replies(snap, p):
 
 def test_a_program_can_paint_its_own_frame():
     path = cfg("in_band_shaders true\n")
-    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
-                 cols=60, rows=9, config=path) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+        cols=60,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
         st = frame(snap, p)
-        check("the frame takes the colour the pane asked for",
-              st["fg"] == "#ff0033", str(st))
-        check("and the pane is told it was done",
-              "shader-reply;ok" in replies(snap, p),
-              repr(replies(snap, p)[:120]))
+        check(
+            "the frame takes the colour the pane asked for",
+            st["fg"] == "#ff0033",
+            str(st),
+        )
+        check(
+            "and the pane is told it was done",
+            "shader-reply;ok" in replies(snap, p),
+            repr(replies(snap, p)[:120]),
+        )
     os.unlink(path)
 
 
@@ -106,19 +120,32 @@ def test_the_contents_are_a_separate_chain():
     document: what it says replaces both, the way naming `shaders { }` in a config
     replaces the block rather than adding to it."""
     path = cfg("in_band_shaders true\n")
-    with Session(pane(osc('1;shader;chrome;'
-                          'tint where="content" color="#00ff00" amount=255; '
-                          'tint where="chrome" color="#ff0000" amount=255')),
-                 cols=60, rows=9, config=path) as s:
+    with Session(
+        pane(
+            osc(
+                "1;shader;chrome;"
+                'tint where="content" color="#00ff00" amount=255; '
+                'tint where="chrome" color="#ff0000" amount=255'
+            )
+        ),
+        cols=60,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
         body = snap.style_at(p["x"] + 1, p["y"] + 1)
-        check("the contents take the content entry",
-              body["fg"] == "#00ff00", str(body))
-        check("and the frame takes the chrome one",
-              frame(snap, p)["fg"] == "#ff0000", str(frame(snap, p)))
-        check("and both are counted", "1 chrome, 1 content" in replies(snap, p),
-              repr(replies(snap, p)[:160]))
+        check("the contents take the content entry", body["fg"] == "#00ff00", str(body))
+        check(
+            "and the frame takes the chrome one",
+            frame(snap, p)["fg"] == "#ff0000",
+            str(frame(snap, p)),
+        )
+        check(
+            "and both are counted",
+            "1 chrome, 1 content" in replies(snap, p),
+            repr(replies(snap, p)[:160]),
+        )
     os.unlink(path)
 
 
@@ -127,25 +154,44 @@ def test_a_document_replaces_what_it_does_not_mention():
     takes the contents pass away, because a document says everything this pane
     wears. It is what a config does, and the counts say it out loud."""
     path = cfg("in_band_shaders true\n")
-    with Session(staged((osc('1;shader;chrome;'
-                             'tint where="content" channel="bg" color="#00ff88" amount=255; '
-                             'tint where="chrome" color="#ff0033" amount=255'), "both"),
-                        (osc('1;shader;chrome;tint color="#ff0033" amount=255'), "one")),
-                 cols=64, rows=10, config=path) as s:
+    with Session(
+        staged(
+            (
+                osc(
+                    "1;shader;chrome;"
+                    'tint where="content" channel="bg" color="#00ff88" amount=255; '
+                    'tint where="chrome" color="#ff0033" amount=255'
+                ),
+                "both",
+            ),
+            (osc('1;shader;chrome;tint color="#ff0033" amount=255'), "one"),
+        ),
+        cols=64,
+        rows=10,
+        config=path,
+    ) as s:
         s.until_text("both")
         snap, p = s.snapshot(), s.pane()
-        check("both rects to start with",
-              (snap.style_at(p["content_x"] + 1, p["content_y"] + 1) or {}).get("bg")
-              == "#00ff88",
-              str(snap.style_at(p["content_x"] + 1, p["content_y"] + 1)))
+        check(
+            "both rects to start with",
+            (snap.style_at(p["content_x"] + 1, p["content_y"] + 1) or {}).get("bg")
+            == "#00ff88",
+            str(snap.style_at(p["content_x"] + 1, p["content_y"] + 1)),
+        )
         s.raw("\\n")
         s.until_text("one")
         snap = s.snapshot()
         body = snap.style_at(p["content_x"] + 1, p["content_y"] + 1)
-        check("a document with only a frame pass takes the other one off",
-              not body or body.get("bg") != "#00ff88", str(body))
-        check("and the frame still has its own", frame(snap, p)["fg"] == "#ff0033",
-              str(frame(snap, p)))
+        check(
+            "a document with only a frame pass takes the other one off",
+            not body or body.get("bg") != "#00ff88",
+            str(body),
+        )
+        check(
+            "and the frame still has its own",
+            frame(snap, p)["fg"] == "#ff0033",
+            str(frame(snap, p)),
+        )
     os.unlink(path)
 
 
@@ -155,29 +201,54 @@ def test_a_line_from_a_config_means_what_it_meant_there():
     pasted back. So a chrome-aimed request carrying a content entry sets the content
     chain, and says so."""
     path = cfg("in_band_shaders true\n")
-    with Session(pane(osc('1;shader;chrome;tint where="chrome" '
-                          'color="#0000ff" amount=255')),
-                 cols=64, rows=9, config=path) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint where="chrome" color="#0000ff" amount=255')),
+        cols=64,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
-        check("a pasted `where=chrome` entry lands on the chrome",
-              frame(snap, p)["fg"] == "#0000ff", str(frame(snap, p)))
-        check("and the count says so", "1 chrome, 0 content" in replies(snap, p),
-              repr(replies(snap, p)[:160]))
+        check(
+            "a pasted `where=chrome` entry lands on the chrome",
+            frame(snap, p)["fg"] == "#0000ff",
+            str(frame(snap, p)),
+        )
+        check(
+            "and the count says so",
+            "1 chrome, 0 content" in replies(snap, p),
+            repr(replies(snap, p)[:160]),
+        )
 
-    with Session(pane(osc('1;shader;chrome;tint where="content" channel="bg" '
-                          'color="#00ff88" amount=255')),
-                 cols=64, rows=9, config=path) as s:
+    with Session(
+        pane(
+            osc(
+                '1;shader;chrome;tint where="content" channel="bg" '
+                'color="#00ff88" amount=255'
+            )
+        ),
+        cols=64,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
-        check("one naming the other rect goes there, not nowhere",
-              (snap.style_at(p["content_x"] + 1, p["content_y"] + 1) or {}).get("bg")
-              == "#00ff88",
-              str(snap.style_at(p["content_x"] + 1, p["content_y"] + 1)))
-        check("...and the frame is left alone",
-              frame(snap, p)["fg"] != "#00ff88", str(frame(snap, p)))
-        check("...and the count says where it went",
-              "0 chrome, 1 content" in replies(snap, p), repr(replies(snap, p)[:160]))
+        check(
+            "one naming the other rect goes there, not nowhere",
+            (snap.style_at(p["content_x"] + 1, p["content_y"] + 1) or {}).get("bg")
+            == "#00ff88",
+            str(snap.style_at(p["content_x"] + 1, p["content_y"] + 1)),
+        )
+        check(
+            "...and the frame is left alone",
+            frame(snap, p)["fg"] != "#00ff88",
+            str(frame(snap, p)),
+        )
+        check(
+            "...and the count says where it went",
+            "0 chrome, 1 content" in replies(snap, p),
+            repr(replies(snap, p)[:160]),
+        )
     os.unlink(path)
 
 
@@ -189,19 +260,28 @@ def test_the_text_is_a_document_not_just_a_chain():
     cases = [
         ('tint color="#ff0033" amount=255', "1 chrome, 0 content"),
         ('shaders { tint color="#ff0033" amount=255 }', "1 chrome, 0 content"),
-        ('shaders { tint where="chrome" color="#ff0033" amount=255; '
-         'tint where="content" channel="bg" color="#00ff88" amount=255 }',
-         "1 chrome, 1 content"),
+        (
+            'shaders { tint where="chrome" color="#ff0033" amount=255; '
+            'tint where="content" channel="bg" color="#00ff88" amount=255 }',
+            "1 chrome, 1 content",
+        ),
     ]
     for text, want in cases:
-        with Session(pane(osc("1;shader;chrome;" + text)),
-                     cols=76, rows=9, config=path) as s:
+        with Session(
+            pane(osc("1;shader;chrome;" + text)), cols=76, rows=9, config=path
+        ) as s:
             s.until_text("shader-reply")
             snap, p = s.snapshot(), s.pane()
-            check("accepted: %s" % text[:34], want in replies(snap, p),
-                  repr(replies(snap, p)[:160]))
-            check("...and the frame took it",
-                  frame(snap, p)["fg"] == "#ff0033", str(frame(snap, p)))
+            check(
+                "accepted: %s" % text[:34],
+                want in replies(snap, p),
+                repr(replies(snap, p)[:160]),
+            )
+            check(
+                "...and the frame took it",
+                frame(snap, p)["fg"] == "#ff0033",
+                str(frame(snap, p)),
+            )
     os.unlink(path)
 
 
@@ -209,34 +289,50 @@ def test_several_entries_in_one_chain():
     """`;` separates entries, which is why the chain is the last field of the
     payload and is taken verbatim rather than split on."""
     path = cfg("in_band_shaders true\n")
-    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255; '
-                          'dim amount=120')),
-                 cols=60, rows=9, config=path) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint color="#ff0033" amount=255; dim amount=120')),
+        cols=60,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
-        check("a chain of two entries is accepted whole",
-              "shader-reply;ok" in replies(snap, p),
-              repr(replies(snap, p)[:120]))
+        check(
+            "a chain of two entries is accepted whole",
+            "shader-reply;ok" in replies(snap, p),
+            repr(replies(snap, p)[:120]),
+        )
         st = frame(snap, p)
-        check("and both ran: tinted, then dimmed off the tint",
-              st["fg"] != "#ff0033" and st["fg"] != "#ffffff", str(st))
+        check(
+            "and both ran: tinted, then dimmed off the tint",
+            st["fg"] != "#ff0033" and st["fg"] != "#ffffff",
+            str(st),
+        )
     os.unlink(path)
 
 
 def test_an_empty_chain_puts_the_pane_back():
     path = cfg("in_band_shaders true\n")
-    with Session(staged((osc('1;shader;chrome;tint color="#ff0033" amount=255'),
-                         "on"),
-                        (osc("1;shader;chrome;"), "off")),
-                 cols=60, rows=9, config=path) as s:
+    with Session(
+        staged(
+            (osc('1;shader;chrome;tint color="#ff0033" amount=255'), "on"),
+            (osc("1;shader;chrome;"), "off"),
+        ),
+        cols=60,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("on")
         painted = frame(s.snapshot(), s.pane())["fg"]
         s.raw("\\n")  # the cue for the next stage
         s.until_text("off")
         after = frame(s.snapshot(), s.pane())["fg"]
         check("the pane was painted", painted == "#ff0033", painted)
-        check("and an empty chain gives the frame back", after != painted,
-              "%s -> %s" % (painted, after))
+        check(
+            "and an empty chain gives the frame back",
+            after != painted,
+            "%s -> %s" % (painted, after),
+        )
     os.unlink(path)
 
 
@@ -246,10 +342,10 @@ def test_a_chain_that_does_not_read_is_refused_with_a_reason():
     rather than watching nothing happen."""
     path = cfg("in_band_shaders true\n")
     cases = [
-        ('1;shader;chrome;bloom amount=200', "unknown shader"),
+        ("1;shader;chrome;bloom amount=200", "unknown shader"),
         ('1;shader;chrome;tint amount="y +"', "bad amount"),
         ('1;shader;chrome;tint channel="blue"', "bad channel"),
-        ('1;shader;sideways;tint amount=200', "content or chrome"),
+        ("1;shader;sideways;tint amount=200", "content or chrome"),
         # A `;` left out: KDL reads the second name as a spare word on the first
         # entry, which is the one mistake this syntax makes easy to make.
         ('1;shader;chrome;tint color="#000000" spotlight', "unexpected argument"),
@@ -258,25 +354,32 @@ def test_a_chain_that_does_not_read_is_refused_with_a_reason():
         with Session(pane(osc(payload)), cols=76, rows=9, config=path) as s:
             s.until_text("shader-reply")
             out = replies(s.snapshot(), s.pane())
-            check("refused, and says why: %s" % want, want in out,
-                  repr(out[:200]))
+            check("refused, and says why: %s" % want, want in out, repr(out[:200]))
     os.unlink(path)
 
 
 def test_a_refused_chain_leaves_the_last_good_one_standing():
     path = cfg("in_band_shaders true\n")
-    with Session(staged((osc('1;shader;chrome;tint color="#ff0033" amount=255'),
-                         "good"),
-                        (osc("1;shader;chrome;nonesuch amount=10"), "bad")),
-                 cols=60, rows=9, config=path) as s:
+    with Session(
+        staged(
+            (osc('1;shader;chrome;tint color="#ff0033" amount=255'), "good"),
+            (osc("1;shader;chrome;nonesuch amount=10"), "bad"),
+        ),
+        cols=60,
+        rows=9,
+        config=path,
+    ) as s:
         s.until_text("good")
         before = frame(s.snapshot(), s.pane())["fg"]
         s.raw("\\n")
         s.until_text("bad")
         after = frame(s.snapshot(), s.pane())["fg"]
         check("the good chain ran", before == "#ff0033", before)
-        check("and a bad one does not undo it", before == after,
-              "%s -> %s" % (before, after))
+        check(
+            "and a bad one does not undo it",
+            before == after,
+            "%s -> %s" % (before, after),
+        )
     os.unlink(path)
 
 
@@ -284,26 +387,44 @@ def test_naming_no_rect_clears_both():
     """`shader;` with no rect is every rect: one exchange puts the whole pane
     back, rather than two that can leave it half done."""
     path = cfg("in_band_shaders true\n")
-    with Session(staged((osc('1;shader;chrome;'
-                             'tint where="chrome" color="#ff0033" amount=255; '
-                             'tint where="content" color="#ff0033" amount=255'),
-                         "painted"),
-                        (osc("1;shader;"), "bare")),
-                 cols=64, rows=10, config=path) as s:
+    with Session(
+        staged(
+            (
+                osc(
+                    "1;shader;chrome;"
+                    'tint where="chrome" color="#ff0033" amount=255; '
+                    'tint where="content" color="#ff0033" amount=255'
+                ),
+                "painted",
+            ),
+            (osc("1;shader;"), "bare"),
+        ),
+        cols=64,
+        rows=10,
+        config=path,
+    ) as s:
         s.until_text("painted")
         snap, p = s.snapshot(), s.pane()
-        check("both chains ran",
-              frame(snap, p)["fg"] == "#ff0033"
-              and snap.style_at(p["x"] + 1, p["y"] + 1)["fg"] == "#ff0033",
-              str(frame(snap, p)))
+        check(
+            "both chains ran",
+            frame(snap, p)["fg"] == "#ff0033"
+            and snap.style_at(p["x"] + 1, p["y"] + 1)["fg"] == "#ff0033",
+            str(frame(snap, p)),
+        )
         s.raw("\\n")
         s.until_text("bare")
         snap = s.snapshot()
         body = snap.style_at(p["x"] + 1, p["y"] + 1)
-        check("naming no rect takes the frame back",
-              frame(snap, p)["fg"] != "#ff0033", str(frame(snap, p)))
-        check("...and the contents with it", not body or body["fg"] != "#ff0033",
-              str(body))
+        check(
+            "naming no rect takes the frame back",
+            frame(snap, p)["fg"] != "#ff0033",
+            str(frame(snap, p)),
+        )
+        check(
+            "...and the contents with it",
+            not body or body["fg"] != "#ff0033",
+            str(body),
+        )
     os.unlink(path)
 
 
@@ -313,20 +434,29 @@ def test_it_can_be_cleared_from_outside_the_pane():
     anything there, because asking for a clean pane and getting one is not an
     error."""
     path = cfg("in_band_shaders true\n")
-    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
-                 cols=64, rows=10, config=path) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+        cols=64,
+        rows=10,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         p = s.pane()
         check("painted", frame(s.snapshot(), p)["fg"] == "#ff0033", "")
         first = s.api("clear-shaders", id=p["id"])
         s.settle(60)
         check("the control API clears it", first.get("cleared") == 1, str(first))
-        check("and the frame is the session's again",
-              frame(s.snapshot(), p)["fg"] != "#ff0033",
-              str(frame(s.snapshot(), p)))
+        check(
+            "and the frame is the session's again",
+            frame(s.snapshot(), p)["fg"] != "#ff0033",
+            str(frame(s.snapshot(), p)),
+        )
         again = s.api("clear-shaders", id=p["id"])
-        check("a second call says there was nothing to clear",
-              again.get("ok") and again.get("cleared") == 0, str(again))
+        check(
+            "a second call says there was nothing to clear",
+            again.get("ok") and again.get("cleared") == 0,
+            str(again),
+        )
     os.unlink(path)
 
 
@@ -335,23 +465,33 @@ def test_a_key_can_undo_what_a_pane_did_to_itself():
     but it has to work on a key, because a pane you cannot read is not a pane you
     want to go looking through a menu for."""
     path = cfg('in_band_shaders true\nkeys {\n  bind "z" "clear-shaders"\n}\n')
-    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
-                 cols=64, rows=10, config=path) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+        cols=64,
+        rows=10,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         p = s.pane()
         check("painted", frame(s.snapshot(), p)["fg"] == "#ff0033", "")
         s.key("z")
         s.settle(80)
         snap = s.snapshot()
-        check("the key clears it", frame(snap, p)["fg"] != "#ff0033",
-              str(frame(snap, p)))
-        check("and says so", "shaders cleared" in snap.screen(),
-              repr(snap.screen()[-160:]))
+        check(
+            "the key clears it", frame(snap, p)["fg"] != "#ff0033", str(frame(snap, p))
+        )
+        check(
+            "and says so",
+            "shaders cleared" in snap.screen(),
+            repr(snap.screen()[-160:]),
+        )
         s.key("z")
         s.settle(80)
-        check("pressing it again says there was nothing to undo",
-              "no shaders on this pane" in s.snapshot().screen(),
-              repr(s.snapshot().screen()[-160:]))
+        check(
+            "pressing it again says there was nothing to undo",
+            "no shaders on this pane" in s.snapshot().screen(),
+            repr(s.snapshot().screen()[-160:]),
+        )
     os.unlink(path)
 
 
@@ -360,38 +500,57 @@ def test_clearing_works_even_with_the_setting_off():
     was on, and the session reloaded with it off. The way out must not be the
     thing the setting controls."""
     path = cfg('in_band_shaders true\nkeys {\n  bind "z" "clear-shaders"\n}\n')
-    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
-                 cols=64, rows=10, config=path) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
+        cols=64,
+        rows=10,
+        config=path,
+    ) as s:
         s.until_text("shader-reply")
         p = s.pane()
-        check("painted while it was allowed",
-              frame(s.snapshot(), p)["fg"] == "#ff0033", "")
-        open(path, "w").write('in_band_shaders false\nkeys {\n  bind "z" "clear-shaders"\n}\n')
+        check(
+            "painted while it was allowed",
+            frame(s.snapshot(), p)["fg"] == "#ff0033",
+            "",
+        )
+        open(path, "w").write(
+            'in_band_shaders false\nkeys {\n  bind "z" "clear-shaders"\n}\n'
+        )
         s.api("reload")
         s.settle(60)
-        check("the paint survives the reload, being the pane's and not the file's",
-              frame(s.snapshot(), p)["fg"] == "#ff0033",
-              str(frame(s.snapshot(), p)))
+        check(
+            "the paint survives the reload, being the pane's and not the file's",
+            frame(s.snapshot(), p)["fg"] == "#ff0033",
+            str(frame(s.snapshot(), p)),
+        )
         s.key("z")
         s.settle(80)
-        check("and it can still be cleared",
-              frame(s.snapshot(), p)["fg"] != "#ff0033",
-              str(frame(s.snapshot(), p)))
+        check(
+            "and it can still be cleared",
+            frame(s.snapshot(), p)["fg"] != "#ff0033",
+            str(frame(s.snapshot(), p)),
+        )
     os.unlink(path)
 
 
 def test_it_is_off_unless_the_config_says_otherwise():
     """The D13 default. A program that tries gets told no, which is the part
     that matters: silence would look like a build without the feature."""
-    with Session(pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')),
-                 cols=70, rows=9) as s:
+    with Session(
+        pane(osc('1;shader;chrome;tint color="#ff0033" amount=255')), cols=70, rows=9
+    ) as s:
         s.until_text("shader-reply")
         snap, p = s.snapshot(), s.pane()
-        check("the frame is untouched", frame(snap, p)["fg"] != "#ff0033",
-              str(frame(snap, p)))
-        check("and the pane is told the session will not do it",
-              "in_band_shaders is off" in replies(snap, p),
-              repr(replies(snap, p)[:200]))
+        check(
+            "the frame is untouched",
+            frame(snap, p)["fg"] != "#ff0033",
+            str(frame(snap, p)),
+        )
+        check(
+            "and the pane is told the session will not do it",
+            "in_band_shaders is off" in replies(snap, p),
+            repr(replies(snap, p)[:200]),
+        )
 
 
 def test_a_pane_can_only_paint_itself():
@@ -404,18 +563,28 @@ def test_a_pane_can_only_paint_itself():
     """
     path = cfg("in_band_shaders true\n")
     lay = cfg(LAYOUT)
-    with Session(["/bin/sh", "-c", "exec cat"], cols=90, rows=12,
-                 config=path, layout=lay) as s:
-        s.until(lambda snap: any(
-            snap.style_at(q["x"], q["y"])["fg"] == "#ff0033" for q in s.panes()))
+    with Session(
+        ["/bin/sh", "-c", "exec cat"], cols=90, rows=12, config=path, layout=lay
+    ) as s:
+        s.until(
+            lambda snap: any(
+                snap.style_at(q["x"], q["y"])["fg"] == "#ff0033" for q in s.panes()
+            )
+        )
         snap = s.snapshot()
         panes = sorted(s.panes(), key=lambda q: q["x"])
         check("the layout gave two panes", len(panes) == 2, str(len(panes)))
         shouty, quiet = panes[0], panes[1]
-        check("the one that asked is painted",
-              frame(snap, shouty)["fg"] == "#ff0033", str(frame(snap, shouty)))
-        check("and the one beside it is untouched",
-              frame(snap, quiet)["fg"] != "#ff0033", str(frame(snap, quiet)))
+        check(
+            "the one that asked is painted",
+            frame(snap, shouty)["fg"] == "#ff0033",
+            str(frame(snap, shouty)),
+        )
+        check(
+            "and the one beside it is untouched",
+            frame(snap, quiet)["fg"] != "#ff0033",
+            str(frame(snap, quiet)),
+        )
     os.unlink(path)
     os.unlink(lay)
 
@@ -425,15 +594,19 @@ def test_an_expression_animates():
     the clock keeps the session painting without anything else happening."""
     path = cfg("in_band_shaders true\n")
     chain = 'tint color="#ff0033" amount="abs(t / 4 % 510 - 255)"'
-    with Session(pane(osc("1;shader;chrome;" + chain)),
-                 cols=60, rows=9, config=path) as s:
+    with Session(
+        pane(osc("1;shader;chrome;" + chain)), cols=60, rows=9, config=path
+    ) as s:
         s.until_text("shader-reply")
         seen = set()
         for _ in range(14):
             seen.add(frame(s.snapshot(), s.pane())["fg"])
             s.settle(60)
-        check("a time expression keeps the frame moving", len(seen) > 2,
-              str(sorted(seen)[:6]))
+        check(
+            "a time expression keeps the frame moving",
+            len(seen) > 2,
+            str(sorted(seen)[:6]),
+        )
     os.unlink(path)
 
 

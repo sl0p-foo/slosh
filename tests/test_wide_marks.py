@@ -10,6 +10,7 @@ Assertions here are on *columns*, taken from style runs rather than the text
 dump: the dump collapses a wide cell into one character, so measuring a python
 string is measuring the wrong thing and would have passed before the fix.
 """
+
 import json
 import os
 import subprocess
@@ -26,8 +27,8 @@ LAYOUT = """layout {
 }
 """
 
-NARROW = "\u2022"          # one column
-WIDE = "\U0001f514"        # bell emoji, two columns
+NARROW = "\u2022"  # one column
+WIDE = "\U0001f514"  # bell emoji, two columns
 CLUSTER = "\U0001f468\u200d\U0001f469\u200d\U0001f467"  # ZWJ family: 18 bytes
 
 
@@ -40,11 +41,25 @@ def run(mark, cols=100, rows=14):
     # mark claim", which means finding those columns without guessing.
     cfg.write('bell_mark "%s"\ntheme { bell "#00ff00" }\n' % mark)
     cfg.close()
-    p = subprocess.run([BIN, "--script", "--cols", str(cols), "--rows", str(rows),
-                        "--layout", lay.name, "--", "/bin/sh", "-c", "read x"],
-                       input=b"settle 250\npanes\nsnapshot json\n",
-                       capture_output=True, env={**os.environ,
-                                                 "SL0PPTY_CONFIG": cfg.name})
+    p = subprocess.run(
+        [
+            BIN,
+            "--script",
+            "--cols",
+            str(cols),
+            "--rows",
+            str(rows),
+            "--layout",
+            lay.name,
+            "--",
+            "/bin/sh",
+            "-c",
+            "read x",
+        ],
+        input=b"settle 250\npanes\nsnapshot json\n",
+        capture_output=True,
+        env={**os.environ, "SL0PPTY_CONFIG": cfg.name},
+    )
     os.unlink(lay.name)
     os.unlink(cfg.name)
     return p.stdout
@@ -70,11 +85,17 @@ def columns_claimed_by_the_mark(mark):
 
 
 def test_a_mark_claims_exactly_the_columns_it_draws_in():
-    for label, mark, want in (("narrow", NARROW, 1), ("wide", WIDE, 2),
-                              ("two characters", "!!", 2)):
+    for label, mark, want in (
+        ("narrow", NARROW, 1),
+        ("wide", WIDE, 2),
+        ("two characters", "!!", 2),
+    ):
         got = columns_claimed_by_the_mark(mark)
-        check("%s mark claims %d column(s)" % (label, want), got == want,
-              "claimed %d" % got)
+        check(
+            "%s mark claims %d column(s)" % (label, want),
+            got == want,
+            "claimed %d" % got,
+        )
 
 
 def test_the_mark_is_actually_drawn():
@@ -94,18 +115,19 @@ def test_no_mark_can_put_invalid_utf8_on_the_wire():
             ok = True
         except UnicodeDecodeError as e:
             ok = False
-            detail = repr(raw[max(0, e.start - 20):e.start + 12])
-        check("%s: output is valid utf-8" % label, ok,
-              detail if not ok else "")
+            detail = repr(raw[max(0, e.start - 20) : e.start + 12])
+        check("%s: output is valid utf-8" % label, ok, detail if not ok else "")
 
 
 def test_widths_come_from_the_terminals_own_table():
     """Not a table of our own: the same one lib-vt uses for pane content, so
     chrome and content cannot disagree about how wide something is."""
     src = open(os.path.join(os.path.dirname(__file__), "..", "src", "screen.c")).read()
-    check("width comes from lib-vt",
-          "ghostty_unicode_grapheme_width" in src,
-          "screen.c is measuring text some other way")
+    check(
+        "width comes from lib-vt",
+        "ghostty_unicode_grapheme_width" in src,
+        "screen.c is measuring text some other way",
+    )
 
 
 for name, fn in sorted(list(globals().items())):

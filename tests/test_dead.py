@@ -10,6 +10,7 @@ anything: run it again, or close it.
 Buttons are found through the hit list rather than by column, because where
 they land is the frame's business and not this test's.
 """
+
 import sys
 import tempfile
 
@@ -21,9 +22,11 @@ from harness import Session, check, report
 SHELL = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; read x']
 LIVES = SHELL
 # The same, having painted a known non-default colour into its own content.
-GREEN = ["/bin/sh", "-c",
-         'printf "\\033]2;p\\007"; printf "\\033[38;2;0;255;0mBLOCK\\033[0m\\n"; '
-         'read x']
+GREEN = [
+    "/bin/sh",
+    "-c",
+    'printf "\\033]2;p\\007"; printf "\\033[38;2;0;255;0mBLOCK\\033[0m\\n"; read x',
+]
 DONE = "q\\n"  # the line those two are waiting for
 
 
@@ -51,8 +54,7 @@ WAITS_CMD = "printf '\\033]2;w\\007'; read x"
 
 
 def commanded_and_shell(command):
-    return cfg('layout {\n  tab {\n    pane command="%s"\n    pane\n  }\n}\n'
-               % command)
+    return cfg('layout {\n  tab {\n    pane command="%s"\n    pane\n  }\n}\n' % command)
 
 
 def hit(snap, action):
@@ -82,8 +84,11 @@ def test_it_stays_and_says_why():
         check("the pane is still there", len(s.panes()) == 1, str(s.panes()))
         check("and the session with it", s.alive())
         check("what it printed is still on screen", "mark-one" in snap.screen())
-        check("the backlog says it exited",
-              "[process exited: status 3]" in snap.screen(), snap.screen())
+        check(
+            "the backlog says it exited",
+            "[process exited: status 3]" in snap.screen(),
+            snap.screen(),
+        )
         check("the frame says so too", "exited: status 3" in snap.screen())
 
         check("json calls it dead", pane["alive"] is False, str(pane))
@@ -99,14 +104,20 @@ def test_it_says_what_it_ran():
         snap = s.until_text("[process exited")
         screen = snap.screen()
         check("the backlog names the command", "[ran: " in screen, screen)
-        check("and it is the command that was given",
-              "echo mark-one; exit 3" in screen, screen)
+        check(
+            "and it is the command that was given",
+            "echo mark-one; exit 3" in screen,
+            screen,
+        )
 
         # Above, not below: the exit line is the last word on the run.
         lines = [i for i, l in enumerate(snap.text) if "[ran: " in l]
         exits = [i for i, l in enumerate(snap.text) if "[process exited" in l]
-        check("it sits above how it ended", lines and exits and lines[0] < exits[0],
-              "%s vs %s" % (lines, exits))
+        check(
+            "it sits above how it ended",
+            lines and exits and lines[0] < exits[0],
+            "%s vs %s" % (lines, exits),
+        )
 
 
 def test_a_pane_with_no_command_has_none_to_name():
@@ -116,10 +127,14 @@ def test_a_pane_with_no_command_has_none_to_name():
         s.settle()
         s.raw(DONE)
         snap = s.until_text("[process exited")
-        check("it still says it exited", "[process exited" in snap.screen(),
-              snap.screen())
-        check("and says nothing about a command", "[ran: " not in snap.screen(),
-              snap.screen())
+        check(
+            "it still says it exited", "[process exited" in snap.screen(), snap.screen()
+        )
+        check(
+            "and says nothing about a command",
+            "[ran: " not in snap.screen(),
+            snap.screen(),
+        )
 
 
 def test_each_run_says_what_it_was():
@@ -134,26 +149,31 @@ def test_each_run_says_what_it_was():
             if snap.screen().count("[ran: ") >= 2:
                 break
             s.settle(30)
-        check("both runs are named", snap.screen().count("[ran: ") == 2,
-              snap.screen())
-        check("and both endings are", snap.screen().count("[process exited") == 2,
-              snap.screen())
+        check("both runs are named", snap.screen().count("[ran: ") == 2, snap.screen())
+        check(
+            "and both endings are",
+            snap.screen().count("[process exited") == 2,
+            snap.screen(),
+        )
 
 
 def test_a_clean_exit_is_not_dressed_up_as_a_failure():
     with Session(SHELL, cols=60, rows=12, layout=commanded("true")) as s:
         snap = s.until_text("[process exited")
-        check("no status number for 0",
-              "[process exited]" in snap.screen(), snap.screen())
+        check(
+            "no status number for 0", "[process exited]" in snap.screen(), snap.screen()
+        )
         check("and the code is reported as 0", s.pane()["exit_code"] == 0)
 
 
 def test_a_signal_is_named_as_one():
-    with Session(SHELL, cols=60, rows=12,
-                 layout=commanded("kill -9 $$")) as s:
+    with Session(SHELL, cols=60, rows=12, layout=commanded("kill -9 $$")) as s:
         snap = s.until_text("[process exited")
-        check("the backlog says signal",
-              "[process exited: signal 9]" in snap.screen(), snap.screen())
+        check(
+            "the backlog says signal",
+            "[process exited: signal 9]" in snap.screen(),
+            snap.screen(),
+        )
         check("and so does json", s.pane()["exit_signal"] == 9, str(s.pane()))
 
 
@@ -170,22 +190,28 @@ def test_the_frame_offers_the_two_verbs_that_are_left():
         check("re-run is clickable", rerun is not None, str(snap.hits))
         check("close is clickable", close is not None, str(snap.hits))
         # Rightmost is the one that must survive a narrow frame.
-        check("close sits to the right of re-run", close[0] > rerun[0],
-              f"{rerun} {close}")
+        check(
+            "close sits to the right of re-run", close[0] > rerun[0], f"{rerun} {close}"
+        )
 
-        check("the button is drawn where its hit is",
-              "[re-run]" in snap.line(rerun[1]), snap.line(rerun[1]))
+        check(
+            "the button is drawn where its hit is",
+            "[re-run]" in snap.line(rerun[1]),
+            snap.line(rerun[1]),
+        )
 
 
 def test_a_live_pane_keeps_its_own_buttons():
     """The dead row replaces the pane's OSC buttons; it must not pre-empt them."""
-    argv = ["/bin/sh", "-c",
-            'printf "\\033]5577;1;buttons;go:Go\\033\\\\"; stty raw -echo; cat']
+    argv = [
+        "/bin/sh",
+        "-c",
+        'printf "\\033]5577;1;buttons;go:Go\\033\\\\"; stty raw -echo; cat',
+    ]
     with Session(argv, cols=60, rows=12) as s:
         snap = s.until_text("[Go]")
         check("a live pane's own button is drawn", "[Go]" in snap.screen())
-        check("and no dead buttons are", "[re-run]" not in snap.screen(),
-              snap.screen())
+        check("and no dead buttons are", "[re-run]" not in snap.screen(), snap.screen())
 
 
 def test_rerun_runs_it_again_on_top_of_what_it_left():
@@ -199,14 +225,19 @@ def test_rerun_runs_it_again_on_top_of_what_it_left():
 
         snap = s.until(lambda sn: output_runs(sn) == 2)
         check("the command ran again", output_runs(snap) == 2, snap.screen())
-        check("the run that ended is still above it",
-              "[process exited: status 3]" in snap.screen(), snap.screen())
+        check(
+            "the run that ended is still above it",
+            "[process exited: status 3]" in snap.screen(),
+            snap.screen(),
+        )
         check("the pane kept its id", s.pane()["id"] == pane["id"])
 
         snap = s.until(lambda sn: sn.screen().count("[process exited") == 2)
-        check("and dying again says so again",
-              snap.screen().count("[process exited: status 3]") == 2,
-              snap.screen())
+        check(
+            "and dying again says so again",
+            snap.screen().count("[process exited: status 3]") == 2,
+            snap.screen(),
+        )
         check("with the buttons back", "[re-run]" in snap.screen())
 
 
@@ -228,27 +259,28 @@ def test_the_keyboard_can_do_it_too():
         s.until_text("[process exited")
         s.key("r")
         snap = s.until(lambda sn: output_runs(sn) == 2)
-        check("C-a r runs it again", output_runs(snap) == 2,
-              snap.screen())
+        check("C-a r runs it again", output_runs(snap) == 2, snap.screen())
 
 
 def test_a_live_pane_is_not_restarted_under_you():
-    """"Run it again" on something still running would mean killing it."""
+    """ "Run it again" on something still running would mean killing it."""
     with Session(LIVES, cols=60, rows=12) as s:
         s.until_text("p")
         s.key("r")
         s.settle()
         snap = s.snapshot()
-        check("it says no rather than doing it", "still running" in snap.screen(),
-              snap.screen())
+        check(
+            "it says no rather than doing it",
+            "still running" in snap.screen(),
+            snap.screen(),
+        )
         check("and the pane is untouched", s.pane()["alive"] is True)
 
 
 def test_closing_it_is_what_takes_it_away():
     # A commanded pane (its corpse is kept) beside a shell (which keeps the
     # session alive once the first one is closed).
-    with Session(SHELL, cols=80, rows=16,
-                 layout=commanded_and_shell(WAITS_CMD)) as s:
+    with Session(SHELL, cols=80, rows=16, layout=commanded_and_shell(WAITS_CMD)) as s:
         s.until_text("w")
         s.settle()
         panes = s.panes()
@@ -279,23 +311,26 @@ def test_a_shell_you_split_off_just_goes_away():
         check("two panes", len(s.panes()) == 2, str(s.panes()))
         s.raw(DONE)
         s.until(lambda sn: len(s.panes()) == 1)
-        check("the one you finished with is gone", len(s.panes()) == 1,
-              str(s.panes()))
-        check("and left no notice behind",
-              "[process exited" not in s.snapshot().screen(),
-              s.snapshot().screen())
+        check("the one you finished with is gone", len(s.panes()) == 1, str(s.panes()))
+        check(
+            "and left no notice behind",
+            "[process exited" not in s.snapshot().screen(),
+            s.snapshot().screen(),
+        )
 
 
 def test_a_commanded_pane_keeps_its_corpse():
     """The other half of the same rule, in one place so the pair is legible."""
-    with Session(SHELL, cols=80, rows=16,
-                 layout=commanded_and_shell(WAITS_CMD)) as s:
+    with Session(SHELL, cols=80, rows=16, layout=commanded_and_shell(WAITS_CMD)) as s:
         s.until_text("w")
         s.api("focus", id=s.panes()[0]["id"])
         s.raw(DONE)
         snap = s.until(lambda sn: "[process exited" in sn.screen())
-        check("a pane that was told to run something stays",
-              len(s.panes()) == 2, str(s.panes()))
+        check(
+            "a pane that was told to run something stays",
+            len(s.panes()) == 2,
+            str(s.panes()),
+        )
         check("and says so", "[process exited" in snap.screen(), snap.screen())
 
 
@@ -308,35 +343,41 @@ def test_keep_dead_all_keeps_shells_too():
         s.raw(DONE)
         snap = s.until(lambda sn: "[process exited" in sn.screen())
         check("both panes are still there", len(s.panes()) == 2, str(s.panes()))
-        check("the shell's corpse stayed", "[process exited" in snap.screen(),
-              snap.screen())
+        check(
+            "the shell's corpse stayed",
+            "[process exited" in snap.screen(),
+            snap.screen(),
+        )
 
 
 def test_keep_dead_none_keeps_nothing():
     conf = cfg('keep_dead "none"\n')
-    with Session(SHELL, cols=80, rows=16, config=conf,
-                 layout=commanded_and_shell(WAITS_CMD)) as s:
+    with Session(
+        SHELL, cols=80, rows=16, config=conf, layout=commanded_and_shell(WAITS_CMD)
+    ) as s:
         s.until_text("w")
         s.api("focus", id=s.panes()[0]["id"])
         s.raw(DONE)
         s.until(lambda sn: len(s.panes()) == 1)
-        check("even a commanded pane is reaped", len(s.panes()) == 1,
-              str(s.panes()))
+        check("even a commanded pane is reaped", len(s.panes()) == 1, str(s.panes()))
 
 
 def test_true_and_false_still_mean_what_they_used_to():
     """`keep_dead true` shipped once. A config that still says it should keep
     working rather than quietly changing behaviour."""
     for word, want in (("true", 2), ("false", 1)):
-        conf = cfg('keep_dead %s\n' % word)
+        conf = cfg("keep_dead %s\n" % word)
         with Session(SHELL, cols=80, rows=16, config=conf) as s:
             s.until_text("p")
             s.key("\\\\")
             s.settle()
             s.raw(DONE)
             s.until(lambda sn: len(s.panes()) == want)
-            check(f"keep_dead {word} leaves {want} pane(s)",
-                  len(s.panes()) == want, str(s.panes()))
+            check(
+                f"keep_dead {word} leaves {want} pane(s)",
+                len(s.panes()) == want,
+                str(s.panes()),
+            )
 
 
 def test_dying_recolours_what_the_pane_left_behind():
@@ -346,36 +387,38 @@ def test_dying_recolours_what_the_pane_left_behind():
     # Doubled on purpose: this lands in a KDL string, whose unescaping turns
     # `\\033` into `\033` for the shell. Written singly the shell gets `033[...`
     # and prints it, which looks like the colour "not working".
-    green_cmd = (r"printf '\\033]2;p\\007'; "
-                 r"printf '\\033[38;2;0;255;0mBLOCK\\033[0m\\n'; read x")
-    with Session(SHELL, cols=60, rows=12,
-                 layout=commanded(green_cmd)) as s:
+    green_cmd = (
+        r"printf '\\033]2;p\\007'; "
+        r"printf '\\033[38;2;0;255;0mBLOCK\\033[0m\\n'; read x"
+    )
+    with Session(SHELL, cols=60, rows=12, layout=commanded(green_cmd)) as s:
         snap = s.until_text("BLOCK")
         x, y = snap.find("BLOCK")
         live = snap.style_at(x, y)
-        check("a live pane keeps the colour it printed",
-              live and live.get("fg") == "#00ff00", str(live))
+        check(
+            "a live pane keeps the colour it printed",
+            live and live.get("fg") == "#00ff00",
+            str(live),
+        )
 
         s.raw(DONE)
         snap = s.until(lambda sn: "[process exited" in sn.screen())
         x, y = snap.find("BLOCK")
         dead = snap.style_at(x, y)
-        check("a dead one does not",
-              dead and dead.get("fg") != "#00ff00", str(dead))
+        check("a dead one does not", dead and dead.get("fg") != "#00ff00", str(dead))
 
 
 def test_a_flattened_tab_still_says_which_pane_is_over():
     """A collapsed header is all a flattened tab draws of a pane, and the
     shader pass does not reach one — so the words have to carry it."""
-    with Session(SHELL, cols=100, rows=20,
-                 layout=commanded_and_shell(WAITS_CMD)) as s:
+    with Session(SHELL, cols=100, rows=20, layout=commanded_and_shell(WAITS_CMD)) as s:
         s.until_text("w")
         s.api("focus", id=s.panes()[0]["id"])
-        s.raw(DONE)                      # the commanded one dies
+        s.raw(DONE)  # the commanded one dies
         s.until(lambda sn: "[process exited" in sn.screen())
-        s.api("focus", id=s.panes()[1]["id"])   # focus the live one, so the
-        s.settle()                              # dead one is what collapses
-        s.resize(46, 14)                 # no room for two: the tab flattens
+        s.api("focus", id=s.panes()[1]["id"])  # focus the live one, so the
+        s.settle()  # dead one is what collapses
+        s.resize(46, 14)  # no room for two: the tab flattens
         s.settle()
 
         snap = s.snapshot()
@@ -386,9 +429,11 @@ def test_a_flattened_tab_still_says_which_pane_is_over():
 def test_the_status_line_names_the_state():
     with Session(SHELL, cols=60, rows=12, layout=commanded(DIES_CMD)) as s:
         snap = s.until_text("[process exited")
-        check("the focused dead pane is called exited",
-              "exited: status 3" in snap.line(snap.rows - 2),
-              snap.line(snap.rows - 2))
+        check(
+            "the focused dead pane is called exited",
+            "exited: status 3" in snap.line(snap.rows - 2),
+            snap.line(snap.rows - 2),
+        )
 
 
 for name, fn in sorted(list(globals().items())):

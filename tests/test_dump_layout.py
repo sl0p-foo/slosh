@@ -9,6 +9,7 @@ right and rebuilds a different tree is exactly the failure this would have —
 the first version wrote `split=` on the children instead of on the node that
 has them, which loaded without complaint and produced the wrong shape.
 """
+
 import os
 import sys
 import tempfile
@@ -42,8 +43,19 @@ def write(text, suffix=".kdl"):
 
 def shape(s):
     """The structure, as something two sessions can be compared on."""
-    return [(p["tab"], p["x"], p["y"], p["w"], p["h"], p["purpose"],
-             p["suspended"], p["focused"]) for p in s.panes()]
+    return [
+        (
+            p["tab"],
+            p["x"],
+            p["y"],
+            p["w"],
+            p["h"],
+            p["purpose"],
+            p["suspended"],
+            p["focused"],
+        )
+        for p in s.panes()
+    ]
 
 
 def test_a_dump_reloads_into_the_same_session():
@@ -63,8 +75,11 @@ def test_a_dump_reloads_into_the_same_session():
         second.settle(60)
         after = shape(second)
 
-    check("the same panes, in the same places", before == after,
-          "\n  before %s\n  after  %s" % (before, after))
+    check(
+        "the same panes, in the same places",
+        before == after,
+        "\n  before %s\n  after  %s" % (before, after),
+    )
     os.unlink(lay)
     os.unlink(again)
 
@@ -81,8 +96,11 @@ def test_dumping_the_reload_gives_the_same_text():
     with Session(SH, cols=90, rows=20, layout=again) as second:
         second.settle(60)
         two = second.api("dump-layout")["kdl"]
-    check("a dump of a dump is the same dump", one == two,
-          "\n--- first\n%s\n--- second\n%s" % (one, two))
+    check(
+        "a dump of a dump is the same dump",
+        one == two,
+        "\n--- first\n%s\n--- second\n%s" % (one, two),
+    )
     os.unlink(lay)
     os.unlink(again)
 
@@ -103,7 +121,7 @@ def test_proportions_and_focus_come_back():
         s.key("\\\\")
         s.settle()
         for _ in range(3):
-            s.send(r"\x01L")     # push the boundary well off centre
+            s.send(r"\x01L")  # push the boundary well off centre
         s.settle()
         widths = [p["w"] for p in s.panes()]
         focused = [i for i, p in enumerate(s.panes()) if p["focused"]][0]
@@ -114,11 +132,16 @@ def test_proportions_and_focus_come_back():
     lay = write(dumped)
     with Session(SH, cols=100, rows=20, layout=lay) as s2:
         s2.settle(60)
-        check("the proportions survive", [p["w"] for p in s2.panes()] == widths,
-              f"{[p['w'] for p in s2.panes()]} vs {widths}")
-        check("and so does the focus",
-              [i for i, p in enumerate(s2.panes()) if p["focused"]] == [focused],
-              str([p["focused"] for p in s2.panes()]))
+        check(
+            "the proportions survive",
+            [p["w"] for p in s2.panes()] == widths,
+            f"{[p['w'] for p in s2.panes()]} vs {widths}",
+        )
+        check(
+            "and so does the focus",
+            [i for i, p in enumerate(s2.panes()) if p["focused"]] == [focused],
+            str([p["focused"] for p in s2.panes()]),
+        )
     os.unlink(lay)
 
 
@@ -126,18 +149,19 @@ def test_the_active_tab_survives():
     lay = write(LAYOUT)
     with Session(SH, cols=90, rows=20, layout=lay) as s:
         s.settle(60)
-        s.key(r"\t")             # C-a tab: to the second tab
+        s.key(r"\t")  # C-a tab: to the second tab
         s.settle()
         was = [t["index"] for t in s.tabs() if t["active"]]
         dumped = s.api("dump-layout")["kdl"]
-        check("the dump says which tab was active", "active=true" in dumped,
-              dumped)
+        check("the dump says which tab was active", "active=true" in dumped, dumped)
     again = write(dumped)
     with Session(SH, cols=90, rows=20, layout=again) as s2:
         s2.settle(60)
-        check("and it comes back on that tab",
-              [t["index"] for t in s2.tabs() if t["active"]] == was,
-              str(s2.tabs()))
+        check(
+            "and it comes back on that tab",
+            [t["index"] for t in s2.tabs() if t["active"]] == was,
+            str(s2.tabs()),
+        )
     os.unlink(lay)
     os.unlink(again)
 

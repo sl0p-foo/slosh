@@ -8,6 +8,7 @@ No pty, no sleeps beyond settling, no screen scraping: the compositor tells us
 what it composed. This is the harness DESIGN.md asks for, and everything from
 M1 on is tested through it.
 """
+
 import json
 import os
 import subprocess
@@ -17,7 +18,8 @@ import time
 # coverage build, say — without a second copy of the harness.
 BIN = os.environ.get(
     "SL0PPTY_BIN",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"))
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"),
+)
 
 
 class Snapshot:
@@ -55,11 +57,10 @@ class Snapshot:
         """One row of a pane's content area, chrome excluded."""
         y = pane["content_y"] + row
         x = pane["content_x"]
-        return self.text[y][x:x + pane["content_w"]]
+        return self.text[y][x : x + pane["content_w"]]
 
     def pane_text(self, pane):
-        return "\n".join(
-            self.pane_line(pane, r) for r in range(pane["content_h"]))
+        return "\n".join(self.pane_line(pane, r) for r in range(pane["content_h"]))
 
     def hit_at(self, x, y):
         """The action registered at a cell, last painted winning."""
@@ -73,8 +74,7 @@ class Snapshot:
 
 
 class Session:
-    def __init__(self, argv, cols=80, rows=24, config=None, env=None,
-                 layout=None):
+    def __init__(self, argv, cols=80, rows=24, config=None, env=None, layout=None):
         self.cols, self.rows = cols, rows
         environ = dict(os.environ)
         if config:

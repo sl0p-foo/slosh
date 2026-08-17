@@ -10,6 +10,7 @@ example, and nothing else would catch that.
 One session, reloaded per preset, because that is both fast and a fair
 exercise of the reload path -- which is how anyone will actually try these.
 """
+
 import glob
 import os
 import shutil
@@ -25,10 +26,14 @@ CONTRIB = os.path.join(HERE, "..", "contrib")
 FILES = sorted(glob.glob(os.path.join(CONTRIB, "shaders", "*.kdl")))
 
 # Prints a screenful of known-coloured text, then waits.
-SH = ["/bin/sh", "-c",
-      'printf "\\033]2;p\\007"; '
-      'i=0; while [ $i -lt 12 ]; do printf "%s\\n" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789; '
-      'i=$((i+1)); done; read x']
+SH = [
+    "/bin/sh",
+    "-c",
+    'printf "\\033]2;p\\007"; '
+    'i=0; while [ $i -lt 12 ]; do printf "%s\\n" ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789; '
+    "i=$((i+1)); done; read x",
+]
+
 
 # Every colour in the pane's content area, so "did anything change" is a
 # question about the whole pane rather than one lucky cell.
@@ -74,8 +79,11 @@ def test_every_preset_changes_the_pane():
             while now == base and time.monotonic() < deadline:
                 s.settle(20)
                 now = cells(s.snapshot(), s.pane())
-            check(f"{name} changes the pane", now != base,
-                  f"identical to unshaded: {now[:3]}")
+            check(
+                f"{name} changes the pane",
+                now != base,
+                f"identical to unshaded: {now[:3]}",
+            )
 
     os.unlink(cfg.name)
 
@@ -94,28 +102,34 @@ def test_a_few_of_them_do_the_specific_thing_they_claim():
     with Session(SH, cols=70, rows=18, config=cfg.name) as s:
         s.until_text("ABCDEF")
         pane = s.pane()
-        rows = [cells(s.snapshot(), pane)[r * pane["content_w"]]
-                for r in range(4)]
-        check("scanlines alternate row by row",
-              rows[0] == rows[2] and rows[1] == rows[3] and rows[0] != rows[1],
-              str(rows))
+        rows = [cells(s.snapshot(), pane)[r * pane["content_w"]] for r in range(4)]
+        check(
+            "scanlines alternate row by row",
+            rows[0] == rows[2] and rows[1] == rows[3] and rows[0] != rows[1],
+            str(rows),
+        )
 
     load("guides-indent-guides.kdl")
     with Session(SH, cols=70, rows=18, config=cfg.name) as s:
         s.until_text("ABCDEF")
         pane = s.pane()
         row = cells(s.snapshot(), pane)[:9]
-        check("indent guides mark every fourth column",
-              row[0] == row[4] == row[8] and row[0] != row[1] and row[1] == row[2],
-              str(row))
+        check(
+            "indent guides mark every fourth column",
+            row[0] == row[4] == row[8] and row[0] != row[1] and row[1] == row[2],
+            str(row),
+        )
 
     load("pane-states-unfocused.kdl")
     with Session(SH, cols=70, rows=18, config=cfg.name) as s:
         s.until_text("ABCDEF")
         pane = s.pane()
         flat = cells(s.snapshot(), pane)
-        check("a flat dim is the same everywhere",
-              len({c for c in flat[:40] if c}) == 1, str(flat[:6]))
+        check(
+            "a flat dim is the same everywhere",
+            len({c for c in flat[:40] if c}) == 1,
+            str(flat[:6]),
+        )
 
     os.unlink(cfg.name)
 
@@ -133,14 +147,20 @@ def test_the_tour_can_name_every_one_of_them():
     # accidentally right, which is not a test.
     for name in ("guides-torch", "torch", "matrix-rain"):
         out = subprocess.run([tour, name], capture_output=True, text=True, env=env)
-        check(f"the tour applies {name!r}",
-              out.returncode == 0 and "shaders {" in open(conf.name).read(),
-              (out.stdout + out.stderr).strip())
+        check(
+            f"the tour applies {name!r}",
+            out.returncode == 0 and "shaders {" in open(conf.name).read(),
+            (out.stdout + out.stderr).strip(),
+        )
 
-    out = subprocess.run([tour, "definitely-not-a-shader"],
-                         capture_output=True, text=True, env=env)
-    check("and refuses one it does not have", out.returncode != 0,
-          (out.stdout + out.stderr).strip())
+    out = subprocess.run(
+        [tour, "definitely-not-a-shader"], capture_output=True, text=True, env=env
+    )
+    check(
+        "and refuses one it does not have",
+        out.returncode != 0,
+        (out.stdout + out.stderr).strip(),
+    )
     os.unlink(conf.name)
 
 
@@ -150,10 +170,16 @@ def test_the_files_match_the_page_they_came_from():
     if not shutil.which("node"):
         print("SKIP no node: cannot check the generated files are current")
         return
-    out = subprocess.run([os.path.join(CONTRIB, "gen-shaders"), "--check"],
-                         capture_output=True, text=True)
-    check("contrib/shaders is current with contrib/shadertoy.html",
-          out.returncode == 0, (out.stderr or out.stdout).strip())
+    out = subprocess.run(
+        [os.path.join(CONTRIB, "gen-shaders"), "--check"],
+        capture_output=True,
+        text=True,
+    )
+    check(
+        "contrib/shaders is current with contrib/shadertoy.html",
+        out.returncode == 0,
+        (out.stderr or out.stdout).strip(),
+    )
 
 
 for name, fn in sorted(list(globals().items())):
