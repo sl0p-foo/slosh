@@ -14,6 +14,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import BIN, Session, check, report
@@ -70,21 +72,57 @@ def test_the_environment_it_promises_is_the_environment_panes_get():
     for var in ("SL0PPTY", "SL0PPTY_SESSION", "SL0PPTY_BIN"):
         check("the skill documents " + var, var in body, "missing " + var)
 
-    # SL0PPTY is set by pty.c for every pane, in every mode.
-    with Session(["/bin/sh", "-c", 'echo "V=[$SL0PPTY]"; read x']) as s:
-        s.settle(120)
-        check("a pane really is told it is in one",
-              "V=[1]" in s.snapshot().screen(), s.snapshot().screen())
-
-    # The other two are set by the server, which --script is not. The skill says
-    # so; this is that sentence being true.
-    with Session(["/bin/sh", "-c", 'echo "S=[$SL0PPTY_SESSION]"; read x']) as s:
-        s.settle(120)
-        check("and that --script has no session to name",
-              "S=[]" in s.snapshot().screen(), s.snapshot().screen())
+    # Started from an environment that already names a session and a binary,
+    # because that is the case the claim is *about*. This suite normally runs
+    # inside a pane, where both are set, so a driver that merely never sets them
+    # is indistinguishable from one that clears them -- until it hands its own
+    # panes the outer session's name and a script in there sends its commands
+    # somewhere else. Passing the lie in makes the difference visible from any
+    # shell, rather than only from one that happens to have them set.
+    lie = {"SL0PPTY_SESSION": "somebody-elses-session", "SL0PPTY_BIN": "/nope/x"}
+    probe = ["/bin/sh", "-c",
+             'echo "V=[$SL0PPTY] S=[$SL0PPTY_SESSION] B=[$SL0PPTY_BIN]"; read x']
+    with Session(probe, cols=120, rows=8, env=lie) as s:
+        s.until_text("V=[")
+        screen = s.snapshot().screen()
+        check("a pane really is told it is in one", "V=[1]" in screen, screen)
+        check("--script has no socket, so it names no session",
+              "S=[]" in screen, screen)
+        check("...and clears an inherited one rather than passing it on",
+              "somebody-elses-session" not in screen, screen)
+        check("the binary is the one that made the pane, not an inherited path",
+              "/nope/x" not in screen and "sl0ppty" in screen.split("B=[")[1],
+              screen)
     flat = " ".join(body.split())   # the file is wrapped; the claim is not
     check("which the skill says out loud",
           "unset under `--script`" in flat, "not documented")
+
+
+def test_a_real_session_names_itself_to_its_panes():
+    """The other half, and the reason `--script` clearing it is not just
+    `unsetenv` everywhere: a session *does* tell its panes which one it is, and it
+    is its own name even when it was started from inside another session."""
+    out = os.path.join(tempfile.mkdtemp(prefix="sl0ppty-env-"), "seen")
+    name = "envclaim-%d" % os.getpid()
+    env = dict(os.environ)
+    env["SL0PPTY_SESSION"] = "somebody-elses-session"
+    try:
+        subprocess.run([BIN, "-s", name, "--", "/bin/sh", "-c",
+                        'echo "S=[$SL0PPTY_SESSION]" > %s; read x' % out],
+                       capture_output=True, text=True, timeout=30, input="", env=env)
+        deadline = time.time() + 5
+        seen = ""
+        while time.time() < deadline:
+            if os.path.exists(out):
+                seen = open(out).read().strip()
+                if seen:
+                    break
+            time.sleep(0.05)
+        check("a pane in a real session is told which session that is",
+              seen == "S=[%s]" % name, repr(seen))
+    finally:
+        subprocess.run([BIN, "-s", name, "cmd", '{"cmd":"quit"}'],
+                       capture_output=True, text=True)
 
 
 def test_the_panes_fields_it_tells_agents_to_poll_are_real():

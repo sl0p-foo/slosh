@@ -32,12 +32,19 @@ Every pane gets these:
 | variable | means |
 |---|---|
 | `SL0PPTY=1` | this process is running inside a sl0ppty pane |
-| `SL0PPTY_SESSION` | the name of the session it is in |
+| `SL0PPTY_SESSION` | the name of the session it is in — empty under `--script` |
 | `SL0PPTY_BIN` | the binary that started it |
 
 Use `$SL0PPTY_BIN`, not `sl0ppty`: a session may have been started from a build
-tree, and `sl0ppty` is then not on your `PATH`. `SL0PPTY_SESSION` is unset under
-`--script`, which has no socket.
+tree, and `sl0ppty` is then not on your `PATH`. Both are *set* by the thing that
+made your pane, never inherited from whatever started it: `SL0PPTY_SESSION` is
+unset under `--script`, which has no socket, rather than carrying the name of a
+session the pane is not in. So empty means there is nothing to send commands to,
+and it is worth checking before you build a command line out of it:
+
+```bash
+[ -n "$SL0PPTY_SESSION" ] || { echo "no session to talk to"; exit 1; }
+```
 
 From *outside* a pane, list sessions:
 
@@ -55,7 +62,7 @@ distinguishable from a call that answered `{"ok":false}`.
 
 ```bash
 SL=${SL0PPTY_BIN:-sl0ppty}
-S="$SL -s ${SL0PPTY_SESSION:-main} cmd"
+S="$SL -s $SL0PPTY_SESSION cmd"   # empty means no session, not `main`
 
 $S '{"cmd":"panes"}'
 $S '{"cmd":"new-tab","name":"build"}'

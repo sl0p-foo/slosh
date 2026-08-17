@@ -18,6 +18,7 @@
 
 #include "app.h"
 #include "cmd.h"
+#include "server.h"
 
 #define MAX_PANES 64
 
@@ -59,6 +60,11 @@ static void settle(app_t *a, int quiet, screen_t *snap) {
 
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
                  int idle_ms, bool script, const char *layout) {
+  /* No socket, so no session name -- and explicitly not one inherited from a
+   * session this driver merely happens to have been started inside. See
+   * session_env(). */
+  session_env(NULL);
+
   app_t *a = app_new(argv, cols, rows);
   if (!a) {
     fprintf(stderr, "sl0ppty: cannot spawn pane\n");
