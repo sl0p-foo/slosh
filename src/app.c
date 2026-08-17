@@ -1127,8 +1127,21 @@ bool app_pump_fd(app_t *a, int fd) {
   if (was_alive && !pane_alive(f.found->pane)) {
     char words[64];
     exit_words(f.found->pane, words, sizeof words);
-    char note[96];
-    snprintf(note, sizeof note, "[process %s]", words);
+    /* What it ran, above how it ended. `[re-run]` is one button on a pane whose
+     * program is gone, and a pane that does not say what it would run makes
+     * pressing it a guess -- especially in a tab somebody else's layout built,
+     * where the command was never typed here in the first place. A pane running
+     * the session's shell has no command to name and gets the exit line alone.
+     *
+     * One note rather than two: `pane_note` puts a blank line either side of
+     * what it writes, so two calls would space the two halves apart as if they
+     * were about different things. */
+    const char *label = pane_label(f.found->pane);
+    char note[320];
+    if (label && *label)
+      snprintf(note, sizeof note, "[ran: %s]\r\n[process %s]", label, words);
+    else
+      snprintf(note, sizeof note, "[process %s]", words);
     pane_note(f.found->pane, note, DEAD_C);
   }
   return true;

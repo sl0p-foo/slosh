@@ -63,6 +63,17 @@ def hit(snap, action):
     return None
 
 
+def output_runs(snap, marker="mark-one"):
+    """How many times the command's *output* appears.
+
+    A dead pane now writes the command it ran into its own backlog, and
+    `echo mark-one` contains `mark-one` -- so a substring count over the screen
+    finds every run twice. The note is the line carrying `[ran:`; every other line
+    holding the marker is output. (Counted per line rather than by trimming the
+    text: each row still has the pane's frame border on the end of it.)"""
+    return sum(1 for l in snap.text if marker in l and "[ran:" not in l)
+
+
 def test_it_stays_and_says_why():
     with Session(SHELL, cols=60, rows=12, layout=commanded(DIES_CMD)) as s:
         snap = s.until_text("[process exited")
@@ -78,6 +89,55 @@ def test_it_stays_and_says_why():
         check("json calls it dead", pane["alive"] is False, str(pane))
         check("with the status", pane["exit_code"] == 3, str(pane))
         check("and no signal", pane["exit_signal"] == 0, str(pane))
+
+
+def test_it_says_what_it_ran():
+    """`[re-run]` is one button on a pane whose program is gone. Without the
+    command written down, pressing it is a guess -- and in a tab somebody else's
+    layout built, the command was never typed here to be scrolled back to."""
+    with Session(SHELL, cols=70, rows=12, layout=commanded(DIES_CMD)) as s:
+        snap = s.until_text("[process exited")
+        screen = snap.screen()
+        check("the backlog names the command", "[ran: " in screen, screen)
+        check("and it is the command that was given",
+              "echo mark-one; exit 3" in screen, screen)
+
+        # Above, not below: the exit line is the last word on the run.
+        lines = [i for i, l in enumerate(snap.text) if "[ran: " in l]
+        exits = [i for i, l in enumerate(snap.text) if "[process exited" in l]
+        check("it sits above how it ended", lines and exits and lines[0] < exits[0],
+              "%s vs %s" % (lines, exits))
+
+
+def test_a_pane_with_no_command_has_none_to_name():
+    """A shell that exited ran what the session runs. `[ran: /bin/sh]` would be
+    noise dressed as information."""
+    with Session(SHELL, cols=60, rows=10, config=cfg('keep_dead "all"\n')) as s:
+        s.settle()
+        s.raw(DONE)
+        snap = s.until_text("[process exited")
+        check("it still says it exited", "[process exited" in snap.screen(),
+              snap.screen())
+        check("and says nothing about a command", "[ran: " not in snap.screen(),
+              snap.screen())
+
+
+def test_each_run_says_what_it_was():
+    """Re-running keeps the previous run above (D14), so the two notes turn the
+    scrollback into a log of what ran rather than a pile of identical epitaphs."""
+    with Session(SHELL, cols=70, rows=16, layout=commanded(DIES_CMD)) as s:
+        s.until_text("[process exited")
+        s.api("rerun", id=0)
+        s.settle(120)
+        for _ in range(100):
+            snap = s.snapshot()
+            if snap.screen().count("[ran: ") >= 2:
+                break
+            s.settle(30)
+        check("both runs are named", snap.screen().count("[ran: ") == 2,
+              snap.screen())
+        check("and both endings are", snap.screen().count("[process exited") == 2,
+              snap.screen())
 
 
 def test_a_clean_exit_is_not_dressed_up_as_a_failure():
@@ -137,9 +197,8 @@ def test_rerun_runs_it_again_on_top_of_what_it_left():
         x, y = hit(snap, f"rerun:{pane['id']}")
         s.click(x, y)
 
-        snap = s.until(lambda sn: sn.screen().count("mark-one") == 2)
-        check("the command ran again",
-              snap.screen().count("mark-one") == 2, snap.screen())
+        snap = s.until(lambda sn: output_runs(sn) == 2)
+        check("the command ran again", output_runs(snap) == 2, snap.screen())
         check("the run that ended is still above it",
               "[process exited: status 3]" in snap.screen(), snap.screen())
         check("the pane kept its id", s.pane()["id"] == pane["id"])
@@ -157,9 +216,8 @@ def test_rerun_over_the_control_api():
         pane = s.pane()
         reply = s.api("rerun", id=pane["id"])
         check("the api runs it again", reply.get("ok") is True, str(reply))
-        snap = s.until(lambda sn: sn.screen().count("mark-one") == 2)
-        check("and it really ran", snap.screen().count("mark-one") == 2,
-              snap.screen())
+        snap = s.until(lambda sn: output_runs(sn) == 2)
+        check("and it really ran", output_runs(snap) == 2, snap.screen())
 
         reply = s.api("rerun", id=9999)
         check("an unknown pane is refused", reply.get("ok") is False, str(reply))
@@ -169,8 +227,8 @@ def test_the_keyboard_can_do_it_too():
     with Session(SHELL, cols=60, rows=20, layout=commanded(DIES_CMD)) as s:
         s.until_text("[process exited")
         s.key("r")
-        snap = s.until(lambda sn: sn.screen().count("mark-one") == 2)
-        check("C-a r runs it again", snap.screen().count("mark-one") == 2,
+        snap = s.until(lambda sn: output_runs(sn) == 2)
+        check("C-a r runs it again", output_runs(snap) == 2,
               snap.screen())
 
 

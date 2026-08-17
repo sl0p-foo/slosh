@@ -87,16 +87,25 @@ project you have not opened yet has no pane for the finder to match.
 Split off a shell, do something, type `exit`: it closes, like a terminal should.
 But a pane that was *told to run something* — from a [layout](layouts.md) or the
 [control API](scripting.md) — keeps what it printed when that something exits,
-with a line saying how it ended and two buttons:
+with two lines saying what ran and how it ended, and two buttons:
 
 ```
+ [ran: npm run dev]
+ [process exited: status 3]
 ╰ exited: status 3 ───────────────────────────────[re-run]─[close]─╯
 ```
 
-`[re-run]` (or `C-a r`) runs the same command again in the same pane, keeping
-the previous run above it in the scrollback. So a command that failed while you
-were looking elsewhere still has its error message when you get back, and a
-mistyped command in a fresh session no longer closes the session.
+**The command is written down because `[re-run]` is one button.** Without it,
+pressing it is a guess — most of all in a tab that a [project's
+layout](workspaces.md) built, where the command was never typed into that pane to
+be scrolled back to. A pane running the session's shell has no command to name
+and gets the exit line alone.
+
+`[re-run]` (or `C-a r`) runs the same command again in the same pane, keeping the
+previous run above it in the scrollback. So the two notes turn a pane you re-run
+into a log of what ran rather than a pile of identical epitaphs — and a command
+that failed while you were looking elsewhere still has its error message when you
+get back, while a mistyped command in a fresh session no longer closes it.
 
 Which panes stay is one setting, `keep_dead`: `commands` (the default), `all`,
 or `none`.
