@@ -51,9 +51,10 @@ selection, images and key encoding; everything above is ours.
 
 ## How it is formatted
 
-`clang-format`, with the config in `.clang-format`. `make fmt` applies it,
+`clang-format` for the C (`.clang-format`) and `ruff` for the Python
+(`ruff.toml`) -- imports sorted, then laid out. `make fmt` applies both,
 `make fmt-check` only reports, and `make hooks` installs a pre-commit hook that
-formats the C you staged so what lands in git is already formatted.
+formats what you staged, so what lands in git is already formatted.
 
 The base is LLVM, because that is what this code was written in by hand — two
 spaces, 80 columns, `char *p`, braces attached. The settings that differ from it
@@ -65,6 +66,20 @@ it to 17%, which is alignment and table packing.
 Comments are not reflowed. They are prose here, wrapped by hand, and sometimes the
 line breaks carry meaning — a paragraph, a list, a diagram of a pane. A comment
 that runs long is a thing for a person to fix.
+
+The Python is the opposite: left entirely at ruff's defaults. The C here was
+hand-formatted into a house style worth arguing for; the Python was not, and a
+formatter of that kind is only worth having when there is nothing left to argue
+about. Every knob turned would be an argument to have again later. It cost a 60%
+reformat of the test suite, once.
+
+**Python imports are sorted and C includes are not**, which is not an
+inconsistency. A C include order can be load-bearing -- `_GNU_SOURCE` ahead of the
+system headers, and a grouping somebody wrote by hand -- while Python import order
+is not. Where it genuinely is, a statement between the imports ends the block ruff
+will sort, and the tests lean on exactly that: `sys.path.insert(...)` sits between
+the standard library and `from harness import ...`, so the harness import cannot be
+hoisted above the line that makes it importable.
 
 The vendored terminal core is never formatted: it is pinned by commit (D12), and
 reformatting it would turn every re-vendor into a merge.

@@ -244,22 +244,30 @@ coverage: $(COV_DIR)/sl0ppty $(COV_UNITS) ## how much of the code the tests run
 	done
 	@contrib/coverage
 
-# The C in this tree, minus the vendored library: that one is pinned by commit
-# (D12) and reformatting it would turn every re-vendor into a merge.
-CSRC := $(shell git ls-files '*.c' '*.h' 2>/dev/null | grep -v '^vendor/')
+# Everything we format, minus the vendored library: that one is pinned by commit
+# (D12) and reformatting it would turn every re-vendor into a merge. The contrib
+# scripts are Python with no extension, so they are named rather than globbed.
+CSRC  := $(shell git ls-files '*.c' '*.h' 2>/dev/null | grep -v '^vendor/')
+PYSRC := $(shell git ls-files '*.py' 2>/dev/null | grep -v '^vendor/') \
+         contrib/coverage contrib/gen-docs contrib/shader-repl
 
-fmt: ## format the C in place (.clang-format)
+fmt: ## format the C and Python in place
 	$(Q)clang-format -i $(CSRC)
-	$(say) "  [FMT] $(words $(CSRC)) files"
+	$(Q)ruff check -q --select I --fix $(PYSRC)
+	$(Q)ruff format -q $(PYSRC)
+	$(say) "  [FMT] $(words $(CSRC)) C, $(words $(PYSRC)) Python"
 
-fmt-check: ## ...or just say which files are not formatted
+fmt-check: ## ...or just say what is not formatted
 	@bad=$$(for f in $(CSRC); do \
 	    clang-format "$$f" | cmp -s - "$$f" || echo "$$f"; \
 	  done); \
-	if [ -n "$$bad" ]; then \
-	  echo "not formatted:"; echo "$$bad" | sed 's/^/  /'; \
+	pybad=$$(ruff format -q --check $(PYSRC) 2>&1 | sed -n 's/^Would reformat: //p'; \
+	         ruff check -q --select I $(PYSRC) 2>/dev/null | sed -n 's/:.*//p' | sort -u); \
+	all=$$(printf '%s\n%s\n' "$$bad" "$$pybad" | sed '/^$$/d' | sort -u); \
+	if [ -n "$$all" ]; then \
+	  echo "not formatted:"; echo "$$all" | sed 's/^/  /'; \
 	  echo "run: make fmt"; exit 1; \
-	else echo "all $(words $(CSRC)) files formatted"; fi
+	else echo "all $(words $(CSRC)) C and $(words $(PYSRC)) Python files formatted"; fi
 
 hooks: ## install the pre-commit hook (formats staged C)
 	$(Q)git config core.hooksPath .githooks

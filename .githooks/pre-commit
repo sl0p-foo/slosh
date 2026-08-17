@@ -1,5 +1,8 @@
 #!/bin/sh
-# Format the C being committed, so what lands in git is already formatted.
+# Format the code being committed, so what lands in git is already formatted.
+#
+# C with clang-format (.clang-format), Python with ruff -- imports sorted, then
+# laid out (ruff.toml).
 #
 # Install with `make hooks`, which points `core.hooksPath` here. Hooks are not
 # versioned by git, so a hook in a repo has to be a file somebody opts into --
@@ -9,25 +12,48 @@
 # Skip a commit with `git commit --no-verify` when you mean to.
 set -e
 
-# Only what is staged, only C, and never the vendored tree: libghostty-vt is
-# somebody else's code, pinned by commit (D12), and reformatting it would turn
-# every future re-vendor into a merge.
-files=$(git diff --cached --name-only --diff-filter=ACMR \
-        | grep -E '\.[ch]$' | grep -v '^vendor/' || true)
+# Only what is staged, and never the vendored tree: libghostty-vt is somebody
+# else's code, pinned by commit (D12), and reformatting it would turn every
+# future re-vendor into a merge.
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -v '^vendor/' || true)
+c_files=$(printf '%s\n' "$staged" | grep -E '\.[ch]$' || true)
+py_files=$(printf '%s\n' "$staged" | grep -E '\.py$' || true)
+
+# ...plus the contrib scripts, which are Python with no extension on them.
+for f in $staged; do
+  case $f in *.*) continue ;; esac
+  if [ -f "$f" ] && head -1 "$f" | grep -q python; then
+    py_files=$(printf '%s\n%s' "$py_files" "$f")
+  fi
+done
+
+c_files=$(printf '%s\n' "$c_files" | sed '/^$/d')
+py_files=$(printf '%s\n' "$py_files" | sed '/^$/d')
+files=$(printf '%s\n%s\n' "$c_files" "$py_files" | sed '/^$/d')
 [ -n "$files" ] || exit 0
 
-if ! command -v clang-format >/dev/null 2>&1; then
-  echo "pre-commit: clang-format is not installed, and this commit touches C." >&2
-  echo "  install it (apt install clang-format / brew install clang-format)," >&2
-  echo "  or commit with --no-verify if you know what you are doing." >&2
+# Named together, so somebody setting up a machine installs both at once rather
+# than discovering the second one on their next commit.
+missing=""
+if [ -n "$c_files" ] && ! command -v clang-format >/dev/null 2>&1; then
+  missing="$missing clang-format"
+fi
+if [ -n "$py_files" ] && ! command -v ruff >/dev/null 2>&1; then
+  missing="$missing ruff"
+fi
+if [ -n "$missing" ]; then
+  echo "pre-commit: not installed:$missing" >&2
+  echo "  and this commit touches code they format." >&2
+  echo "    clang-format: apt install clang-format | brew install clang-format" >&2
+  echo "    ruff:         pip install ruff | brew install ruff" >&2
+  echo "  ...or commit with --no-verify if you know what you are doing." >&2
   exit 1
 fi
 
 # A file with unstaged changes is the one case where formatting in place is
-# dangerous: `clang-format -i` rewrites the *working tree*, and re-staging it
+# dangerous: the formatters rewrite the *working tree*, and re-staging afterwards
 # would commit work that was deliberately left out of the index. So say so and
-# stop, rather than quietly widening the commit somebody carefully built with
-# `git add -p`.
+# stop, rather than quietly widening a commit somebody built with `git add -p`.
 partial=""
 for f in $files; do
   if ! git diff --quiet -- "$f"; then partial="$partial $f"; fi
@@ -40,12 +66,20 @@ if [ -n "$partial" ]; then
   exit 1
 fi
 
-clang-format -i $files
+if [ -n "$c_files" ]; then
+  clang-format -i $c_files
+fi
+if [ -n "$py_files" ]; then
+  # Imports first, then layout: sorting can leave a line the formatter then wraps.
+  # `--select I` on the command line as well as in ruff.toml, so a stray `select`
+  # somewhere else cannot turn this hook into a linter that blocks commits over an
+  # unused variable.
+  ruff check -q --select I --fix $py_files
+  ruff format -q $py_files
+fi
 git add -- $files
 
-# Nothing is left to check: the files are formatted and staged. Said out loud
-# because a hook that changes your commit and does not mention it is a hook
-# people learn to distrust.
-changed=$(git diff --cached --name-only -- $files | tr '\n' ' ')
-[ -n "$changed" ] && echo "pre-commit: formatted$(printf '%s' " $changed" | sed 's/ *$//')"
+# Said out loud, because a hook that changes your commit without mentioning it is
+# a hook people learn to distrust.
+echo "pre-commit: formatted $(printf '%s' "$files" | tr '\n' ' ' | sed 's/ *$//')"
 exit 0

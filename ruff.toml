@@ -1,0 +1,36 @@
+# How the Python in this tree is formatted, and how its imports are ordered.
+# `make fmt` applies both, `make fmt-check` asks, and the pre-commit hook in
+# `.githooks/` does it for what you staged (`make hooks`).
+#
+# ruff rather than black: it is one static binary instead of a Python dependency
+# chain, it is fast enough that a pre-commit hook is free, and its formatter is
+# black's output -- so this is the ecosystem's formatting, not a dialect of it.
+#
+# Unlike the C side, this is left at the defaults. `.clang-format` argues with
+# LLVM in five places because the C here was hand-formatted into a house style
+# worth keeping; the Python was not, and a formatter of this kind is only worth
+# having if there is nothing left to argue about. Every knob turned here is an
+# argument somebody has to have again later.
+
+target-version = "py39"
+line-length = 88
+
+# The vendored terminal core is somebody else's tree, pinned by commit (D12), and
+# `.scratch/` is where experiments go to be untidy in peace.
+extend-exclude = ["vendor", ".scratch"]
+
+[lint]
+# Import sorting, and nothing else. `ruff check` can enforce a great deal more and
+# one day it might, but this hook's job is formatting: one that also refused a
+# commit over an unused variable would be a different feature, and not one anybody
+# asked for.
+#
+# Sorting imports is safe here in a way sorting C includes is not -- which is why
+# `.clang-format` says `SortIncludes: Never` and this does the opposite. A C
+# include order can be load-bearing (`_GNU_SOURCE` before the system headers, and
+# a grouping somebody wrote by hand); Python import order is not, and where it
+# genuinely is, a statement between the imports ends the block ruff will sort. The
+# test files rely on exactly that: `sys.path.insert(...)` sits between the standard
+# library and `from harness import ...`, so the harness import cannot be hoisted
+# above the line that makes it importable.
+select = ["I"]
