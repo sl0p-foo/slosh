@@ -1026,6 +1026,22 @@ bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps) {
 char *pane_selection_text(pane_t *p) {
   GhosttyTerminalSelectionFormatOptions opts =
       GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
+  /* Plain text, and both flags on: lib-vt documents this exact trio as the
+   * clipboard behaviour, and getting it wrong is invisible until somebody pastes.
+   *
+   * `unwrap` is the one that matters. A row boundary in the grid is not a
+   * newline in the text -- a line too long for the pane occupies two rows and is
+   * still one line -- so without this, copying a wrapped path or a wrapped URL
+   * pasted a `\n` into the middle of it. The newline came from how wide the pane
+   * happened to be, which is not a fact about what was copied. Hard newlines are
+   * untouched: lib-vt joins only the rows that are continuations.
+   *
+   * `emit` is set rather than left zero even though PLAIN *is* zero. This is the
+   * API where a zero means "whatever the enum happens to start with" (see
+   * DESIGN.md on ghostty_terminal_set), and a silent default is how the wrap flag
+   * came to be missing in the first place. */
+  opts.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+  opts.unwrap = true;
   opts.trim = true;
   uint8_t *ptr = NULL;
   size_t len = 0;

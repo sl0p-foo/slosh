@@ -307,6 +307,58 @@ def test_a_mouse_program_keeps_its_double_clicks():
               repr(s.api("clipboard")["text"]))
 
 
+# A line longer than the pane, so the terminal lays it across two rows. The
+# string itself contains no newline: where it breaks is a fact about how wide the
+# pane is, and nothing a paste should carry.
+WRAPPED = "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEE"
+
+
+def test_a_wrapped_line_is_copied_as_one_line():
+    """A row boundary in the grid is not a newline in the text. Copying a wrapped
+    path or URL used to paste a `\\n` into the middle of it, which is the kind of
+    wrong that is invisible until it reaches a shell."""
+    with Session(["/bin/sh", "-c", 'printf "%%s\\n" "%s"; read x' % WRAPPED],
+                 cols=40, rows=10) as s:
+        s.settle(200)
+        p = s.pane()
+        cx, cy = content(s, p)
+        check("the pane really did wrap it",
+              s.snapshot().pane_line(p, 1).strip().startswith("DDDD"),
+              repr(s.snapshot().pane_line(p, 1)))
+
+        select(s, cx, cy, cx + 15, cy + 1)
+        got = s.api("clipboard")["text"]
+        check("the copy has no newline in it", "\n" not in got, repr(got))
+        check("and it is the line that was printed", got == WRAPPED, repr(got))
+
+
+def test_real_newlines_are_still_newlines():
+    """The other half, and the one a fix for the first could easily break: rows
+    that are separate *lines* keep the boundaries between them."""
+    with Session(["/bin/sh", "-c", 'printf "one\\ntwo\\nthree\\n"; read x'],
+                 cols=40, rows=10) as s:
+        s.settle(200)
+        cx, cy = content(s)
+        select(s, cx, cy, cx + 4, cy + 2)
+        got = s.api("clipboard")["text"]
+        check("three lines come back as three lines", got == "one\ntwo\nthree",
+              repr(got))
+
+
+def test_a_word_that_straddles_the_wrap_is_still_one_word():
+    """Double-clicking the tail of a wrapped word selects the row's run, because a
+    word selection is a run of cells on one row. What it must not do is paste a
+    newline, which is the same bug in the other gesture."""
+    with Session(["/bin/sh", "-c", 'printf "%%s\\n" "%s"; read x' % WRAPPED],
+                 cols=40, rows=10) as s:
+        s.settle(200)
+        cx, cy = content(s)
+        dbl_click(s, cx + 2, cy)
+        got = s.api("clipboard")["text"]
+        check("no newline arrives with it", "\n" not in got, repr(got))
+        check("and it copied something", got != "", repr(got))
+
+
 def test_middle_click_pastes():
     # a pane that echoes, so a paste is visible; the eval-loop pane would try
     # to *run* what was pasted, which is a different (and worse) demonstration
@@ -394,6 +446,9 @@ def test_selection_does_not_fight_a_mouse_program():
 if __name__ == "__main__":
     test_select_to_copy()
     test_selection_is_visible()
+    test_a_wrapped_line_is_copied_as_one_line()
+    test_real_newlines_are_still_newlines()
+    test_a_word_that_straddles_the_wrap_is_still_one_word()
     test_middle_click_pastes()
     test_a_program_can_copy()
     test_toasts()
