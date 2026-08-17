@@ -22,10 +22,11 @@ plugin that replaced one already loaded needs a new session.
 
 ## Two files worth knowing
 
-- **`sl0ppty --dump-config`** writes every setting with the value it currently
-  has. It is generated from the code, so it cannot drift from the defaults, and
-  it is a supported way to start a config:
-  `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl`.
+- **`sl0ppty --dump-config`** writes every setting with its *default* value —
+  not the value your config gives it. It is generated from the code, so it
+  cannot drift, and it is a supported way to start a config:
+  `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl`. To see what your own
+  file does, `sl0ppty --check` reads it and reports what it understood.
 - **`config/config.kdl`**
   in the source tree is the same list with the *reasoning* attached — what each
   setting is for, what it cost to get right, and which ones are opinions. When
@@ -110,7 +111,7 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 |---|---|
 | geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
 | chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` `bell_indicator` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
-| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `hover_delay_ms` `double_click_ms` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
+| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `hover_delay_ms` `double_click_ms` `word_separators` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
 | colour | `theme { }` |
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |

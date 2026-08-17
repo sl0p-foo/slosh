@@ -265,6 +265,10 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud);
 void pane_select_start(pane_t *p, uint16_t x, uint16_t y);
 void pane_select_extend(pane_t *p, uint16_t x, uint16_t y);
 void pane_select_clear(pane_t *p);
+/* Select the word under a viewport cell, with `seps` naming what a word stops
+ * at. False when there is no word there -- blank, a separator, past the end of
+ * the row -- and then the selection is left alone. */
+bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps);
 void pane_select_done(pane_t *p);
 bool pane_selecting(const pane_t *p);
 char *pane_selection_text(pane_t *p);

@@ -1,7 +1,7 @@
 // This file is the *reasoning*: what each setting is for, what it cost to
 // get right, and which ones are opinions. The values themselves come out of
-// the code -- `sl0ppty --dump-config` writes every knob with the value it
-// actually holds, and `C-a e` seeds a missing config with exactly that.
+// the code -- `sl0ppty --dump-config` writes every knob with its default, and
+// `C-a e` seeds a missing config with exactly that.
 //
 // So if the two ever disagree, the dump is right and this file is stale;
 // tests/test_dump_config.py fails when a setting exists and is not rendered.
@@ -336,11 +336,24 @@ scrollback_bytes 16777216
 // somewhere else should not make the screen flash. 0 arms immediately.
 hover_delay_ms 250
 
-// How close together two clicks on a pane's title must be to count as a
-// double-click, which renames that pane in place. Enter keeps the new name,
-// Escape abandons it, and an empty name gives the pane back to whatever its
-// program calls itself.
+// How close together two clicks must be to count as a double-click. On a
+// pane's title that renames it in place -- Enter keeps the new name, Escape
+// abandons it, and an empty name gives the pane back to whatever its program
+// calls itself. On a pane's contents it selects the word under the pointer and
+// copies it, like any other selection.
 double_click_ms 400
+
+// What that word stops at. Listed as *separators*, not as word characters:
+// anything unlisted belongs to a word, so text nobody enumerated -- CJK,
+// accents, emoji -- needs no table and comes out whole. Whitespace always
+// separates, listed or not, because a double-click that selected the line
+// would be a different gesture arrived at by surprise.
+//
+// The default deliberately leaves `/ . - _ : = @ # % ? & + ~ $` *inside* words:
+// a path, a dotted name, a snake_case identifier, a key=value pair, a URL and
+// `src/app.c:1234` are each one thing you double-clicked to copy whole. `:` is
+// the difference between copying an error location and copying half of one.
+word_separators "\"'`()[]{}<>;,|"
 
 // How far everything behind a modal (the cheatsheet, C-a ?) is pushed back,
 // 0..255, and 0 for not at all. A modal floating over a screen as bright as

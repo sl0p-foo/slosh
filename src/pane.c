@@ -906,6 +906,122 @@ void pane_select_clear(pane_t *p) {
 bool pane_selecting(const pane_t *p) { return p->selecting; }
 void pane_select_done(pane_t *p) { p->selecting = false; }
 
+/* Is this cell part of a word?
+ *
+ * Defined by *separators* rather than by a set of word characters, which is what
+ * makes it work for text nobody enumerated: anything that is neither blank nor a
+ * listed separator belongs to a word, so CJK, accented letters and emoji need no
+ * table and get the right answer by default.
+ *
+ * Whitespace always separates, whether it is listed or not. A space that could be
+ * configured into a word character would make a double-click select the line,
+ * which is a different gesture and a surprising way to arrive at it. */
+static bool word_cell(const char *utf8, size_t len, const char *seps) {
+  if (!len) return false; /* an empty cell: past the end of the text */
+  if (len == 1) {
+    char c = utf8[0];
+    if (c == 0 || c == ' ' || c == '\t') return false;
+    /* Guarded against NUL above: strchr would otherwise match the terminator. */
+    if (seps && *seps && strchr(seps, c)) return false;
+  }
+  return true;
+}
+
+/* Select the word under a viewport cell. False when there is no word there -- a
+ * space, a separator, or past the end of the row -- and then the selection is
+ * left alone rather than being set to something nobody pointed at.
+ *
+ * The row is walked once, from column zero, because the cell iterator only goes
+ * forward. Which is enough: the run containing `x` is bounded by the separator
+ * before it and the one after it, and both are met on that single pass. */
+bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps) {
+  if (!p || !p->term || !p->rstate || x >= p->cols || y >= p->rows_n) return false;
+  if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS)
+    return false;
+  if (ghostty_render_state_get(p->rstate,
+                               GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
+                               &p->rows) != GHOSTTY_SUCCESS)
+    return false;
+
+  uint16_t row = 0;
+  bool at_row = false;
+  while (ghostty_render_state_row_iterator_next(p->rows)) {
+    if (row == y) {
+      at_row = true;
+      break;
+    }
+    row++;
+  }
+  if (!at_row) return false;
+  if (ghostty_render_state_row_get(p->rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
+                                   &p->cells) != GHOSTTY_SUCCESS)
+    return false;
+
+  uint16_t col = 0, run_start = 0, left = 0, right = 0;
+  bool in_run = false, hit = false, done = false;
+  while (ghostty_render_state_row_cells_next(p->cells)) {
+    if (col >= p->cols) break;
+
+    GhosttyCell raw = {0};
+    GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+    if (ghostty_render_state_row_cells_get(
+            p->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw) ==
+        GHOSTTY_SUCCESS)
+      ghostty_cell_get(raw, GHOSTTY_CELL_DATA_WIDE, &wide);
+
+    bool w;
+    if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL) {
+      /* The second cell of a wide glyph carries no text of its own. It belongs
+       * to the glyph in front of it, so it continues whatever that was --
+       * otherwise every CJK character would be its own word. */
+      w = in_run;
+    } else {
+      char utf8[16] = {0};
+      GhosttyBuffer gb = {.ptr = (uint8_t *)utf8, .cap = sizeof utf8, .len = 0};
+      if (ghostty_render_state_row_cells_get(
+              p->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_UTF8,
+              &gb) != GHOSTTY_SUCCESS)
+        gb.len = 0;
+      w = word_cell(utf8, gb.len, seps);
+    }
+
+    if (w) {
+      if (!in_run) {
+        in_run = true;
+        run_start = col;
+      }
+      if (col == x) hit = true;
+    } else {
+      if (in_run && hit) { /* the separator that ends the word we wanted */
+        left = run_start;
+        right = (uint16_t)(col - 1);
+        done = true;
+        break;
+      }
+      in_run = false;
+      if (col == x) return false; /* pointed straight at a separator */
+    }
+    col++;
+  }
+  /* A word that runs to the end of the row has no separator to close it. */
+  if (!done && hit && in_run) {
+    left = run_start;
+    right = (uint16_t)(col - 1);
+    done = true;
+  }
+  if (!done) return false;
+
+  GhosttyGridRef a, b;
+  if (!grid_ref_at(p, left, y, &a) || !grid_ref_at(p, right, y, &b)) return false;
+  GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+  sel.start = a;
+  sel.end = b;
+  sel.rectangle = false;
+  ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+  p->dirty = true;
+  return true;
+}
+
 /* The selected text, or NULL. Caller frees. */
 char *pane_selection_text(pane_t *p) {
   GhosttyTerminalSelectionFormatOptions opts =

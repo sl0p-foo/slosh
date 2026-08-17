@@ -197,6 +197,11 @@ typedef struct {
   uint16_t toast_ms;
   uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
+  /* What a double-click's word stops at, listed as *separators* rather than as
+   * word characters: anything unlisted belongs to a word, so text nobody
+   * enumerated -- CJK, accents, emoji -- needs no table. Whitespace always
+   * separates, listed or not. */
+  char word_separators[64];
   /* How far everything behind a modal is pushed back, 0..255, 0 being off.
    * A modal that floats over a screen as bright as it is reads as another
    * pane rather than as something in front. */

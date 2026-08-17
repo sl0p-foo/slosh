@@ -119,6 +119,12 @@ either, whatever its width says.
 
 - **Select text to copy it.** Release the mouse and it is on your clipboard,
   sent to your terminal over ssh as well as locally. Middle click pastes.
+- **Double-click a word to select it**, and it is copied the same way a drag is:
+  the highlight *is* the copy. What counts as one word is `word_separators`,
+  which lists what a word stops at rather than what it is made of — so
+  `src/app.c:1234`, `https://a.b/c?d=1`, `snake_case` and a run of CJK each come
+  out whole, while a quote or a bracket ends one. A click on a blank cell or on
+  a separator selects nothing and leaves your clipboard as it was.
 - **Images work.** Kitty graphics pass through to your terminal, including the
   half of the protocol other multiplexers drop, where a program uploads an image
   once and places it every frame. Your terminal's cell size is carried through to

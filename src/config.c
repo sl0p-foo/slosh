@@ -702,6 +702,16 @@ void config_defaults(config_t *c) {
   c->toast_ms = 2500;
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
+  /* Quotes, brackets, and the punctuation that ends a clause or a list.
+   *
+   * Deliberately *not* `/ . - _ : = @ # % ? & + ~ $`: a path, a dotted name, a
+   * snake_case identifier, a key=value pair, a URL and -- the one that decides
+   * it in a terminal -- `src/app.c:1234` are each one thing somebody
+   * double-clicked to copy whole. A separator set that breaks those costs a
+   * second gesture every time, and `:` is the difference between copying an
+   * error location and copying half of one. */
+  snprintf(c->word_separators, sizeof c->word_separators, "%s",
+           "\"'`()[]{}<>;,|");
   /* 20fps. Fast enough that a pulse or a sweep reads as movement, slow enough
    * that an idle session with an animated shader is not a busy loop -- and it
    * only costs anything at all while such a shader is actually on screen. */
@@ -1108,10 +1118,12 @@ void config_chord_name(int key, uint16_t mods, char *out, size_t cap) {
 
 /* ---- rendering a config back out ----------------------------------------
  *
- * Every knob with the value it currently has, as a file you could have
- * written. Generated rather than kept as a copy on disk: a checked-in
- * "defaults" file is a second source of truth, and it drifts -- ours had
- * already lost four colours by the time anyone noticed.
+ * Every knob with its default, as a file you could have written -- the name
+ * `config_dump_defaults` is the honest one, and the flag is documented to
+ * match: this is the file to *start* from, not a report on the one in effect.
+ * Generated rather than kept as a copy on disk: a checked-in "defaults" file is
+ * a second source of truth, and it drifts -- ours had already lost four colours
+ * by the time anyone noticed.
  *
  * The comments here are one line each and say what a setting *is*. The long
  * form -- why a setting exists, what it cost to get right -- lives in
@@ -1146,6 +1158,30 @@ static const char *yesno(bool v) { return v ? "true" : "false"; }
 /* A chord as a KDL string: `\` and `"` are both keys somebody may have bound
  * and both end or escape a string, so they have to be written escaped. The
  * dump has to *parse back*, and a bare backslash there does not. */
+/* A value as a KDL string. `\\` and `"` both end or escape a string, so every
+ * value that reaches a dump goes through here: the dump is documented as a file
+ * you could have written, and a file that does not parse back is not one. Any
+ * setting whose value a person chooses can contain either character -- a shell
+ * command with a quoted argument, a word separator set that includes the quote
+ * you most want double-click to stop at. */
+static void cb_qval(cfgbuf_t *b, const char *val) {
+  cb_add(b, "\"");
+  for (const char *q = val; q && *q; q++) {
+    if (*q == '"' || *q == '\\') cb_add(b, "\\%c", *q);
+    else cb_add(b, "%c", *q);
+  }
+  cb_add(b, "\"");
+}
+
+/* `key "value"` on a line of its own, with an optional trailing comment. */
+static void cb_qstr(cfgbuf_t *b, const char *key, const char *val,
+                    const char *comment) {
+  cb_add(b, "%s ", key);
+  cb_qval(b, val);
+  if (comment) cb_add(b, "  %s", comment);
+  cb_add(b, "\n");
+}
+
 /* A chord as a *config* writes it, which is not how the cheatsheet prints it.
  *
  * The dump used to use config_chord_name(), the display form -- so
@@ -1196,12 +1232,7 @@ static void cb_chord(cfgbuf_t *b, int key, uint16_t mods) {
     snprintf(chord + n, sizeof chord - n, "%c", ch);
   }
 
-  cb_add(b, "\"");
-  for (const char *q = chord; *q; q++) {
-    if (*q == '"' || *q == '\\') cb_add(b, "\\%c", *q);
-    else cb_add(b, "%c", *q);
-  }
-  cb_add(b, "\"");
+  cb_qval(b, chord);
 }
 
 static void cb_color(cfgbuf_t *b, const char *name, color_t c) {
@@ -1274,12 +1305,12 @@ char *config_render(const config_t *c) {
   cb_add(&b, "pane_buttons %s        // the marks in a frame's top-right\n",
          yesno(c->pane_buttons));
   cb_add(&b, "bell_indicator %s\n", yesno(c->bell_indicator));
-  cb_add(&b, "zoom_mark \"%s\"\n", c->zoom_mark);
-  cb_add(&b, "zoom_on_mark \"%s\"\n", c->zoom_on_mark);
-  cb_add(&b, "close_mark \"%s\"\n", c->close_mark);
-  cb_add(&b, "min_mark \"%s\"\n", c->min_mark);
-  cb_add(&b, "newtab_mark \"%s\"\n", c->newtab_mark);
-  cb_add(&b, "bell_mark \"%s\"\n", c->bell_mark);
+  cb_qstr(&b, "zoom_mark", c->zoom_mark, NULL);
+  cb_qstr(&b, "zoom_on_mark", c->zoom_on_mark, NULL);
+  cb_qstr(&b, "close_mark", c->close_mark, NULL);
+  cb_qstr(&b, "min_mark", c->min_mark, NULL);
+  cb_qstr(&b, "newtab_mark", c->newtab_mark, NULL);
+  cb_qstr(&b, "bell_mark", c->bell_mark, NULL);
 
   cb_add(&b, "\n// ---- behaviour ----\n");
   cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
@@ -1292,6 +1323,8 @@ char *config_render(const config_t *c) {
   cb_add(&b, "toast_ms %u\n", c->toast_ms);
   cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
   cb_add(&b, "double_click_ms %u\n", c->double_click_ms);
+  cb_qstr(&b, "word_separators", c->word_separators,
+          "// what a double-click's word stops at");
   cb_add(&b, "anim_ms %u             // frame clock while a shader animates\n",
          c->anim_ms);
   cb_add(&b, "modal_scrim %u         // how far a modal pushes the rest back\n",
@@ -1301,22 +1334,24 @@ char *config_render(const config_t *c) {
   cb_add(&b, "keep_dead \"%s\"  // which dead panes stay: commands, all, none\n",
          c->keep_dead == KEEP_DEAD_ALL ? "all"
              : c->keep_dead == KEEP_DEAD_NONE ? "none" : "commands");
-  if (c->shell) cb_add(&b, "shell \"%s\"\n", c->shell);
+  if (c->shell) cb_qstr(&b, "shell", c->shell, NULL);
   else cb_add(&b, "// shell \"/bin/zsh\"     // unset: $SHELL\n");
-  if (c->editor) cb_add(&b, "editor \"%s\"\n", c->editor);
+  if (c->editor) cb_qstr(&b, "editor", c->editor, NULL);
   else cb_add(&b, "// editor \"nvim\"        // unset: $EDITOR, then vi\n");
-  if (c->shader_dir) cb_add(&b, "shader_dir \"%s\"\n", c->shader_dir);
+  if (c->shader_dir) cb_qstr(&b, "shader_dir", c->shader_dir, NULL);
   else cb_add(&b, "// shader_dir \"~/.config/sl0ppty/shaders\"\n");
   if (c->nproject_roots) {
     cb_add(&b, "project_roots");
-    for (size_t i = 0; i < c->nproject_roots; i++)
-      cb_add(&b, " \"%s\"", c->project_roots[i]);
+    for (size_t i = 0; i < c->nproject_roots; i++) {
+      cb_add(&b, " ");
+      cb_qval(&b, c->project_roots[i]);
+    }
     cb_add(&b, " depth=%d\n", c->project_depth);
   } else {
     cb_add(&b, "// project_roots \"~/dev\" \"~/work\" depth=%d\n",
            c->project_depth);
   }
-  if (c->project_layout) cb_add(&b, "project_layout \"%s\"\n", c->project_layout);
+  if (c->project_layout) cb_qstr(&b, "project_layout", c->project_layout, NULL);
   else cb_add(&b, "// project_layout \"~/.config/sl0ppty/project.layout.kdl\"\n");
 
   cb_add(&b, "\n// ---- colour ----\ntheme {\n");
@@ -1464,6 +1499,7 @@ static const char *const KNOWN_TOP[] = {
     "close_mark",
     "dim_unfocused",
     "double_click_ms",
+    "word_separators",
     "editor",
     "focus_follows_mouse",
     "gap",
@@ -1784,6 +1820,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                                             c->hover_delay_ms);
   c->double_click_ms = (uint16_t)kdl_arg_int(kdl_child(root, "double_click_ms"),
                                              0, c->double_click_ms);
+  const char *ws = kdl_arg(kdl_child(root, "word_separators"), 0, NULL);
+  if (ws) snprintf(c->word_separators, sizeof c->word_separators, "%s", ws);
   c->anim_ms =
       (uint16_t)kdl_arg_int(kdl_child(root, "anim_ms"), 0, c->anim_ms);
   {

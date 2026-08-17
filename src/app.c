@@ -354,6 +354,14 @@ struct app {
    * on the other reads as a double-click on neither. */
   int64_t name_click_ms;
   uint32_t name_click_id;
+
+  /* The same idea for a pane's contents: a second click on the *same cell* of
+   * the same pane selects the word there. Per cell as well as per pane, so
+   * clicking two different words quickly selects the second one rather than
+   * everything between them. */
+  int64_t cell_click_ms;
+  uint32_t cell_click_id;
+  uint16_t cell_click_x, cell_click_y;
   int name_click_kind;
   /* Set while a layout is being built, by a `focus=true` pane, and consumed
    * by the tab that contains it: focus belongs to a tab, and the tab does not
@@ -2184,8 +2192,8 @@ bool app_edit_config(app_t *a) {
 
   /* An editor opened on a file that is not there is a blank buffer, and a
    * blank buffer does not tell you what you can set. So write the defaults
-   * out first: every knob with the value it currently has, generated from the
-   * code rather than from a copy of it. Only when there is nothing there --
+   * out first: every knob with its default, generated from the code rather
+   * than from a copy of it. Only when there is nothing there --
    * this must never touch a config somebody has written. */
   if (access(path, F_OK) != 0) {
     char dir[1024];
@@ -5832,7 +5840,22 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     bool select_press = ev->maction == MOUSE_PRESS && ev->button == MBTN_LEFT &&
                         (!pane_wants_mouse(n->pane) || (ev->mods & MOD_SHIFT));
     if (select_press) {
+      int64_t now = now_ms_();
+      bool again = a->cell_click_id == n->id && a->cell_click_x == local.mx &&
+                   a->cell_click_y == local.my &&
+                   now - a->cell_click_ms <= (int64_t)CFG.double_click_ms;
+      a->cell_click_id = n->id;
+      a->cell_click_x = local.mx;
+      a->cell_click_y = local.my;
+      a->cell_click_ms = now;
+
+      /* Start first, then widen to the word: the anchor start() leaves behind is
+       * what a drag out of the double-click extends from, and it means the
+       * release path below copies this selection like any other. The word *is*
+       * the copy, in one place, rather than a second copy site here. */
       pane_select_start(n->pane, local.mx, local.my);
+      if (again)
+        pane_select_word(n->pane, local.mx, local.my, CFG.word_separators);
       a->drag.kind = DRAG_SELECT;
       a->drag.src = n->id;
       return;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`sl0ppty --dump-config`: every setting, with the value it currently has.
+"""`sl0ppty --dump-config`: every setting, with its default value.
 
 Generated from the code rather than kept as a file on disk, because a
 checked-in copy of the defaults is a second source of truth and drifts — ours
@@ -50,6 +50,24 @@ def test_it_parses_back_to_exactly_itself():
           "\n".join(l for l in __import__("difflib").unified_diff(
               one.splitlines(), two.splitlines(), "first", "second", lineterm=""))[:1500])
     os.unlink(f.name)
+
+
+def test_a_value_with_a_quote_in_it_is_written_escaped():
+    """`\\` and `"` both end or escape a KDL string, so a value carrying either has
+    to be written escaped or the dump stops being a file that loads. Not
+    hypothetical: the default `word_separators` opens with a quote, because the
+    quote is the character a double-click most wants to stop at.
+
+    The round-trip tests above would catch a *default* that broke this. This one
+    says which line, so the failure names the setting instead of the whole file."""
+    dumped = dump()
+    line = [l for l in dumped.splitlines() if l.startswith("word_separators ")]
+    check("word_separators is rendered", len(line) == 1, str(line))
+    if line:
+        value = line[0].split(None, 1)[1]
+        check("its quote is escaped", value.startswith('"' + chr(92) + '"'), repr(value))
+        check("and the line is one KDL string, not two",
+              value.count('"') - value.count(chr(92) + '"') == 2, repr(value))
 
 
 def test_every_key_the_parser_knows_is_in_it():

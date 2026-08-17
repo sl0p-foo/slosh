@@ -165,9 +165,11 @@ int main(int argc, char **argv) {
                                             : check_config(path);
     }
     else if (strcmp(a, "--dump-config") == 0) {
-      /* Every setting with the value it currently has, as a file you could
-       * have written. `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl`
-       * is a supported way to start one. */
+      /* Every setting with its *default*, as a file you could have written:
+       * `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl` is a supported
+       * way to start one. Deliberately not the values a config in effect gives
+       * them -- this is the file to begin from, and `--check` is the one that
+       * reads yours and says what it understood. */
       char *text = config_dump_defaults();
       fputs(text, stdout);
       free(text);
