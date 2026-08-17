@@ -271,6 +271,99 @@ def test_a_typed_name_outranks_the_program():
               titles(s) == ["prog-later"], str(titles(s)))
 
 
+def test_a_script_can_name_a_pane_too():
+    """The gesture is not the only way in. A program that keeps setting a title it
+    stopped meaning -- an agent still spinning the summary of a finished task -- is
+    overruled by naming the pane, and that has to be reachable from tooling, not
+    only from a double-click on somebody's screen."""
+    with Session(SH, cols=60, rows=14) as s:
+        s.settle()
+        p = s.pane()
+        check("the program's title to start with", titles(s) == ["shell"],
+              str(titles(s)))
+
+        reply = s.api("set-name", target="pane", id=p["id"], name="agent: gbos")
+        s.settle(80)
+        check("the verb reports ok", reply.get("ok") is True, str(reply))
+        check("and the name is what the frame says", titles(s) == ["agent: gbos"],
+              str(titles(s)))
+
+        # The whole point: the program keeps shouting and is ignored.
+        s.raw(r"\e]2;\xe2\xa0\xb9 Fix toast overlap in frame tests\x07")
+        s.settle(120)
+        check("a program retitling itself cannot take the name back",
+              titles(s) == ["agent: gbos"], str(titles(s)))
+
+        s.api("set-name", target="pane", id=p["id"], name="")
+        s.settle(120)
+        check("clearing it hands the label back to the program",
+              titles(s) == ["\u2839 Fix toast overlap in frame tests"], str(titles(s)))
+
+
+def test_the_verb_and_the_gesture_are_one_store():
+    """A name set by a script is the name the editor offers to edit -- there is one
+    place a pane's name lives, so the two ways in cannot disagree about it."""
+    with Session(SH, cols=60, rows=14) as s:
+        s.settle()
+        p = s.pane()
+        s.api("set-name", target="pane", id=p["id"], name="named")
+        s.settle(80)
+        dbl(s, col_of(s.snapshot(), p, "named"), p["y"])
+        s.settle(80)
+        row = s.snapshot().line(p["y"])
+        check("the editor opens seeded with the scripted name",
+              "named" in row and CURSOR in row, repr(row.strip()))
+        s.send(r"\e")
+        s.settle(40)
+
+
+def test_naming_addresses_the_focused_pane_by_default():
+    """0 is the focused pane, as it is for every other verb that takes an id."""
+    with Session(SH, cols=80, rows=30) as s:
+        s.settle()
+        s.key("-")                      # two panes, focus lands on the new one
+        s.settle(60)
+        panes = s.panes()
+        check("there are two panes to choose between", len(panes) == 2, str(panes))
+        focused = [q for q in panes if q["focused"]][0]
+        other = [q for q in panes if not q["focused"]][0]
+
+        s.api("set-name", target="pane", name="the focused one")
+        s.settle(80)
+        by_id = {q["id"]: q["title"] for q in s.panes()}
+        check("id 0 means the focused pane", by_id[focused["id"]] == "the focused one",
+              str(by_id))
+        check("and the other pane keeps the title it had",
+              by_id[other["id"]] == other["title"], str(by_id))
+
+
+def test_the_target_says_which_label_and_bad_ids_say_which_thing():
+    """`set-name` has always meant the tab, so that stays its default -- a verb
+    quietly changing its subject would be worse than two verbs whose defaults
+    differ. The refusals name the thing that was not found, so a mistyped target is
+    obvious from the reply rather than from a label that did not move."""
+    with Session(SH, cols=60, rows=14) as s:
+        s.settle()
+        p = s.pane()
+        tab = s.tabs()[0]
+
+        s.api("set-name", id=tab["id"], name="work")
+        s.settle(60)
+        check("no target still names the tab", s.tabs()[0]["name"] == "work",
+              str(s.tabs()[0]))
+        check("...and leaves the pane's title alone", titles(s) == ["shell"],
+              str(titles(s)))
+
+        check("a pane id that does not exist says so",
+              s.api("set-name", target="pane", id=4242, name="x")
+              .get("error") == "no such pane", str(s.api("set-name", target="pane", id=4242, name="x")))
+        check("and a tab id that does not exist says the other thing",
+              s.api("set-name", id=4242, name="x").get("error") == "no such tab",
+              str(s.api("set-name", id=4242, name="x")))
+        check("the pane kept its title through both refusals",
+              titles(s) == ["shell"] and s.pane()["id"] == p["id"], str(titles(s)))
+
+
 def test_slow_clicks_are_not_a_double_click():
     """The control for the gesture: two clicks are not automatically a rename."""
     with Session(SH, cols=60, rows=14) as s:
@@ -336,4 +429,8 @@ if __name__ == "__main__":
     test_slow_clicks_are_not_a_double_click()
     test_typing_a_name_does_not_reach_the_pane()
     test_closing_the_pane_does_not_wedge_the_keyboard()
+    test_a_script_can_name_a_pane_too()
+    test_the_verb_and_the_gesture_are_one_store()
+    test_naming_addresses_the_focused_pane_by_default()
+    test_the_target_says_which_label_and_bad_ids_say_which_thing()
     sys.exit(report())

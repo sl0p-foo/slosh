@@ -1944,6 +1944,22 @@ static node_t *pane_by_id(app_t *a, uint32_t id) {
   return b.found;
 }
 
+/* Naming a pane, for the double-click gesture and for a script: 0 is the focused
+ * one, and an empty name clears it.
+ *
+ * This is the whole answer to a program that keeps setting a title it stopped
+ * meaning -- an agent still spinning the summary of a task it finished, say.
+ * `pane_title` prefers a name only while there is one, so what a person or a
+ * script wrote outranks the program's own until they hand it back. Naming does
+ * not select the pane's tab, unlike the verbs that rearrange things: a label is
+ * not a reason to move what somebody is looking at. */
+bool app_set_pane_name(app_t *a, uint32_t id, const char *name) {
+  node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
+  if (!n) return false;
+  pane_set_name(n->pane, name);
+  return true;
+}
+
 bool app_minimize(app_t *a, uint32_t id) {
   node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
   if (!n || n->minimized) return false;
@@ -5355,11 +5371,7 @@ static void rename_end(app_t *a, bool keep) {
       what = "purpose";
       done = app_set_pane_purpose(a, a->rename_id, a->rename_buf, true);
     } else if (a->renaming == RENAME_PANE) {
-      node_t *n = pane_by_id(a, a->rename_id);
-      if (n) {
-        pane_set_name(n->pane, a->rename_buf);
-        done = true;
-      }
+      done = app_set_pane_name(a, a->rename_id, a->rename_buf);
     } else {
       done = app_set_tab_name(a, a->rename_id, a->rename_buf);
     }

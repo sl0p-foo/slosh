@@ -46,6 +46,12 @@ nothing you click can disagree with what is on screen.
   tab of its own. The tabs light up as destinations while you carry a pane and the
   one under the pointer fills; the tab it already lives in does not offer itself. A
   toast says where it went, since the pane lands somewhere you are not looking.
+- **Name a pane and it stops listening to its program.** `pane_title` prefers a
+  name while there is one, so a program that keeps announcing something stale —
+  an agent still spinning the summary of a task it finished — is overruled by
+  naming its pane, from the gesture below or from a script:
+  `sl0ppty cmd '{"cmd":"set-name","target":"pane","id":3,"name":"agent: gbos"}'`.
+  An empty name hands the label back.
 - **Double-click a name to rename it in place** — a pane's title or a tab in the
   strip. Enter keeps it, Escape abandons it, empty gives it back to the program.
   A name is not a [purpose](layouts.md#purposes): the purpose is a separate label

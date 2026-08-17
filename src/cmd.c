@@ -229,10 +229,18 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                : jerr("no such tab");
   }
   if (strcmp(cmd, "set-name") == 0) {
-    return app_set_tab_name(a, (uint32_t)jv_geti(req, "id", 0),
-                            jv_gets(req, "name", ""))
-               ? jok_int(NULL, 0)
-               : jerr("no such tab");
+    /* `target`, exactly as `set-purpose` already has it, because a name is a
+     * label on either thing. The default stays `tab`: that is what this verb has
+     * always meant, and a verb quietly changing its subject would be worse than
+     * two verbs with different defaults. Naming a pane is how a stale title gets
+     * overruled, so the id may be 0 for the focused one. */
+    const char *target = jv_gets(req, "target", "tab");
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    const char *name = jv_gets(req, "name", "");
+    bool pane = strcmp(target, "pane") == 0;
+    bool ok = pane ? app_set_pane_name(a, id, name)
+                   : app_set_tab_name(a, id, name);
+    return ok ? jok_int(NULL, 0) : jerr(pane ? "no such pane" : "no such tab");
   }
   if (strcmp(cmd, "set-purpose") == 0) {
     const char *target = jv_gets(req, "target", "pane");
