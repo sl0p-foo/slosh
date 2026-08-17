@@ -1,0 +1,9 @@
+# Commits that changed formatting and nothing else. Tell git to walk past them:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# (`make hooks` does not set this -- it is a reading preference, not a rule, and
+# it belongs to whoever is doing the reading.)
+
+# sl0ppty: clang-format the tree
+ec91ccffe631ae34b111bf6161fd0e3c487f684c
