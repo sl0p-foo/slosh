@@ -48,3 +48,23 @@ src/kdl.c      a hand-rolled KDL subset, for configs and layouts
 
 About 15k lines of C. The vendored terminal core does VT parsing, scrollback,
 selection, images and key encoding; everything above is ours.
+
+## How it is formatted
+
+`clang-format`, with the config in `.clang-format`. `make fmt` applies it,
+`make fmt-check` only reports, and `make hooks` installs a pre-commit hook that
+formats the C you staged so what lands in git is already formatted.
+
+The base is LLVM, because that is what this code was written in by hand — two
+spaces, 80 columns, `char *p`, braces attached. The settings that differ from it
+were chosen by measuring the reformat rather than by taste: LLVM alone rewrote 38%
+of the lines, mostly by splitting `if (!p) return false;` in two and reflowing
+comments that are prose. Keeping those two and leaving include order alone brings
+it to 17%, which is alignment and table packing.
+
+Comments are not reflowed. They are prose here, wrapped by hand, and sometimes the
+line breaks carry meaning — a paragraph, a list, a diagram of a pane. A comment
+that runs long is a thing for a person to fix.
+
+The vendored terminal core is never formatted: it is pinned by commit (D12), and
+reformatting it would turn every re-vendor into a merge.

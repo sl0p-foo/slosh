@@ -1,0 +1,37 @@
+# How the C in this tree is formatted. `make fmt` applies it, `make fmt-check`
+# asks, and the pre-commit hook in `.githooks/` does it for you (`make hooks`).
+#
+# LLVM as the base because it is what this code was already written in by hand:
+# two-space indent, 80 columns, `char *p`, braces attached. Every setting below
+# is one place the hand style and the default disagreed, chosen by measuring the
+# reformat rather than by taste -- LLVM alone rewrote 38% of the lines, and these
+# bring it to 17%, all of it alignment and table packing.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# `if (!p) return false;` is everywhere in this code and is the house idiom for a
+# guard. LLVM splits every one of them onto two lines, which was two thirds of
+# the churn on its own. `WithoutElse`, so an `if` with an `else` still opens up:
+# a one-line `if` with a hidden `else` is the arrangement that hides a bug.
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+# `case ACT_ZOOM: app_toggle_zoom(a, 0); return true;` -- an action table reads
+# as a table when its rows are rows.
+AllowShortCaseLabelsOnASingleLine: true
+
+# Comments here are prose, wrapped by hand, and the line breaks are sometimes
+# deliberate -- a paragraph break, a list, an ASCII diagram of a pane. Reflowing
+# them is noise in every diff and destroys the shaped ones. A comment that is too
+# long is a thing for a person to fix, not a formatter.
+ReflowComments: false
+
+# Include order in this tree is grouped by hand (`_GNU_SOURCE`-sensitive system
+# headers, then ours) and is not alphabetical within a group. Sorting it would be
+# churn at best, and at worst a build that depends on an order nobody wrote down.
+SortIncludes: Never
+
+# A signature that does not fit is wrapped at its arguments, not by putting the
+# return type on a line of its own. The latter is an LLVM habit that reads, in a
+# file of one-line static helpers, as a different kind of declaration.
+PenaltyReturnTypeOnItsOwnLine: 1000

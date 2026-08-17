@@ -52,7 +52,8 @@ else
   say  = @:
 endif
 
-.PHONY: all clean vendor run test retest test-live test-all smoke help coverage docs
+.PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
+        docs fmt fmt-check hooks
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -242,6 +243,27 @@ coverage: $(COV_DIR)/sl0ppty $(COV_UNITS) ## how much of the code the tests run
 	    || echo "  (failed: $$t)"; \
 	done
 	@contrib/coverage
+
+# The C in this tree, minus the vendored library: that one is pinned by commit
+# (D12) and reformatting it would turn every re-vendor into a merge.
+CSRC := $(shell git ls-files '*.c' '*.h' 2>/dev/null | grep -v '^vendor/')
+
+fmt: ## format the C in place (.clang-format)
+	$(Q)clang-format -i $(CSRC)
+	$(say) "  [FMT] $(words $(CSRC)) files"
+
+fmt-check: ## ...or just say which files are not formatted
+	@bad=$$(for f in $(CSRC); do \
+	    clang-format "$$f" | cmp -s - "$$f" || echo "$$f"; \
+	  done); \
+	if [ -n "$$bad" ]; then \
+	  echo "not formatted:"; echo "$$bad" | sed 's/^/  /'; \
+	  echo "run: make fmt"; exit 1; \
+	else echo "all $(words $(CSRC)) files formatted"; fi
+
+hooks: ## install the pre-commit hook (formats staged C)
+	$(Q)git config core.hooksPath .githooks
+	@echo "core.hooksPath -> .githooks   (git commit --no-verify to skip)"
 
 clean: ## remove our build output (not the vendor lib)
 	rm -rf build
