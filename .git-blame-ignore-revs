@@ -7,3 +7,6 @@
 
 # sl0ppty: clang-format the tree
 ec91ccffe631ae34b111bf6161fd0e3c487f684c
+
+# sl0ppty: ruff format the Python
+c0022776d0912042819e4ea330cf7491a8196b45
