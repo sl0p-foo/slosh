@@ -22,8 +22,10 @@ static bool ceq(color_t c, uint8_t r, uint8_t g, uint8_t b) {
 
 static char detail[256];
 static const char *shown(color_t c) {
-  if (!c.set) snprintf(detail, sizeof detail, "(unset)");
-  else snprintf(detail, sizeof detail, "#%02x%02x%02x", c.r, c.g, c.b);
+  if (!c.set)
+    snprintf(detail, sizeof detail, "(unset)");
+  else
+    snprintf(detail, sizeof detail, "#%02x%02x%02x", c.r, c.g, c.b);
   return detail;
 }
 
@@ -108,10 +110,10 @@ int main(void) {
        !shader_make(&sh, "bloom", (color_t){0}, 0), "");
     ok("a NULL kind is refused", !shader_make(&sh, NULL, (color_t){0}, 0), "");
 
-    ok("vignette is a built-in",
-       shader_make(&sh, "vignette", (color_t){0}, 0), "");
-    ok("gradient is a built-in",
-       shader_make(&sh, "gradient", (color_t){0}, 0), "");
+    ok("vignette is a built-in", shader_make(&sh, "vignette", (color_t){0}, 0),
+       "");
+    ok("gradient is a built-in", shader_make(&sh, "gradient", (color_t){0}, 0),
+       "");
     ok("zebra is a built-in", shader_make(&sh, "zebra", (color_t){0}, 0), "");
     ok("ruler is a built-in", shader_make(&sh, "ruler", (color_t){0}, 0), "");
     ok("margin is a built-in", shader_make(&sh, "margin", (color_t){0}, 0), "");
@@ -128,7 +130,8 @@ int main(void) {
     screen_init(&s, 4, 2);
     put(&s, 0, 0, rgb(0x80, 0x80, 0x80), rgb(0x40, 0x40, 0x40));
     run1(&s, "dim", (color_t){0}, 0);
-    ok("amount 0 is the identity", ceq(screen_at(&s, 0, 0)->fg, 0x80, 0x80, 0x80),
+    ok("amount 0 is the identity",
+       ceq(screen_at(&s, 0, 0)->fg, 0x80, 0x80, 0x80),
        shown(screen_at(&s, 0, 0)->fg));
     screen_free(&s);
 
@@ -178,7 +181,8 @@ int main(void) {
     put(&s, 0, 0, rgb(0x00, 0x00, 0x00), rgb(0x00, 0x00, 0x00));
     run1(&s, "tint", rgb(0xff, 0x00, 0x00), 255);
     ok("a full tint reaches the target colour",
-       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0), shown(screen_at(&s, 0, 0)->fg));
+       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0),
+       shown(screen_at(&s, 0, 0)->fg));
     screen_free(&s);
 
     screen_init(&s, 4, 2);
@@ -255,7 +259,8 @@ int main(void) {
     shader_t sh;
     shader_make(&sh, "dim", (color_t){0}, 255);
     shade_ctx_t base = base_ctx();
-    shade_apply(&s, &sh, 1, (rect_t){2, 1, 4, 2}, NULL, &base); /* an inset rect */
+    shade_apply(&s, &sh, 1, (rect_t){2, 1, 4, 2}, NULL,
+                &base); /* an inset rect */
 
     ok("a cell inside the rect is shaded",
        ceq(screen_at(&s, 2, 1)->fg, 0, 0, 0), shown(screen_at(&s, 2, 1)->fg));
@@ -311,8 +316,8 @@ int main(void) {
     shader_make(&twice[0], "dim", (color_t){0}, 128);
     shader_make(&twice[1], "dim", (color_t){0}, 128);
     shade_apply(&s, twice, 2, (rect_t){0, 0, 2, 1}, NULL, &base);
-    ok("two half-dims are darker than one",
-       screen_at(&s, 0, 0)->fg.r < 0x70, shown(screen_at(&s, 0, 0)->fg));
+    ok("two half-dims are darker than one", screen_at(&s, 0, 0)->fg.r < 0x70,
+       shown(screen_at(&s, 0, 0)->fg));
     screen_free(&s);
   }
 
@@ -365,7 +370,8 @@ int main(void) {
      * default colours before honouring that -- so a chain like `focused * 200`
      * repainted the frame of the pane it was leaving alone. */
     ok("and a default-coloured cell is left saying so",
-       screen_at(&s, 0, 0)->fg.set == false && screen_at(&s, 0, 0)->bg.set == false,
+       screen_at(&s, 0, 0)->fg.set == false &&
+           screen_at(&s, 0, 0)->bg.set == false,
        "an identity pass materialised the terminal's default into ours");
     screen_free(&s);
   }
@@ -383,8 +389,8 @@ int main(void) {
     rect_t hole = {1, 1, 4, 3};
     shade_apply(&s, &sh, 1, (rect_t){0, 0, 6, 5}, &hole, &base);
 
-    ok("a hole leaves the ring, and only the ring", probe.calls == 6 * 5 - 4 * 3,
-       "");
+    ok("a hole leaves the ring, and only the ring",
+       probe.calls == 6 * 5 - 4 * 3, "");
     ok("a cell inside the hole is not visited at all",
        ceq(screen_at(&s, 2, 2)->bg, 0xff, 0xff, 0xff),
        shown(screen_at(&s, 2, 2)->bg));
@@ -422,7 +428,8 @@ int main(void) {
     memset(&probe, 0, sizeof probe);
     rect_t over = {2, 0, 10, 10};
     shade_apply(&s, &sh, 1, (rect_t){0, 0, 4, 2}, &over, &base);
-    ok("a hole larger than the rect is clipped to it", probe.calls == 2 * 2, "");
+    ok("a hole larger than the rect is clipped to it", probe.calls == 2 * 2,
+       "");
     screen_free(&s);
   }
 
@@ -438,7 +445,8 @@ int main(void) {
     sh.channels = SHADE_FG;
     shade_apply(&s, &sh, 1, (rect_t){0, 0, 2, 1}, NULL, &base);
     ok("channel fg tints the foreground",
-       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0), shown(screen_at(&s, 0, 0)->fg));
+       ceq(screen_at(&s, 0, 0)->fg, 0xff, 0, 0),
+       shown(screen_at(&s, 0, 0)->fg));
     ok("...and puts the background back",
        ceq(screen_at(&s, 0, 0)->bg, 0x20, 0x20, 0x20),
        shown(screen_at(&s, 0, 0)->bg));
@@ -447,7 +455,8 @@ int main(void) {
     sh.channels = SHADE_BG;
     shade_apply(&s, &sh, 1, (rect_t){0, 0, 2, 1}, NULL, &base);
     ok("channel bg tints the background",
-       ceq(screen_at(&s, 0, 0)->bg, 0xff, 0, 0), shown(screen_at(&s, 0, 0)->bg));
+       ceq(screen_at(&s, 0, 0)->bg, 0xff, 0, 0),
+       shown(screen_at(&s, 0, 0)->bg));
     ok("...and leaves the foreground",
        ceq(screen_at(&s, 0, 0)->fg, 0x40, 0x40, 0x40),
        shown(screen_at(&s, 0, 0)->fg));
@@ -486,7 +495,8 @@ int main(void) {
     ok("the centre is untouched", fg_at(&s, 20, 10) == 0xff,
        shown(screen_at(&s, 20, 10)->fg));
     ok("a corner is the darkest point",
-       fg_at(&s, 0, 0) < fg_at(&s, 10, 5) && fg_at(&s, 10, 5) < fg_at(&s, 20, 10),
+       fg_at(&s, 0, 0) < fg_at(&s, 10, 5) &&
+           fg_at(&s, 10, 5) < fg_at(&s, 20, 10),
        shown(screen_at(&s, 0, 0)->fg));
     ok("it is symmetric left to right", fg_at(&s, 0, 10) == fg_at(&s, 40, 10),
        "");
@@ -498,8 +508,7 @@ int main(void) {
      * times further by the maths and much darker — so this equality is the
      * whole proof that the falloff is round in cells rather than in columns. */
     ok("a row counts double, so the falloff is round on screen",
-       fg_at(&s, 20, 0) == fg_at(&s, 0, 10),
-       shown(screen_at(&s, 20, 0)->fg));
+       fg_at(&s, 20, 0) == fg_at(&s, 0, 10), shown(screen_at(&s, 20, 0)->fg));
     screen_free(&s);
   }
 
@@ -590,8 +599,8 @@ int main(void) {
     ok("and so is everything inside the radius", fg_at(&s, 24, 10) == 0xff, "");
     ok("just past the radius the light has begun to fall away",
        fg_at(&s, 26, 10) < 0xff, shown(screen_at(&s, 26, 10)->fg));
-    ok("and keeps falling with distance",
-       fg_at(&s, 26, 10) > fg_at(&s, 28, 10), "");
+    ok("and keeps falling with distance", fg_at(&s, 26, 10) > fg_at(&s, 28, 10),
+       "");
     ok("the falloff is a ramp, not an edge",
        fg_at(&s, 25, 10) > fg_at(&s, 27, 10) &&
            fg_at(&s, 27, 10) > fg_at(&s, 29, 10),
@@ -617,10 +626,12 @@ int main(void) {
     shader_t sh;
     shader_make(&sh, "dim", (color_t){0}, 255);
     shade_ctx_t base = base_ctx();
-    shade_apply(&s, &sh, 1, (rect_t){0, 0, 0, 0}, NULL, &base);   /* empty rect */
-    shade_apply(&s, &sh, 0, (rect_t){0, 0, 4, 2}, NULL, &base);   /* no shaders */
-    shade_apply(NULL, &sh, 1, (rect_t){0, 0, 4, 2}, NULL, &base); /* no screen */
-    shade_apply(&s, &sh, 1, (rect_t){100, 100, 4, 2}, NULL, &base); /* rect off-screen */
+    shade_apply(&s, &sh, 1, (rect_t){0, 0, 0, 0}, NULL, &base); /* empty rect */
+    shade_apply(&s, &sh, 0, (rect_t){0, 0, 4, 2}, NULL, &base); /* no shaders */
+    shade_apply(NULL, &sh, 1, (rect_t){0, 0, 4, 2}, NULL,
+                &base); /* no screen */
+    shade_apply(&s, &sh, 1, (rect_t){100, 100, 4, 2}, NULL,
+                &base); /* rect off-screen */
     ok("a degenerate pass changes nothing and does not crash",
        ceq(screen_at(&s, 0, 0)->fg, 0x80, 0x80, 0x80),
        shown(screen_at(&s, 0, 0)->fg));

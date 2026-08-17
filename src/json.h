@@ -15,7 +15,7 @@ typedef struct {
 void json_init(json_t *j);
 void json_free(json_t *j);
 
-void json_obj_open(json_t *j, const char *key);  /* key may be NULL in arrays */
+void json_obj_open(json_t *j, const char *key); /* key may be NULL in arrays */
 void json_obj_close(json_t *j);
 void json_arr_open(json_t *j, const char *key);
 void json_arr_close(json_t *j);

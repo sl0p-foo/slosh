@@ -29,23 +29,33 @@ enum { KEY_RELEASE = 0, KEY_PRESS = 1, KEY_REPEAT = 2 };
 enum { MOUSE_PRESS = 0, MOUSE_RELEASE = 1, MOUSE_MOTION = 2 };
 /* mirrors GhosttyMouseButton */
 enum {
-  MBTN_UNKNOWN = 0, MBTN_LEFT = 1, MBTN_RIGHT = 2, MBTN_MIDDLE = 3,
-  MBTN_FOUR = 4, MBTN_FIVE = 5, MBTN_SIX = 6, MBTN_SEVEN = 7,
+  MBTN_UNKNOWN = 0,
+  MBTN_LEFT = 1,
+  MBTN_RIGHT = 2,
+  MBTN_MIDDLE = 3,
+  MBTN_FOUR = 4,
+  MBTN_FIVE = 5,
+  MBTN_SIX = 6,
+  MBTN_SEVEN = 7,
 };
 /* mirrors GHOSTTY_MODS_* */
 enum {
-  MOD_SHIFT = 1 << 0, MOD_CTRL = 1 << 1, MOD_ALT = 1 << 2, MOD_SUPER = 1 << 3,
-  MOD_CAPS = 1 << 4, MOD_NUM = 1 << 5,
+  MOD_SHIFT = 1 << 0,
+  MOD_CTRL = 1 << 1,
+  MOD_ALT = 1 << 2,
+  MOD_SUPER = 1 << 3,
+  MOD_CAPS = 1 << 4,
+  MOD_NUM = 1 << 5,
 };
 
 typedef struct {
   ev_kind_t kind;
 
   /* EV_KEY */
-  int key;            /* GhosttyKey */
-  uint16_t mods;      /* MOD_* */
-  uint8_t action;     /* KEY_* */
-  char text[16];      /* UTF-8 the key produced, if any */
+  int key;        /* GhosttyKey */
+  uint16_t mods;  /* MOD_* */
+  uint8_t action; /* KEY_* */
+  char text[16];  /* UTF-8 the key produced, if any */
   uint8_t text_len;
   uint32_t unshifted; /* unshifted codepoint, 0 if unknown */
 

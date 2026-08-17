@@ -245,8 +245,8 @@ typedef struct {
    * placement happens to cover changes by one as it slides across a cell
    * boundary — so passing it on makes a moving image change size. */
   uint16_t req_cols, req_rows;
-  uint32_t px_w, px_h;    /* rendered size */
-  uint32_t src_w, src_h;  /* the image's own size */
+  uint32_t px_w, px_h;   /* rendered size */
+  uint32_t src_w, src_h; /* the image's own size */
   /* The part of the image to draw, in pixels. Clipping has to move this:
    * asking for fewer columns alone *scales* the image into them, it does not
    * crop it. */

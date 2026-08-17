@@ -110,7 +110,7 @@ struct shader {
   const char *kind; /* registry name, NULL for an empty slot */
   shade_fn fn;
   expr_prog_t *amount_expr; /* NULL when `amount` is just a number */
-  color_t color;  /* the target colour, for shaders that have one */
+  color_t color;            /* the target colour, for shaders that have one */
   /* Strength, 0..255; 0 is identity, 255 is fully applied. A cell whose
    * strength works out to 0 is skipped by the pass rather than handed to the
    * shader, so a plugin is never called to do nothing -- and a cell the
@@ -158,19 +158,19 @@ typedef struct {
 #define SL0PPTY_SHADER_PLUGIN_SYM "sl0ppty_shader_plugin"
 
 /* Define the entry point. `defs` is a static array of shader_def_t. */
-#define SL0PPTY_SHADER_PLUGIN(bundle_name, defs)                          \
-  const shader_plugin_t *sl0ppty_shader_plugin(void);                     \
-  const shader_plugin_t *sl0ppty_shader_plugin(void) {                    \
-    static const shader_plugin_t table = {                                \
-        .abi = SL0PPTY_SHADER_ABI,                                        \
-        .cell_size = sizeof(cell_t),                                      \
-        .ctx_size = sizeof(shade_ctx_t),                                  \
-        .shader_size = sizeof(shader_t),                                  \
-        .name = (bundle_name),                                            \
-        .count = sizeof(defs) / sizeof((defs)[0]),                        \
-        .shaders = (defs),                                                \
-    };                                                                    \
-    return &table;                                                        \
+#define SL0PPTY_SHADER_PLUGIN(bundle_name, defs)                               \
+  const shader_plugin_t *sl0ppty_shader_plugin(void);                          \
+  const shader_plugin_t *sl0ppty_shader_plugin(void) {                         \
+    static const shader_plugin_t table = {                                     \
+        .abi = SL0PPTY_SHADER_ABI,                                             \
+        .cell_size = sizeof(cell_t),                                           \
+        .ctx_size = sizeof(shade_ctx_t),                                       \
+        .shader_size = sizeof(shader_t),                                       \
+        .name = (bundle_name),                                                 \
+        .count = sizeof(defs) / sizeof((defs)[0]),                             \
+        .shaders = (defs),                                                     \
+    };                                                                         \
+    return &table;                                                             \
   }
 
 #endif /* SL0PPTY_SHADER_ABI_H */

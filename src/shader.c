@@ -20,8 +20,8 @@ static uint8_t mix8(uint8_t from, uint8_t to, uint8_t amount) {
 }
 
 static color_t mix(color_t from, color_t to, uint8_t amount) {
-  return (color_t){true, mix8(from.r, to.r, amount),
-                   mix8(from.g, to.g, amount), mix8(from.b, to.b, amount)};
+  return (color_t){true, mix8(from.r, to.r, amount), mix8(from.g, to.g, amount),
+                   mix8(from.b, to.b, amount)};
 }
 
 /* Rec. 601 luma. The green weight is not a rounding error: the eye is far more
@@ -84,10 +84,22 @@ static void sh_vignette(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
 static void sh_gradient(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
   int span, pos;
   switch (sh->param) {
-    case 1: span = ctx->rows; pos = ctx->rows - 1 - ctx->y; break;
-    case 2: span = ctx->cols; pos = ctx->x; break;
-    case 3: span = ctx->cols; pos = ctx->cols - 1 - ctx->x; break;
-    default: span = ctx->rows; pos = ctx->y; break;
+  case 1:
+    span = ctx->rows;
+    pos = ctx->rows - 1 - ctx->y;
+    break;
+  case 2:
+    span = ctx->cols;
+    pos = ctx->x;
+    break;
+  case 3:
+    span = ctx->cols;
+    pos = ctx->cols - 1 - ctx->x;
+    break;
+  default:
+    span = ctx->rows;
+    pos = ctx->y;
+    break;
   }
   if (span <= 1) return;
   uint8_t a = (uint8_t)((int)sh->amount * pos / (span - 1));
@@ -126,8 +138,8 @@ static void sh_spotlight(const shader_t *sh, const shade_ctx_t *ctx,
   if (!ctx->has_cursor) return;
   int r = sh->param ? sh->param : 10;
   int inner = r * r;
-  int d = dist2((int)ctx->x - (int)ctx->cursor_x,
-                (int)ctx->y - (int)ctx->cursor_y);
+  int d =
+      dist2((int)ctx->x - (int)ctx->cursor_x, (int)ctx->y - (int)ctx->cursor_y);
   if (d <= inner) return;
   int ramp = inner * 3;
   int over = d - inner;
@@ -188,8 +200,11 @@ bool shader_make_p(shader_t *out, const char *kind, color_t color,
   if (!d) return false;
   /* channels left 0, which the pass reads as both: a shader made here has no
    * opinion about that, and the config sets it when the config has one. */
-  *out = (shader_t){.kind = d->name, .fn = d->fn, .color = color,
-                    .amount = amount, .param = param};
+  *out = (shader_t){.kind = d->name,
+                    .fn = d->fn,
+                    .color = color,
+                    .amount = amount,
+                    .param = param};
   return true;
 }
 
@@ -403,8 +418,10 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
          * reused for as long as nothing it reads has changed. One that does
          * read the clock is evaluated per cell, per frame, which is what
          * asking for animation costs. */
-        if (expr_amount_map(sh->amount_expr, &env, &m)) map = m;
-        else per_cell = true;
+        if (expr_amount_map(sh->amount_expr, &env, &m))
+          map = m;
+        else
+          per_cell = true;
       }
     }
 

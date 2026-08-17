@@ -85,13 +85,13 @@ static char *parse_string(K *k) {
     if (c == '\\') {
       char e = *k->p++;
       switch (e) {
-        case 'n': c = '\n'; break;
-        case 't': c = '\t'; break;
-        case 'r': c = '\r'; break;
-        case 'e': c = 0x1b; break;
-        case '\\': c = '\\'; break;
-        case '"': c = '"'; break;
-        default: c = e; break;
+      case 'n': c = '\n'; break;
+      case 't': c = '\t'; break;
+      case 'r': c = '\r'; break;
+      case 'e': c = 0x1b; break;
+      case '\\': c = '\\'; break;
+      case '"': c = '"'; break;
+      default: c = e; break;
       }
     }
     if (c == '\n') k->line++;
@@ -276,7 +276,8 @@ bool kdl_arg_bool(const kdl_node_t *n, size_t i, bool fallback) {
   return fallback;
 }
 
-const char *kdl_prop(const kdl_node_t *n, const char *key, const char *fallback) {
+const char *kdl_prop(const kdl_node_t *n, const char *key,
+                     const char *fallback) {
   if (!n) return fallback;
   for (size_t i = n->nprops; i-- > 0;) /* last wins */
     if (strcmp(n->props[i].key, key) == 0) return n->props[i].val;

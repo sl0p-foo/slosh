@@ -46,7 +46,8 @@ static void term_size(uint16_t *cols, uint16_t *rows) {
  * is a config whose "defaults would stand". */
 static bool looks_like_layout(const char *path) {
   char buf[1024];
-  kdl_node_t *root = kdl_parse_file(path_expand(path, buf, sizeof buf), NULL, 0);
+  kdl_node_t *root =
+      kdl_parse_file(path_expand(path, buf, sizeof buf), NULL, 0);
   if (!root) return strstr(path, ".layout.") != NULL;
   bool layout = false;
   for (size_t i = 0; i < root->nkids && !layout; i++) {
@@ -113,8 +114,7 @@ static int check_config(const char *path) {
     char prefix[24];
     config_chord_name(cfg.prefix_key, cfg.prefix_mods, prefix, sizeof prefix);
     printf("%s: ok\n", file);
-    for (size_t i = 0; i < nf; i++)
-      printf("  read     %s\n", files[i]);
+    for (size_t i = 0; i < nf; i++) printf("  read     %s\n", files[i]);
     printf("  prefix   %s\n", prefix);
     printf("  bindings %zu\n", cfg.nbinds);
   }
@@ -149,22 +149,28 @@ int main(int argc, char **argv) {
 
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i];
-    if (strcmp(a, "--headless") == 0) headless = true;
-    else if (strcmp(a, "--script") == 0) headless = script = true;
-    else if (strcmp(a, "--server") == 0) server = true;
-    else if (strcmp(a, "-s") == 0 && i + 1 < argc) name = argv[++i];
-    else if (strcmp(a, "--layout") == 0 && i + 1 < argc) layout = argv[++i];
-    else if (strcmp(a, "--no-reload") == 0) watch = false;
+    if (strcmp(a, "--headless") == 0)
+      headless = true;
+    else if (strcmp(a, "--script") == 0)
+      headless = script = true;
+    else if (strcmp(a, "--server") == 0)
+      server = true;
+    else if (strcmp(a, "-s") == 0 && i + 1 < argc)
+      name = argv[++i];
+    else if (strcmp(a, "--layout") == 0 && i + 1 < argc)
+      layout = argv[++i];
+    else if (strcmp(a, "--no-reload") == 0)
+      watch = false;
     else if (strcmp(a, "--check") == 0) {
       /* An optional path, so it lints a file you have not installed yet:
        * `sl0ppty --check theme.kdl`. Without one it checks the config a session
        * would actually read. A layout is checked as a layout: one flag, and the
        * file decides which schema it is held to. */
-      const char *path = (i + 1 < argc && argv[i + 1][0] != '-') ? argv[++i] : NULL;
+      const char *path =
+          (i + 1 < argc && argv[i + 1][0] != '-') ? argv[++i] : NULL;
       return path && looks_like_layout(path) ? check_layout(path)
-                                            : check_config(path);
-    }
-    else if (strcmp(a, "--dump-config") == 0) {
+                                             : check_config(path);
+    } else if (strcmp(a, "--dump-config") == 0) {
       /* Every setting with its *default*, as a file you could have written:
        * `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl` is a supported
        * way to start one. Deliberately not the values a config in effect gives
@@ -174,23 +180,27 @@ int main(int argc, char **argv) {
       fputs(text, stdout);
       free(text);
       return 0;
-    }
-    else if (strcmp(a, "--version") == 0) {
+    } else if (strcmp(a, "--version") == 0) {
       /* The same string the status line shows, so "which build is this" has
        * one answer whether you ask the binary or the session. */
       printf("sl0ppty %s\n", SL0PPTY_VERSION);
       return 0;
-    }
-    else if (strcmp(a, "ls") == 0) list = true;
-    else if (strcmp(a, "cmd") == 0 && i + 1 < argc) cmd_line = argv[++i];
-    else if (strcmp(a, "--cols") == 0 && i + 1 < argc) cols = (uint16_t)atoi(argv[++i]);
-    else if (strcmp(a, "--rows") == 0 && i + 1 < argc) rows = (uint16_t)atoi(argv[++i]);
-    else if (strcmp(a, "--idle-ms") == 0 && i + 1 < argc) idle_ms = atoi(argv[++i]);
+    } else if (strcmp(a, "ls") == 0)
+      list = true;
+    else if (strcmp(a, "cmd") == 0 && i + 1 < argc)
+      cmd_line = argv[++i];
+    else if (strcmp(a, "--cols") == 0 && i + 1 < argc)
+      cols = (uint16_t)atoi(argv[++i]);
+    else if (strcmp(a, "--rows") == 0 && i + 1 < argc)
+      rows = (uint16_t)atoi(argv[++i]);
+    else if (strcmp(a, "--idle-ms") == 0 && i + 1 < argc)
+      idle_ms = atoi(argv[++i]);
     else if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0) {
       usage();
       return 0;
     } else if (strcmp(a, "--") == 0) {
-      for (int j = i + 1; j < argc && cmd_n < 63; j++) cmd_argv[cmd_n++] = argv[j];
+      for (int j = i + 1; j < argc && cmd_n < 63; j++)
+        cmd_argv[cmd_n++] = argv[j];
       break;
     } else {
       fprintf(stderr, "sl0ppty: unknown argument: %s\n", a);
@@ -227,7 +237,8 @@ int main(int argc, char **argv) {
     return client_control(fd, cmd_line);
   }
 
-  if (headless) return run_headless(cmd_argv, cols, rows, idle_ms, script, layout);
+  if (headless)
+    return run_headless(cmd_argv, cols, rows, idle_ms, script, layout);
 
   if (isatty(STDOUT_FILENO)) term_size(&cols, &rows);
   if (server) return server_run(name, cmd_argv, cols, rows, layout, watch);

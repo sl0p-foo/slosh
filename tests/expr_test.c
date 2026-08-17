@@ -21,9 +21,16 @@ static int at(const char *src, int x, int y) {
     snprintf(detail, sizeof detail, "%s: %s", src, err);
     return -99999;
   }
-  expr_env_t env = {.x = x, .y = y, .cols = 80, .rows = 24,
-                    .curx = 10, .cury = 5, .cursor = 1, .focused = 1,
-                    .t = 1000, .since = 250};
+  expr_env_t env = {.x = x,
+                    .y = y,
+                    .cols = 80,
+                    .rows = 24,
+                    .curx = 10,
+                    .cury = 5,
+                    .cursor = 1,
+                    .focused = 1,
+                    .t = 1000,
+                    .since = 250};
   int v = expr_eval(p, &env);
   expr_free(p);
   return v;
@@ -31,7 +38,8 @@ static int at(const char *src, int x, int y) {
 
 static void eq(const char *src, int want) {
   int got = at(src, 3, 4);
-  if (got != want) snprintf(detail, sizeof detail, "%s -> %d, wanted %d", src, got, want);
+  if (got != want)
+    snprintf(detail, sizeof detail, "%s -> %d, wanted %d", src, got, want);
   ok(src, got == want, detail);
 }
 
@@ -196,11 +204,15 @@ int main(void) {
 
   printf("\n-- dependencies are derived from the source, not declared\n");
   {
-    struct { const char *src; unsigned want; } cases[] = {
+    struct {
+      const char *src;
+      unsigned want;
+    } cases[] = {
         {"128", 0},
         {"x * 2", EXPR_DEP_POS},
         {"y", EXPR_DEP_POS},
-        {"cols / 2", EXPR_DEP_SIZE}, /* not constant: the rect is not known yet */
+        {"cols / 2",
+         EXPR_DEP_SIZE}, /* not constant: the rect is not known yet */
         {"dist(x, y, curx, cury)", EXPR_DEP_POS | EXPR_DEP_CURSOR},
         {"focused * 90", EXPR_DEP_FOCUS},
         {"t % 1000", EXPR_DEP_TIME},
@@ -282,7 +294,8 @@ int main(void) {
      * than accepted and run forever. */
     char big[4096];
     size_t n = 0;
-    for (int i = 0; i < 200; i++) n += (size_t)snprintf(big + n, sizeof big - n, "1+");
+    for (int i = 0; i < 200; i++)
+      n += (size_t)snprintf(big + n, sizeof big - n, "1+");
     snprintf(big + n, sizeof big - n, "1");
     char err[128] = {0};
     expr_prog_t *p = expr_compile(big, err, sizeof err);

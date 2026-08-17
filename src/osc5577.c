@@ -45,47 +45,47 @@ void osc_scan_feed(osc_scan_t *s, const uint8_t *data, size_t len,
   for (size_t i = 0; i < len; i++) {
     uint8_t c = data[i];
     switch (s->state) {
-      case OS_GROUND:
-        if (c == 0x1b) s->state = OS_ESC;
-        break;
+    case OS_GROUND:
+      if (c == 0x1b) s->state = OS_ESC;
+      break;
 
-      case OS_ESC:
-        if (c == ']') {
-          s->state = OS_BODY;
-          s->len = 0;
-          s->overflow = false;
-        } else {
-          s->state = c == 0x1b ? OS_ESC : OS_GROUND;
-        }
-        break;
+    case OS_ESC:
+      if (c == ']') {
+        s->state = OS_BODY;
+        s->len = 0;
+        s->overflow = false;
+      } else {
+        s->state = c == 0x1b ? OS_ESC : OS_GROUND;
+      }
+      break;
 
-      case OS_BODY:
-        if (c == 0x07) { /* BEL terminator, as accepted for OSC 0/2 */
-          if (!s->overflow) dispatch(s->buf, s->len, cb, ud);
-          s->state = OS_GROUND;
-        } else if (c == 0x1b) {
-          s->state = OS_BODY_ESC;
-        } else if (c < 0x20) {
-          s->state = OS_GROUND; /* a control byte ends a malformed OSC */
-        } else if (s->len < sizeof s->buf) {
-          s->buf[s->len++] = (char)c;
-        } else {
-          s->overflow = true; /* keep scanning to the terminator, then drop */
-        }
-        break;
+    case OS_BODY:
+      if (c == 0x07) { /* BEL terminator, as accepted for OSC 0/2 */
+        if (!s->overflow) dispatch(s->buf, s->len, cb, ud);
+        s->state = OS_GROUND;
+      } else if (c == 0x1b) {
+        s->state = OS_BODY_ESC;
+      } else if (c < 0x20) {
+        s->state = OS_GROUND; /* a control byte ends a malformed OSC */
+      } else if (s->len < sizeof s->buf) {
+        s->buf[s->len++] = (char)c;
+      } else {
+        s->overflow = true; /* keep scanning to the terminator, then drop */
+      }
+      break;
 
-      case OS_BODY_ESC:
-        if (c == '\\') { /* ST */
-          if (!s->overflow) dispatch(s->buf, s->len, cb, ud);
-          s->state = OS_GROUND;
-        } else if (c == ']') {
-          s->state = OS_BODY; /* a new OSC started inside one: restart */
-          s->len = 0;
-          s->overflow = false;
-        } else {
-          s->state = OS_GROUND;
-        }
-        break;
+    case OS_BODY_ESC:
+      if (c == '\\') { /* ST */
+        if (!s->overflow) dispatch(s->buf, s->len, cb, ud);
+        s->state = OS_GROUND;
+      } else if (c == ']') {
+        s->state = OS_BODY; /* a new OSC started inside one: restart */
+        s->len = 0;
+        s->overflow = false;
+      } else {
+        s->state = OS_GROUND;
+      }
+      break;
     }
   }
 }

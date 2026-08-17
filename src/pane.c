@@ -233,9 +233,11 @@ static void on_notify(GhosttyTerminal t, void *ud,
   if (!p->notify_cb || !n) return;
   char title[96] = {0}, body[96] = {0};
   if (n->title.len)
-    snprintf(title, sizeof title, "%.*s", (int)n->title.len, (const char *)n->title.ptr);
+    snprintf(title, sizeof title, "%.*s", (int)n->title.len,
+             (const char *)n->title.ptr);
   if (n->body.len)
-    snprintf(body, sizeof body, "%.*s", (int)n->body.len, (const char *)n->body.ptr);
+    snprintf(body, sizeof body, "%.*s", (int)n->body.len,
+             (const char *)n->body.ptr);
   p->notify_cb(p, title, body, p->notify_ud);
 }
 
@@ -356,8 +358,8 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
    * clusters too; under a terminal that does not, wide emoji may misalign. */
   static const uint16_t default_on[] = {25, 2027};
   for (size_t i = 0; i < sizeof default_on / sizeof *default_on; i++) {
-    GhosttyTerminalModeConfig mc = {.mode = ghostty_mode_new(default_on[i], false),
-                                    .value = true};
+    GhosttyTerminalModeConfig mc = {
+        .mode = ghostty_mode_new(default_on[i], false), .value = true};
     ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &mc);
   }
 
@@ -691,8 +693,10 @@ void pane_send_mouse(pane_t *p, const input_event_t *ev) {
   ghostty_mouse_event_set_position(p->mev, pos);
   /* "no button held" is its own thing, not button zero: bare motion (hover)
    * must be encoded as none, or a pane in any-event tracking sees nothing. */
-  if (ev->button == MBTN_UNKNOWN) ghostty_mouse_event_clear_button(p->mev);
-  else ghostty_mouse_event_set_button(p->mev, (GhosttyMouseButton)ev->button);
+  if (ev->button == MBTN_UNKNOWN)
+    ghostty_mouse_event_clear_button(p->mev);
+  else
+    ghostty_mouse_event_set_button(p->mev, (GhosttyMouseButton)ev->button);
   ghostty_mouse_event_set_action(p->mev, (GhosttyMouseAction)ev->maction);
   ghostty_mouse_event_set_mods(p->mev, (GhosttyMods)ev->mods);
 
@@ -737,7 +741,8 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
   if (ghostty_kitty_graphics_placement_iterator_new(NULL, &it) !=
       GHOSTTY_SUCCESS)
     return 0;
-  if (ghostty_kitty_graphics_get(gfx, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
+  if (ghostty_kitty_graphics_get(gfx,
+                                 GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
                                  &it) != GHOSTTY_SUCCESS) {
     ghostty_kitty_graphics_placement_iterator_free(it);
     return 0;
@@ -838,10 +843,12 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
       const uint8_t *data = NULL;
       size_t data_len = 0;
       ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH, &w);
-      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, &h);
-      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_FORMAT, &fmt);
-      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION,
-                                       &comp);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,
+                                       &h);
+      ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
+                                       &fmt);
+      ghostty_kitty_graphics_image_get(
+          img, GHOSTTY_KITTY_IMAGE_DATA_COMPRESSION, &comp);
       ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_GENERATION,
                                        &generation);
       ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR,
@@ -872,7 +879,8 @@ size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud) {
  * reports the per-row range for us to highlight.
  */
 
-static bool grid_ref_at(pane_t *p, uint16_t x, uint16_t y, GhosttyGridRef *out) {
+static bool grid_ref_at(pane_t *p, uint16_t x, uint16_t y,
+                        GhosttyGridRef *out) {
   GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_VIEWPORT,
                      .value.coordinate = {.x = x, .y = y}};
   return ghostty_terminal_grid_ref(p->term, pt, out) == GHOSTTY_SUCCESS;
@@ -935,7 +943,8 @@ static bool word_cell(const char *utf8, size_t len, const char *seps) {
  * forward. Which is enough: the run containing `x` is bounded by the separator
  * before it and the one after it, and both are met on that single pass. */
 bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps) {
-  if (!p || !p->term || !p->rstate || x >= p->cols || y >= p->rows_n) return false;
+  if (!p || !p->term || !p->rstate || x >= p->cols || y >= p->rows_n)
+    return false;
   if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS)
     return false;
   if (ghostty_render_state_get(p->rstate,
@@ -1012,7 +1021,8 @@ bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps) {
   if (!done) return false;
 
   GhosttyGridRef a, b;
-  if (!grid_ref_at(p, left, y, &a) || !grid_ref_at(p, right, y, &b)) return false;
+  if (!grid_ref_at(p, left, y, &a) || !grid_ref_at(p, right, y, &b))
+    return false;
   GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
   sel.start = a;
   sel.end = b;
@@ -1045,8 +1055,8 @@ char *pane_selection_text(pane_t *p) {
   opts.trim = true;
   uint8_t *ptr = NULL;
   size_t len = 0;
-  if (ghostty_terminal_selection_format_alloc(p->term, NULL, opts, &ptr, &len) !=
-          GHOSTTY_SUCCESS ||
+  if (ghostty_terminal_selection_format_alloc(p->term, NULL, opts, &ptr,
+                                              &len) != GHOSTTY_SUCCESS ||
       !len)
     return NULL;
   char *out = malloc(len + 1);
@@ -1066,14 +1076,16 @@ void pane_scroll(pane_t *p, int delta) {
 }
 
 void pane_scroll_edge(pane_t *p, bool top) {
-  GhosttyTerminalScrollViewport b = {
-      .tag = top ? GHOSTTY_SCROLL_VIEWPORT_TOP : GHOSTTY_SCROLL_VIEWPORT_BOTTOM};
+  GhosttyTerminalScrollViewport b = {.tag =
+                                         top ? GHOSTTY_SCROLL_VIEWPORT_TOP
+                                             : GHOSTTY_SCROLL_VIEWPORT_BOTTOM};
   ghostty_terminal_scroll_viewport(p->term, b);
   p->dirty = true;
 }
 
 bool pane_scrolled(const pane_t *p) {
-  bool active = true; /* "the viewport is on the active area", i.e. the bottom */
+  bool active =
+      true; /* "the viewport is on the active area", i.e. the bottom */
   ghostty_terminal_get(p->term, GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE, &active);
   return !active;
 }
@@ -1135,16 +1147,19 @@ static color_t to_color(const GhosttyColorRgb *c, bool ok) {
 
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused) {
-  if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS) return;
+  if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS)
+    return;
 
-  if (ghostty_render_state_get(p->rstate, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
+  if (ghostty_render_state_get(p->rstate,
+                               GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
                                &p->rows) != GHOSTTY_SUCCESS)
     return;
 
   uint16_t y = 0;
   while (ghostty_render_state_row_iterator_next(p->rows)) {
     if (y >= p->rows_n) break;
-    if (ghostty_render_state_row_get(p->rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
+    if (ghostty_render_state_row_get(p->rows,
+                                     GHOSTTY_RENDER_STATE_ROW_DATA_CELLS,
                                      &p->cells) != GHOSTTY_SUCCESS) {
       y++;
       continue;
@@ -1214,8 +1229,12 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
 
       size_t n = gb.len < sizeof dst->text ? gb.len : sizeof dst->text;
       memset(dst->text, 0, sizeof dst->text);
-      if (n) memcpy(dst->text, utf8, n);
-      else { dst->text[0] = ' '; n = 1; }
+      if (n)
+        memcpy(dst->text, utf8, n);
+      else {
+        dst->text[0] = ' ';
+        n = 1;
+      }
       dst->len = (uint8_t)n;
       dst->width = wide == GHOSTTY_CELL_WIDE_WIDE ? 2 : 1;
       /* Selected cells are inverted rather than recoloured, so a selection
@@ -1234,15 +1253,16 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
   if (focused) {
     bool vis = false, has_pos = false;
     uint16_t cxp = 0, cyp = 0;
-    ghostty_render_state_get(p->rstate, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE,
-                             &vis);
+    ghostty_render_state_get(p->rstate,
+                             GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &vis);
     ghostty_render_state_get(
-        p->rstate, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &has_pos);
+        p->rstate, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE,
+        &has_pos);
     if (vis && has_pos) {
-      ghostty_render_state_get(p->rstate,
-                               GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cxp);
-      ghostty_render_state_get(p->rstate,
-                               GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cyp);
+      ghostty_render_state_get(
+          p->rstate, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cxp);
+      ghostty_render_state_get(
+          p->rstate, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cyp);
       s->cursor_visible = true;
       s->cursor_x = (uint16_t)(x0 + cxp);
       s->cursor_y = (uint16_t)(y0 + cyp);
@@ -1252,6 +1272,7 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
   }
 
   GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
-  ghostty_render_state_set(p->rstate, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &clean);
+  ghostty_render_state_set(p->rstate, GHOSTTY_RENDER_STATE_OPTION_DIRTY,
+                           &clean);
   p->dirty = false;
 }

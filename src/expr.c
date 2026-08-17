@@ -11,21 +11,54 @@
 enum {
   OP_PUSH, /* imm */
   OP_VAR,  /* imm = which */
-  OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_NEG,
-  OP_LT, OP_GT, OP_LE, OP_GE, OP_EQ, OP_NE,
-  OP_AND, OP_OR, OP_NOT,
+  OP_ADD,
+  OP_SUB,
+  OP_MUL,
+  OP_DIV,
+  OP_MOD,
+  OP_NEG,
+  OP_LT,
+  OP_GT,
+  OP_LE,
+  OP_GE,
+  OP_EQ,
+  OP_NE,
+  OP_AND,
+  OP_OR,
+  OP_NOT,
   /* On the 32-bit value, with JavaScript's semantics to the letter: the shift
    * count is masked to five bits and `>>` keeps the sign. Not a free choice --
    * contrib/shadertoy.html reimplements this language in JS and a test compares
    * the two, so `x << 33` has to mean the same thing in both. */
-  OP_BAND, OP_BXOR, OP_BOR, OP_BNOT, OP_SHL, OP_SHR,
-  OP_MIN, OP_MAX, OP_ABS, OP_CLAMP, OP_DIST, OP_SIN, OP_COS,
+  OP_BAND,
+  OP_BXOR,
+  OP_BOR,
+  OP_BNOT,
+  OP_SHL,
+  OP_SHR,
+  OP_MIN,
+  OP_MAX,
+  OP_ABS,
+  OP_CLAMP,
+  OP_DIST,
+  OP_SIN,
+  OP_COS,
   OP_SELECT, /* cond a b -> a or b, both already evaluated */
 };
 
 /* Variable slots, in the order the names table lists them. */
-enum { V_X, V_Y, V_COLS, V_ROWS, V_CURX, V_CURY, V_CURSOR, V_FOCUSED, V_T,
-       V_SINCE };
+enum {
+  V_X,
+  V_Y,
+  V_COLS,
+  V_ROWS,
+  V_CURX,
+  V_CURY,
+  V_CURSOR,
+  V_FOCUSED,
+  V_T,
+  V_SINCE
+};
 
 /* Angles are counted in degrees here (see `isin`), and pi is not a number in an
  * angle language -- it is a half turn. So `PI` is 180 and `TAU` is 360, and a
@@ -190,7 +223,8 @@ static void parse_primary(parser_t *ps, expr_prog_t *pr) {
   if ((*ps->p >= 'a' && *ps->p <= 'z') || (*ps->p >= 'A' && *ps->p <= 'Z') ||
       *ps->p == '_') {
     const char *s = ps->p;
-    while ((*ps->p >= 'a' && *ps->p <= 'z') || (*ps->p >= 'A' && *ps->p <= 'Z') ||
+    while ((*ps->p >= 'a' && *ps->p <= 'z') ||
+           (*ps->p >= 'A' && *ps->p <= 'Z') ||
            (*ps->p >= '0' && *ps->p <= '9') || *ps->p == '_')
       ps->p++;
     size_t len = (size_t)(ps->p - s);
@@ -210,9 +244,9 @@ static void parse_primary(parser_t *ps, expr_prog_t *pr) {
         int args;
         uint8_t op;
       } FNS[] = {
-          {"min", 2, OP_MIN},   {"max", 2, OP_MAX},   {"abs", 1, OP_ABS},
-          {"clamp", 3, OP_CLAMP}, {"dist", 4, OP_DIST},
-          {"sin", 1, OP_SIN},   {"cos", 1, OP_COS},
+          {"min", 2, OP_MIN},     {"max", 2, OP_MAX},   {"abs", 1, OP_ABS},
+          {"clamp", 3, OP_CLAMP}, {"dist", 4, OP_DIST}, {"sin", 1, OP_SIN},
+          {"cos", 1, OP_COS},
       };
       for (size_t i = 0; i < sizeof FNS / sizeof *FNS; i++) {
         if (strcmp(FNS[i].name, name) != 0) continue;
@@ -265,10 +299,14 @@ static void parse_mul(parser_t *ps, expr_prog_t *pr) {
     if (ps->failed) return;
     skip_ws(ps);
     uint8_t op;
-    if (*ps->p == '*') op = OP_MUL;
-    else if (*ps->p == '/') op = OP_DIV;
-    else if (*ps->p == '%') op = OP_MOD;
-    else return;
+    if (*ps->p == '*')
+      op = OP_MUL;
+    else if (*ps->p == '/')
+      op = OP_DIV;
+    else if (*ps->p == '%')
+      op = OP_MOD;
+    else
+      return;
     ps->p++;
     parse_primary(ps, pr);
     emit(ps, pr, op, 0);
@@ -281,9 +319,12 @@ static void parse_add(parser_t *ps, expr_prog_t *pr) {
     if (ps->failed) return;
     skip_ws(ps);
     uint8_t op;
-    if (*ps->p == '+') op = OP_ADD;
-    else if (*ps->p == '-') op = OP_SUB;
-    else return;
+    if (*ps->p == '+')
+      op = OP_ADD;
+    else if (*ps->p == '-')
+      op = OP_SUB;
+    else
+      return;
     ps->p++;
     parse_mul(ps, pr);
     emit(ps, pr, op, 0);
@@ -303,9 +344,12 @@ static void parse_shift(parser_t *ps, expr_prog_t *pr) {
     if (ps->failed) return;
     skip_ws(ps);
     uint8_t op;
-    if (eat(ps, "<<")) op = OP_SHL;
-    else if (eat(ps, ">>")) op = OP_SHR;
-    else return;
+    if (eat(ps, "<<"))
+      op = OP_SHL;
+    else if (eat(ps, ">>"))
+      op = OP_SHR;
+    else
+      return;
     parse_add(ps, pr);
     emit(ps, pr, op, 0);
   }
@@ -356,13 +400,22 @@ static void parse_cmp(parser_t *ps, expr_prog_t *pr) {
     uint8_t op;
     /* Longest first: `<` would otherwise eat the `<` of `<=` and leave an `=`
      * that parses as nothing. */
-    if (eat(ps, "<=")) op = OP_LE;
-    else if (eat(ps, ">=")) op = OP_GE;
-    else if (eat(ps, "==")) op = OP_EQ;
-    else if (eat(ps, "!=")) op = OP_NE;
-    else if (*ps->p == '<') { ps->p++; op = OP_LT; }
-    else if (*ps->p == '>') { ps->p++; op = OP_GT; }
-    else return;
+    if (eat(ps, "<="))
+      op = OP_LE;
+    else if (eat(ps, ">="))
+      op = OP_GE;
+    else if (eat(ps, "=="))
+      op = OP_EQ;
+    else if (eat(ps, "!="))
+      op = OP_NE;
+    else if (*ps->p == '<') {
+      ps->p++;
+      op = OP_LT;
+    } else if (*ps->p == '>') {
+      ps->p++;
+      op = OP_GT;
+    } else
+      return;
     parse_bor(ps, pr);
     emit(ps, pr, op, 0);
   }
@@ -404,7 +457,6 @@ static void parse_expr(parser_t *ps, expr_prog_t *pr) {
   emit(ps, pr, OP_SELECT, 0);
 }
 
-
 /* ---- trigonometry, in the only arithmetic this language has ---------------
  *
  * `sin(d)` and `cos(d)` take **degrees** and answer -255..255. Degrees because
@@ -420,8 +472,8 @@ static void parse_expr(parser_t *ps, expr_prog_t *pr) {
  * approximations of the same curve do.
  */
 static const int16_t SIN_Q[91] = {
-      0,   4,   9,  13,  18,  22,  27,  31,  35,  40,  44,  49,  53,
-     57,  62,  66,  70,  75,  79,  83,  87,  91,  96, 100, 104, 108,
+    0,   4,   9,   13,  18,  22,  27,  31,  35,  40,  44,  49,  53,
+    57,  62,  66,  70,  75,  79,  83,  87,  91,  96,  100, 104, 108,
     112, 116, 120, 124, 127, 131, 135, 139, 143, 146, 150, 153, 157,
     160, 164, 167, 171, 174, 177, 180, 183, 186, 190, 192, 195, 198,
     201, 204, 206, 209, 211, 214, 216, 219, 221, 223, 225, 227, 229,
@@ -444,15 +496,19 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
   int32_t st[MAX_STACK];
   int sp = 0;
   const int32_t vars[] = {
-      [V_X] = env->x,         [V_Y] = env->y,
-      [V_COLS] = env->cols,   [V_ROWS] = env->rows,
-      [V_CURX] = env->curx,   [V_CURY] = env->cury,
-      [V_CURSOR] = env->cursor, [V_FOCUSED] = env->focused,
+      [V_X] = env->x,
+      [V_Y] = env->y,
+      [V_COLS] = env->cols,
+      [V_ROWS] = env->rows,
+      [V_CURX] = env->curx,
+      [V_CURY] = env->cury,
+      [V_CURSOR] = env->cursor,
+      [V_FOCUSED] = env->focused,
       [V_T] = (int32_t)(env->t & 0x7fffffff),
       /* Clamped, not wrapped: a pane that has been unfocused for a month
        * should read as "a long time", and a `since` that rolled over would
        * make an effect restart for no reason anybody could see. */
-      [V_SINCE] = (int32_t)(env->since < 0 ? 0
+      [V_SINCE] = (int32_t)(env->since < 0            ? 0
                             : env->since > 0x7fffffff ? 0x7fffffff
                                                       : env->since),
   };
@@ -464,92 +520,160 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
      * a predictable branch and turns that into a wrong colour, not a smash. */
     if (sp >= MAX_STACK - 1) return 0;
     switch (in->op) {
-      case OP_PUSH: st[sp++] = in->imm; break;
-      case OP_VAR: st[sp++] = vars[in->imm]; break;
-      case OP_NEG: if (sp) st[sp - 1] = -st[sp - 1]; break;
-      case OP_NOT: if (sp) st[sp - 1] = !st[sp - 1]; break;
-      case OP_BNOT: if (sp) st[sp - 1] = (int32_t)~(uint32_t)st[sp - 1]; break;
-      case OP_ABS: if (sp) st[sp - 1] = st[sp - 1] < 0 ? -st[sp - 1] : st[sp - 1]; break;
-      case OP_SIN: if (sp) st[sp - 1] = isin(st[sp - 1]); break;
-      case OP_COS: if (sp) st[sp - 1] = isin(st[sp - 1] + 90); break;
-      default: {
-        int need = in->op == OP_CLAMP ? 3 : in->op == OP_DIST ? 4
-                   : in->op == OP_SELECT ? 3 : 2;
-        if (sp < need) return 0;
-        int32_t b = st[sp - 1], a = st[sp - 2];
-        switch (in->op) {
-          case OP_ADD: st[sp - 2] = a + b; sp--; break;
-          case OP_SUB: st[sp - 2] = a - b; sp--; break;
-          case OP_MUL: st[sp - 2] = a * b; sp--; break;
-          /* Defined rather than trapping: an expression that divides by zero
+    case OP_PUSH: st[sp++] = in->imm; break;
+    case OP_VAR: st[sp++] = vars[in->imm]; break;
+    case OP_NEG:
+      if (sp) st[sp - 1] = -st[sp - 1];
+      break;
+    case OP_NOT:
+      if (sp) st[sp - 1] = !st[sp - 1];
+      break;
+    case OP_BNOT:
+      if (sp) st[sp - 1] = (int32_t)~(uint32_t)st[sp - 1];
+      break;
+    case OP_ABS:
+      if (sp) st[sp - 1] = st[sp - 1] < 0 ? -st[sp - 1] : st[sp - 1];
+      break;
+    case OP_SIN:
+      if (sp) st[sp - 1] = isin(st[sp - 1]);
+      break;
+    case OP_COS:
+      if (sp) st[sp - 1] = isin(st[sp - 1] + 90);
+      break;
+    default: {
+      int need = in->op == OP_CLAMP    ? 3
+                 : in->op == OP_DIST   ? 4
+                 : in->op == OP_SELECT ? 3
+                                       : 2;
+      if (sp < need) return 0;
+      int32_t b = st[sp - 1], a = st[sp - 2];
+      switch (in->op) {
+      case OP_ADD:
+        st[sp - 2] = a + b;
+        sp--;
+        break;
+      case OP_SUB:
+        st[sp - 2] = a - b;
+        sp--;
+        break;
+      case OP_MUL:
+        st[sp - 2] = a * b;
+        sp--;
+        break;
+      /* Defined rather than trapping: an expression that divides by zero
            * should look wrong, not take the session with it. */
-          case OP_DIV: st[sp - 2] = b ? a / b : 0; sp--; break;
-          case OP_MOD: st[sp - 2] = b ? a % b : 0; sp--; break;
-          case OP_LT: st[sp - 2] = a < b; sp--; break;
-          case OP_GT: st[sp - 2] = a > b; sp--; break;
-          case OP_LE: st[sp - 2] = a <= b; sp--; break;
-          case OP_GE: st[sp - 2] = a >= b; sp--; break;
-          case OP_EQ: st[sp - 2] = a == b; sp--; break;
-          case OP_NE: st[sp - 2] = a != b; sp--; break;
-          case OP_AND: st[sp - 2] = a && b; sp--; break;
-          case OP_BAND: st[sp - 2] = (int32_t)((uint32_t)a & (uint32_t)b); sp--; break;
-          case OP_BXOR: st[sp - 2] = (int32_t)((uint32_t)a ^ (uint32_t)b); sp--; break;
-          case OP_BOR: st[sp - 2] = (int32_t)((uint32_t)a | (uint32_t)b); sp--; break;
-          /* Count masked to five bits, like JS, so a silly shift is defined
+      case OP_DIV:
+        st[sp - 2] = b ? a / b : 0;
+        sp--;
+        break;
+      case OP_MOD:
+        st[sp - 2] = b ? a % b : 0;
+        sp--;
+        break;
+      case OP_LT:
+        st[sp - 2] = a < b;
+        sp--;
+        break;
+      case OP_GT:
+        st[sp - 2] = a > b;
+        sp--;
+        break;
+      case OP_LE:
+        st[sp - 2] = a <= b;
+        sp--;
+        break;
+      case OP_GE:
+        st[sp - 2] = a >= b;
+        sp--;
+        break;
+      case OP_EQ:
+        st[sp - 2] = a == b;
+        sp--;
+        break;
+      case OP_NE:
+        st[sp - 2] = a != b;
+        sp--;
+        break;
+      case OP_AND:
+        st[sp - 2] = a && b;
+        sp--;
+        break;
+      case OP_BAND:
+        st[sp - 2] = (int32_t)((uint32_t)a & (uint32_t)b);
+        sp--;
+        break;
+      case OP_BXOR:
+        st[sp - 2] = (int32_t)((uint32_t)a ^ (uint32_t)b);
+        sp--;
+        break;
+      case OP_BOR:
+        st[sp - 2] = (int32_t)((uint32_t)a | (uint32_t)b);
+        sp--;
+        break;
+      /* Count masked to five bits, like JS, so a silly shift is defined
            * rather than undefined. Shifted unsigned because moving a bit into
            * the sign of a signed value is undefined in C and simply wraps in JS,
            * which is what the preview will show. */
-          case OP_SHL:
-            st[sp - 2] = (int32_t)((uint32_t)a << (b & 31));
-            sp--;
-            break;
-          /* Arithmetic: the sign is kept, so `-8 >> 1` is -4. Written out rather
+      case OP_SHL:
+        st[sp - 2] = (int32_t)((uint32_t)a << (b & 31));
+        sp--;
+        break;
+      /* Arithmetic: the sign is kept, so `-8 >> 1` is -4. Written out rather
            * than left to the compiler, because a signed right shift is
            * implementation-defined in C and this one has to match JS. */
-          case OP_SHR: {
-            unsigned k = (unsigned)(b & 31);
-            uint32_t u = (uint32_t)a;
-            st[sp - 2] = (int32_t)(a < 0 ? ~((~u) >> k) : u >> k);
-            sp--;
-            break;
-          }
-          case OP_OR: st[sp - 2] = a || b; sp--; break;
-          case OP_MIN: st[sp - 2] = a < b ? a : b; sp--; break;
-          case OP_MAX: st[sp - 2] = a > b ? a : b; sp--; break;
-          case OP_CLAMP: {
-            int32_t hi = st[sp - 1], lo = st[sp - 2], v = st[sp - 3];
-            st[sp - 3] = v < lo ? lo : v > hi ? hi : v;
-            sp -= 2;
-            break;
-          }
-          case OP_SELECT: {
-            int32_t f = st[sp - 1], t = st[sp - 2], c = st[sp - 3];
-            st[sp - 3] = c ? t : f;
-            sp -= 2;
-            break;
-          }
-          case OP_DIST: {
-            /* A cell is about twice as tall as it is wide, so a distance in
+      case OP_SHR: {
+        unsigned k = (unsigned)(b & 31);
+        uint32_t u = (uint32_t)a;
+        st[sp - 2] = (int32_t)(a < 0 ? ~((~u) >> k) : u >> k);
+        sp--;
+        break;
+      }
+      case OP_OR:
+        st[sp - 2] = a || b;
+        sp--;
+        break;
+      case OP_MIN:
+        st[sp - 2] = a < b ? a : b;
+        sp--;
+        break;
+      case OP_MAX:
+        st[sp - 2] = a > b ? a : b;
+        sp--;
+        break;
+      case OP_CLAMP: {
+        int32_t hi = st[sp - 1], lo = st[sp - 2], v = st[sp - 3];
+        st[sp - 3] = v < lo ? lo : v > hi ? hi : v;
+        sp -= 2;
+        break;
+      }
+      case OP_SELECT: {
+        int32_t f = st[sp - 1], t = st[sp - 2], c = st[sp - 3];
+        st[sp - 3] = c ? t : f;
+        sp -= 2;
+        break;
+      }
+      case OP_DIST: {
+        /* A cell is about twice as tall as it is wide, so a distance in
              * cells counts a row double -- the same correction the layout's
              * own centre-distance makes. Without it every "circle" here is an
              * ellipse, which is the first thing anyone notices. */
-            int32_t y2 = st[sp - 1], x2 = st[sp - 2], y1 = st[sp - 3],
-                    x1 = st[sp - 4];
-            int32_t dx = x1 - x2, dy = (y1 - y2) * 2;
-            int32_t d2 = dx * dx + dy * dy;
-            /* Integer square root, so `dist` is a distance and not its
+        int32_t y2 = st[sp - 1], x2 = st[sp - 2], y1 = st[sp - 3],
+                x1 = st[sp - 4];
+        int32_t dx = x1 - x2, dy = (y1 - y2) * 2;
+        int32_t d2 = dx * dx + dy * dy;
+        /* Integer square root, so `dist` is a distance and not its
              * square: expressions that scale linearly with it are what people
              * write, and squaring is easy to ask for and hard to undo. */
-            int32_t r = 0;
-            while ((r + 1) * (r + 1) <= d2 && r < 4096) r++;
-            st[sp - 4] = r;
-            sp -= 3;
-            break;
-          }
-          default: return 0;
-        }
+        int32_t r = 0;
+        while ((r + 1) * (r + 1) <= d2 && r < 4096) r++;
+        st[sp - 4] = r;
+        sp -= 3;
         break;
       }
+      default: return 0;
+      }
+      break;
+    }
     }
   }
   return sp ? st[sp - 1] : 0;
@@ -564,18 +688,18 @@ static bool stack_fits(const expr_prog_t *pr) {
   int sp = 0, peak = 0;
   for (size_t i = 0; i < pr->n; i++) {
     switch (pr->code[i].op) {
-      case OP_PUSH:
-      case OP_VAR: sp++; break;
-      case OP_NEG:
-      case OP_NOT:
-      case OP_BNOT:
-      case OP_SIN:
-      case OP_COS:
-      case OP_ABS: break;
-      case OP_CLAMP:
-      case OP_SELECT: sp -= 2; break;
-      case OP_DIST: sp -= 3; break;
-      default: sp--; break;
+    case OP_PUSH:
+    case OP_VAR: sp++; break;
+    case OP_NEG:
+    case OP_NOT:
+    case OP_BNOT:
+    case OP_SIN:
+    case OP_COS:
+    case OP_ABS: break;
+    case OP_CLAMP:
+    case OP_SELECT: sp -= 2; break;
+    case OP_DIST: sp -= 3; break;
+    default: sp--; break;
     }
     if (sp > peak) peak = sp;
     if (sp < 0) return false;
@@ -629,7 +753,9 @@ int expr_eval(const expr_prog_t *p, const expr_env_t *env) {
   return vm_run(p, env);
 }
 
-static uint8_t clamp8(int v) { return (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v); }
+static uint8_t clamp8(int v) {
+  return (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+}
 
 bool expr_amount_map(expr_prog_t *p, const expr_env_t *env, uint8_t **out) {
   if (!p || !out) return false;

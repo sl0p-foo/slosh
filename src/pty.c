@@ -57,7 +57,10 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
     if (slave > STDERR_FILENO) close(slave);
     close(master);
 
-    if (cwd) { if (chdir(cwd) != 0) { /* keep going in the old cwd */ } }
+    if (cwd) {
+      if (chdir(cwd) != 0) { /* keep going in the old cwd */
+      }
+    }
 
     /* We are opinionated about the outer terminal (D11), and we present the
      * same contract inward. xterm-ghostty is what libghostty-vt implements. */

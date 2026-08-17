@@ -71,7 +71,10 @@ int main(void) {
 
   /* escape and alt */
   T("bare esc resolves on timeout", "\x1b", "key ESCAPE mods=- press");
-  T("alt-a", "\x1b" "a", "key a mods=A press text=a");
+  T("alt-a",
+    "\x1b"
+    "a",
+    "key a mods=A press text=a");
   T("alt-ctrl-a", "\x1b\x01", "key a mods=CA press");
 
   /* legacy CSI */
@@ -116,8 +119,12 @@ int main(void) {
   expect_split("split CSI", "\x1b[1;5A", 6, 3, "key ARROW_UP mods=C press");
   expect_split("split utf8", "\xf0\x9f\x92\x80", 4, 2,
                "key UNIDENTIFIED mods=- press text=\xf0\x9f\x92\x80");
-  expect_split("split paste", "\x1b[200~hi\x1b[201~", 14, 8, "paste len=2 text=hi");
-  expect_split("esc then key is alt", "\x1b" "b", 2, 1, "key b mods=A press text=b");
+  expect_split("split paste", "\x1b[200~hi\x1b[201~", 14, 8,
+               "paste len=2 text=hi");
+  expect_split("esc then key is alt",
+               "\x1b"
+               "b",
+               2, 1, "key b mods=A press text=b");
 
   printf("\n%s (%d failures)\n", fails ? "FAILED" : "all green", fails);
   return fails ? 1 : 0;

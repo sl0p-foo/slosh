@@ -19,10 +19,10 @@ typedef struct graphics graphics_t;
 
 /* One image, as this session knows it. */
 typedef struct {
-  uint32_t pane;    /* which pane transmitted it */
-  uint32_t src_id;  /* the id the program chose, unique only within its pane */
-  uint32_t out_id;  /* the id we give the client, unique across the session */
-  uint64_t gen;     /* image generation, so a changed image is re-sent */
+  uint32_t pane;   /* which pane transmitted it */
+  uint32_t src_id; /* the id the program chose, unique only within its pane */
+  uint32_t out_id; /* the id we give the client, unique across the session */
+  uint64_t gen;    /* image generation, so a changed image is re-sent */
   bool sent;
 } gfx_image_t;
 
@@ -56,16 +56,16 @@ void gfx_begin(graphics_t *g);
  * perfectly and shows up as a picture in slightly the wrong place — which is
  * exactly the bug class this file is for. */
 typedef struct {
-  uint32_t pane;    /* which pane it belongs to */
-  uint32_t src_id;  /* the id the program chose */
-  uint64_t gen;     /* image generation, so a changed image is re-sent */
+  uint32_t pane;   /* which pane it belongs to */
+  uint32_t src_id; /* the id the program chose */
+  uint64_t gen;    /* image generation, so a changed image is re-sent */
   uint32_t place_id;
-  uint16_t col, row;   /* screen cells */
+  uint16_t col, row;               /* screen cells */
   uint16_t cols, rows;             /* cells covered */
   uint16_t scale_cols, scale_rows; /* cells to scale into, 0 for natural */
-  uint32_t x_off, y_off;   /* offset within the first cell, in pixels */
-  uint32_t sx, sy, sw, sh; /* source rectangle, in image pixels */
-  uint32_t px_w, px_h;     /* the image's own size */
+  uint32_t x_off, y_off;           /* offset within the first cell, in pixels */
+  uint32_t sx, sy, sw, sh;         /* source rectangle, in image pixels */
+  uint32_t px_w, px_h;             /* the image's own size */
   int format, compression;
   const uint8_t *data; /* NULL once the client has it */
   size_t data_len;

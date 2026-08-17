@@ -70,12 +70,14 @@ static bool describe(const char *path, project_t *p) {
   const char *resolved = realpath(path, real) ? real : path;
   snprintf(p->path, sizeof p->path, "%s", resolved);
   basename_of(p->path, p->name, sizeof p->name);
-  if (!p->name[0] || p->name[0] == '.') return false; /* not `.`, `..`, dotdirs */
+  if (!p->name[0] || p->name[0] == '.')
+    return false; /* not `.`, `..`, dotdirs */
   project_slug(p->path, p->name, p->slug, sizeof p->slug);
 
   struct stat lst;
   if (exists(p->path, PROJECT_LAYOUT_FILE, &lst)) {
-    snprintf(p->layout, sizeof p->layout, "%s/%s", p->path, PROJECT_LAYOUT_FILE);
+    snprintf(p->layout, sizeof p->layout, "%s/%s", p->path,
+             PROJECT_LAYOUT_FILE);
     p->mtime = (int64_t)lst.st_mtime;
     return true;
   }

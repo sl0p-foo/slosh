@@ -102,7 +102,8 @@ void gfx_begin(graphics_t *g) {
    * of range for a char -- the compiler catches that one, but the same shape
    * with a digit that stays in range ("\x1b1") compiles and emits one wrong
    * byte. Escape then digit is always two strings. */
-  out_str(g, "\x1b" "7"); /* DECSC */
+  out_str(g, "\x1b"
+             "7"); /* DECSC */
 }
 
 static gfx_image_t *img_find(graphics_t *g, uint32_t pane, uint32_t src_id) {
@@ -259,7 +260,8 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
     g->len = 0;
     if (g->out) g->out[0] = 0;
   } else {
-    out_str(g, "\x1b" "8"); /* DECRC */
+    out_str(g, "\x1b"
+               "8"); /* DECRC */
   }
 
   *out_len = g->len;

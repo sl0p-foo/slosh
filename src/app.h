@@ -147,12 +147,12 @@ size_t app_projects(project_t *out, size_t max);
 uint32_t app_workspace_tab(app_t *a, const char *slug);
 
 typedef struct {
-  uint32_t tab;      /* the tab to land in */
-  char purpose[64];  /* the workspace's identity */
-  char path[512];    /* the project on disk */
-  size_t tabs;       /* tabs it adopted */
-  size_t honoured;   /* tabs whose own declared purpose was left alone */
-  bool created;      /* false when it was already open and was focused */
+  uint32_t tab;     /* the tab to land in */
+  char purpose[64]; /* the workspace's identity */
+  char path[512];   /* the project on disk */
+  size_t tabs;      /* tabs it adopted */
+  size_t honoured;  /* tabs whose own declared purpose was left alone */
+  bool created;     /* false when it was already open and was focused */
 } app_workspace_open_t;
 
 /* Open a project's layout as a workspace, or focus the one already open --
@@ -167,10 +167,10 @@ bool app_workspace_open(app_t *a, const char *name, bool suspended,
 size_t app_workspace_close(app_t *a, const char *slug);
 
 typedef struct {
-  char path[512];    /* the file written */
-  char purpose[64];  /* the workspace the tab now carries */
+  char path[512];   /* the file written */
+  char purpose[64]; /* the workspace the tab now carries */
   size_t panes, suspended;
-  bool replaced;     /* there was a layout there before */
+  bool replaced; /* there was a layout there before */
 } app_workspace_save_t;
 
 /* Write one tab out as a project's layout: the same dump `dump-layout` answers
@@ -205,7 +205,8 @@ bool app_minimize(app_t *a, uint32_t id);
  * A move drops what the old tab thought about the pane: a zoom naming it, and its
  * minimised flag. Carried across, the first would zoom a pane that has left and the
  * second would file the arrival in a strip nobody asked for. */
-bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id, bool rows);
+bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id,
+                          bool rows);
 
 /* The same, into a tab of its own; returns that tab's id, or 0 -- including for a
  * pane that is already alone in its tab, which has nowhere to go. */

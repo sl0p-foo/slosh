@@ -12,7 +12,8 @@ typedef struct {
 static jv_t *parse_value(P *s);
 
 static void skip_ws(P *s) {
-  while (*s->p == ' ' || *s->p == '\t' || *s->p == '\n' || *s->p == '\r') s->p++;
+  while (*s->p == ' ' || *s->p == '\t' || *s->p == '\n' || *s->p == '\r')
+    s->p++;
 }
 
 static jv_t *jv_new(jv_kind_t k) {
@@ -23,7 +24,8 @@ static jv_t *jv_new(jv_kind_t k) {
 
 static void utf8_put(char **out, unsigned cp) {
   char *o = *out;
-  if (cp < 0x80) *o++ = (char)cp;
+  if (cp < 0x80)
+    *o++ = (char)cp;
   else if (cp < 0x800) {
     *o++ = (char)(0xc0 | (cp >> 6));
     *o++ = (char)(0x80 | (cp & 0x3f));
@@ -45,9 +47,12 @@ static unsigned hex4(const char *p) {
   for (int i = 0; i < 4; i++) {
     char c = p[i];
     v <<= 4;
-    if (c >= '0' && c <= '9') v |= (unsigned)(c - '0');
-    else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
-    else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
+    if (c >= '0' && c <= '9')
+      v |= (unsigned)(c - '0');
+    else if (c >= 'a' && c <= 'f')
+      v |= (unsigned)(c - 'a' + 10);
+    else if (c >= 'A' && c <= 'F')
+      v |= (unsigned)(c - 'A' + 10);
   }
   return v;
 }
@@ -66,29 +71,29 @@ static char *parse_string_raw(P *s, size_t *out_len) {
     if (*s->p == '\\') {
       s->p++;
       switch (*s->p) {
-        case 'n': *o++ = '\n'; break;
-        case 't': *o++ = '\t'; break;
-        case 'r': *o++ = '\r'; break;
-        case 'b': *o++ = '\b'; break;
-        case 'f': *o++ = '\f'; break;
-        case '/': *o++ = '/'; break;
-        case '"': *o++ = '"'; break;
-        case '\\': *o++ = '\\'; break;
-        case 'u': {
-          unsigned cp = hex4(s->p + 1);
-          s->p += 4;
-          if (cp >= 0xd800 && cp < 0xdc00 && s->p[1] == '\\' && s->p[2] == 'u') {
-            unsigned lo = hex4(s->p + 3);
-            s->p += 6;
-            cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
-          }
-          utf8_put(&o, cp);
-          break;
+      case 'n': *o++ = '\n'; break;
+      case 't': *o++ = '\t'; break;
+      case 'r': *o++ = '\r'; break;
+      case 'b': *o++ = '\b'; break;
+      case 'f': *o++ = '\f'; break;
+      case '/': *o++ = '/'; break;
+      case '"': *o++ = '"'; break;
+      case '\\': *o++ = '\\'; break;
+      case 'u': {
+        unsigned cp = hex4(s->p + 1);
+        s->p += 4;
+        if (cp >= 0xd800 && cp < 0xdc00 && s->p[1] == '\\' && s->p[2] == 'u') {
+          unsigned lo = hex4(s->p + 3);
+          s->p += 6;
+          cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
         }
-        default:
-          s->bad = true;
-          free(buf);
-          return NULL;
+        utf8_put(&o, cp);
+        break;
+      }
+      default:
+        s->bad = true;
+        free(buf);
+        return NULL;
       }
       s->p++;
     } else {
@@ -121,20 +126,38 @@ static jv_t *parse_value(P *s) {
     for (;;) {
       skip_ws(s);
       char *key = parse_string_raw(s, NULL);
-      if (s->bad) { jv_free(v); return NULL; }
+      if (s->bad) {
+        jv_free(v);
+        return NULL;
+      }
       skip_ws(s);
-      if (*s->p != ':') { s->bad = true; free(key); jv_free(v); return NULL; }
+      if (*s->p != ':') {
+        s->bad = true;
+        free(key);
+        jv_free(v);
+        return NULL;
+      }
       s->p++;
       jv_t *val = parse_value(s);
-      if (!val) { free(key); jv_free(v); return NULL; }
+      if (!val) {
+        free(key);
+        jv_free(v);
+        return NULL;
+      }
       v->keys = realloc(v->keys, (v->len + 1) * sizeof *v->keys);
       v->kids = realloc(v->kids, (v->len + 1) * sizeof *v->kids);
       v->keys[v->len] = key;
       v->kids[v->len] = val;
       v->len++;
       skip_ws(s);
-      if (*s->p == ',') { s->p++; continue; }
-      if (*s->p == '}') { s->p++; return v; }
+      if (*s->p == ',') {
+        s->p++;
+        continue;
+      }
+      if (*s->p == '}') {
+        s->p++;
+        return v;
+      }
       s->bad = true;
       jv_free(v);
       return NULL;
@@ -151,12 +174,21 @@ static jv_t *parse_value(P *s) {
     }
     for (;;) {
       jv_t *val = parse_value(s);
-      if (!val) { jv_free(v); return NULL; }
+      if (!val) {
+        jv_free(v);
+        return NULL;
+      }
       v->kids = realloc(v->kids, (v->len + 1) * sizeof *v->kids);
       v->kids[v->len++] = val;
       skip_ws(s);
-      if (*s->p == ',') { s->p++; continue; }
-      if (*s->p == ']') { s->p++; return v; }
+      if (*s->p == ',') {
+        s->p++;
+        continue;
+      }
+      if (*s->p == ']') {
+        s->p++;
+        return v;
+      }
       s->bad = true;
       jv_free(v);
       return NULL;

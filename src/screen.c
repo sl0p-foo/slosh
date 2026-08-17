@@ -135,16 +135,22 @@ static size_t decode_utf8(const char *txt, size_t len, uint32_t *cps,
     if (l == 0 || i + l > len) break;
     uint32_t cp;
     switch (l) {
-      case 1: cp = (unsigned char)txt[i]; break;
-      case 2: cp = ((uint32_t)((unsigned char)txt[i] & 0x1f) << 6) |
-                   ((unsigned char)txt[i + 1] & 0x3f); break;
-      case 3: cp = ((uint32_t)((unsigned char)txt[i] & 0x0f) << 12) |
-                   ((uint32_t)((unsigned char)txt[i + 1] & 0x3f) << 6) |
-                   ((unsigned char)txt[i + 2] & 0x3f); break;
-      default: cp = ((uint32_t)((unsigned char)txt[i] & 0x07) << 18) |
-                    ((uint32_t)((unsigned char)txt[i + 1] & 0x3f) << 12) |
-                    ((uint32_t)((unsigned char)txt[i + 2] & 0x3f) << 6) |
-                    ((unsigned char)txt[i + 3] & 0x3f); break;
+    case 1: cp = (unsigned char)txt[i]; break;
+    case 2:
+      cp = ((uint32_t)((unsigned char)txt[i] & 0x1f) << 6) |
+           ((unsigned char)txt[i + 1] & 0x3f);
+      break;
+    case 3:
+      cp = ((uint32_t)((unsigned char)txt[i] & 0x0f) << 12) |
+           ((uint32_t)((unsigned char)txt[i + 1] & 0x3f) << 6) |
+           ((unsigned char)txt[i + 2] & 0x3f);
+      break;
+    default:
+      cp = ((uint32_t)((unsigned char)txt[i] & 0x07) << 18) |
+           ((uint32_t)((unsigned char)txt[i + 1] & 0x3f) << 12) |
+           ((uint32_t)((unsigned char)txt[i + 2] & 0x3f) << 6) |
+           ((unsigned char)txt[i + 3] & 0x3f);
+      break;
     }
     cps[n++] = cp;
     i += l;
@@ -182,8 +188,8 @@ uint16_t screen_cells(const char *txt) {
   size_t len = strlen(txt), at = 0;
   while (at < len) {
     size_t used = 0;
-    size_t n = decode_utf8(txt + at, len - at, cps, sizeof cps / sizeof *cps,
-                           &used);
+    size_t n =
+        decode_utf8(txt + at, len - at, cps, sizeof cps / sizeof *cps, &used);
     if (!n) break;
     for (size_t i = 0; i < n;) {
       uint8_t w = 1;
@@ -231,7 +237,6 @@ void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
   c->attrs = attrs;
 }
 
-
 uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      color_t fg, color_t bg, uint16_t attrs) {
   uint16_t n = 0;
@@ -276,7 +281,8 @@ static void emit_sgr(screen_t *s, const cell_t *c) {
 }
 
 static bool style_eq(const cell_t *a, const cell_t *b) {
-  return a->attrs == b->attrs && color_eq(a->fg, b->fg) && color_eq(a->bg, b->bg);
+  return a->attrs == b->attrs && color_eq(a->fg, b->fg) &&
+         color_eq(a->bg, b->bg);
 }
 
 void screen_render(screen_t *s) {
@@ -319,8 +325,10 @@ void screen_render(screen_t *s) {
         style = *c;
         have_style = true;
       }
-      if (c->len) out_bytes(s, c->text, c->len);
-      else out_str(s, " ");
+      if (c->len)
+        out_bytes(s, c->text, c->len);
+      else
+        out_str(s, " ");
 
       *p = *c;
       cx += c->width ? c->width : 1;
@@ -399,9 +407,9 @@ static void dump_style_runs(screen_t *s, json_t *j) {
         uint16_t bit;
         const char *name;
       } names[] = {
-          {ATTR_BOLD, "bold"},       {ATTR_DIM, "dim"},
-          {ATTR_ITALIC, "italic"},   {ATTR_UNDERLINE, "underline"},
-          {ATTR_BLINK, "blink"},     {ATTR_INVERSE, "inverse"},
+          {ATTR_BOLD, "bold"},           {ATTR_DIM, "dim"},
+          {ATTR_ITALIC, "italic"},       {ATTR_UNDERLINE, "underline"},
+          {ATTR_BLINK, "blink"},         {ATTR_INVERSE, "inverse"},
           {ATTR_INVISIBLE, "invisible"}, {ATTR_STRIKE, "strike"},
       };
       for (size_t i = 0; i < sizeof names / sizeof *names; i++)

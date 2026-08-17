@@ -48,19 +48,19 @@ static void escaped(json_t *j, const char *s, size_t len) {
   for (size_t i = 0; i < len; i++) {
     unsigned char c = (unsigned char)s[i];
     switch (c) {
-      case '"': rawz(j, "\\\""); break;
-      case '\\': rawz(j, "\\\\"); break;
-      case '\n': rawz(j, "\\n"); break;
-      case '\r': rawz(j, "\\r"); break;
-      case '\t': rawz(j, "\\t"); break;
-      default:
-        if (c < 0x20) {
-          char b[8];
-          snprintf(b, sizeof b, "\\u%04x", c);
-          rawz(j, b);
-        } else {
-          raw(j, (const char *)&c, 1); /* UTF-8 passes through */
-        }
+    case '"': rawz(j, "\\\""); break;
+    case '\\': rawz(j, "\\\\"); break;
+    case '\n': rawz(j, "\\n"); break;
+    case '\r': rawz(j, "\\r"); break;
+    case '\t': rawz(j, "\\t"); break;
+    default:
+      if (c < 0x20) {
+        char b[8];
+        snprintf(b, sizeof b, "\\u%04x", c);
+        rawz(j, b);
+      } else {
+        raw(j, (const char *)&c, 1); /* UTF-8 passes through */
+      }
     }
   }
   rawz(j, "\"");

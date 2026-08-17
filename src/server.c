@@ -216,8 +216,8 @@ static void watch_config(watchset_t *w) {
      * a mistyped path should not leave a directory behind. */
     if (i == 0) path_mkdirs(dir);
 
-    int wd = inotify_add_watch(w->fd, dir,
-                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+    int wd =
+        inotify_add_watch(w->fd, dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
     if (wd >= 0) {
       bool have = false;
       for (size_t k = 0; k < w->nwds; k++)
@@ -260,8 +260,10 @@ static bool watch_hit(const watchset_t *w, const char *name) {
  * and set rather than inherited so it names the binary that actually made this
  * pane, not one that made some pane somewhere. */
 void session_env(const char *name) {
-  if (name) setenv("SL0PPTY_SESSION", name, 1);
-  else unsetenv("SL0PPTY_SESSION");
+  if (name)
+    setenv("SL0PPTY_SESSION", name, 1);
+  else
+    unsetenv("SL0PPTY_SESSION");
   char self[512];
   ssize_t sn = readlink("/proc/self/exe", self, sizeof self - 1);
   if (sn > 0) {
@@ -276,7 +278,8 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   if (session_socket_path(name, path, sizeof path) != 0) return 1;
   int lfd = listen_socket(path);
   if (lfd < 0) {
-    fprintf(stderr, "sl0ppty: cannot listen on %s: %s\n", path, strerror(errno));
+    fprintf(stderr, "sl0ppty: cannot listen on %s: %s\n", path,
+            strerror(errno));
     return 1;
   }
 
@@ -415,66 +418,65 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       bool closed = false;
       while (!closed && msg_reader_next(&s.conns[ci].reader, &m)) {
         switch (m.type) {
-          case MSG_HELLO:
-          case MSG_RESIZE:
-            if (m.type == MSG_HELLO && !s.conns[ci].display) {
-              /* now it is a client: the previous display is displaced */
-              for (size_t j = 0; j < s.nconns; j++)
-                if (j != ci && s.conns[j].display) {
-                  conn_drop(&s, j, EXIT_REPLACED);
-                  if (j < ci) ci--; /* the array compacted under us */
-                  break;
-                }
-              s.conns[ci].display = true;
-            }
-            if (m.len >= 4 && s.conns[ci].display) {
-              uint16_t c = (uint16_t)(m.data[0] << 8 | m.data[1]);
-              uint16_t rr = (uint16_t)(m.data[2] << 8 | m.data[3]);
-              if (c && rr) {
-                screen_resize(&s.screen, c, rr);
-                app_resize(s.app, c, rr);
+        case MSG_HELLO:
+        case MSG_RESIZE:
+          if (m.type == MSG_HELLO && !s.conns[ci].display) {
+            /* now it is a client: the previous display is displaced */
+            for (size_t j = 0; j < s.nconns; j++)
+              if (j != ci && s.conns[j].display) {
+                conn_drop(&s, j, EXIT_REPLACED);
+                if (j < ci) ci--; /* the array compacted under us */
+                break;
               }
-              /* The cell size arrived with it, from a client new enough to
+            s.conns[ci].display = true;
+          }
+          if (m.len >= 4 && s.conns[ci].display) {
+            uint16_t c = (uint16_t)(m.data[0] << 8 | m.data[1]);
+            uint16_t rr = (uint16_t)(m.data[2] << 8 | m.data[3]);
+            if (c && rr) {
+              screen_resize(&s.screen, c, rr);
+              app_resize(s.app, c, rr);
+            }
+            /* The cell size arrived with it, from a client new enough to
                * send one and a terminal willing to say. Zero means neither,
                * and app_set_cell_px leaves the default standing. */
-              if (m.len >= 8) {
-                uint16_t cw = (uint16_t)(m.data[4] << 8 | m.data[5]);
-                uint16_t ch = (uint16_t)(m.data[6] << 8 | m.data[7]);
-                app_set_cell_px(s.app, cw, ch);
-              }
+            if (m.len >= 8) {
+              uint16_t cw = (uint16_t)(m.data[4] << 8 | m.data[5]);
+              uint16_t ch = (uint16_t)(m.data[6] << 8 | m.data[7]);
+              app_set_cell_px(s.app, cw, ch);
             }
-            s.screen.force_full = true; /* a fresh client knows nothing */
-            app_graphics_reset(s.app);  /* including any image we had sent */
-            pending_paint = true;
-            next_frame = now_ms();
-            break;
-          case MSG_INPUT:
-            if (!s.conns[ci].display) break; /* only the client types */
-            input_feed(s.in, m.data, m.len, srv_event, &s);
-            esc_due = now_ms() + ESC_MS;
-            pending_paint = true;
-            break;
-          case MSG_DETACH:
-            conn_drop(&s, ci, EXIT_DETACHED);
-            closed = true;
-            break;
-          case MSG_CMD: {
-            /* The same vocabulary the headless driver speaks (cmd.c), so a
-             * script written against one works against the other. */
-            bool q = false;
-            char *reply =
-                cmd_exec(s.app, &s.screen, s.in, (const char *)m.data, &q);
-            const char *body = reply ? reply : "{\"error\":\"unknown command\"}";
-            msg_send(s.conns[ci].fd, MSG_REPLY, body, strlen(body));
-            free(reply);
-            if (q) g_stop = 1;
-            s.screen.force_full = true; /* it may have changed the layout */
-            pending_paint = true;
-            next_frame = now_ms();
-            break;
           }
-          default:
-            break;
+          s.screen.force_full = true; /* a fresh client knows nothing */
+          app_graphics_reset(s.app);  /* including any image we had sent */
+          pending_paint = true;
+          next_frame = now_ms();
+          break;
+        case MSG_INPUT:
+          if (!s.conns[ci].display) break; /* only the client types */
+          input_feed(s.in, m.data, m.len, srv_event, &s);
+          esc_due = now_ms() + ESC_MS;
+          pending_paint = true;
+          break;
+        case MSG_DETACH:
+          conn_drop(&s, ci, EXIT_DETACHED);
+          closed = true;
+          break;
+        case MSG_CMD: {
+          /* The same vocabulary the headless driver speaks (cmd.c), so a
+             * script written against one works against the other. */
+          bool q = false;
+          char *reply =
+              cmd_exec(s.app, &s.screen, s.in, (const char *)m.data, &q);
+          const char *body = reply ? reply : "{\"error\":\"unknown command\"}";
+          msg_send(s.conns[ci].fd, MSG_REPLY, body, strlen(body));
+          free(reply);
+          if (q) g_stop = 1;
+          s.screen.force_full = true; /* it may have changed the layout */
+          pending_paint = true;
+          next_frame = now_ms();
+          break;
+        }
+        default: break;
         }
       }
       if (!closed) ci++;

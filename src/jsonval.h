@@ -8,7 +8,12 @@
 #include <stddef.h>
 
 typedef enum {
-  JV_NULL, JV_BOOL, JV_NUM, JV_STR, JV_ARR, JV_OBJ,
+  JV_NULL,
+  JV_BOOL,
+  JV_NUM,
+  JV_STR,
+  JV_ARR,
+  JV_OBJ,
 } jv_kind_t;
 
 typedef struct jv jv_t;

@@ -21,21 +21,21 @@ size_t cmd_unescape(const char *in, uint8_t *out, size_t cap) {
     }
     p++;
     switch (*p) {
-      case 'e': out[n++] = 0x1b; break;
-      case 'n': out[n++] = '\n'; break;
-      case 'r': out[n++] = '\r'; break;
-      case 't': out[n++] = '\t'; break;
-      case '0': out[n++] = 0; break;
-      case '\\': out[n++] = '\\'; break;
-      case 'x': {
-        int hi = 0, lo = 0;
-        sscanf(p + 1, "%1x%1x", &hi, &lo);
-        out[n++] = (uint8_t)(hi * 16 + lo);
-        p += 2;
-        break;
-      }
-      case 0: return n;
-      default: out[n++] = (uint8_t)*p; break;
+    case 'e': out[n++] = 0x1b; break;
+    case 'n': out[n++] = '\n'; break;
+    case 'r': out[n++] = '\r'; break;
+    case 't': out[n++] = '\t'; break;
+    case '0': out[n++] = 0; break;
+    case '\\': out[n++] = '\\'; break;
+    case 'x': {
+      int hi = 0, lo = 0;
+      sscanf(p + 1, "%1x%1x", &hi, &lo);
+      out[n++] = (uint8_t)(hi * 16 + lo);
+      p += 2;
+      break;
+    }
+    case 0: return n;
+    default: out[n++] = (uint8_t)*p; break;
     }
   }
   return n;
@@ -195,7 +195,8 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     uint32_t tid = (uint32_t)jv_geti(req, "tab", 0);
     bool rows = strcmp(jv_gets(req, "dir", "cols"), "rows") == 0;
     if (!tid) {
-      uint32_t made = app_move_pane_to_new_tab(a, pid, jv_gets(req, "name", ""));
+      uint32_t made =
+          app_move_pane_to_new_tab(a, pid, jv_gets(req, "name", ""));
       if (!made) return jerr("cannot move it to a tab of its own");
       return jok_int("tab", (long long)made);
     }
@@ -238,8 +239,8 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     uint32_t id = (uint32_t)jv_geti(req, "id", 0);
     const char *name = jv_gets(req, "name", "");
     bool pane = strcmp(target, "pane") == 0;
-    bool ok = pane ? app_set_pane_name(a, id, name)
-                   : app_set_tab_name(a, id, name);
+    bool ok =
+        pane ? app_set_pane_name(a, id, name) : app_set_tab_name(a, id, name);
     return ok ? jok_int(NULL, 0) : jerr(pane ? "no such pane" : "no such tab");
   }
   if (strcmp(cmd, "set-purpose") == 0) {
@@ -257,7 +258,8 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
   if (strcmp(cmd, "dump-layout") == 0) {
     dump_layout_t o = {.tab = (uint32_t)jv_geti(req, "tab", 0),
                        .base = jv_gets(req, "relative_to", NULL)};
-    o.suspend = suspend_policy(jv_gets(req, "suspend", NULL), DUMP_SUSPEND_ASIS);
+    o.suspend =
+        suspend_policy(jv_gets(req, "suspend", NULL), DUMP_SUSPEND_ASIS);
     if (o.suspend < 0) return jerr("suspend is as-is, none, commands or all");
     char *kdl = app_dump_layout(a, &o);
     if (o.tab && !o.tabs) {
@@ -280,9 +282,9 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     const char *text = jv_gets(req, "kdl", NULL);
     bool replace = jv_getb(req, "replace", false);
     char err[256] = {0};
-    bool ok = text ? app_apply_layout_text(a, text, replace, err, sizeof err)
-                   : path ? app_apply_layout_file(a, path, replace, err, sizeof err)
-                          : false;
+    bool ok = text   ? app_apply_layout_text(a, text, replace, err, sizeof err)
+              : path ? app_apply_layout_file(a, path, replace, err, sizeof err)
+                     : false;
     if (!ok) return jerr(err[0] ? err : "need a path or kdl");
     app_resize(a, s->cols, s->rows);
     s->force_full = true;
@@ -368,8 +370,8 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     return jok_int("closed", (long long)n);
   }
   if (strcmp(cmd, "save-workspace") == 0) {
-    int suspend = suspend_policy(jv_gets(req, "suspend", NULL),
-                                 DUMP_SUSPEND_COMMANDS);
+    int suspend =
+        suspend_policy(jv_gets(req, "suspend", NULL), DUMP_SUSPEND_COMMANDS);
     if (suspend < 0) return jerr("suspend is as-is, none, commands or all");
     app_workspace_save_t w;
     char err[256] = {0};
@@ -523,7 +525,8 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
     return app_tabs_json(a);
   }
   if (strcmp(verb, "dump-layout") == 0) {
-    app_compose(a, s); /* the layout is a function of the frame: compose first */
+    app_compose(a,
+                s); /* the layout is a function of the frame: compose first */
     return app_dump_layout(a, NULL);
   }
   /* The bare forms the harness and a person at a shell use. Same functions, so

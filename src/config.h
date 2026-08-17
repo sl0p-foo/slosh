@@ -32,7 +32,7 @@ typedef enum {
    * and then exited is a pane that exited. It ends when you look at the pane,
    * which is what answering a bell is. */
   PSTATE_BELL,
-  PSTATE_SCROLLED,    /* looking at scrollback rather than the present */
+  PSTATE_SCROLLED, /* looking at scrollback rather than the present */
   PSTATE_UNFOCUSED,
   PSTATE_COUNT,
 } pane_state_t;
@@ -183,7 +183,7 @@ typedef struct {
    * number and a different question. Never used below min_pane: refusing to
    * offer something the layout would collapse anyway is the floor. */
   uint16_t min_split_cols, min_split_rows;
-  uint16_t scroll_lines;
+  uint16_t scroll_lines; /* rows per wheel notch */
   /* How much history a pane keeps. `scrollback` is the number people mean --
    * lines -- and `scrollback_bytes` is the ceiling that keeps one very wide,
    * heavily styled pane from spending the machine to honour it: lib-vt applies
@@ -194,8 +194,8 @@ typedef struct {
    * and a silently wrapped limit is worse than a refused one. */
   size_t scrollback;
   size_t scrollback_bytes;
-  uint16_t toast_ms;
-  uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */ /* how long an announcement stays up */ /* rows per wheel notch */
+  uint16_t toast_ms;        /* how long an announcement stays up */
+  uint16_t hover_delay_ms;  /* how long the pointer must rest to arm a guide */
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
   /* What a double-click's word stops at, listed as *separators* rather than as
    * word characters: anything unlisted belongs to a word, so text nobody
@@ -446,9 +446,9 @@ size_t config_files(const config_t *c, const char **out, size_t max);
  * many entries were understood, writing the first refusal to `err`. */
 size_t config_parse_chain_doc(const char *text, color_t default_color,
                               bool default_chrome, shader_t *content,
-                              size_t *ncontent, shader_t *chrome, size_t *nchrome,
-                              expr_prog_t **exprs, size_t *nexprs, char *err,
-                              size_t errcap);
+                              size_t *ncontent, shader_t *chrome,
+                              size_t *nchrome, expr_prog_t **exprs,
+                              size_t *nexprs, char *err, size_t errcap);
 
 /* The same, from a file: a `shaders { }` block as `contrib/chrome` and
  * `contrib/shaders` ship them, read with the parser that already knows this
@@ -460,8 +460,8 @@ size_t config_parse_chain_doc(const char *text, color_t default_color,
 size_t config_parse_chain_file(const char *path, color_t default_color,
                                shader_t *content, size_t *ncontent,
                                shader_t *chrome, size_t *nchrome,
-                               expr_prog_t **exprs, size_t *nexprs,
-                               char *err, size_t errcap);
+                               expr_prog_t **exprs, size_t *nexprs, char *err,
+                               size_t errcap);
 
 /* Whether a name is one of the config's own settings. For the layout loader, which
  * shares this syntax and needs to tell a config apart from a session file -- one

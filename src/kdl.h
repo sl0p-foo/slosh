@@ -42,7 +42,8 @@ const kdl_node_t *kdl_child(const kdl_node_t *n, const char *name);
 const char *kdl_arg(const kdl_node_t *n, size_t i, const char *fallback);
 long kdl_arg_int(const kdl_node_t *n, size_t i, long fallback);
 bool kdl_arg_bool(const kdl_node_t *n, size_t i, bool fallback);
-const char *kdl_prop(const kdl_node_t *n, const char *key, const char *fallback);
+const char *kdl_prop(const kdl_node_t *n, const char *key,
+                     const char *fallback);
 long kdl_prop_int(const kdl_node_t *n, const char *key, long fallback);
 bool kdl_prop_bool(const kdl_node_t *n, const char *key, bool fallback);
 

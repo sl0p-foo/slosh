@@ -213,10 +213,10 @@ struct node {
  * meet there. Recomputed every frame with the layout it describes. */
 typedef struct {
   rect_t r;
-  uint32_t h_id[2];   /* row boundaries meeting here: these move vertically */
+  uint32_t h_id[2]; /* row boundaries meeting here: these move vertically */
   size_t h_edge[2];
   size_t nh;
-  uint32_t v_id[2];   /* column boundaries: these move horizontally */
+  uint32_t v_id[2]; /* column boundaries: these move horizontally */
   size_t v_edge[2];
   size_t nv;
 } corner_t;
@@ -266,17 +266,17 @@ struct app {
       DRAG_BORDER,
       DRAG_TAB,
     } kind;
-    uint32_t src;      /* pane being dragged, or the split being resized */
-    uint32_t target;   /* pane under the pointer, for the drop highlight */
+    uint32_t src;    /* pane being dragged, or the split being resized */
+    uint32_t target; /* pane under the pointer, for the drop highlight */
     /* ...or the tab under it, when a pane is dragged over the strip: the same
      * gesture with a different kind of destination. Never both -- the pointer is
      * over one thing, and two highlights would be two promises. */
     uint32_t tab_target;
     bool new_tab_target; /* the strip's `+`: a tab of its own */
-    size_t edge;       /* which boundary of that split */
-    uint16_t x, y;     /* where the pointer was at the last event */
-    bool moved;        /* a press that never moves is a click */
-    char side;         /* border press: 'l' 'r' 't' 'b' */
+    size_t edge;         /* which boundary of that split */
+    uint16_t x, y;       /* where the pointer was at the last event */
+    bool moved;          /* a press that never moves is a click */
+    char side;           /* border press: 'l' 'r' 't' 'b' */
     /* A corner drag carries the boundaries it is moving, not an index into
      * the corner list: that list is rebuilt from the layout every frame, and
      * the layout is the thing being changed. Halfway through a drag the
@@ -324,12 +324,7 @@ struct app {
    * rather than two that would drift apart, for the same reason the rename
    * editor is. Only one can be open, which is what makes sharing the query
    * and the selection honest rather than a saving. */
-  enum {
-    PICK_NONE = 0,
-    PICK_FINDER,
-    PICK_PALETTE,
-    PICK_WORKSPACES
-  } picker;
+  enum { PICK_NONE = 0, PICK_FINDER, PICK_PALETTE, PICK_WORKSPACES } picker;
   /* What the project picker is listing: scanned once when it opens, because
    * draw_picker asks for its rows every frame and a readdir per repaint is a
    * filesystem walk at 120Hz. Once per opening is when the answer has to be
@@ -479,8 +474,9 @@ static void on_pane_shader(app_t *a, pane_t *p, const char *payload) {
     return;
   }
   if (!chrome && !content) {
-    snprintf(reply, sizeof reply,
-             "\033]5577;1;shader-reply;error;where must be content or chrome\033\\");
+    snprintf(
+        reply, sizeof reply,
+        "\033]5577;1;shader-reply;error;where must be content or chrome\033\\");
     pane_write(p, reply, strlen(reply));
     return;
   }
@@ -488,12 +484,12 @@ static void on_pane_shader(app_t *a, pane_t *p, const char *payload) {
   char err[192] = {0};
   const char *text = semi ? semi + 1 : "";
   size_t nchrome = 0, ncontent = 0;
-  bool ok = app_set_pane_shaders(a, b.found->id, chrome, text, &nchrome, &ncontent,
-                                 err, sizeof err);
+  bool ok = app_set_pane_shaders(a, b.found->id, chrome, text, &nchrome,
+                                 &ncontent, err, sizeof err);
   if (ok)
     snprintf(reply, sizeof reply,
-             "\033]5577;1;shader-reply;ok;%zu chrome, %zu content\033\\", nchrome,
-             ncontent);
+             "\033]5577;1;shader-reply;ok;%zu chrome, %zu content\033\\",
+             nchrome, ncontent);
   else
     snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;error;%s\033\\",
              err[0] ? err : "refused");
@@ -514,8 +510,8 @@ static void on_pane_shader_load(app_t *a, pane_t *p, const char *payload) {
                                   err, sizeof err);
   if (ok)
     snprintf(reply, sizeof reply,
-             "\033]5577;1;shader-reply;ok;%zu chrome, %zu content\033\\", nchrome,
-             ncontent);
+             "\033]5577;1;shader-reply;ok;%zu chrome, %zu content\033\\",
+             nchrome, ncontent);
   else
     snprintf(reply, sizeof reply, "\033]5577;1;shader-reply;error;%s\033\\",
              err[0] ? err : "refused");
@@ -575,7 +571,8 @@ static void toasts_expire(app_t *a) {
 int app_next_deadline_ms(app_t *a) {
   int64_t soonest = -1;
   for (size_t i = 0; i < a->ntoasts; i++)
-    if (soonest < 0 || a->toasts[i].until < soonest) soonest = a->toasts[i].until;
+    if (soonest < 0 || a->toasts[i].until < soonest)
+      soonest = a->toasts[i].until;
 
   if (a->ptr_valid && a->painted) {
     int64_t due = a->ptr_still_since + CFG.hover_delay_ms;
@@ -635,14 +632,15 @@ static const char *hint_for(app_t *a, const char *action) {
   if (strncmp(action, "scrollbottom:", 13) == 0) return "back to the bottom";
   if (strncmp(action, "panetitle:", 10) == 0)
     return "double-click to rename \u00b7 drag to move";
-  if (strncmp(action, "title:", 6) == 0) return "drag to move \u00b7 click to split up";
+  if (strncmp(action, "title:", 6) == 0)
+    return "drag to move \u00b7 click to split up";
   if (strncmp(action, "border:", 7) == 0) {
     const char *side = strrchr(action, ':');
     switch (side && side[1] ? side[1] : 0) {
-      case 'l': return "click to split left";
-      case 'r': return "click to split right";
-      case 't': return "click to split up";
-      default: return "click to split down";
+    case 'l': return "click to split left";
+    case 'r': return "click to split right";
+    case 't': return "click to split up";
+    default: return "click to split down";
     }
   }
   if (strncmp(action, "edge:", 5) == 0) return "drag to resize";
@@ -681,7 +679,8 @@ static void draw_min_bar(app_t *a, screen_t *s) {
   uint16_t right = (uint16_t)(bar.x + bar.w);
 
   /* A legend, so a row of bare names is not a mystery. */
-  x = (uint16_t)(x + screen_text(s, x, bar.y, CFG.min_mark, MINBAR, NO_COLOR, 0));
+  x = (uint16_t)(x +
+                 screen_text(s, x, bar.y, CFG.min_mark, MINBAR, NO_COLOR, 0));
   x = (uint16_t)(x + 1);
 
   for (size_t i = 0; i < nmin && x < right; i++) {
@@ -806,9 +805,11 @@ static void draw_status_line(app_t *a, screen_t *s) {
     const char *pt = pane_title(f->pane);
     const char *pp = f->purpose[0] ? f->purpose : NULL;
     if (pp)
-      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s", n ? " \u00b7 " : "", pp);
+      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s",
+                            n ? " \u00b7 " : "", pp);
     else if (pt && *pt)
-      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s", n ? " \u00b7 " : "", pt);
+      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s",
+                            n ? " \u00b7 " : "", pt);
   }
   if (n > (size_t)(right - x)) line[right - x] = 0;
   if (n) screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
@@ -898,7 +899,10 @@ static void on_pane_notify(pane_t *p, const char *title, const char *body,
   if (title && *title && body && *body)
     snprintf(msg, sizeof msg, "%s: %s", title, body);
   else
-    snprintf(msg, sizeof msg, "%s", (title && *title) ? title : body ? body : "");
+    snprintf(msg, sizeof msg, "%s",
+             (title && *title) ? title
+             : body            ? body
+                               : "");
   app_toast((app_t *)ud, msg);
 }
 
@@ -1343,8 +1347,8 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
     return;
   }
 
-  uint16_t gap = n->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect)
-                                      : CFG.gap;
+  uint16_t gap =
+      n->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
   uint16_t total = n->dir == SPLIT_COLS ? r.w : r.h;
 
   /* Does every child clear the floor? If not, this node collapses — a local
@@ -1589,8 +1593,10 @@ static void place_beside(app_t *a, tab_t *t, node_t *leaf, node_t *node,
     sp->kids[before ? 1 : 0] = leaf;
     sp->kids[before ? 0 : 1] = node;
     sp->parent = leaf->parent;
-    if (leaf->parent) replace_child(leaf->parent, leaf, sp);
-    else t->root = sp;
+    if (leaf->parent)
+      replace_child(leaf->parent, leaf, sp);
+    else
+      t->root = sp;
     leaf->parent = sp;
     node->parent = sp;
   }
@@ -1698,7 +1704,7 @@ static void split_focus_ui(app_t *a, split_dir_t dir) {
 static split_dir_t preferred_dir(const node_t *leaf) {
   uint16_t aspect = CFG.gap_aspect ? CFG.gap_aspect : 1;
   return (uint32_t)leaf->rect.w >= (uint32_t)leaf->rect.h * aspect ? SPLIT_COLS
-                                                                  : SPLIT_ROWS;
+                                                                   : SPLIT_ROWS;
 }
 
 /* Split whichever way there is room for, preferring the longer side.
@@ -1714,8 +1720,10 @@ static void split_focus_auto(app_t *a) {
   split_dir_t want = preferred_dir(n);
   split_dir_t other = want == SPLIT_COLS ? SPLIT_ROWS : SPLIT_COLS;
   split_dir_t dir;
-  if (split_fits(n, want)) dir = want;
-  else if (split_fits(n, other)) dir = other;
+  if (split_fits(n, want))
+    dir = want;
+  else if (split_fits(n, other))
+    dir = other;
   else {
     app_toast(a, "no room to split");
     return;
@@ -1762,8 +1770,10 @@ static void close_leaf(app_t *a, node_t *leaf) {
   node_t *survivor = p->kids[0];
   if (p->nkids == 1) { /* a split with one child is just that child */
     survivor->parent = p->parent;
-    if (p->parent) replace_child(p->parent, p, survivor);
-    else t->root = survivor;
+    if (p->parent)
+      replace_child(p->parent, p, survivor);
+    else
+      t->root = survivor;
     free(p->kids);
     free(p);
   }
@@ -1785,9 +1795,9 @@ static bool keep_corpse(const pane_t *p) {
    * having had one. */
   if (pane_ephemeral(p)) return false;
   switch (CFG.keep_dead) {
-    case KEEP_DEAD_ALL: return true;
-    case KEEP_DEAD_NONE: return false;
-    default: return pane_label(p)[0] != 0;
+  case KEEP_DEAD_ALL: return true;
+  case KEEP_DEAD_NONE: return false;
+  default: return pane_label(p)[0] != 0;
   }
 }
 
@@ -1853,8 +1863,10 @@ bool app_close_tab(app_t *a, uint32_t id) {
   for (size_t i = 0; i < a->ntabs; i++) {
     if (a->tabs[i].id != id) continue;
     tab_remove(a, i);
-    if (a->ntabs == 0) a->quit = true;
-    else layout(a);
+    if (a->ntabs == 0)
+      a->quit = true;
+    else
+      layout(a);
     return true;
   }
   return false;
@@ -1936,9 +1948,12 @@ static void move_tab(app_t *a, size_t from, size_t to) {
     memmove(&a->tabs[to + 1], &a->tabs[to], (from - to) * sizeof *a->tabs);
   a->tabs[to] = moved;
 
-  if (a->cur == from) a->cur = to;
-  else if (a->cur > from && a->cur <= to) a->cur--;
-  else if (a->cur >= to && a->cur < from) a->cur++;
+  if (a->cur == from)
+    a->cur = to;
+  else if (a->cur > from && a->cur <= to)
+    a->cur--;
+  else if (a->cur >= to && a->cur < from)
+    a->cur++;
 }
 
 bool app_move_tab(app_t *a, uint32_t id, size_t index) {
@@ -2089,8 +2104,10 @@ static bool detach_leaf(app_t *a, node_t *leaf, size_t *from, bool *emptied) {
   node_t *survivor = p->kids[0];
   if (p->nkids == 1) { /* a split with one child is just that child */
     survivor->parent = p->parent;
-    if (p->parent) replace_child(p->parent, p, survivor);
-    else t->root = survivor;
+    if (p->parent)
+      replace_child(p->parent, p, survivor);
+    else
+      t->root = survivor;
     free(p->kids);
     free(p);
   }
@@ -2108,7 +2125,8 @@ static bool detach_leaf(app_t *a, node_t *leaf, size_t *from, bool *emptied) {
  * or the pane is already in that tab. The tab you are looking at does not change;
  * whether a caller follows the pane is a question about intent, and this is the
  * mechanism. */
-bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id, bool rows) {
+bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id,
+                          bool rows) {
   node_t *leaf = pane_id ? pane_by_id(a, pane_id) : cur(a)->focus;
   if (!leaf || leaf->kind != NODE_LEAF) return false;
   tab_t *dest = tab_by_id(a, tab_id);
@@ -2147,7 +2165,8 @@ bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id, bool rows
  * Worth having as its own call rather than "move to a tab you make first": a pane
  * that is the only thing in its tab would otherwise have its tab removed from under
  * the new one, and the order in which those two happen is exactly the bug. */
-uint32_t app_move_pane_to_new_tab(app_t *a, uint32_t pane_id, const char *name) {
+uint32_t app_move_pane_to_new_tab(app_t *a, uint32_t pane_id,
+                                  const char *name) {
   node_t *leaf = pane_id ? pane_by_id(a, pane_id) : cur(a)->focus;
   if (!leaf || leaf->kind != NODE_LEAF) return 0;
   size_t src_ti = tab_of(a, leaf);
@@ -2226,7 +2245,8 @@ bool app_edit_config(app_t *a) {
     }
   }
 
-  const char *editor = CFG.editor && *CFG.editor ? CFG.editor : getenv("EDITOR");
+  const char *editor =
+      CFG.editor && *CFG.editor ? CFG.editor : getenv("EDITOR");
   /* vi is the one editor a POSIX system is required to have. Better a wrong
    * guess you can see and change than a pane that opens empty. */
   if (!editor || !*editor) editor = "vi";
@@ -2250,8 +2270,8 @@ bool app_edit_config(app_t *a) {
 bool app_rerun_pane(app_t *a, uint32_t id) {
   node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
   if (!n) return false;
-  bool ok = pane_suspended(n->pane) ? pane_start(n->pane)
-                                    : pane_restart(n->pane);
+  bool ok =
+      pane_suspended(n->pane) ? pane_start(n->pane) : pane_restart(n->pane);
   if (!ok) {
     app_toast(a, "cannot run it again");
     return false;
@@ -2299,8 +2319,8 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
    * resolving it twice would re-root a path against itself. */
   char cwdbuf[1024];
   const char *own = kdl_prop(node, "cwd", NULL);
-  const char *node_cwd = own ? path_resolve(own, base, cwdbuf, sizeof cwdbuf)
-                             : cwd;
+  const char *node_cwd =
+      own ? path_resolve(own, base, cwdbuf, sizeof cwdbuf) : cwd;
 
   /* a split: children, in order, in one direction */
   size_t kids = 0;
@@ -2355,8 +2375,7 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
   }
 
   node_t *leaf = leaf_new_ex(a, command ? argv : default_argv(a), node_cwd,
-                             suspended,
-                             command ? command : "");
+                             suspended, command ? command : "");
   if (!leaf) return NULL;
   leaf->weight = (int)kdl_prop_int(node, "weight", WEIGHT_UNIT);
   if (leaf->weight < WEIGHT_MIN) leaf->weight = WEIGHT_UNIT;
@@ -2395,8 +2414,10 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace,
      * are its root's -- including `cwd`, which build_pane reads off the body
      * for itself. `base` as the inherited value is what makes a layout with no
      * `cwd` anywhere in it start in the directory it was checked into. */
-    kdl_node_t body = {.name = (char *)"pane", .kids = t->kids,
-                       .nkids = t->nkids, .props = t->props,
+    kdl_node_t body = {.name = (char *)"pane",
+                       .kids = t->kids,
+                       .nkids = t->nkids,
+                       .props = t->props,
                        .nprops = t->nprops};
     node_t *tree = build_pane(a, &body, base, base);
     if (!tree) tree = leaf_new(a);
@@ -2425,7 +2446,8 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace,
       if (n && n->name && config_is_setting(n->name)) {
         if (err)
           snprintf(err, errcap,
-                   "this is a config, not a layout: `%s` is a setting", n->name);
+                   "this is a config, not a layout: `%s` is a setting",
+                   n->name);
         return false;
       }
     }
@@ -2482,8 +2504,8 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
   const char *file = path_expand(path, pathbuf, sizeof pathbuf);
   kdl_node_t *root = kdl_parse_file(file, err, errcap);
   if (!root) return false;
-  bool ok = app_apply_layout(a, root, replace,
-                             path_dir(file, dirbuf, sizeof dirbuf), err, errcap);
+  bool ok = app_apply_layout(
+      a, root, replace, path_dir(file, dirbuf, sizeof dirbuf), err, errcap);
   kdl_free(root);
   return ok;
 }
@@ -2503,9 +2525,8 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
  */
 
 /* Read by build_pane, on a `pane` node or on a tab acting as its own root. */
-static const char *const PANE_PROPS[] = {"split",     "weight", "cwd",
-                                         "command",   "focus",  "purpose",
-                                         "suspended"};
+static const char *const PANE_PROPS[] = {
+    "split", "weight", "cwd", "command", "focus", "purpose", "suspended"};
 /* Read by app_apply_layout off the tab itself. */
 static const char *const TAB_PROPS[] = {"name", "active"};
 
@@ -2609,7 +2630,8 @@ size_t layout_check(const kdl_node_t *root, const char *file,
     const kdl_node_t *n = root->kids[i];
     if (!n || !n->name) continue;
     if (lay && n == lay) continue;
-    if (strcmp(n->name, "tab") == 0) continue; /* a bare list of tabs is legal */
+    if (strcmp(n->name, "tab") == 0)
+      continue; /* a bare list of tabs is legal */
     if (config_is_setting(n->name)) {
       lc_say(&c, n->line, "this is a config, not a layout: `%s` is a setting",
              n->name);
@@ -2623,7 +2645,8 @@ size_t layout_check(const kdl_node_t *root, const char *file,
     const kdl_node_t *n = lay->kids[i];
     if (!n || !n->name) continue;
     if (strcmp(n->name, "tab") != 0) {
-      if (lay != root) lc_say(&c, n->line, "a layout holds tabs, not `%s`", n->name);
+      if (lay != root)
+        lc_say(&c, n->line, "a layout holds tabs, not `%s`", n->name);
       continue;
     }
     tabs++;
@@ -2827,7 +2850,7 @@ size_t app_workspace_close(app_t *a, const char *slug) {
  * out of asking the same question the picker asks rather than being a rule of
  * its own. */
 static bool tab_project(app_t *a, const tab_t *t, const char *path,
-                       project_t *out) {
+                        project_t *out) {
   int depth = 2;
   const char *const *roots = workspace_roots(&depth);
   if (path && *path) return project_find(roots, depth, path, out);
@@ -2844,8 +2867,8 @@ static bool tab_project(app_t *a, const tab_t *t, const char *path,
 
   if (!t->focus) return false;
   char cwdbuf[4096];
-  return project_find(roots, depth, live_cwd(t->focus->pane, cwdbuf, sizeof cwdbuf),
-                      out);
+  return project_find(roots, depth,
+                      live_cwd(t->focus->pane, cwdbuf, sizeof cwdbuf), out);
 }
 
 bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
@@ -2870,10 +2893,11 @@ bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
    * the wrong tab was focused, so it is said rather than obeyed. */
   if (strncmp(t->purpose, "project:", 8) == 0 &&
       strcmp(t->purpose, p.slug) != 0) {
-    snprintf(err, errcap,
-             "this tab is another project's workspace (%s): save it from its own"
-             " tab, or pass that tab's id",
-             t->purpose);
+    snprintf(
+        err, errcap,
+        "this tab is another project's workspace (%s): save it from its own"
+        " tab, or pass that tab's id",
+        t->purpose);
     return false;
   }
   snprintf(out->path, sizeof out->path, "%s/%s", p.path, PROJECT_LAYOUT_FILE);
@@ -2884,8 +2908,8 @@ bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
     return false;
   }
 
-  dump_layout_t o = {.tab = t->id, .base = p.path, .suspend = suspend,
-                     .for_project = true};
+  dump_layout_t o = {
+      .tab = t->id, .base = p.path, .suspend = suspend, .for_project = true};
   char *kdl = app_dump_layout(a, &o);
   if (!kdl || !o.tabs) {
     free(kdl);
@@ -2950,8 +2974,8 @@ static void transfer_weight(node_t *from, node_t *to, int amount) {
   node_t *sp = from->parent;
   if (sp && sp->nkids >= 2) {
     uint16_t floor_ = sp->dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
-    uint16_t gap = sp->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect)
-                                         : CFG.gap;
+    uint16_t gap =
+        sp->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
     uint16_t span = sp->dir == SPLIT_COLS ? sp->rect.w : sp->rect.h;
     uint16_t gaps = (uint16_t)(gap * (sp->nkids - 1));
     uint16_t avail = span > gaps ? (uint16_t)(span - gaps) : span;
@@ -2989,11 +3013,15 @@ static void resize_focus(app_t *a, int dx, int dy) {
   int dir = dx ? dx : dy;
 
   if (i + 1 < p->nkids) {
-    if (dir > 0) transfer_weight(p->kids[i + 1], n, WEIGHT_STEP);
-    else transfer_weight(n, p->kids[i + 1], WEIGHT_STEP);
+    if (dir > 0)
+      transfer_weight(p->kids[i + 1], n, WEIGHT_STEP);
+    else
+      transfer_weight(n, p->kids[i + 1], WEIGHT_STEP);
   } else if (i > 0) {
-    if (dir > 0) transfer_weight(n, p->kids[i - 1], WEIGHT_STEP);
-    else transfer_weight(p->kids[i - 1], n, WEIGHT_STEP);
+    if (dir > 0)
+      transfer_weight(n, p->kids[i - 1], WEIGHT_STEP);
+    else
+      transfer_weight(p->kids[i - 1], n, WEIGHT_STEP);
   }
   layout(a);
 }
@@ -3166,7 +3194,8 @@ static void dir_cb(node_t *n, void *ud) {
   if (n == d->from) return;
   /* centres, in a coordinate space where a row counts double so that
    * "nearest" means the same thing horizontally and vertically */
-  long fx = d->from->rect.x * 2 + d->from->rect.w, fy = d->from->rect.y * 2 + d->from->rect.h;
+  long fx = d->from->rect.x * 2 + d->from->rect.w,
+       fy = d->from->rect.y * 2 + d->from->rect.h;
   long nx = n->rect.x * 2 + n->rect.w, ny = n->rect.y * 2 + n->rect.h;
   long along = d->dx ? (nx - fx) * d->dx : (ny - fy) * d->dy;
   if (along <= 0) return; /* not in that direction */
@@ -3267,9 +3296,9 @@ static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
     char label[80];
     snprintf(label, sizeof label, "[%s]", row[i].label);
     bool hot = ptr_on(a, x, y, w, 1);
-    uint16_t drawn = screen_text(s, x, y, label, focused || hot ? BTN_FG : fg,
-                                 focused || hot ? BTN_BG : BTN_BG_IDLE,
-                                 hot ? ATTR_BOLD : 0);
+    uint16_t drawn =
+        screen_text(s, x, y, label, focused || hot ? BTN_FG : fg,
+                    focused || hot ? BTN_BG : BTN_BG_IDLE, hot ? ATTR_BOLD : 0);
     hit_add(&s->hits, x, y, drawn, 1, row[i].action);
   }
 
@@ -3502,7 +3531,8 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     uint16_t iw = (uint16_t)(nd + 4); /* space, arrow, space, digits, space */
     if (iw + 2 < avail) {
       uint16_t ix = (uint16_t)((has_btn ? btn_x : x1) - iw);
-      uint16_t drawn = screen_text(s, ix, r.y, ind, SCROLL_FG, SCROLL_BG, ATTR_BOLD);
+      uint16_t drawn =
+          screen_text(s, ix, r.y, ind, SCROLL_FG, SCROLL_BG, ATTR_BOLD);
       char action[48];
       snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
       hit_add(&s->hits, ix, r.y, drawn, 1, action);
@@ -3519,10 +3549,10 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     /* The purpose editor says which label it is: typed into the same cell as a
      * rename, an unlabelled caret would leave you guessing which one you are
      * changing -- and the two are edited from keys one shift apart. */
-    int len = tagging
-                  ? snprintf(buf, sizeof buf, " purpose %s\u2588 ", a->rename_buf)
-                  : naming ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
-                           : snprintf(buf, sizeof buf, " %s ", title);
+    int len =
+        tagging ? snprintf(buf, sizeof buf, " purpose %s\u2588 ", a->rename_buf)
+        : naming ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
+                 : snprintf(buf, sizeof buf, " %s ", title);
     /* snprintf reports what it *would* have written; clamp to what it did, or
      * the scroll below would move bytes that are not there. */
     if (len < 0) len = 0;
@@ -3552,11 +3582,10 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     /* An editor announces itself: the name sits in the button colours while it
      * is being typed, so a half-finished rename can never be mistaken for what
      * the pane is actually called. */
-    uint16_t drawn =
-        screen_text(s, tx, r.y, buf,
-                    editing ? RENAME_FG : (focused ? TITLE_FOCUS : TITLE_IDLE),
-                    editing ? RENAME_BG : NO_COLOR,
-                    editing || focused ? ATTR_BOLD : 0);
+    uint16_t drawn = screen_text(
+        s, tx, r.y, buf,
+        editing ? RENAME_FG : (focused ? TITLE_FOCUS : TITLE_IDLE),
+        editing ? RENAME_BG : NO_COLOR, editing || focused ? ATTR_BOLD : 0);
 
     /* The title names the pane; it is not an edge. It carves its own cells out
      * of the top row's handle so that resting there arms no split guide and
@@ -3620,7 +3649,8 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
   } else if (pane_scrolled(leaf->pane)) {
     uint32_t above = 0, total = 0;
     pane_scroll_pos(leaf->pane, &above, &total);
-    snprintf(words, sizeof words, "\u25b2 %u", total > above ? total - above : 0);
+    snprintf(words, sizeof words, "\u25b2 %u",
+             total > above ? total - above : 0);
     status = words;
   }
   char line[256];
@@ -3724,9 +3754,9 @@ bool app_load_pane_shaders(app_t *a, uint32_t pane_id, const char *path,
   inband_chain_t con = {0}, chr = {0};
   expr_prog_t *exprs[SHADE_MAX * 2];
   size_t nexprs = 0;
-  size_t got = config_parse_chain_file(path, CFG.frame_focus, con.sh, &con.n,
-                                       chr.sh, &chr.n, exprs, &nexprs, err,
-                                       errcap);
+  size_t got =
+      config_parse_chain_file(path, CFG.frame_focus, con.sh, &con.n, chr.sh,
+                              &chr.n, exprs, &nexprs, err, errcap);
   if (!got) {
     for (size_t i = 0; i < nexprs; i++) expr_free(exprs[i]);
     if (err && errcap && !err[0]) snprintf(err, errcap, "nothing in it to run");
@@ -4024,17 +4054,20 @@ static void draw_corners(app_t *a, screen_t *s) {
 
     bool active = a->drag.kind == DRAG_EDGE && (a->drag.c_nh || a->drag.c_nv) &&
                   a->drag.c_nh && c->nh && a->drag.c_h[0] == c->h_id[0] &&
-                  a->drag.c_hedge[0] == c->h_edge[0] && a->drag.c_v[0] == c->v_id[0];
+                  a->drag.c_hedge[0] == c->h_edge[0] &&
+                  a->drag.c_v[0] == c->v_id[0];
     /* (C) The mark appears the moment the pointer is on it, before the dwell
      * that arms the two boundaries. A crossing is two cells wide and gives no
      * other sign it is anything: something has to say it is there, and the
      * ghost costs nothing if you were only passing through. */
-    bool over = a->drag.kind == DRAG_NONE && ptr_on(a, c->r.x, c->r.y, c->r.w, c->r.h);
+    bool over =
+        a->drag.kind == DRAG_NONE && ptr_on(a, c->r.x, c->r.y, c->r.w, c->r.h);
     if (!active && !over) continue;
     bool armed = active || now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms;
     for (uint16_t x = c->r.x; x < c->r.x + c->r.w; x++)
-      screen_text(s, x, c->r.y, armed ? (active ? "\u256c" : "\u253c") : "\u253c",
-                  RESIZE_C, NO_COLOR, active ? ATTR_BOLD : 0);
+      screen_text(s, x, c->r.y,
+                  armed ? (active ? "\u256c" : "\u253c") : "\u253c", RESIZE_C,
+                  NO_COLOR, active ? ATTR_BOLD : 0);
   }
 }
 
@@ -4071,7 +4104,8 @@ static void draw_cb(node_t *n, void *ud) {
       w = n->content.w;
       if (w > 1) {
         line[w - 1] = 0;
-        line[w - 2] = 0xe2; /* fall back to a plain dot rather than a cut UTF-8 */
+        line[w - 2] =
+            0xe2; /* fall back to a plain dot rather than a cut UTF-8 */
         line[w - 2] = '.';
       } else {
         line[w] = 0;
@@ -4120,8 +4154,8 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
 
   /* Right side first, so a long tab list can never eat the indicators — the
    * same budgeting rule as the split button and the OSC buttons. */
-  uint16_t right = (uint16_t)(s->cols > CFG.status_pad ? s->cols - CFG.status_pad
-                                                       : s->cols);
+  uint16_t right =
+      (uint16_t)(s->cols > CFG.status_pad ? s->cols - CFG.status_pad : s->cols);
   char info[64];
   size_t np = app_pane_count(a);
   snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
@@ -4152,16 +4186,17 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
     /* A pane that rang in a tab you are not looking at is invisible without
      * this, and that is the case the whole indicator exists for. */
     bool rang = CFG.bell_indicator && tab_has_bell(t);
-    if (nm[0]) snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
-    else snprintf(label, sizeof label, " %zu ", i + 1);
+    if (nm[0])
+      snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+    else
+      snprintf(label, sizeof label, " %zu ", i + 1);
 
     /* Renaming: the tab's own cell becomes the editor, in the editor's
      * colours, so a half-typed name can never be mistaken for the tab's real
      * one. The caret is part of the label, so the width below — and therefore
      * the hit — is the width of what is actually drawn. */
     bool editing = a->renaming == RENAME_TAB && a->rename_id == t->id;
-    if (editing)
-      snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
+    if (editing) snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
 
     bool active = i == a->cur;
     uint16_t attrs = active ? ATTR_BOLD : 0;
@@ -4170,12 +4205,11 @@ static void draw_tab_strip(app_t *a, screen_t *s) {
      * hover colour if that width turns out to be under the pointer — which
      * costs a repaint of a few cells and guarantees the lit cells are the
      * registered ones. */
-    uint16_t w = screen_text(s, x, y, label,
-                             editing ? RENAME_FG
-                                     : (active ? TAB_ACTIVE_FG : TAB_IDLE),
-                             editing ? RENAME_BG
-                                     : (active ? TAB_ACTIVE_BG : NO_COLOR),
-                             editing ? ATTR_BOLD : attrs);
+    uint16_t w =
+        screen_text(s, x, y, label,
+                    editing ? RENAME_FG : (active ? TAB_ACTIVE_FG : TAB_IDLE),
+                    editing ? RENAME_BG : (active ? TAB_ACTIVE_BG : NO_COLOR),
+                    editing ? ATTR_BOLD : attrs);
     /* Hovering keeps the active tab's fill — it is still the tab you are in —
      * so its feedback lands on the text instead. An inactive tab has no fill
      * to keep, and brightens. */
@@ -4321,8 +4355,10 @@ static void find_corners(app_t *a) {
       if (g[j].sp->dir != SPLIT_COLS) continue;
       rect_t v = g[j].r;
 
-      bool touch_y = v.y <= (uint16_t)(h.y + h.h) && h.y <= (uint16_t)(v.y + v.h);
-      bool touch_x = h.x <= (uint16_t)(v.x + v.w) && v.x <= (uint16_t)(h.x + h.w);
+      bool touch_y =
+          v.y <= (uint16_t)(h.y + h.h) && h.y <= (uint16_t)(v.y + v.h);
+      bool touch_x =
+          h.x <= (uint16_t)(v.x + v.w) && v.x <= (uint16_t)(h.x + h.w);
       if (!touch_y || !touch_x) continue;
 
       rect_t cr = {v.x, h.y, v.w, h.h};
@@ -4395,15 +4431,18 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
   int ci = -1;
   if (a->drag.kind == DRAG_EDGE && (a->drag.c_nv || a->drag.c_nh)) {
     for (size_t k = 0; k < a->drag.c_nh; k++)
-      if (a->drag.c_h[k] == split->id && a->drag.c_hedge[k] == idx) active = true;
+      if (a->drag.c_h[k] == split->id && a->drag.c_hedge[k] == idx)
+        active = true;
     for (size_t k = 0; k < a->drag.c_nv; k++)
-      if (a->drag.c_v[k] == split->id && a->drag.c_vedge[k] == idx) active = true;
+      if (a->drag.c_v[k] == split->id && a->drag.c_vedge[k] == idx)
+        active = true;
   } else if (a->drag.kind == DRAG_NONE) {
     ci = corner_at(a, a->ptr_x, a->ptr_y);
   }
   if (ci >= 0 && (size_t)ci < a->ncorners &&
       corner_uses(&a->corners[ci], split->id, idx)) {
-    if (false) active = true;
+    if (false)
+      active = true;
     else if (now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms) {
       uint16_t attrs0 = 0;
       if (split->dir == SPLIT_COLS) {
@@ -4506,8 +4545,8 @@ static bool ci_contains(const char *hay, const char *needle) {
   size_t nl = strlen(needle);
   for (const char *p = hay; *p; p++) {
     size_t i = 0;
-    while (i < nl && p[i] && tolower((unsigned char)p[i]) ==
-                                 tolower((unsigned char)needle[i]))
+    while (i < nl && p[i] &&
+           tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i]))
       i++;
     if (i == nl) return true;
   }
@@ -4549,9 +4588,8 @@ typedef struct {
 } help_row_t;
 
 static size_t help_rows(help_row_t *out, size_t cap) {
-  static const char *const GROUPS[] = {"panes",  "focus",    "size",
-                                       "tabs",   "projects", "scroll",
-                                       "session"};
+  static const char *const GROUPS[] = {"panes",    "focus",  "size",   "tabs",
+                                       "projects", "scroll", "session"};
   size_t n = 0;
   for (size_t g = 0; g < sizeof GROUPS / sizeof *GROUPS && n < cap; g++) {
     bool titled = false;
@@ -4571,7 +4609,8 @@ static size_t help_rows(help_row_t *out, size_t cap) {
          * thing to learn. */
         bool tabish = act == ACT_SELECT_TAB_1 && bound >= ACT_SELECT_TAB_1;
         if (bound != (action_t)act && !tabish) continue;
-        if (tabish && bound != ACT_SELECT_TAB_1 && bound != ACT_SELECT_TAB_1 + 8)
+        if (tabish && bound != ACT_SELECT_TAB_1 &&
+            bound != ACT_SELECT_TAB_1 + 8)
           continue; /* first and last, shown as a range */
 
         char one[24];
@@ -4662,8 +4701,10 @@ static rect_t modal_frame(app_t *a, screen_t *s, uint16_t w, uint16_t h,
     for (uint16_t xx = x; xx < x + w; xx++)
       screen_text(s, xx, yy, " ", NO_COLOR, MODAL_BG, 0);
 
-  const char *tl = CFG.rounded ? "\u256d" : "\u250c", *tr = CFG.rounded ? "\u256e" : "\u2510";
-  const char *bl = CFG.rounded ? "\u2570" : "\u2514", *br = CFG.rounded ? "\u256f" : "\u2518";
+  const char *tl = CFG.rounded ? "\u256d" : "\u250c",
+             *tr = CFG.rounded ? "\u256e" : "\u2510";
+  const char *bl = CFG.rounded ? "\u2570" : "\u2514",
+             *br = CFG.rounded ? "\u256f" : "\u2518";
   screen_text(s, x, y, tl, MODAL_BORDER, MODAL_BG, 0);
   screen_text(s, x1, y, tr, MODAL_BORDER, MODAL_BG, 0);
   screen_text(s, x, y1, bl, MODAL_BORDER, MODAL_BG, 0);
@@ -4738,8 +4779,11 @@ static void draw_help(app_t *a, screen_t *s) {
   if (two) {
     size_t half = (n + 1) / 2;
     split = half;
-    while (split < n && rows[split].group) split++;   /* to the next heading */
-    if (split >= n) { split = half; while (split > 1 && rows[split].group) split--; }
+    while (split < n && rows[split].group) split++; /* to the next heading */
+    if (split >= n) {
+      split = half;
+      while (split > 1 && rows[split].group) split--;
+    }
     /* Land on the heading itself, not on the blank row above it: a column
      * that starts with a blank line looks like a mistake. */
     if (split < n && !rows[split].group && !rows[split].label) split++;
@@ -4782,8 +4826,9 @@ static void draw_help(app_t *a, screen_t *s) {
     if (row >= shown && rows[i].label) hidden++;
   }
 
-  rect_t in = modal_frame(a, s, (uint16_t)(body + 6), (uint16_t)(shown + 6 + (hidden ? 1 : 0)),
-                          "keys", "closehelp");
+  rect_t in = modal_frame(a, s, (uint16_t)(body + 6),
+                          (uint16_t)(shown + 6 + (hidden ? 1 : 0)), "keys",
+                          "closehelp");
   uint16_t x1 = (uint16_t)(in.x + in.w); /* the right border */
 
   /* Everything here is prefix-then-key, and saying so once beats repeating
@@ -4847,8 +4892,8 @@ typedef struct {
   char left[24];
   char mid[80];
   char right[80];
-  bool here;        /* mark this row: the pane you are already in */
-  char action[48];  /* what a click on it does */
+  bool here;       /* mark this row: the pane you are already in */
+  char action[48]; /* what a click on it does */
 } pick_row_t;
 
 /* A band of background, for a row that is selected or under the pointer. The
@@ -4980,8 +5025,8 @@ static size_t workspace_rows(app_t *a, pick_row_t *out, size_t max) {
     const char *root_end = p->path + keep;
     const char *root_start = root_end;
     while (root_start > p->path && root_start[-1] != '/') root_start--;
-    snprintf(r->left, sizeof r->left, "%.*s",
-             (int)(root_end - root_start), root_start);
+    snprintf(r->left, sizeof r->left, "%.*s", (int)(root_end - root_start),
+             root_start);
     snprintf(r->mid, sizeof r->mid, "%s", p->name);
     /* What it is, or what it already is: an open workspace says how many panes
      * it has, and a project with no layout says so, which reads as the
@@ -5026,8 +5071,9 @@ static void draw_picker(app_t *a, screen_t *s) {
   bool palette = a->picker == PICK_PALETTE;
   bool projects = a->picker == PICK_WORKSPACES;
   const char *title = palette ? "commands" : projects ? "projects" : "find";
-  const char *close = palette ? "closepalette"
-                              : projects ? "closeprojects" : "closefind";
+  const char *close = palette    ? "closepalette"
+                      : projects ? "closeprojects"
+                                 : "closefind";
 
   /* The window of results on screen. Kept around the selection rather than
    * anchored at the top, so arrowing past the bottom scrolls instead of
@@ -5059,8 +5105,9 @@ static void draw_picker(app_t *a, screen_t *s) {
 
   if (!n) {
     /* An empty box says the picker is broken; this says the query is. */
-    const char *none = palette ? "no command matches that"
-                               : (a->query[0] ? "no pane matches that" : "no panes");
+    const char *none =
+        palette ? "no command matches that"
+                : (a->query[0] ? "no pane matches that" : "no panes");
     help_text(s, (uint16_t)(in.x + 2), ly, none, (uint16_t)(in.w - 2), HINT_C,
               MODAL_BG, 0);
     return;
@@ -5112,15 +5159,17 @@ static void draw_picker(app_t *a, screen_t *s) {
   /* What is off the top and bottom of the window. Without this a list that
    * scrolls looks like a list that ends. */
   if (first)
-    screen_text(s, (uint16_t)(in.x + in.w - 1), ly, "\u2191", HINT_C, MODAL_BG, 0);
+    screen_text(s, (uint16_t)(in.x + in.w - 1), ly, "\u2191", HINT_C, MODAL_BG,
+                0);
   if (first + shown < n)
-    screen_text(s, (uint16_t)(in.x + in.w - 1),
-                (uint16_t)(ly + shown - 1), "\u2193", HINT_C, MODAL_BG, 0);
+    screen_text(s, (uint16_t)(in.x + in.w - 1), (uint16_t)(ly + shown - 1),
+                "\u2193", HINT_C, MODAL_BG, 0);
 
   /* The count belongs where the eye already goes for "how much is there", and
    * it is the answer to "is my query too narrow, or is there nothing?". */
   char foot[64];
-  snprintf(foot, sizeof foot, " %zu of %zu \u00b7 \u2191\u2193 enter ", a->sel + 1, n);
+  snprintf(foot, sizeof foot, " %zu of %zu \u00b7 \u2191\u2193 enter ",
+           a->sel + 1, n);
   if (in.w > cells(foot))
     screen_text(s, (uint16_t)(in.x + (in.w - cells(foot)) / 2),
                 (uint16_t)(in.y + in.h), foot, HINT_C, MODAL_BG, 0);
@@ -5153,8 +5202,10 @@ static bool push_pane_a_tab(app_t *a, bool forward) {
   for (size_t i = 0; i < a->ntabs; i++)
     if (a->tabs[i].id == tid) at = i;
   char msg[128];
-  if (name[0]) snprintf(msg, sizeof msg, "moved to tab %zu (%s)", at + 1, name);
-  else snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
+  if (name[0])
+    snprintf(msg, sizeof msg, "moved to tab %zu (%s)", at + 1, name);
+  else
+    snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
   app_toast(a, msg);
   return true;
 }
@@ -5176,7 +5227,8 @@ static void drop_pane_on_strip(app_t *a) {
   uint32_t tid = a->drag.tab_target;
   char name[64] = {0};
   for (size_t i = 0; i < a->ntabs; i++)
-    if (a->tabs[i].id == tid) snprintf(name, sizeof name, "%s", a->tabs[i].name);
+    if (a->tabs[i].id == tid)
+      snprintf(name, sizeof name, "%s", a->tabs[i].name);
 
   if (!app_move_pane_to_tab(a, src, tid, false)) {
     /* The one refusal a drag can reach: the tab it is already in. */
@@ -5187,8 +5239,10 @@ static void drop_pane_on_strip(app_t *a) {
   for (size_t i = 0; i < a->ntabs; i++)
     if (a->tabs[i].id == tid) at = i;
   char msg[128];
-  if (name[0]) snprintf(msg, sizeof msg, "moved to tab %zu (%s)", at + 1, name);
-  else snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
+  if (name[0])
+    snprintf(msg, sizeof msg, "moved to tab %zu (%s)", at + 1, name);
+  else
+    snprintf(msg, sizeof msg, "moved to tab %zu", at + 1);
   app_toast(a, msg);
 }
 
@@ -5230,7 +5284,7 @@ static void picker_move(app_t *a, int d) {
   }
   int64_t sel = (int64_t)a->sel + d;
   int64_t last = (int64_t)n - 1;
-  if (sel < 0) sel = d == -1 ? last : 0;          /* a page up stops at the top */
+  if (sel < 0) sel = d == -1 ? last : 0; /* a page up stops at the top */
   if (sel > last) sel = d == 1 ? 0 : last;
   a->sel = (size_t)sel;
 }
@@ -5266,57 +5320,42 @@ static bool picker_key(app_t *a, const input_event_t *ev) {
   }
 
   switch (ev->key) {
-    case GHOSTTY_KEY_ESCAPE:
-      a->picker = PICK_NONE;
-      return true;
-    case GHOSTTY_KEY_ENTER: {
-      pick_row_t rows[128];
-      size_t n = picker_rows(a, rows, 128);
-      /* The row's own action, the one a click on it would run: a picker that
+  case GHOSTTY_KEY_ESCAPE: a->picker = PICK_NONE; return true;
+  case GHOSTTY_KEY_ENTER: {
+    pick_row_t rows[128];
+    size_t n = picker_rows(a, rows, 128);
+    /* The row's own action, the one a click on it would run: a picker that
        * chose by keyboard down one path and by mouse down another would be
        * two pickers wearing one box. */
-      char action[48] = "";
-      if (a->sel < n) snprintf(action, sizeof action, "%s", rows[a->sel].action);
-      a->picker = PICK_NONE;
-      if (*action) picker_accept(a, action);
-      return true;
-    }
-    case GHOSTTY_KEY_TAB:
-      picker_move(a, shift ? -1 : 1);
-      return true;
-    case GHOSTTY_KEY_ARROW_DOWN:
-      picker_move(a, 1);
-      return true;
-    case GHOSTTY_KEY_ARROW_UP:
-      picker_move(a, -1);
-      return true;
-    case GHOSTTY_KEY_PAGE_DOWN:
-      picker_move(a, FINDER_ROWS);
-      return true;
-    case GHOSTTY_KEY_PAGE_UP:
-      picker_move(a, -FINDER_ROWS);
-      return true;
-    case GHOSTTY_KEY_HOME:
-      a->sel = 0;
-      return true;
-    case GHOSTTY_KEY_END: {
-      size_t n = picker_count(a);
-      a->sel = n ? n - 1 : 0;
-      return true;
-    }
-    case GHOSTTY_KEY_BACKSPACE: {
-      /* A character, not a byte: the query can hold whatever a pane's title
+    char action[48] = "";
+    if (a->sel < n) snprintf(action, sizeof action, "%s", rows[a->sel].action);
+    a->picker = PICK_NONE;
+    if (*action) picker_accept(a, action);
+    return true;
+  }
+  case GHOSTTY_KEY_TAB: picker_move(a, shift ? -1 : 1); return true;
+  case GHOSTTY_KEY_ARROW_DOWN: picker_move(a, 1); return true;
+  case GHOSTTY_KEY_ARROW_UP: picker_move(a, -1); return true;
+  case GHOSTTY_KEY_PAGE_DOWN: picker_move(a, FINDER_ROWS); return true;
+  case GHOSTTY_KEY_PAGE_UP: picker_move(a, -FINDER_ROWS); return true;
+  case GHOSTTY_KEY_HOME: a->sel = 0; return true;
+  case GHOSTTY_KEY_END: {
+    size_t n = picker_count(a);
+    a->sel = n ? n - 1 : 0;
+    return true;
+  }
+  case GHOSTTY_KEY_BACKSPACE: {
+    /* A character, not a byte: the query can hold whatever a pane's title
        * did, and half a UTF-8 sequence is not a search. (The rename editor
        * learned this first; this one was still eating bytes.) */
-      size_t l = strlen(a->query);
-      while (l && ((unsigned char)a->query[l - 1] & 0xC0) == 0x80) l--;
-      if (l) l--;
-      a->query[l] = 0;
-      a->sel = 0;
-      return true;
-    }
-    default:
-      break;
+    size_t l = strlen(a->query);
+    while (l && ((unsigned char)a->query[l - 1] & 0xC0) == 0x80) l--;
+    if (l) l--;
+    a->query[l] = 0;
+    a->sel = 0;
+    return true;
+  }
+  default: break;
   }
   if (!ctrl && ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
     size_t l = strlen(a->query);
@@ -5419,23 +5458,18 @@ static bool rename_key(app_t *a, const input_event_t *ev) {
   if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
 
   switch (ev->key) {
-    case GHOSTTY_KEY_ESCAPE:
-      rename_end(a, false);
-      return true;
-    case GHOSTTY_KEY_ENTER:
-      rename_end(a, true);
-      return true;
-    case GHOSTTY_KEY_BACKSPACE: {
-      /* A character, not a byte: a title is whatever the program could set,
+  case GHOSTTY_KEY_ESCAPE: rename_end(a, false); return true;
+  case GHOSTTY_KEY_ENTER: rename_end(a, true); return true;
+  case GHOSTTY_KEY_BACKSPACE: {
+    /* A character, not a byte: a title is whatever the program could set,
        * and half a UTF-8 sequence is not a name. */
-      size_t l = strlen(a->rename_buf);
-      while (l && ((unsigned char)a->rename_buf[l - 1] & 0xC0) == 0x80) l--;
-      if (l) l--;
-      a->rename_buf[l] = 0;
-      return true;
-    }
-    default:
-      break;
+    size_t l = strlen(a->rename_buf);
+    while (l && ((unsigned char)a->rename_buf[l - 1] & 0xC0) == 0x80) l--;
+    if (l) l--;
+    a->rename_buf[l] = 0;
+    return true;
+  }
+  default: break;
   }
   if (ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
     size_t l = strlen(a->rename_buf);
@@ -5477,7 +5511,7 @@ void app_compose(app_t *a, screen_t *s) {
   if (a->picker || a->help) draw_scrim(a, s);
   if (a->picker) draw_picker(a, s);
   if (a->help) draw_help(a, s);
-  draw_toasts(a, s);                /* and above even that: it is transient */
+  draw_toasts(a, s); /* and above even that: it is transient */
 }
 
 /* ---- kitty graphics ------------------------------------------------------ */
@@ -5534,34 +5568,36 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
   }
   if (!cols || !rows) return;
 
-  gfx_place(c->a->gfx, &(gfx_req_t){
-      .pane = leaf->id,
-      .src_id = g->image_id,
-      .gen = g->generation,
-      .place_id = g->place_id,
-      .col = (uint16_t)(leaf->content.x + g->col),
-      .row = (uint16_t)(leaf->content.y + g->row),
-      .cols = cols,
-      .rows = rows,
-      /* Carried through untouched: the pane's own clipping already dealt with
+  gfx_place(
+      c->a->gfx,
+      &(gfx_req_t){
+          .pane = leaf->id,
+          .src_id = g->image_id,
+          .gen = g->generation,
+          .place_id = g->place_id,
+          .col = (uint16_t)(leaf->content.x + g->col),
+          .row = (uint16_t)(leaf->content.y + g->row),
+          .cols = cols,
+          .rows = rows,
+          /* Carried through untouched: the pane's own clipping already dealt with
        * it, and the offset is relative to the first cell either way. */
-      .x_off = g->x_off,
-      .y_off = g->y_off,
-      /* Clipped the same way the cell counts were, and zero when the program
+          .x_off = g->x_off,
+          .y_off = g->y_off,
+          /* Clipped the same way the cell counts were, and zero when the program
        * never asked to scale. */
-      .scale_cols = g->req_cols ? cols : 0,
-      .scale_rows = g->req_rows ? rows : 0,
-      .sx = g->sx,
-      .sy = g->sy,
-      .sw = sw,
-      .sh = sh,
-      .px_w = g->src_w,
-      .px_h = g->src_h,
-      .format = g->format,
-      .compression = g->compression,
-      .data = g->data,
-      .data_len = g->data_len,
-  });
+          .scale_cols = g->req_cols ? cols : 0,
+          .scale_rows = g->req_rows ? rows : 0,
+          .sx = g->sx,
+          .sy = g->sy,
+          .sw = sw,
+          .sh = sh,
+          .px_w = g->src_w,
+          .px_h = g->src_h,
+          .format = g->format,
+          .compression = g->compression,
+          .data = g->data,
+          .data_len = g->data_len,
+      });
 }
 
 static void gfx_leaf_cb(node_t *n, void *ud) {
@@ -5644,9 +5680,10 @@ static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
   int amount = (int)((long)labs(cells) * total / (span ? span : 1));
   if (amount <= 0) amount = 1;
 
-
-  if (cells > 0) transfer_weight(sp->kids[i + 1], sp->kids[i], amount);
-  else transfer_weight(sp->kids[i], sp->kids[i + 1], amount);
+  if (cells > 0)
+    transfer_weight(sp->kids[i + 1], sp->kids[i], amount);
+  else
+    transfer_weight(sp->kids[i], sp->kids[i + 1], amount);
   layout(a);
 }
 
@@ -5834,7 +5871,8 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
     /* A press always focuses; a hover only when it is allowed to. The event
      * is forwarded either way, so a pane that tracks the mouse still sees the
      * pointer cross it whether or not focus moved. */
-    if (ev->maction != MOUSE_MOTION || hover_focus_allowed(a)) cur(a)->focus = n;
+    if (ev->maction != MOUSE_MOTION || hover_focus_allowed(a))
+      cur(a)->focus = n;
     /* translate to pane-local coordinates before forwarding */
     input_event_t local = *ev;
     local.mx = (uint16_t)(ev->mx - n->content.x);
@@ -5915,147 +5953,149 @@ static bool run_action(app_t *a, action_t act) {
     return true;
   }
   switch (act) {
-    case ACT_SPLIT: split_focus_auto(a); return true;
-    case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
-    case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
-    case ACT_ZOOM: app_toggle_zoom(a, 0); return true;
-    case ACT_MINIMIZE:
-      if (!app_minimize(a, 0)) app_toast(a, "nothing else to show");
-      return true;
-    case ACT_CLOSE_PANE:
-      if (cur(a)->focus) close_leaf(a, cur(a)->focus);
-      return true;
-    case ACT_SET_PURPOSE:
-      /* Nothing to tag in an empty tab, and a purpose belongs to a pane rather
+  case ACT_SPLIT: split_focus_auto(a); return true;
+  case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
+  case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
+  case ACT_ZOOM: app_toggle_zoom(a, 0); return true;
+  case ACT_MINIMIZE:
+    if (!app_minimize(a, 0)) app_toast(a, "nothing else to show");
+    return true;
+  case ACT_CLOSE_PANE:
+    if (cur(a)->focus) close_leaf(a, cur(a)->focus);
+    return true;
+  case ACT_SET_PURPOSE:
+    /* Nothing to tag in an empty tab, and a purpose belongs to a pane rather
        * than to the space one would occupy. */
-      if (cur(a)->focus) purpose_begin(a, cur(a)->focus->id);
-      return true;
-    case ACT_RERUN:
-      /* The keyboard's half of a dead pane's [re-run] button. Refused on a
+    if (cur(a)->focus) purpose_begin(a, cur(a)->focus->id);
+    return true;
+  case ACT_RERUN:
+    /* The keyboard's half of a dead pane's [re-run] button. Refused on a
        * live pane rather than restarting it: "run it again" would mean
        * killing something that is still working, which is not what anybody
        * pressing it is asking for. */
-      if (cur(a)->focus && pane_alive(cur(a)->focus->pane) &&
-          !pane_suspended(cur(a)->focus->pane))
-        app_toast(a, "still running");
-      else
-        app_rerun_pane(a, 0);
-      return true;
-    case ACT_FOCUS_LEFT: focus_dir(a, -1, 0); return true;
-    case ACT_FOCUS_RIGHT: focus_dir(a, 1, 0); return true;
-    case ACT_FOCUS_UP: focus_dir(a, 0, -1); return true;
-    case ACT_FOCUS_DOWN: focus_dir(a, 0, 1); return true;
-    case ACT_FOCUS_NEXT: focus_next(a); return true;
-    case ACT_NEW_TAB: app_new_tab(a, ""); return true;
-    case ACT_CLOSE_TAB: {
-      /* The last tab is refused rather than obeyed. `app_close_tab` ends the
+    if (cur(a)->focus && pane_alive(cur(a)->focus->pane) &&
+        !pane_suspended(cur(a)->focus->pane))
+      app_toast(a, "still running");
+    else
+      app_rerun_pane(a, 0);
+    return true;
+  case ACT_FOCUS_LEFT: focus_dir(a, -1, 0); return true;
+  case ACT_FOCUS_RIGHT: focus_dir(a, 1, 0); return true;
+  case ACT_FOCUS_UP: focus_dir(a, 0, -1); return true;
+  case ACT_FOCUS_DOWN: focus_dir(a, 0, 1); return true;
+  case ACT_FOCUS_NEXT: focus_next(a); return true;
+  case ACT_NEW_TAB: app_new_tab(a, ""); return true;
+  case ACT_CLOSE_TAB: {
+    /* The last tab is refused rather than obeyed. `app_close_tab` ends the
        * session when nothing is left, which is right for a *request* -- a script
        * asking to close the only tab means it -- and a trap for a key: one that
        * closes a tab four times and ends your session the fifth is a key you
        * cannot press without counting first. `quit` is how you mean that, and it
        * is one letter away. */
-      if (a->ntabs < 2) {
-        app_toast(a, "last tab: quit the session instead");
-        return true;
-      }
-      /* Said out loud with the count, because everything in it goes with it and
-       * the panes it kills are the ones you were not looking at. */
-      size_t n = count_leaves(cur(a)->root);
-      char said[64];
-      snprintf(said, sizeof said, "closed tab \u00b7 %zu pane%s", n,
-               n == 1 ? "" : "s");
-      if (app_close_tab(a, cur(a)->id)) app_toast(a, said);
+    if (a->ntabs < 2) {
+      app_toast(a, "last tab: quit the session instead");
       return true;
     }
-    case ACT_NEXT_TAB: app_cycle_tab(a, 1); return true;
-    case ACT_PREV_TAB: app_cycle_tab(a, -1); return true;
-    case ACT_RESIZE_LEFT: resize_focus(a, -1, 0); return true;
-    case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
-    case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
-    case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
-    case ACT_CLEAR_SHADERS:
-      /* Says which of the two happened. "Nothing to undo" and "undone" look
+    /* Said out loud with the count, because everything in it goes with it and
+       * the panes it kills are the ones you were not looking at. */
+    size_t n = count_leaves(cur(a)->root);
+    char said[64];
+    snprintf(said, sizeof said, "closed tab \u00b7 %zu pane%s", n,
+             n == 1 ? "" : "s");
+    if (app_close_tab(a, cur(a)->id)) app_toast(a, said);
+    return true;
+  }
+  case ACT_NEXT_TAB: app_cycle_tab(a, 1); return true;
+  case ACT_PREV_TAB: app_cycle_tab(a, -1); return true;
+  case ACT_RESIZE_LEFT: resize_focus(a, -1, 0); return true;
+  case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
+  case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
+  case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
+  case ACT_CLEAR_SHADERS:
+    /* Says which of the two happened. "Nothing to undo" and "undone" look
        * identical on a pane that was never painted, and a key that might have
        * done nothing is a key you press again. */
-      app_toast(a, app_clear_pane_shaders(a, 0) ? "shaders cleared"
-                                               : "no shaders on this pane");
-      return true;
-    case ACT_PANE_TO_NEXT_TAB:
-    case ACT_PANE_TO_PREV_TAB:
-      return push_pane_a_tab(a, act == ACT_PANE_TO_NEXT_TAB);
-    case ACT_PANE_TO_NEW_TAB: {
-      uint32_t made = app_move_pane_to_new_tab(a, 0, "");
-      app_toast(a, made ? "into a tab of its own"
-                        : "it is the only pane in this tab");
-      return true;
-    }
-    case ACT_EQUALIZE:
-      if (!app_equalize_splits(a)) app_toast(a, "nothing to even out");
-      return true;
-    case ACT_ROTATE_LAYOUT: rotate_layout_ui(a); return true;
-    case ACT_SCROLL_UP: pane_scroll(cur(a)->focus->pane, -CFG.scroll_lines); return true;
-    case ACT_SCROLL_DOWN: pane_scroll(cur(a)->focus->pane, CFG.scroll_lines); return true;
-    case ACT_SCROLL_PAGE_UP:
-      pane_scroll(cur(a)->focus->pane, -(int)cur(a)->focus->content.h);
-      return true;
-    case ACT_SCROLL_PAGE_DOWN:
-      pane_scroll(cur(a)->focus->pane, (int)cur(a)->focus->content.h);
-      return true;
-    case ACT_SCROLL_TOP: pane_scroll_edge(cur(a)->focus->pane, true); return true;
-    case ACT_SCROLL_BOTTOM: pane_scroll_edge(cur(a)->focus->pane, false); return true;
-    case ACT_FINDER:
-    case ACT_PALETTE:
-      a->picker = act == ACT_PALETTE ? PICK_PALETTE : PICK_FINDER;
-      a->query[0] = 0;
-      a->sel = 0;
-      return true;
-    case ACT_WORKSPACES: {
-      /* Scanned here, once, and kept only while the picker is up: draw_picker
+    app_toast(a, app_clear_pane_shaders(a, 0) ? "shaders cleared"
+                                              : "no shaders on this pane");
+    return true;
+  case ACT_PANE_TO_NEXT_TAB:
+  case ACT_PANE_TO_PREV_TAB:
+    return push_pane_a_tab(a, act == ACT_PANE_TO_NEXT_TAB);
+  case ACT_PANE_TO_NEW_TAB: {
+    uint32_t made = app_move_pane_to_new_tab(a, 0, "");
+    app_toast(a, made ? "into a tab of its own"
+                      : "it is the only pane in this tab");
+    return true;
+  }
+  case ACT_EQUALIZE:
+    if (!app_equalize_splits(a)) app_toast(a, "nothing to even out");
+    return true;
+  case ACT_ROTATE_LAYOUT: rotate_layout_ui(a); return true;
+  case ACT_SCROLL_UP:
+    pane_scroll(cur(a)->focus->pane, -CFG.scroll_lines);
+    return true;
+  case ACT_SCROLL_DOWN:
+    pane_scroll(cur(a)->focus->pane, CFG.scroll_lines);
+    return true;
+  case ACT_SCROLL_PAGE_UP:
+    pane_scroll(cur(a)->focus->pane, -(int)cur(a)->focus->content.h);
+    return true;
+  case ACT_SCROLL_PAGE_DOWN:
+    pane_scroll(cur(a)->focus->pane, (int)cur(a)->focus->content.h);
+    return true;
+  case ACT_SCROLL_TOP: pane_scroll_edge(cur(a)->focus->pane, true); return true;
+  case ACT_SCROLL_BOTTOM:
+    pane_scroll_edge(cur(a)->focus->pane, false);
+    return true;
+  case ACT_FINDER:
+  case ACT_PALETTE:
+    a->picker = act == ACT_PALETTE ? PICK_PALETTE : PICK_FINDER;
+    a->query[0] = 0;
+    a->sel = 0;
+    return true;
+  case ACT_WORKSPACES: {
+    /* Scanned here, once, and kept only while the picker is up: draw_picker
        * asks for its rows every frame. Opening is also exactly when the list
        * has to be right, which is why nothing older than this keystroke is
        * ever shown. */
-      if (!app_project_roots_set()) {
-        app_toast(a, "no project roots: set project_roots in your config");
-        return true;
-      }
-      free(a->projects);
-      a->projects = calloc(PROJECTS_MAX, sizeof *a->projects);
-      a->nprojects = a->projects ? app_projects(a->projects, PROJECTS_MAX) : 0;
-      if (!a->nprojects) {
-        app_toast(a, "no projects under your project_roots");
-        return true;
-      }
-      a->picker = PICK_WORKSPACES;
-      a->query[0] = 0;
-      a->sel = 0;
+    if (!app_project_roots_set()) {
+      app_toast(a, "no project roots: set project_roots in your config");
       return true;
     }
-    case ACT_SAVE_WORKSPACE: {
-      app_workspace_save_t w;
-      char err[256] = {0};
-      /* `commands` rather than as-is: the pane running this morning's dev server
+    free(a->projects);
+    a->projects = calloc(PROJECTS_MAX, sizeof *a->projects);
+    a->nprojects = a->projects ? app_projects(a->projects, PROJECTS_MAX) : 0;
+    if (!a->nprojects) {
+      app_toast(a, "no projects under your project_roots");
+      return true;
+    }
+    a->picker = PICK_WORKSPACES;
+    a->query[0] = 0;
+    a->sel = 0;
+    return true;
+  }
+  case ACT_SAVE_WORKSPACE: {
+    app_workspace_save_t w;
+    char err[256] = {0};
+    /* `commands` rather than as-is: the pane running this morning's dev server
        * should be in the file asleep, not started on every open. */
-      if (!app_workspace_save(a, 0, NULL, DUMP_SUSPEND_COMMANDS, true, &w, err,
-                              sizeof err)) {
-        app_toast(a, err[0] ? err : "cannot save that");
-        return true;
-      }
-      char said[96];
-      snprintf(said, sizeof said, "%s %s \u00b7 %zu pane%s, %zu suspended",
-               w.replaced ? "replaced" : "wrote", PROJECT_LAYOUT_FILE, w.panes,
-               w.panes == 1 ? "" : "s", w.suspended);
-      app_toast(a, said);
+    if (!app_workspace_save(a, 0, NULL, DUMP_SUSPEND_COMMANDS, true, &w, err,
+                            sizeof err)) {
+      app_toast(a, err[0] ? err : "cannot save that");
       return true;
     }
-    case ACT_EDIT_CONFIG:
-      app_edit_config(a);
-      return true;
-    case ACT_HELP:
-      a->help = !a->help;
-      return true;
-    case ACT_DETACH: a->detach = true; return true;
-    case ACT_QUIT: a->quit = true; return true;
-    default: return false;
+    char said[96];
+    snprintf(said, sizeof said, "%s %s \u00b7 %zu pane%s, %zu suspended",
+             w.replaced ? "replaced" : "wrote", PROJECT_LAYOUT_FILE, w.panes,
+             w.panes == 1 ? "" : "s", w.suspended);
+    app_toast(a, said);
+    return true;
+  }
+  case ACT_EDIT_CONFIG: app_edit_config(a); return true;
+  case ACT_HELP: a->help = !a->help; return true;
+  case ACT_DETACH: a->detach = true; return true;
+  case ACT_QUIT: a->quit = true; return true;
+  default: return false;
   }
 }
 
@@ -6105,7 +6145,8 @@ void app_event(app_t *a, const input_event_t *ev) {
     if (a->prefix) {
       a->prefix = false;
       /* prefix twice sends the prefix itself, whatever it is bound to */
-      if (is_prefix || config_lookup(&CFG, ev->key, mods) == ACT_LITERAL_PREFIX) {
+      if (is_prefix ||
+          config_lookup(&CFG, ev->key, mods) == ACT_LITERAL_PREFIX) {
         input_event_t literal = *ev;
         literal.key = CFG.prefix_key;
         literal.mods = CFG.prefix_mods;
@@ -6136,198 +6177,196 @@ void app_event(app_t *a, const input_event_t *ev) {
   }
 
   switch (ev->kind) {
-    case EV_KEY:
-      /* the first keystroke starts a suspended pane, and is not forwarded */
-      if (pane_suspended(cur(a)->focus->pane)) {
-        pane_start(cur(a)->focus->pane);
-        break;
-      }
-      pane_send_key(cur(a)->focus->pane, ev);
+  case EV_KEY:
+    /* the first keystroke starts a suspended pane, and is not forwarded */
+    if (pane_suspended(cur(a)->focus->pane)) {
+      pane_start(cur(a)->focus->pane);
       break;
-    case EV_MOUSE: {
-      /* Mouse routing is a hit-list lookup, never a re-derivation of geometry:
+    }
+    pane_send_key(cur(a)->focus->pane, ev);
+    break;
+  case EV_MOUSE: {
+    /* Mouse routing is a hit-list lookup, never a re-derivation of geometry:
        * the list was filled by the pass that painted what the user clicked. */
-      if (!a->painted) break;
-      const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
+    if (!a->painted) break;
+    const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
 
-      /* Clicking away keeps the name, the way leaving a field commits it.
+    /* Clicking away keeps the name, the way leaving a field commits it.
        * Clicking the thing's own label again does not, so a stray second
        * double-click lands in the editor instead of closing it. */
-      if (a->renaming && ev->maction == MOUSE_PRESS) {
-        char own[48];
-        snprintf(own, sizeof own,
-                 a->renaming == RENAME_PANE ? "panetitle:%u" : "tab:%u",
-                 a->rename_id);
-        if (!action || strcmp(action, own) != 0) rename_end(a, true);
-      }
+    if (a->renaming && ev->maction == MOUSE_PRESS) {
+      char own[48];
+      snprintf(own, sizeof own,
+               a->renaming == RENAME_PANE ? "panetitle:%u" : "tab:%u",
+               a->rename_id);
+      if (!action || strcmp(action, own) != 0) rename_end(a, true);
+    }
 
-      if (!a->ptr_valid || ev->mx != a->ptr_x || ev->my != a->ptr_y)
-        a->ptr_still_since = now_ms_();
-      a->ptr_x = ev->mx;
-      a->ptr_y = ev->my;
-      a->ptr_valid = true;
+    if (!a->ptr_valid || ev->mx != a->ptr_x || ev->my != a->ptr_y)
+      a->ptr_still_since = now_ms_();
+    a->ptr_x = ev->mx;
+    a->ptr_y = ev->my;
+    a->ptr_valid = true;
 
-      if (a->drag.kind != DRAG_NONE) {
-        if (ev->maction == MOUSE_MOTION) {
-          a->drag.moved = true;
-          if (a->drag.kind == DRAG_SELECT) {
-            node_t *n = pane_by_id(a, a->drag.src);
-            if (n)
-              pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
-                                 (uint16_t)(ev->my - n->content.y));
-          } else if (a->drag.kind == DRAG_EDGE &&
-                     (a->drag.c_nv || a->drag.c_nh)) {
-            /* One axis to each: the row boundary takes the vertical movement
+    if (a->drag.kind != DRAG_NONE) {
+      if (ev->maction == MOUSE_MOTION) {
+        a->drag.moved = true;
+        if (a->drag.kind == DRAG_SELECT) {
+          node_t *n = pane_by_id(a, a->drag.src);
+          if (n)
+            pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
+                               (uint16_t)(ev->my - n->content.y));
+        } else if (a->drag.kind == DRAG_EDGE &&
+                   (a->drag.c_nv || a->drag.c_nh)) {
+          /* One axis to each: the row boundary takes the vertical movement
              * and the column boundaries the horizontal, so the corner follows
              * the pointer in both at once. The column boundaries above and
              * below get the same delta, which is what keeps them one line. */
-            int dx = (int)ev->mx - (int)a->drag.x;
-            int dy = (int)ev->my - (int)a->drag.y;
-            for (size_t i = 0; i < a->drag.c_nh; i++)
-              drag_edge(a, split_by_id(a, a->drag.c_h[i]), a->drag.c_hedge[i],
-                        dy);
-            for (size_t i = 0; i < a->drag.c_nv; i++)
-              drag_edge(a, split_by_id(a, a->drag.c_v[i]), a->drag.c_vedge[i],
-                        dx);
-          } else if (a->drag.kind == DRAG_EDGE) {
-            node_t *sp = split_by_id(a, a->drag.src);
-            int cells = sp && sp->dir == SPLIT_COLS
-                            ? (int)ev->mx - (int)a->drag.x
-                            : (int)ev->my - (int)a->drag.y;
-            drag_edge(a, sp, a->drag.edge, cells);
-          } else if (a->drag.kind == DRAG_TAB) {
-            /* Reordered as you drag, rather than dropped at the end: the
+          int dx = (int)ev->mx - (int)a->drag.x;
+          int dy = (int)ev->my - (int)a->drag.y;
+          for (size_t i = 0; i < a->drag.c_nh; i++)
+            drag_edge(a, split_by_id(a, a->drag.c_h[i]), a->drag.c_hedge[i],
+                      dy);
+          for (size_t i = 0; i < a->drag.c_nv; i++)
+            drag_edge(a, split_by_id(a, a->drag.c_v[i]), a->drag.c_vedge[i],
+                      dx);
+        } else if (a->drag.kind == DRAG_EDGE) {
+          node_t *sp = split_by_id(a, a->drag.src);
+          int cells = sp && sp->dir == SPLIT_COLS
+                          ? (int)ev->mx - (int)a->drag.x
+                          : (int)ev->my - (int)a->drag.y;
+          drag_edge(a, sp, a->drag.edge, cells);
+        } else if (a->drag.kind == DRAG_TAB) {
+          /* Reordered as you drag, rather than dropped at the end: the
              * strip is the only thing that could show an insertion point, and
              * a strip that already shows the result needs no such invention.
              * Off the strip entirely, nothing moves — dragging away is not a
              * cancel, it is simply not a move. */
-            size_t from = tab_index(a, a->drag.src);
-            if (from != (size_t)-1 && action) {
-              size_t to = (size_t)-1;
-              if (strncmp(action, "tab:", 4) == 0)
-                to = tab_index(a, (uint32_t)strtoul(action + 4, NULL, 10));
-              else if (strcmp(action, "newtab") == 0)
-                to = a->ntabs - 1; /* past the last tab means last */
-              if (to != (size_t)-1) move_tab(a, from, to);
-            }
-          } else if (a->drag.kind == DRAG_TITLE && action &&
-                     strncmp(action, "tab:", 4) == 0) {
-            /* Over the strip: this pane is going to that tab. */
-            a->drag.tab_target = (uint32_t)strtoul(action + 4, NULL, 10);
-            a->drag.new_tab_target = false;
-            a->drag.target = 0;
-          } else if (a->drag.kind == DRAG_TITLE && action &&
-                     strcmp(action, "newtab") == 0) {
-            /* The button that makes a tab, used as somewhere to put one pane. */
-            a->drag.new_tab_target = true;
-            a->drag.tab_target = 0;
-            a->drag.target = 0;
-          } else if (action && strncmp(action, "title:", 6) == 0) {
-            a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
-            a->drag.tab_target = 0;
-            a->drag.new_tab_target = false;
-          } else if (action && strncmp(action, "panetitle:", 10) == 0) {
-            /* Dropping onto a pane's name is dropping onto that pane. */
-            a->drag.target = (uint32_t)strtoul(action + 10, NULL, 10);
-            a->drag.tab_target = 0;
-            a->drag.new_tab_target = false;
-          } else if (action && strncmp(action, "pane:", 5) == 0) {
-            a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
-            a->drag.tab_target = 0;
-            a->drag.new_tab_target = false;
+          size_t from = tab_index(a, a->drag.src);
+          if (from != (size_t)-1 && action) {
+            size_t to = (size_t)-1;
+            if (strncmp(action, "tab:", 4) == 0)
+              to = tab_index(a, (uint32_t)strtoul(action + 4, NULL, 10));
+            else if (strcmp(action, "newtab") == 0)
+              to = a->ntabs - 1; /* past the last tab means last */
+            if (to != (size_t)-1) move_tab(a, from, to);
           }
-          a->drag.x = ev->mx;
-          a->drag.y = ev->my;
-        } else if (ev->maction == MOUSE_RELEASE) {
-          /* A press that never moved is a click, and a click on an edge
-           * splits toward it. */
-          if (!a->drag.moved && a->drag.side &&
-              (a->drag.kind == DRAG_BORDER || a->drag.kind == DRAG_TITLE)) {
-            node_t *n = pane_by_id(a, a->drag.src);
-            if (n) {
-              char side = a->drag.side;
-              bool before = side == 'l' || side == 't';
-              split_dir_t dir = side_dir(side);
-              /* The guide already declined to offer this, so the click that
-               * the guide would have explained must decline too — otherwise
-               * the border silently does something it just said it would not. */
-              if (!split_fits(n, dir)) {
-                app_toast(a, dir == SPLIT_COLS ? "no room to split across"
-                                               : "no room to split down");
-              } else {
-                split_node(a, n, dir, before);
-                app_toast(a, side == 'l'   ? "split left"
-                             : side == 'r' ? "split right"
-                             : side == 't' ? "split up"
-                                           : "split down");
-              }
-            }
-            a->drag.kind = DRAG_NONE;
-            a->drag.src = a->drag.target = 0;
-            break;
-          }
-          if (a->drag.kind == DRAG_SELECT) {
-            /* Releasing copies, which is the whole point: no menu, no chord,
-             * the selection *is* the copy. */
-            node_t *n = pane_by_id(a, a->drag.src);
-            if (n) {
-              set_clipboard(a, pane_selection_text(n->pane));
-              pane_select_done(n->pane);
-            }
-          }
-          if (a->drag.kind == DRAG_TITLE &&
-              (a->drag.tab_target || a->drag.new_tab_target)) {
-            /* Dropped on the strip: the pane changes tab rather than places. */
-            drop_pane_on_strip(a);
-          } else if (a->drag.kind == DRAG_TITLE &&
-                     a->drag.target != a->drag.src) {
-            swap_panes(a, a->drag.src, a->drag.target);
-          }
-          a->drag.kind = DRAG_NONE;
-          a->drag.src = a->drag.target = a->drag.tab_target = 0;
+        } else if (a->drag.kind == DRAG_TITLE && action &&
+                   strncmp(action, "tab:", 4) == 0) {
+          /* Over the strip: this pane is going to that tab. */
+          a->drag.tab_target = (uint32_t)strtoul(action + 4, NULL, 10);
+          a->drag.new_tab_target = false;
+          a->drag.target = 0;
+        } else if (a->drag.kind == DRAG_TITLE && action &&
+                   strcmp(action, "newtab") == 0) {
+          /* The button that makes a tab, used as somewhere to put one pane. */
+          a->drag.new_tab_target = true;
+          a->drag.tab_target = 0;
+          a->drag.target = 0;
+        } else if (action && strncmp(action, "title:", 6) == 0) {
+          a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
+          a->drag.tab_target = 0;
+          a->drag.new_tab_target = false;
+        } else if (action && strncmp(action, "panetitle:", 10) == 0) {
+          /* Dropping onto a pane's name is dropping onto that pane. */
+          a->drag.target = (uint32_t)strtoul(action + 10, NULL, 10);
+          a->drag.tab_target = 0;
+          a->drag.new_tab_target = false;
+        } else if (action && strncmp(action, "pane:", 5) == 0) {
+          a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
+          a->drag.tab_target = 0;
           a->drag.new_tab_target = false;
         }
-        break; /* a drag owns the mouse until the button comes up */
+        a->drag.x = ev->mx;
+        a->drag.y = ev->my;
+      } else if (ev->maction == MOUSE_RELEASE) {
+        /* A press that never moved is a click, and a click on an edge
+           * splits toward it. */
+        if (!a->drag.moved && a->drag.side &&
+            (a->drag.kind == DRAG_BORDER || a->drag.kind == DRAG_TITLE)) {
+          node_t *n = pane_by_id(a, a->drag.src);
+          if (n) {
+            char side = a->drag.side;
+            bool before = side == 'l' || side == 't';
+            split_dir_t dir = side_dir(side);
+            /* The guide already declined to offer this, so the click that
+               * the guide would have explained must decline too — otherwise
+               * the border silently does something it just said it would not. */
+            if (!split_fits(n, dir)) {
+              app_toast(a, dir == SPLIT_COLS ? "no room to split across"
+                                             : "no room to split down");
+            } else {
+              split_node(a, n, dir, before);
+              app_toast(a, side == 'l'   ? "split left"
+                           : side == 'r' ? "split right"
+                           : side == 't' ? "split up"
+                                         : "split down");
+            }
+          }
+          a->drag.kind = DRAG_NONE;
+          a->drag.src = a->drag.target = 0;
+          break;
+        }
+        if (a->drag.kind == DRAG_SELECT) {
+          /* Releasing copies, which is the whole point: no menu, no chord,
+             * the selection *is* the copy. */
+          node_t *n = pane_by_id(a, a->drag.src);
+          if (n) {
+            set_clipboard(a, pane_selection_text(n->pane));
+            pane_select_done(n->pane);
+          }
+        }
+        if (a->drag.kind == DRAG_TITLE &&
+            (a->drag.tab_target || a->drag.new_tab_target)) {
+          /* Dropped on the strip: the pane changes tab rather than places. */
+          drop_pane_on_strip(a);
+        } else if (a->drag.kind == DRAG_TITLE &&
+                   a->drag.target != a->drag.src) {
+          swap_panes(a, a->drag.src, a->drag.target);
+        }
+        a->drag.kind = DRAG_NONE;
+        a->drag.src = a->drag.target = a->drag.tab_target = 0;
+        a->drag.new_tab_target = false;
       }
+      break; /* a drag owns the mouse until the button comes up */
+    }
 
-      /* Any press dismisses the cheatsheet, wherever it lands -- including on
+    /* Any press dismisses the cheatsheet, wherever it lands -- including on
        * its own close button, which is there because a modal without a way
        * out that you can *see* is a modal people hunt for the way out of. */
-      if (a->help) {
-        if (ev->maction == MOUSE_PRESS) a->help = false;
-        break;
-      }
+    if (a->help) {
+      if (ev->maction == MOUSE_PRESS) a->help = false;
+      break;
+    }
 
-      /* The finder owns the pointer as well as the keyboard. A press on one
+    /* The finder owns the pointer as well as the keyboard. A press on one
        * of its rows chooses; a press anywhere else dismisses it and does
        * nothing further -- clicking past a modal must not also land on the
        * layout behind it, which is how you end up focusing a pane you were
        * trying to click *away* from. Motion still falls through, so rows
        * light up under the pointer. */
-      if (a->picker && ev->maction != MOUSE_MOTION) {
-        bool own = action && (strncmp(action, "find:", 5) == 0 ||
-                              strncmp(action, "run:", 4) == 0 ||
-                              strncmp(action, "open:", 5) == 0 ||
-                              strcmp(action, "closefind") == 0 ||
-                              strcmp(action, "closepalette") == 0 ||
-                              strcmp(action, "closeprojects") == 0);
-        if (!own) {
-          if (ev->maction == MOUSE_PRESS) a->picker = PICK_NONE;
-          break;
-        }
+    if (a->picker && ev->maction != MOUSE_MOTION) {
+      bool own = action && (strncmp(action, "find:", 5) == 0 ||
+                            strncmp(action, "run:", 4) == 0 ||
+                            strncmp(action, "open:", 5) == 0 ||
+                            strcmp(action, "closefind") == 0 ||
+                            strcmp(action, "closepalette") == 0 ||
+                            strcmp(action, "closeprojects") == 0);
+      if (!own) {
+        if (ev->maction == MOUSE_PRESS) a->picker = PICK_NONE;
+        break;
       }
-
-      if (action) do_action(a, action, ev);
-      break;
     }
-    case EV_PASTE:
-      pane_send_paste(cur(a)->focus->pane, ev->paste, ev->paste_len);
-      break;
-    default:
-      break;
+
+    if (action) do_action(a, action, ev);
+    break;
+  }
+  case EV_PASTE:
+    pane_send_paste(cur(a)->focus->pane, ev->paste, ev->paste_len);
+    break;
+  default: break;
   }
 }
-
 
 /* ---- dumping a session back out as a layout ------------------------------
  *
@@ -6371,8 +6410,10 @@ static void sb_quoted(strbuf_t *b, const char *key, const char *val) {
   if (!val || !*val) return;
   sb_add(b, " %s=\"", key);
   for (const char *p = val; *p; p++) {
-    if (*p == '"' || *p == '\\') sb_add(b, "\\%c", *p);
-    else if ((unsigned char)*p >= 0x20) sb_add(b, "%c", *p);
+    if (*p == '"' || *p == '\\')
+      sb_add(b, "\\%c", *p);
+    else if ((unsigned char)*p >= 0x20)
+      sb_add(b, "%c", *p);
   }
   sb_add(b, "\"");
 }
@@ -6438,10 +6479,10 @@ static const char *dump_command(const node_t *n, char *buf, size_t cap) {
  * `suspended=true` under this policy would start a dev server on every open. */
 static bool dump_suspended(const char *command, const node_t *n, int policy) {
   switch (policy) {
-    case DUMP_SUSPEND_NONE: return false;
-    case DUMP_SUSPEND_ALL: return true;
-    case DUMP_SUSPEND_COMMANDS: return command && *command;
-    default: return pane_suspended(n->pane);
+  case DUMP_SUSPEND_NONE: return false;
+  case DUMP_SUSPEND_ALL: return true;
+  case DUMP_SUSPEND_COMMANDS: return command && *command;
+  default: return pane_suspended(n->pane);
   }
 }
 
