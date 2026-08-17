@@ -247,6 +247,25 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     return 1;
   }
 
+  /* Every pane inherits this process's environment, so setting it here is how a
+   * program *inside* a pane learns which session it is in -- and therefore which
+   * socket to talk to. `SL0PPTY=1` (pty.c) says "you are in a pane"; this says
+   * which one of possibly several sessions, which is the part a program cannot
+   * work out for itself: `ls` lists them all and none of them is labelled "the
+   * one you are in". Deliberately unset under `--script`, which has no socket. */
+  setenv("SL0PPTY_SESSION", name, 1);
+  /* ...and which binary to talk to it with. A program in a pane that finds
+   * `sl0ppty` missing from its PATH -- a session started from a build tree, an
+   * agent with a trimmed environment -- can otherwise see the session it is in
+   * and have no way to reach it. Read from /proc rather than argv[0], which is
+   * whatever the caller felt like passing. */
+  char self[512];
+  ssize_t sn = readlink("/proc/self/exe", self, sizeof self - 1);
+  if (sn > 0) {
+    self[sn] = 0;
+    setenv("SL0PPTY_BIN", self, 1);
+  }
+
   struct sigaction sa = {.sa_handler = on_sig};
   sigaction(SIGTERM, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);

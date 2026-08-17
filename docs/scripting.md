@@ -119,6 +119,24 @@ it is sent (`cat`, a shell with echo on, a REPL waiting for a line) would
 otherwise be answered into a loop, which is exactly what `hello` used to do:
 4 MB of hellos in a second and a half.
 
+## Driving it from an agent
+
+Everything above is what an agent needs, and none of it says which parts matter.
+`.agents/skills/driving-sl0ppty/SKILL.md` is the same socket written as
+instructions: how a program in a pane finds out which session it is in
+(`SL0PPTY_SESSION`, `SL0PPTY_BIN`), why work belongs in a pane that *was given a
+command* rather than typed into somebody's shell, that `alive` and `exit_code` are
+how you wait rather than reading the screen for a marker your own echo matches, and
+that `purpose` is the handle to find things by because titles change underneath
+you.
+
+It follows the `.agents/skills/<name>/SKILL.md` convention, so an agent working in
+a checkout picks it up without being told. To use it elsewhere, copy or symlink the
+directory into wherever your agent looks for skills. `tests/test_skill.py` checks
+every verb, variable and `panes` field it names against the program, because a
+stale skill is worse than a missing one: an agent acts on it without a human
+reading it first.
+
 ## Headless
 
 `sl0ppty --script` is the whole program without a terminal: commands on stdin,

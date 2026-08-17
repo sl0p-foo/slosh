@@ -154,3 +154,15 @@ The C unit tests link the same instrumented objects, so `input.c`, `kdl.c`,
 `shader.c` and `expr.c` get credit for the tests that actually exercise them —
 without that they read as half-tested, which is a lie about where the tests
 are rather than about the code.
+
+## the agent skill
+
+`.agents/skills/driving-sl0ppty/SKILL.md` is the control socket written as
+instructions rather than as a reference: which environment variables tell a
+program in a pane which session it is in, why work belongs in a pane that was
+*given* a command instead of typed into a shell, and that `purpose` is the handle
+to find things by. It follows the `.agents/skills/<name>/SKILL.md` convention, so
+an agent working in a checkout of this repo picks it up on its own; to use it
+anywhere else, copy or symlink that directory into wherever your agent keeps
+skills. It carries no paths from the machine it was written on, and
+`tests/test_skill.py` keeps every verb it names honest.
