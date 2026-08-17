@@ -53,7 +53,7 @@ else
 endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
-        docs fmt fmt-check hooks
+        docs fmt fmt-check hooks tools
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -251,18 +251,39 @@ CSRC  := $(shell git ls-files '*.c' '*.h' 2>/dev/null | grep -v '^vendor/')
 PYSRC := $(shell git ls-files '*.py' 2>/dev/null | grep -v '^vendor/') \
          contrib/coverage contrib/gen-docs contrib/shader-repl
 
+# clang-format is a system package. ruff usually is not, and `pip install --user`
+# is refused outright on a distro python (PEP 668), so `make tools` puts it in a
+# venv here and everything looks there *first* -- before $$PATH, so that a system
+# ruff of the wrong version cannot strand somebody whose venv has the right one.
+# The version is pinned in ruff.toml as well, where ruff enforces it itself.
+RUFF_VERSION := 0.16.3
+VENV         := .venv
+RUFF          = $(if $(wildcard $(VENV)/bin/ruff),$(VENV)/bin/ruff,$(shell command -v ruff 2>/dev/null))
+no-ruff       = { echo "ruff not found. run: make tools"; exit 1; }
+
+tools: ## install the formatters (a venv with ruff)
+	$(Q)python3 -m venv $(VENV)
+	$(Q)$(VENV)/bin/pip install --quiet --disable-pip-version-check \
+	    ruff==$(RUFF_VERSION)
+	@printf '  %s\n' "$$($(VENV)/bin/ruff --version)  in $(VENV)"
+	@command -v clang-format >/dev/null 2>&1 \
+	  || echo "  note: clang-format is missing (apt install clang-format)"
+	@echo "  survives make clean; rm -rf $(VENV) to start over"
+
 fmt: ## format the C and Python in place
+	@test -n "$(RUFF)" || $(no-ruff)
 	$(Q)clang-format -i $(CSRC)
-	$(Q)ruff check -q --select I --fix $(PYSRC)
-	$(Q)ruff format -q $(PYSRC)
+	$(Q)$(RUFF) check -q --select I --fix $(PYSRC)
+	$(Q)$(RUFF) format -q $(PYSRC)
 	$(say) "  [FMT] $(words $(CSRC)) C, $(words $(PYSRC)) Python"
 
 fmt-check: ## ...or just say what is not formatted
+	@test -n "$(RUFF)" || $(no-ruff)
 	@bad=$$(for f in $(CSRC); do \
 	    clang-format "$$f" | cmp -s - "$$f" || echo "$$f"; \
 	  done); \
-	pybad=$$(ruff format -q --check $(PYSRC) 2>&1 | sed -n 's/^Would reformat: //p'; \
-	         ruff check -q --select I $(PYSRC) 2>/dev/null | sed -n 's/:.*//p' | sort -u); \
+	pybad=$$($(RUFF) format -q --check $(PYSRC) 2>&1 | sed -n 's/^Would reformat: //p'; \
+	         $(RUFF) check -q --select I $(PYSRC) 2>/dev/null | sed -n 's/:.*//p' | sort -u); \
 	all=$$(printf '%s\n%s\n' "$$bad" "$$pybad" | sed '/^$$/d' | sort -u); \
 	if [ -n "$$all" ]; then \
 	  echo "not formatted:"; echo "$$all" | sed 's/^/  /'; \

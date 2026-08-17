@@ -32,20 +32,31 @@ py_files=$(printf '%s\n' "$py_files" | sed '/^$/d')
 files=$(printf '%s\n%s\n' "$c_files" "$py_files" | sed '/^$/d')
 [ -n "$files" ] || exit 0
 
+# Where ruff is. The repo-local venv first, before $PATH, for the same reason the
+# Makefile prefers it: ruff.toml pins a version, and a system ruff of the wrong
+# one would refuse the commit while the venv sitting right there has the version
+# it asked for. Off the toplevel, so this works from a subdirectory.
+root=$(git rev-parse --show-toplevel)
+if [ -x "$root/.venv/bin/ruff" ]; then
+  ruff="$root/.venv/bin/ruff"
+else
+  ruff=$(command -v ruff 2>/dev/null || true)
+fi
+
 # Named together, so somebody setting up a machine installs both at once rather
 # than discovering the second one on their next commit.
 missing=""
 if [ -n "$c_files" ] && ! command -v clang-format >/dev/null 2>&1; then
   missing="$missing clang-format"
 fi
-if [ -n "$py_files" ] && ! command -v ruff >/dev/null 2>&1; then
+if [ -n "$py_files" ] && [ -z "$ruff" ]; then
   missing="$missing ruff"
 fi
 if [ -n "$missing" ]; then
   echo "pre-commit: not installed:$missing" >&2
   echo "  and this commit touches code they format." >&2
+  echo "    ruff:         make tools   (a venv in .venv, version pinned)" >&2
   echo "    clang-format: apt install clang-format | brew install clang-format" >&2
-  echo "    ruff:         pip install ruff | brew install ruff" >&2
   echo "  ...or commit with --no-verify if you know what you are doing." >&2
   exit 1
 fi
@@ -74,8 +85,8 @@ if [ -n "$py_files" ]; then
   # `--select I` on the command line as well as in ruff.toml, so a stray `select`
   # somewhere else cannot turn this hook into a linter that blocks commits over an
   # unused variable.
-  ruff check -q --select I --fix $py_files
-  ruff format -q $py_files
+  "$ruff" check -q --select I --fix $py_files
+  "$ruff" format -q $py_files
 fi
 git add -- $files
 

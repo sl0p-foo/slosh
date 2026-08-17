@@ -12,6 +12,15 @@
 # having if there is nothing left to argue about. Every knob turned here is an
 # argument somebody has to have again later.
 
+# The version this tree was formatted with, enforced by ruff itself: a formatter
+# whose output moves between releases turns "formatted" into "formatted by
+# whoever committed last", and the diff lands on the next person. A mismatch is
+# refused with both versions named rather than quietly reformatting everything.
+#
+# `make tools` installs exactly this one. Bumping it is one line here, one in the
+# Makefile, and a reformat commit -- the honest cost of a new version.
+required-version = "==0.16.3"
+
 target-version = "py39"
 line-length = 88
 
