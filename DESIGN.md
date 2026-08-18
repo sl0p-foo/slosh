@@ -298,12 +298,23 @@ clicked.
 
 Hovering therefore answers two questions in two stages, because they are two
 questions. **Anywhere on the edge**: the edge goes heavy and the handle goes
-solid, which says *where the button is* — the thing you can no longer infer now
-that the edge is not all button. **On the handle**: the dashed line where the new
-boundary would land and the arrow pointing at the half that will be new, which
-say *what the click will do*. The hint follows the same split: it is the caption
-on the second stage, so sweeping an edge neither draws a boundary nor claims a
-split you cannot get from where you are.
+solid **with the direction arrow knocked out of it**, which says *where the
+button is and what it does*. **On the handle**: the dashed line where the new
+boundary would land, which says *exactly where the result goes*. The hint
+follows the same split: it is the caption on the second stage, so sweeping an
+edge neither draws a boundary nor claims a split you cannot get from where you
+are.
+
+**The button carries its own verb.** The arrow used to ride the middle of the
+dashed line, which put the two halves of one message in two places — the handle
+saying *press here* and a glyph out in the pane saying *this is what happens* —
+and made the direction unreadable until you were already on the target. On the
+handle it is one object that explains itself, the boundary line goes back to
+being a plain boundary (an edge has no middle worth marking), and brushing an
+edge now tells you which way that button splits. It is knocked out with
+`ATTR_INVERSE` rather than drawn in a second colour, because the bar is solid
+`guide` and a `guide` glyph on top of it would be invisible: inverting gets
+contrast that follows whatever colour you set, for no new theme knob.
 
 **Only the upright sides get wider.** A cell is about twice as tall as it is
 wide — the same fact `gap_aspect` exists for, and that the split picker measures

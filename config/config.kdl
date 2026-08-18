@@ -689,7 +689,7 @@ theme {
     button_bg_idle "#55555c"   // buttons on a pane that is not focused
 
     // ── things that appear under the pointer ────────────────────────────────
-    guide "#ff5fd7"            // split guide: armed edge, dashed boundary, arrow
+    guide "#ff5fd7"            // split guide: armed edge, handle, its arrow, boundary
     resize "#ff5fd7"           // the handle in the gap between two panes
     drop_target "#ff5fd7"      // frame of a pane a drag could land on
 

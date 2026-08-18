@@ -39,11 +39,11 @@ nothing you click can disagree with what is on screen.
   is the side the new pane appears on. Only the middle of an edge splits: three
   to seven cells of it, called the handle, because a whole edge is a long target
   to brush past and a changed layout is an expensive accident. Resting anywhere
-  on an edge fills the handle in solid so you can see where to click — a cell
-  wider on the left and right edges, and no taller on the top and bottom ones,
-  since a row is about twice a column and a two-row bar reads as a wall. Resting
-  *on* the handle adds a dashed line where the split would land and names the
-  direction in the hint bar. The rest of the edge does nothing when clicked.
+  on an edge fills the handle in solid, with an arrow in it for the way it will
+  split — a cell wider on the left and right edges, and no taller on the top and
+  bottom ones, since a row is about twice a column and a two-row bar reads as a
+  wall. Resting *on* the handle adds a dashed line where the new boundary will
+  land. The rest of the edge does nothing when clicked.
 - **The top row is the drag handle, and its handle splits upward.** Clicking a
   pane's header to focus it never splits it. On a titled pane the handle sits
   wherever the title and the buttons left room, since the title keeps its own

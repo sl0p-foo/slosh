@@ -3485,38 +3485,61 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
       if (in < h.x) h.x = in;
       h.w = 2;
     }
+    /* The button carries its own verb. The arrow used to ride the dashed line,
+     * which put the two halves of the message in two places: the handle said
+     * *press here* and something over in the middle of the pane said *this is
+     * what happens*. On the handle it is one object that explains itself, and it
+     * is legible from the first stage -- brushing an edge now tells you which way
+     * that button splits without drawing a boundary you did not ask about.
+     *
+     * Knocked out of the bar with ATTR_INVERSE rather than drawn in a second
+     * colour: the block is solid `guide`, so a `guide` glyph on top of it would
+     * be invisible, and inverting spends no new theme knob to get contrast that
+     * follows whatever colour you set.
+     *
+     * Pointers rather than the matching triangles for left and right: U+25C0 and
+     * U+25B6 carry emoji presentation and terminals widely render them
+     * double-width, and screen_text books every chrome glyph as one cell — so a
+     * cell that draws as two would shift the rest of the row. U+25B2 is already
+     * the scroll indicator, so the vertical pair is known good here. */
+    const char *arrow = side == 'l'   ? "\u25c4"
+                        : side == 'r' ? "\u25ba"
+                        : side == 't' ? "\u25b2"
+                                      : "\u25bc";
+    /* Along the handle it goes in the middle, which is where the pointer is
+     * aiming. Across it, on the edge's own cell rather than the one over the
+     * content: the arrow marks a boundary, and the boundary lands on the frame.
+     * That distinction only exists on the upright pair, since those are the two
+     * that grew a second cell. */
+    bool vert = side == 'l' || side == 'r';
+    uint16_t ax = vert ? (side == 'l' ? h.x : (uint16_t)(h.x + h.w - 1))
+                       : (uint16_t)(h.x + h.w / 2);
+    uint16_t ay = vert ? (uint16_t)(h.y + h.h / 2) : h.y;
     for (uint16_t y = h.y; y < h.y + h.h; y++) {
       for (uint16_t x = h.x; x < h.x + h.w; x++) {
         const char *own = hit_test(&s->hits, x, y);
-        if (own && strcmp(own, act) == 0)
-          screen_text(s, x, y, "\u2588", hi, NO_COLOR, ATTR_BOLD);
+        if (!own || strcmp(own, act) != 0) continue;
+        bool tip = x == ax && y == ay;
+        screen_text(s, x, y, tip ? arrow : "\u2588", hi, NO_COLOR,
+                    tip ? (uint16_t)(ATTR_BOLD | ATTR_INVERSE) : ATTR_BOLD);
       }
     }
   }
 
   if (!on_handle) return;
 
-  /* Stage two: an arrow on the new boundary, pointing at the side the new pane
-   * will take. The dashed line says where, and on its own leaves which half is
-   * the new one to be inferred from which border you happen to be touching.
-   *
-   * Pointers rather than the matching triangles for left and right: U+25C0 and
-   * U+25B6 carry emoji presentation and terminals widely render them
-   * double-width, and screen_text books every chrome glyph as one cell — so a
-   * cell that draws as two would shift the rest of the row. U+25B2 is already
-   * the scroll indicator, so the vertical pair is known good here. */
+  /* Stage two: where the new boundary lands, and nothing about direction -- the
+   * handle is holding that end of the message now. A plain dashed line is also
+   * the honest shape for it: it is the *edge* of the new pane, and an edge has
+   * no middle worth marking. */
   if (side == 'l' || side == 'r') {
     uint16_t mid = (uint16_t)(r.x + r.w / 2);
     for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
       screen_text(s, mid, y, "\u254e", hi, NO_COLOR, 0);
-    screen_text(s, mid, (uint16_t)(r.y + r.h / 2),
-                side == 'l' ? "\u25c4" : "\u25ba", hi, NO_COLOR, ATTR_BOLD);
   } else {
     uint16_t mid = (uint16_t)(r.y + r.h / 2);
     for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++)
       screen_text(s, x, mid, "\u254c", hi, NO_COLOR, 0);
-    screen_text(s, (uint16_t)(r.x + r.w / 2), mid,
-                side == 't' ? "\u25b2" : "\u25bc", hi, NO_COLOR, ATTR_BOLD);
   }
 }
 

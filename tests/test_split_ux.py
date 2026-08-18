@@ -585,18 +585,45 @@ def test_the_guide_says_which_way_it_goes():
             )
 
 
-def test_the_arrow_sits_on_the_new_boundary():
+def test_the_arrow_rides_the_handle():
+    """The arrow used to sit halfway along the dashed line, which split the
+    message in two: the handle said *press here* and something out in the middle
+    of the pane said *this is what happens*. It belongs on the button."""
     with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
-        x, y = edge_of(s, p, "r")
-        rest(s, x, y)
+        for side in ("l", "r", "t", "b"):
+            hx, hy = edge_of(s, p, side)
+            rest(s, hx, hy)
+            snap = s.snapshot()
+            pos = snap.find(ARROWS[side])
+            # Inside the handle: same row for an upright edge, same column for a
+            # horizontal one, and never out on the boundary line.
+            near = pos is not None and (
+                (side in "lr" and pos[1] == hy and abs(pos[0] - hx) <= 1)
+                or (side in "tb" and pos[1] == hy and abs(pos[0] - hx) <= 3)
+            )
+            check(
+                f"the {side} arrow is on the handle",
+                near,
+                f"{pos} vs handle ({hx},{hy})",
+            )
+            check(
+                f"and the {side} boundary line carries none",
+                pos != (p["x"] + p["w"] // 2, p["y"] + p["h"] // 2),
+                str(pos),
+            )
+
+        # The arrow is part of the button, so it is legible from the first stage:
+        # brushing an edge says which way that handle splits, without previewing
+        # a boundary.
+        rx, ry = s.snapshot().rim(p["id"], "l")
+        rest(s, rx, ry)
         snap = s.snapshot()
-        pos = snap.find(ARROWS["r"])
         check(
-            "the arrow is on the dashed line, not the border",
-            pos is not None and pos[0] == p["x"] + p["w"] // 2,
-            str(pos),
+            "and it shows on rim hover too, with no boundary",
+            ARROWS["l"] in snap.screen() and "╎" not in snap.screen(),
+            repr([l for l in snap.text if ARROWS["l"] in l][:1]),
         )
 
 
@@ -787,7 +814,7 @@ if __name__ == "__main__":
     test_the_floor_is_configurable_in_both_axes()
     test_the_keyboard_obeys_the_same_floor()
     test_the_guide_says_which_way_it_goes()
-    test_the_arrow_sits_on_the_new_boundary()
+    test_the_arrow_rides_the_handle()
     test_it_splits_across_the_longer_side()
     test_the_aspect_is_the_configured_one()
     test_it_falls_back_to_the_axis_that_fits()
