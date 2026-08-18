@@ -203,6 +203,52 @@ def test_the_guide_escalates_from_edge_to_handle():
         )
 
 
+def test_the_handle_thickens_by_a_column_never_a_row():
+    """A cell is about twice as tall as it is wide, so the two axes cannot both
+    grow by one and look the same. An upright handle takes a second column; a
+    horizontal one stays on its own row and gets heavier instead, because two
+    rows of block across a border reads as a wall and costs a row of output."""
+    with Session(SH, cols=80, rows=26, config=FAST) as s:
+        s.settle()
+        p = s.pane()
+
+        def blocks(snap):
+            return [
+                (x, y)
+                for y, row in enumerate(snap.text)
+                for x, ch in enumerate(row)
+                if ch == "█"
+            ]
+
+        for side in ("t", "b"):
+            hx, hy = s.snapshot().handle(p["id"], side)
+            rest(s, hx, hy)
+            cells = blocks(s.snapshot())
+            rows = {y for _, y in cells}
+            check(
+                f"the {side} handle is one row tall",
+                cells and rows == {hy},
+                f"rows {sorted(rows)}, handle row {hy}",
+            )
+
+        for side in ("l", "r"):
+            hx, hy = s.snapshot().handle(p["id"], side)
+            rest(s, hx, hy)
+            cells = blocks(s.snapshot())
+            cols = {x for x, _ in cells}
+            inward = hx + 1 if side == "l" else hx - 1
+            check(
+                f"the {side} handle is two columns wide",
+                cells and cols == {hx, inward},
+                f"columns {sorted(cols)}, wanted {sorted((hx, inward))}",
+            )
+            check(
+                f"and the {side} handle's inner column is clickable",
+                s.snapshot().hit_at(inward, hy) == f"border:{p['id']}:{side}",
+                str(s.snapshot().hit_at(inward, hy)),
+            )
+
+
 def test_guide_follows_the_new_layout():
     """Regression: the guide described the layout from *before* the split.
 
@@ -729,6 +775,7 @@ if __name__ == "__main__":
     test_no_more_plus()
     test_each_border_splits_toward_itself()
     test_the_guide_escalates_from_edge_to_handle()
+    test_the_handle_thickens_by_a_column_never_a_row()
     test_guide_follows_the_new_layout()
     test_the_guide_waits_for_a_rest()
     test_press_skips_the_wait()

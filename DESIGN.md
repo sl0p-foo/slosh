@@ -297,17 +297,26 @@ splits. The rest of the edge — the *rim* — arms the guide and does nothing w
 clicked.
 
 Hovering therefore answers two questions in two stages, because they are two
-questions. **Anywhere on the edge**: the edge goes heavy and the handle
-thickens by a cell into the pane, which says *where the button is* — the thing
-you can no longer infer now that the edge is not all button. **On the handle**:
-the dashed line where the new boundary would land and the arrow pointing at the
-half that will be new, which say *what the click will do*. The hint follows the
-same split: it is the caption on the second stage, so sweeping an edge neither
-draws a boundary nor claims a split you cannot get from where you are.
+questions. **Anywhere on the edge**: the edge goes heavy and the handle goes
+solid, which says *where the button is* — the thing you can no longer infer now
+that the edge is not all button. **On the handle**: the dashed line where the new
+boundary would land and the arrow pointing at the half that will be new, which
+say *what the click will do*. The hint follows the same split: it is the caption
+on the second stage, so sweeping an edge neither draws a boundary nor claims a
+split you cannot get from where you are.
 
-The handle is a rect in the hit list like everything else, so the thickened
-form is *registered* in the frame that paints it — a handle you can see and
-cannot click would be worse than either mistake alone.
+**Only the upright sides get wider.** A cell is about twice as tall as it is
+wide — the same fact `gap_aspect` exists for, and that the split picker measures
+its longer side by — so growing by one is not one thing on the two axes. A left
+or right handle takes a second column and reads as a thicker line. A top or
+bottom handle taking a second *row* read as a wall instead, and spent a row of
+somebody's output saying it, so those stay on their own row: the block glyph is
+the heaviest a single cell has, and against `━` it needs no help.
+
+The handle is a rect in the hit list like everything else, so where the heavier
+form claims a cell the pane was using, that cell is *registered* in the frame
+that paints it — a handle you can see and cannot click would be worse than
+either mistake alone.
 
 The top border keeps its other job: **the row drags the pane, its handle also
 splits upward**. A press that never moves is a click — the same distinction the

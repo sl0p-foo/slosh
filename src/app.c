@@ -3456,8 +3456,17 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
       screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
   }
 
-  /* The handle, thickened by one cell into the pane, and the hit for that inner
-   * strip registered here because *this* is the frame in which it is that size.
+  /* The handle, made heavier, and — where that means claiming a cell the pane
+   * was using — the hit for it registered here, because *this* is the frame in
+   * which it is that size.
+   *
+   * Only the upright sides grow. A cell is about twice as tall as it is wide
+   * (`gap_aspect`, and the split picker leans on the same fact), so one extra
+   * column is a nudge and one extra row is a slab: a two-row bar across a top or
+   * bottom border reads as a wall rather than as a thicker line, and eats a row
+   * of somebody's output to say so. The block glyph is already the heaviest
+   * thing a single cell can draw, and against `━` it is unmistakable, so a
+   * horizontal handle stays one row and says it with ink instead of size.
    *
    * The rect is read back from the list rather than recomputed: draw_frame
    * placed it, and for the top row it places it wherever the title and the
@@ -3475,11 +3484,6 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
       hit_add(&s->hits, in, h.y, 1, h.h, act);
       if (in < h.x) h.x = in;
       h.w = 2;
-    } else {
-      uint16_t in = side == 't' ? (uint16_t)(h.y + 1) : (uint16_t)(h.y - 1);
-      hit_add(&s->hits, h.x, in, h.w, 1, act);
-      if (in < h.y) h.y = in;
-      h.h = 2;
     }
     for (uint16_t y = h.y; y < h.y + h.h; y++) {
       for (uint16_t x = h.x; x < h.x + h.w; x++) {
