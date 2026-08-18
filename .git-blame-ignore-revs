@@ -10,3 +10,6 @@ ec91ccffe631ae34b111bf6161fd0e3c487f684c
 
 # slosh: ruff format the Python
 c0022776d0912042819e4ea330cf7491a8196b45
+
+# slosh: rename the project from sl0ppty
+b9e53cace4eb75263077df8623b011e66f5f2241
