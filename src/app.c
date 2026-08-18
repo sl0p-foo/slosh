@@ -581,6 +581,7 @@ int app_next_deadline_ms(app_t *a) {
        * appear when some unrelated event happened to repaint the frame. */
       const char *action = hit_test(&a->painted->hits, a->ptr_x, a->ptr_y);
       bool on_border = action && (strncmp(action, "border:", 7) == 0 ||
+                                  strncmp(action, "brim:", 5) == 0 ||
                                   strncmp(action, "title:", 6) == 0 ||
                                   strncmp(action, "edge:", 5) == 0 ||
                                   strncmp(action, "corner:", 7) == 0);
@@ -633,7 +634,12 @@ static const char *hint_for(app_t *a, const char *action) {
   if (strncmp(action, "panetitle:", 10) == 0)
     return "double-click to rename \u00b7 drag to move";
   if (strncmp(action, "title:", 6) == 0)
-    return "drag to move \u00b7 click to split up";
+    /* The handle says both things it can do; the rest of the row only drags. */
+    return strchr(action + 6, ':') ? "drag to move \u00b7 click to split up"
+                                   : "drag to move";
+  /* The rim gets no caption on purpose: it is the part of the edge that does
+   * nothing, and the guide it arms is already pointing at the part that does. */
+  if (strncmp(action, "brim:", 5) == 0) return NULL;
   if (strncmp(action, "border:", 7) == 0) {
     const char *side = strrchr(action, ':');
     switch (side && side[1] ? side[1] : 0) {
@@ -3316,10 +3322,77 @@ static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
   }
 }
 
-/* The split guide: the armed edge goes heavy, and a dashed line shows where
- * the new boundary would land. Drawn *after* the pane's content, because the
- * dashed line crosses it — the first version was painted under the terminal
- * and was invisible. Hover only, so an idle frame stays quiet. */
+/* The split handle: the middle of a border, and the only part of it that
+ * splits.
+ *
+ * The whole side used to be the button, which reads well until you count the
+ * accidents. A border is the longest target on a screen, it sits between two
+ * things you did mean to click, and the cost of brushing it was a changed
+ * layout. The gesture is worth keeping -- the side you click is the side the
+ * pane arrives on, which no single glyph can say -- so what changes is the size
+ * of the target: a *place* on the edge rather than the whole edge. The guide
+ * (`draw_split_guide`) thickens it on hover and reads its rect back from the
+ * hit list, so there is one opinion about where it is (D6: one geometry).
+ *
+ * Three cells is the floor the pane buttons already settled on, for the reason
+ * written there: a one-cell target is a thing you miss with a mouse. Seven is
+ * the ceiling, because a third of a tall pane's border is most of that border
+ * again, and the accidents come back with it. */
+static uint16_t split_handle_len(uint16_t span) {
+  uint16_t len = (uint16_t)(span / 3);
+  if (len < 3) len = 3;
+  if (len > 7) len = 7;
+  if (len > span) len = span;
+  return len;
+}
+
+/* One side's handle. False when the side is too short to hold one, which is a
+ * pane `split_fits` is about to refuse anyway. The top row is not here: its
+ * placement depends on what the title and the buttons left, so draw_frame does
+ * it once those are known. */
+static bool split_handle(const node_t *leaf, char side, rect_t *out) {
+  rect_t r = leaf->rect;
+  if (r.w < 4 || r.h < 4) return false;
+  bool vert = side == 'l' || side == 'r';
+  /* The span leaves the corners out: a corner is where two gaps cross and is a
+   * resize target already. */
+  uint16_t span = vert ? (uint16_t)(r.h - 2) : (uint16_t)(r.w - 2);
+  if (span < 3) return false;
+  uint16_t len = split_handle_len(span);
+  uint16_t off = (uint16_t)((span - len) / 2);
+  if (vert)
+    *out = (rect_t){side == 'l' ? r.x : (uint16_t)(r.x + r.w - 1),
+                    (uint16_t)(r.y + 1 + off), 1, len};
+  else
+    *out =
+        (rect_t){(uint16_t)(r.x + 1 + off), (uint16_t)(r.y + r.h - 1), len, 1};
+  return true;
+}
+
+/* What a press on this side is called. The top row answers to `title:` because
+ * it is the drag handle too, and one press has to be able to become either. */
+static void split_handle_action(const node_t *leaf, char side, char *buf,
+                                size_t cap) {
+  if (side == 't')
+    snprintf(buf, cap, "title:%u:t", leaf->id);
+  else
+    snprintf(buf, cap, "border:%u:%c", leaf->id, side);
+}
+
+/* The split guide, in two stages, because a hover answers two questions.
+ *
+ * Anywhere on the side: the edge goes heavy and the handle thickens. That says
+ * *where to click*, which is the thing you cannot otherwise know now that the
+ * whole edge is no longer the button.
+ *
+ * On the handle: the dashed line and the arrow as well, which say *what will
+ * happen*. So sweeping a border shows you the button without also drawing a
+ * boundary nobody asked about, and the hint (`hint_for`) follows the same
+ * split -- it is the caption on the second stage, not the first.
+ *
+ * Drawn *after* the pane's content, because the dashed line crosses it: the
+ * first version painted under the terminal and was invisible. Hover only, so
+ * an idle frame stays quiet. */
 static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   if (!a->ptr_valid) return;
   if (a->drag.kind == DRAG_TITLE || a->drag.kind == DRAG_SELECT ||
@@ -3339,13 +3412,27 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   const char *action = hit_test(&s->hits, a->ptr_x, a->ptr_y);
   if (!action) return;
   char side = 0;
+  bool on_handle = false;
   char want[48];
   snprintf(want, sizeof want, "border:%u:", leaf->id);
   if (strncmp(action, want, strlen(want)) == 0) {
     side = action[strlen(want)];
+    on_handle = true;
   } else {
-    snprintf(want, sizeof want, "title:%u", leaf->id);
-    if (strcmp(action, want) == 0) side = 't';
+    snprintf(want, sizeof want, "brim:%u:", leaf->id);
+    if (strncmp(action, want, strlen(want)) == 0) {
+      side = action[strlen(want)];
+    } else {
+      /* The top row, whose handle wears the `title:` name because a press
+       * there can still become a drag. Matched with the terminator checked, or
+       * pane 1 would answer for pane 12. */
+      snprintf(want, sizeof want, "title:%u", leaf->id);
+      size_t n = strlen(want);
+      if (strncmp(action, want, n) == 0 && (!action[n] || action[n] == ':')) {
+        side = 't';
+        on_handle = action[n] == ':';
+      }
+    }
   }
   if (!side) return;
 
@@ -3358,9 +3445,56 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
   color_t hi = GUIDE;
 
-  /* An arrow on the new boundary, pointing at the side the new pane will take.
-   * The dashed line says where, and on its own leaves which half is the new
-   * one to be inferred from which border you happen to be touching.
+  /* Stage one: the armed edge, and the handle on it. */
+  if (side == 'l' || side == 'r') {
+    uint16_t bx = side == 'l' ? r.x : x1;
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
+      screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
+  } else {
+    uint16_t by = side == 't' ? r.y : y1;
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++)
+      screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
+  }
+
+  /* The handle, thickened by one cell into the pane, and the hit for that inner
+   * strip registered here because *this* is the frame in which it is that size.
+   *
+   * The rect is read back from the list rather than recomputed: draw_frame
+   * placed it, and for the top row it places it wherever the title and the
+   * buttons left room, so recomputing it here would be a second opinion about
+   * where it is. Each cell is then painted only if the list still says it
+   * belongs to the handle, which is what keeps a block off the pane's name.
+   * Drawing asks the question the click is going to ask. */
+  char act[48];
+  split_handle_action(leaf, side, act, sizeof act);
+  const hit_t *core = hit_find(&s->hits, act);
+  if (core) {
+    rect_t h = {core->x, core->y, core->w, core->h};
+    if (side == 'l' || side == 'r') {
+      uint16_t in = side == 'l' ? (uint16_t)(h.x + 1) : (uint16_t)(h.x - 1);
+      hit_add(&s->hits, in, h.y, 1, h.h, act);
+      if (in < h.x) h.x = in;
+      h.w = 2;
+    } else {
+      uint16_t in = side == 't' ? (uint16_t)(h.y + 1) : (uint16_t)(h.y - 1);
+      hit_add(&s->hits, h.x, in, h.w, 1, act);
+      if (in < h.y) h.y = in;
+      h.h = 2;
+    }
+    for (uint16_t y = h.y; y < h.y + h.h; y++) {
+      for (uint16_t x = h.x; x < h.x + h.w; x++) {
+        const char *own = hit_test(&s->hits, x, y);
+        if (own && strcmp(own, act) == 0)
+          screen_text(s, x, y, "\u2588", hi, NO_COLOR, ATTR_BOLD);
+      }
+    }
+  }
+
+  if (!on_handle) return;
+
+  /* Stage two: an arrow on the new boundary, pointing at the side the new pane
+   * will take. The dashed line says where, and on its own leaves which half is
+   * the new one to be inferred from which border you happen to be touching.
    *
    * Pointers rather than the matching triangles for left and right: U+25C0 and
    * U+25B6 carry emoji presentation and terminals widely render them
@@ -3368,21 +3502,15 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
    * cell that draws as two would shift the rest of the row. U+25B2 is already
    * the scroll indicator, so the vertical pair is known good here. */
   if (side == 'l' || side == 'r') {
-    uint16_t bx = side == 'l' ? r.x : x1;
     uint16_t mid = (uint16_t)(r.x + r.w / 2);
-    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
-      screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
       screen_text(s, mid, y, "\u254e", hi, NO_COLOR, 0);
-    }
     screen_text(s, mid, (uint16_t)(r.y + r.h / 2),
                 side == 'l' ? "\u25c4" : "\u25ba", hi, NO_COLOR, ATTR_BOLD);
   } else {
-    uint16_t by = side == 't' ? r.y : y1;
     uint16_t mid = (uint16_t)(r.y + r.h / 2);
-    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
-      screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++)
       screen_text(s, x, mid, "\u254c", hi, NO_COLOR, 0);
-    }
     screen_text(s, (uint16_t)(r.x + r.w / 2), mid,
                 side == 't' ? "\u25b2" : "\u25bc", hi, NO_COLOR, ATTR_BOLD);
   }
@@ -3432,20 +3560,31 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     screen_text(s, (uint16_t)(r.x + 1), r.y, CFG.bell_mark, BELL_C, NO_COLOR,
                 ATTR_BOLD);
 
-  /* The frame's top row is the drag handle. Registered before the split
-   * button, which is painted after and therefore wins its own cell. */
+  /* The frame's top row is the drag handle, all of it. Its *split* is a handle
+   * on the same row, but it is placed at the very end of this function rather
+   * than here: the title, the buttons and the scroll indicator all anchor
+   * wherever the config puts them, a centred title lands exactly where a
+   * centred handle would want to be, and this row's rule is that the title
+   * wins. So the handle is put where they are not, once they are all placed. */
   {
     char action[48];
     snprintf(action, sizeof action, "title:%u", leaf->id);
     hit_add(&s->hits, r.x, r.y, r.w, 1, action);
   }
 
-  /* No split button. The border *is* the button: clicking an edge splits
-   * toward it, which encodes the direction a single glyph never could, and
-   * gives every frame its columns back. */
+  /* No split button. The border *is* the button -- or the middle of it is:
+   * clicking a side's handle splits toward that side, which encodes the
+   * direction a single glyph never could, and gives every frame its columns
+   * back. See split_handle(). */
   uint16_t avail = (uint16_t)(r.w - 2);
   bool has_btn = false;
   uint16_t btn_x = x1;
+  /* Where the right-anchored group (buttons, then the scroll indicator) starts,
+   * and what the title took. Both are needed at the end of this function to
+   * find the top row's free cells; the corner counts as taken, hence x1. */
+  uint16_t right_lo = x1;
+  bool has_title = false;
+  uint16_t title_lo = 0, title_hi = 0;
 
   /* The frame's own buttons, hard against the right of the top border. Three
    * cells each: a one-cell target is a thing you miss with a mouse, and the
@@ -3498,16 +3637,30 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
       btn_x = (uint16_t)(btn_x - 1);
       avail = (uint16_t)(avail > 1 ? avail - 1 : 0);
     }
+    if (has_btn) right_lo = btn_x;
   }
 
+  /* Each side twice over: `brim:` is the whole of it, which arms the guide on
+   * hover and does nothing at all on a click, and the handle on top of it is
+   * what splits. Registered in that order so the handle wins its own cells.
+   *
+   * The rim is a target rather than nothing so that hovering anywhere on an
+   * edge can still show you where the button is. Take it away and the handle
+   * becomes a thing you have to already know about. */
   {
     char action[48];
-    snprintf(action, sizeof action, "border:%u:l", leaf->id);
+    snprintf(action, sizeof action, "brim:%u:l", leaf->id);
     hit_add(&s->hits, r.x, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
-    snprintf(action, sizeof action, "border:%u:r", leaf->id);
+    snprintf(action, sizeof action, "brim:%u:r", leaf->id);
     hit_add(&s->hits, x1, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
-    snprintf(action, sizeof action, "border:%u:b", leaf->id);
+    snprintf(action, sizeof action, "brim:%u:b", leaf->id);
     hit_add(&s->hits, r.x, y1, r.w, 1, action);
+    for (const char *side = "lrb"; *side; side++) {
+      rect_t h;
+      if (!split_handle(leaf, *side, &h)) continue;
+      split_handle_action(leaf, *side, action, sizeof action);
+      hit_add(&s->hits, h.x, h.y, h.w, h.h, action);
+    }
   }
 
   draw_pane_status(a, s, leaf, fg, focused);
@@ -3536,6 +3689,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
       char action[48];
       snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
       hit_add(&s->hits, ix, r.y, drawn, 1, action);
+      right_lo = ix;
       avail = (uint16_t)(avail - iw);
     }
   }
@@ -3601,6 +3755,60 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
       char action[48];
       snprintf(action, sizeof action, "panetitle:%u", leaf->id);
       hit_add(&s->hits, tx, r.y, drawn, 1, action);
+      has_title = true;
+      title_lo = tx;
+      title_hi = (uint16_t)(tx + drawn - 1);
+    }
+  }
+
+  /* The top row's split handle, last of all, in whatever the row has left.
+   *
+   * The other three sides put it in the middle, which is where a person looks
+   * for it. This row cannot promise that: the buttons own its right, and a
+   * centred title -- the default -- owns exactly the cells the middle would
+   * want. The title winning is the rule (see above: that is what keeps a
+   * double-click rename from splitting twice on its way), so the handle takes
+   * the widest run the row still owns and, between equals, the one nearest the
+   * middle. A row with nothing left offers no upward split, and its other three
+   * edges are unaffected. */
+  {
+    uint16_t lo = (uint16_t)(r.x + 1);
+    if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4) lo++;
+    struct run {
+      uint16_t lo, hi;
+    } runs[2];
+    size_t nruns = 0;
+    if (has_title) {
+      if (title_lo > lo)
+        runs[nruns++] = (struct run){lo, (uint16_t)(title_lo - 1)};
+      if ((uint16_t)(title_hi + 1) < right_lo)
+        runs[nruns++] =
+            (struct run){(uint16_t)(title_hi + 1), (uint16_t)(right_lo - 1)};
+    } else if (lo < right_lo) {
+      runs[nruns++] = (struct run){lo, (uint16_t)(right_lo - 1)};
+    }
+
+    uint16_t mid = (uint16_t)(r.x + r.w / 2);
+    uint16_t best_lo = 0, best_len = 0, best_dist = 0;
+    for (size_t i = 0; i < nruns; i++) {
+      if (runs[i].hi < runs[i].lo) continue;
+      uint16_t len = (uint16_t)(runs[i].hi - runs[i].lo + 1);
+      if (len < 3) continue;
+      uint16_t c = (uint16_t)(runs[i].lo + len / 2);
+      uint16_t dist = (uint16_t)(c > mid ? c - mid : mid - c);
+      if (len > best_len || (len == best_len && dist < best_dist)) {
+        best_lo = runs[i].lo;
+        best_len = len;
+        best_dist = dist;
+      }
+    }
+    if (best_len >= 3) {
+      uint16_t want = split_handle_len((uint16_t)(r.w - 2));
+      if (want > best_len) want = best_len;
+      char action[48];
+      split_handle_action(leaf, 't', action, sizeof action);
+      hit_add(&s->hits, (uint16_t)(best_lo + (best_len - want) / 2), r.y, want,
+              1, action);
     }
   }
 }
@@ -5721,21 +5929,30 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
         a->name_click_id = id;
         a->name_click_kind = RENAME_PANE;
       }
-      /* The top border is both a drag handle and an edge: whether this is a
-       * move or a split-upward is decided by whether the pointer moves. The
-       * title text is only a handle, so it takes no side: a click that never
-       * moved does nothing there instead of splitting upward. */
+      /* The top border is both a drag handle and an edge, and whether this is a
+       * move or a split-upward is decided by whether the pointer moves. Which
+       * side it takes is decided by *where* on the row it was pressed: only the
+       * handle -- `title:<id>:t`, the middle -- carries one. The row itself and
+       * the title text take none, so a click that never moved does nothing
+       * there rather than splitting a layout you were only reaching across. */
       a->drag.kind = DRAG_TITLE;
       a->drag.src = id;
       a->drag.target = id;
       a->drag.x = ev->mx;
       a->drag.y = ev->my;
       a->drag.moved = false;
-      a->drag.side = on_name ? 0 : 't';
+      const char *sep = on_name ? NULL : strchr(action + 6, ':');
+      a->drag.side = sep && sep[1] ? sep[1] : 0;
       app_focus_pane(a, id);
     }
     return;
   }
+  /* The rim of an edge: hover arms the guide, and a press does nothing at all.
+   * Deliberately inert and deliberately explicit -- this is the whole point of
+   * the handle, and a silent fall-through to whatever comes next would be a
+   * thin place for it to live. Starting no drag also means the release path
+   * finds nothing to split, which is what stops the accidents. */
+  if (strncmp(action, "brim:", 5) == 0) return;
   if (strncmp(action, "border:", 7) == 0) {
     uint32_t id = (uint32_t)strtoul(action + 7, NULL, 10);
     const char *colon = strchr(action + 7, ':');

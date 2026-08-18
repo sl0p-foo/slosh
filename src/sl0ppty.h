@@ -39,6 +39,9 @@ void hit_add(hitlist_t *hl, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
              const char *action);
 /* The action at a point, or NULL. Later entries win: painted last is on top. */
 const char *hit_test(const hitlist_t *hl, uint16_t x, uint16_t y);
+/* The rect a named action was registered with, or NULL: for a caller that must
+ * grow or paint over an entry some other pass placed. */
+const hit_t *hit_find(const hitlist_t *hl, const char *action);
 
 typedef struct {
   uint16_t cols, rows;

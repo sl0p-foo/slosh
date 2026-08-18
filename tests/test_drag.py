@@ -257,8 +257,10 @@ def test_drag_edge_cases():
         s.settle(60)
         check("a keystroke ends an abandoned drag", s.api("alive")["alive"])
 
-        # and a border click still works, which is the proof it is not wedged
-        s.click(left["x"], left["y"] + 2)
+        # and a split still works, which is the proof it is not wedged. The
+        # handle, since the rest of the edge is deliberately inert now.
+        hx, hy = s.snapshot().handle(left["id"], "l")
+        s.click(hx, hy)
         s.settle()
         check(
             "the mouse still works after a drag",

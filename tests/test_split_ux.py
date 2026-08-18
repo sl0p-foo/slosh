@@ -90,16 +90,13 @@ def test_no_more_plus():
 
 
 def test_each_border_splits_toward_itself():
-    for side, cell, expect in [
-        ("right", lambda p: (p["x"] + p["w"] - 1, p["y"] + 2), "right"),
-        ("left", lambda p: (p["x"], p["y"] + 2), "left"),
-        ("bottom", lambda p: (p["x"] + 4, p["y"] + p["h"] - 1), "below"),
-        ("top", lambda p: (p["x"] + 4, p["y"]), "above"),
-    ]:
+    for side, expect in [("r", "right"), ("l", "left"), ("b", "below"), ("t", "above")]:
         with Session(SH, cols=80, rows=26, config=FAST) as s:
             s.settle()
             before = s.pane()
-            x, y = cell(before)
+            # The handle in the middle of that edge, not just any cell on it:
+            # the rest of the edge deliberately does nothing.
+            x, y = s.snapshot().handle(before["id"], side)
             click(s, x, y)
             s.settle(80)
             panes = s.panes()
@@ -125,18 +122,24 @@ def test_each_border_splits_toward_itself():
                 f"old={old['x']},{old['y']} new={new['x']},{new['y']}",
             )
             check("and takes focus", new["focused"], str(new))
+            said = {
+                "r": "split right",
+                "l": "split left",
+                "b": "split down",
+                "t": "split up",
+            }[side]
             check(
                 "and it says which way it went",
-                f"split {side if side != 'bottom' else 'down'}".replace(
-                    "split top", "split up"
-                )
-                in s.snapshot().screen()
-                or "split" in s.snapshot().screen(),
+                said in s.snapshot().screen(),
                 repr(s.snapshot().screen()[-80:]),
             )
 
 
-def test_the_guide():
+def test_the_guide_escalates_from_edge_to_handle():
+    """Two stages: the edge says *where the button is*, the handle says *what
+    the click will do*. Hovering anywhere on an edge must show the first without
+    the second, or brushing a border would still draw a boundary nobody asked
+    about."""
     with Session(SH, cols=80, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
@@ -147,23 +150,39 @@ def test_the_guide():
             repr(snap.screen()[:120]),
         )
 
-        rest(s, p["x"], p["y"] + 2)  # left border
+        rx, ry = snap.rim(p["id"], "l")
+        rest(s, rx, ry)
         snap = s.snapshot()
         check(
-            "hovering a side border arms it",
+            "hovering the rim of a side border arms it",
             "┃" in snap.screen(),
             repr(snap.screen()[:200]),
         )
         check(
-            "and previews where the split would land",
-            "╎" in snap.screen(),
+            "and shows the handle you are meant to click",
+            "█" in snap.screen(),
+            repr(snap.screen()[:200]),
+        )
+        check(
+            "but previews no boundary yet",
+            "╎" not in snap.screen(),
             repr(snap.screen()[:200]),
         )
 
-        rest(s, p["x"] + 4, p["y"] + p["h"] - 1)  # bottom border
+        hx, hy = snap.handle(p["id"], "l")
+        rest(s, hx, hy)
         snap = s.snapshot()
         check(
-            "hovering the bottom border arms that instead",
+            "on the handle it previews where the split would land",
+            "╎" in snap.screen() and "█" in snap.screen(),
+            repr(snap.screen()[:200]),
+        )
+
+        bx, by = snap.handle(p["id"], "b")
+        rest(s, bx, by)
+        snap = s.snapshot()
+        check(
+            "hovering the bottom handle arms that instead",
             "━" in snap.screen() and "╌" in snap.screen(),
             repr(snap.screen()[:200]),
         )
@@ -177,7 +196,9 @@ def test_the_guide():
         snap = s.snapshot()
         check(
             "moving off a border puts the guide away",
-            "━" not in snap.screen() and "┃" not in snap.screen(),
+            "━" not in snap.screen()
+            and "┃" not in snap.screen()
+            and "█" not in snap.screen(),
             repr(snap.screen()[:200]),
         )
 
@@ -193,7 +214,7 @@ def test_guide_follows_the_new_layout():
     with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
-        edge_x, edge_y = p["x"] + p["w"] - 1, p["y"] + 3
+        edge_x, edge_y = s.snapshot().handle(p["id"], "r")
 
         rest(s, edge_x, edge_y)
         click(s, edge_x, edge_y)
@@ -218,7 +239,7 @@ def test_guide_follows_the_new_layout():
         )
         check(
             "on the edge the pointer is on",
-            snap.hit_at(edge_x, edge_y) == f"border:{armed[0]['id']}:r",
+            (snap.hit_at(edge_x, edge_y) or "").endswith(f"{armed[0]['id']}:r"),
             str(snap.hit_at(edge_x, edge_y)),
         )
 
@@ -254,7 +275,11 @@ def test_the_guide_waits_for_a_rest():
         check("resting on one arms it", "┃" in snap.screen(), repr(snap.screen()[:200]))
         check(
             "and it is the border being rested on",
-            snap.hit_at(right, row) == f"border:{p['id']}:r",
+            snap.hit_at(right, row)
+            in (
+                f"border:{p['id']}:r",
+                f"brim:{p['id']}:r",
+            ),
             str(snap.hit_at(right, row)),
         )
 
@@ -271,7 +296,7 @@ def test_press_skips_the_wait():
     with Session(SH, cols=80, rows=26) as s:
         s.settle()
         p = s.pane()
-        x, y = p["x"] + p["w"] - 1, p["y"] + 3
+        x, y = edge_of(s, p, "r")  # the handle: the rim answers no press
         s.send(rf"\e[<0;{x + 1};{y + 1}M")  # press and hold: that is intent
         snap = s.snapshot()
         check(
@@ -348,11 +373,30 @@ def test_drag_still_moves():
             str(s.panes()),
         )
 
-        # click: press, release, no motion -> split up
-        s.send(rf"\e[<0;{left['x'] + 5};{left['y'] + 1}M")
-        s.send(rf"\e[<0;{left['x'] + 5};{left['y'] + 1}m")
+        # click: press, release, no motion, on the handle -> split up. The rest
+        # of the row is a drag handle only, which is the point of the handle.
+        hx, hy = edge_of(s, s.panes()[0], "t")
+        s.send(rf"\e[<0;{hx + 1};{hy + 1}M")
+        s.send(rf"\e[<0;{hx + 1};{hy + 1}m")
         s.settle(80)
-        check("clicking it splits instead", len(s.panes()) == 3, str(len(s.panes())))
+        check(
+            "clicking its handle splits instead",
+            len(s.panes()) == 3,
+            str(len(s.panes())),
+        )
+        # and the rest of the row does not: the accident this whole shape exists
+        # to stop. Counted from the pane the handle click just created.
+        n = len(s.panes())
+        top = s.panes()[0]
+        rx, ry = s.snapshot().rim(top["id"], "t")
+        s.send(rf"\e[<0;{rx + 1};{ry + 1}M")
+        s.send(rf"\e[<0;{rx + 1};{ry + 1}m")
+        s.settle(80)
+        check(
+            "while the rest of the row splits nothing",
+            len(s.panes()) == n,
+            f"{n} -> {len(s.panes())}",
+        )
 
 
 def test_tiny_panes_have_no_targets():
@@ -390,14 +434,14 @@ def test_tiny_panes_have_no_targets():
 ARROWS = {"l": "\u25c4", "r": "\u25ba", "t": "\u25b2", "b": "\u25bc"}
 
 
-def edge_of(pane, side):
-    if side == "l":
-        return pane["x"], pane["y"] + 2
-    if side == "r":
-        return pane["x"] + pane["w"] - 1, pane["y"] + 2
-    if side == "t":
-        return pane["x"] + 4, pane["y"]
-    return pane["x"] + 4, pane["y"] + pane["h"] - 1
+def edge_of(s, pane, side):
+    """The cell on that side that actually does something: its handle.
+
+    Read out of the hit list rather than worked out here, so these tests cannot
+    quietly agree with a geometry bug. The rest of an edge is the rim, which is
+    what `Snapshot.rim` is for.
+    """
+    return s.snapshot().handle(pane["id"], side)
 
 
 def test_a_split_below_the_floor_is_not_offered():
@@ -408,7 +452,7 @@ def test_a_split_below_the_floor_is_not_offered():
         s.settle()
         p = s.pane()
         for side in ("l", "r", "t", "b"):
-            x, y = edge_of(p, side)
+            x, y = edge_of(s, p, side)
             rest(s, x, y)
             snap = s.snapshot()
             body = snap.screen()
@@ -433,7 +477,7 @@ def test_the_floor_is_configurable_in_both_axes():
     with Session(SH, cols=90, rows=26, config=conf) as s:
         s.settle()
         p = s.pane()
-        x, y = edge_of(p, "b")
+        x, y = edge_of(s, p, "b")
         click(s, x, y)
         s.settle(80)
         check(
@@ -441,7 +485,7 @@ def test_the_floor_is_configurable_in_both_axes():
             len(s.panes()) == 1,
             str(len(s.panes())),
         )
-        x, y = edge_of(p, "r")
+        x, y = edge_of(s, p, "r")
         click(s, x, y)
         s.settle(80)
         check(
@@ -479,7 +523,7 @@ def test_the_guide_says_which_way_it_goes():
         s.settle()
         p = s.pane()
         for side in ("l", "r", "t", "b"):
-            x, y = edge_of(p, side)
+            x, y = edge_of(s, p, side)
             rest(s, x, y)
             body = s.snapshot().screen()
             check(
@@ -499,7 +543,7 @@ def test_the_arrow_sits_on_the_new_boundary():
     with Session(SH, cols=120, rows=26, config=FAST) as s:
         s.settle()
         p = s.pane()
-        x, y = edge_of(p, "r")
+        x, y = edge_of(s, p, "r")
         rest(s, x, y)
         snap = s.snapshot()
         pos = snap.find(ARROWS["r"])
@@ -684,7 +728,7 @@ def test_it_is_on_the_sheet_and_in_the_palette():
 if __name__ == "__main__":
     test_no_more_plus()
     test_each_border_splits_toward_itself()
-    test_the_guide()
+    test_the_guide_escalates_from_edge_to_handle()
     test_guide_follows_the_new_layout()
     test_the_guide_waits_for_a_rest()
     test_press_skips_the_wait()

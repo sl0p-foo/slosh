@@ -147,10 +147,11 @@ def test_clicking_the_title_does_not_split():
             str(len(s.panes())),
         )
 
-        click(s, off_title(p), p["y"])
+        hx, hy = s.snapshot().handle(p["id"], "t")
+        click(s, hx, hy)
         s.settle(80)
         check(
-            "clicking the top edge still splits up",
+            "clicking the top row's handle still splits up",
             len(s.panes()) == 2,
             str(len(s.panes())),
         )

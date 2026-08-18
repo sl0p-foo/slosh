@@ -77,16 +77,28 @@ def test_the_zoom_hint_says_which_way_it_goes():
 
 
 def test_a_border_names_the_direction_it_would_split():
+    """The caption belongs to the handle, not the whole edge: the rest of an
+    edge does nothing, and telling you it splits would be a lie about it."""
     with Session(SH, cols=96, rows=22) as s:
         s.settle(20)
         p = s.pane()
-        for x, y, word in (
-            (p["x"], p["y"] + 2, "split left"),
-            (p["x"] + p["w"] - 1, p["y"] + 2, "split right"),
-            (p["x"] + 6, p["y"] + p["h"] - 1, "split down"),
+        for side, word in (
+            ("l", "split left"),
+            ("r", "split right"),
+            ("b", "split down"),
+            ("t", "split up"),
         ):
+            x, y = s.snapshot().handle(p["id"], side)
             hover(s, x, y)
-            check(f"the border says {word}", word in bar(s), repr(bar(s)))
+            check(f"the {side} handle says {word}", word in bar(s), repr(bar(s)))
+
+        rx, ry = s.snapshot().rim(p["id"], "l")
+        hover(s, rx, ry)
+        check(
+            "and the rest of the edge says nothing about splitting",
+            "split" not in bar(s),
+            repr(bar(s)),
+        )
 
 
 def test_the_gap_and_the_strip_and_the_bar():

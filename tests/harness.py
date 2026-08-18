@@ -69,6 +69,35 @@ class Snapshot:
                 return e["action"]
         return None
 
+    def handle(self, pane_id, side):
+        """The middle cell of a pane's split handle, read from the hit list.
+
+        Read rather than recomputed on purpose: a test that derives the geometry
+        itself agrees with a broken formula as happily as with a correct one.
+        `side` is one of l r t b; the top row's handle answers to `title:` since
+        a press there can still become a drag.
+        """
+        want = f"title:{pane_id}:t" if side == "t" else f"border:{pane_id}:{side}"
+        for e in self.hits:
+            if e["action"] == want:
+                return e["x"] + e["w"] // 2, e["y"] + e["h"] // 2
+        return None
+
+    def rim(self, pane_id, side):
+        """A cell on the same edge that is *not* the handle, or None."""
+        h = self.handle(pane_id, side)
+        if not h:
+            return None
+        want = f"title:{pane_id}" if side == "t" else f"brim:{pane_id}:{side}"
+        for e in self.hits:
+            if e["action"] != want:
+                continue
+            for y in range(e["y"], e["y"] + e["h"]):
+                for x in range(e["x"], e["x"] + e["w"]):
+                    if self.hit_at(x, y) == want:
+                        return x, y
+        return None
+
     def __str__(self):
         return self.screen()
 

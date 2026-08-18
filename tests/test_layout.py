@@ -182,23 +182,28 @@ def test_hit_list():
             str(snap.hit_at(pane["content_x"], pane["content_y"])),
         )
 
-        # the border is the split target now; the top row is also the drag
-        # handle, which is why it reports title: rather than border:
+        # An edge splits from its handle only; the rest of it is the rim, which
+        # arms the guide and does nothing. The top row is the drag handle as
+        # well, which is why its handle reports title: rather than border:.
         check(
             "the top border is the drag handle",
             snap.hit_at(pane["x"] + 4, pane["y"]) == f"title:{pane['id']}",
             str(snap.hit_at(pane["x"] + 4, pane["y"])),
         )
         check(
-            "the side border is a split target",
-            snap.hit_at(pane["x"], pane["y"] + 2) == f"border:{pane['id']}:l",
-            str(snap.hit_at(pane["x"], pane["y"] + 2)),
+            "the side border's handle is a split target",
+            snap.hit_at(*snap.handle(pane["id"], "l")) == f"border:{pane['id']}:l",
+            str(snap.hit_at(*snap.handle(pane["id"], "l"))),
         )
         check(
-            "the bottom border too",
-            snap.hit_at(pane["x"] + 4, pane["y"] + pane["h"] - 1)
-            == f"border:{pane['id']}:b",
-            str(snap.hit_at(pane["x"] + 4, pane["y"] + pane["h"] - 1)),
+            "the bottom one too",
+            snap.hit_at(*snap.handle(pane["id"], "b")) == f"border:{pane['id']}:b",
+            str(snap.hit_at(*snap.handle(pane["id"], "b"))),
+        )
+        check(
+            "and the rest of a side is the rim",
+            snap.hit_at(*snap.rim(pane["id"], "l")) == f"brim:{pane['id']}:l",
+            str(snap.hit_at(*snap.rim(pane["id"], "l"))),
         )
 
 

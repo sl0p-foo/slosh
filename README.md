@@ -53,9 +53,11 @@ dependencies, one file of Python and one stylesheet.
 
 ## What is different about it
 
-- **The mouse works properly.** Click a border to split toward it, drag a gap to
-  move a boundary, drag a pane by its title to swap it. Everything drawn
-  registers what it is as it is drawn, so a click and a preview cannot disagree.
+- **The mouse works properly.** Click the middle of a border to split toward it,
+  drag a gap to move a boundary, drag a pane by its title to swap it. Everything
+  drawn registers what it is as it is drawn, so a click and a preview cannot
+  disagree — which is also how the split target can be *part* of an edge without
+  the highlight and the hit ever drifting apart.
 - **The layout is recomputed, never stored.** Small terminal? The tab becomes a
   list of headers, and comes back to exactly the arrangement you had.
 - **A pane told to run something keeps its output when that thing exits**, with

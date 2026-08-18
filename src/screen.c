@@ -40,6 +40,15 @@ const char *hit_test(const hitlist_t *hl, uint16_t x, uint16_t y) {
   return NULL;
 }
 
+/* The rect an action was registered with, for a caller that has to grow or
+ * paint over something it did not place itself. Searched backwards, like
+ * hit_test, so the answer is the entry a click at those cells would find. */
+const hit_t *hit_find(const hitlist_t *hl, const char *action) {
+  for (size_t i = hl->len; i-- > 0;)
+    if (strcmp(hl->items[i].action, action) == 0) return &hl->items[i];
+  return NULL;
+}
+
 static void out_reserve(screen_t *s, size_t n) {
   if (s->out_len + n <= s->out_cap) return;
   size_t cap = s->out_cap ? s->out_cap : 8192;

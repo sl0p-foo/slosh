@@ -285,19 +285,46 @@ one verb.
 
 **Clicking a pane's border splits toward it.** The side you click is the side
 the new pane appears on, which is the direction information a single glyph
-could never carry. Hovering a border arms it (the edge goes heavy) and draws a
-dashed line where the new boundary would land, so the gesture explains itself
-and costs nothing when the pointer is elsewhere.
+could never carry.
 
-The top border keeps its other job: **click splits upward, drag moves the
-pane**. A press that never moves is a click — the same distinction the drag
-machine already had to make.
+**But not all of it: the middle of it.** The first version made the whole edge
+the button, and the whole edge is the longest target on the screen, sitting
+between two things you did mean to click. Reaching across a pane, going for a
+title, grabbing a gap a cell too far — each of those was a changed layout. The
+gesture was right and the target was wrong, so what shrank is the target: each
+side carries a **handle**, three to seven cells of it, and only the handle
+splits. The rest of the edge — the *rim* — arms the guide and does nothing when
+clicked.
+
+Hovering therefore answers two questions in two stages, because they are two
+questions. **Anywhere on the edge**: the edge goes heavy and the handle
+thickens by a cell into the pane, which says *where the button is* — the thing
+you can no longer infer now that the edge is not all button. **On the handle**:
+the dashed line where the new boundary would land and the arrow pointing at the
+half that will be new, which say *what the click will do*. The hint follows the
+same split: it is the caption on the second stage, so sweeping an edge neither
+draws a boundary nor claims a split you cannot get from where you are.
+
+The handle is a rect in the hit list like everything else, so the thickened
+form is *registered* in the frame that paints it — a handle you can see and
+cannot click would be worse than either mistake alone.
+
+The top border keeps its other job: **the row drags the pane, its handle also
+splits upward**. A press that never moves is a click — the same distinction the
+drag machine already had to make — and the row itself now takes no side, so
+clicking a pane's header to focus it cannot split it. That row is also the one
+place the handle cannot simply sit in the middle: the buttons own its right,
+and a centred title (the default) owns exactly the middle. The title winning is
+the rule — that is what keeps a double-click rename from splitting twice on its
+way — so the handle is placed last, in the widest run of cells the row has
+left, nearest the middle among equals. A row with nothing left offers no upward
+split and its other three edges are unaffected.
 
 **The guide arms on dwell, not on contact** (`hover_delay_ms`, 250ms). A
 pointer crossing a border on its way somewhere else should not make the screen
 flash, and the timer is on *pointer stillness* rather than on the target, so
 sweeping across three borders arms none of them. Holding the button on a
-border is intent, and skips the wait.
+handle is intent, and skips the wait.
 
 That needs the event loop to wake when nothing has happened — the same
 mechanism toasts already needed, since a pointer that is deliberately not
