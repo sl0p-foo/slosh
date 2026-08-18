@@ -627,6 +627,57 @@ def test_the_arrow_rides_the_handle():
         )
 
 
+def test_the_top_handle_aims_at_the_middle_and_keeps_the_row_readable():
+    """Two faults that fed each other.
+
+    The handle went to the *widest* free run of the top row, and a centred title
+    leaves two runs of nearly the same width — so a one-cell difference nobody
+    can see threw it out toward a corner. And the armed edge ruled straight
+    through the title, so the thing it sits beside was invisible, which is what
+    made the position look arbitrary rather than merely off.
+    """
+    plain = ["/bin/sh", "-c", "stty raw -echo; cat"]
+    with Session(plain, cols=110, rows=28, config=FAST) as s:
+        s.settle()
+        p = s.pane()
+        e = [h for h in s.snapshot().hits if h["action"] == f"title:{p['id']}:t"][0]
+        mid = p["x"] + p["w"] // 2
+        centre = e["x"] + e["w"] // 2
+        check(
+            "with nothing in the way the handle is centred on the row",
+            abs(centre - mid) <= 1,
+            f"handle centre {centre}, row middle {mid}",
+        )
+
+    with Session(SH, cols=110, rows=28, config=FAST) as s:  # SH sets a title
+        s.settle()
+        p = s.pane()
+        snap = s.snapshot()
+        e = [h for h in snap.hits if h["action"] == f"title:{p['id']}:t"][0]
+        name = [h for h in snap.hits if h["action"] == f"panetitle:{p['id']}"][0]
+        check(
+            "and when the title holds the middle it sits against it",
+            e["x"] == name["x"] + name["w"] or e["x"] + e["w"] == name["x"],
+            f"handle {e['x']}..{e['x'] + e['w'] - 1}, "
+            f"title {name['x']}..{name['x'] + name['w'] - 1}",
+        )
+
+        # ...which only reads as deliberate if the armed edge leaves the title be.
+        hx, hy = snap.handle(p["id"], "t")
+        rest(s, hx, hy)
+        row = s.snapshot().text[p["y"]]
+        check(
+            "the armed top edge does not rule through the name",
+            "shell" in row,
+            repr(row),
+        )
+        check(
+            "nor through the buttons",
+            all(m in row for m in ("▬", "□", "✕")),
+            repr(row),
+        )
+
+
 # ---- `C-a Enter`: split whichever way there is room for -----------------------
 
 
@@ -815,6 +866,7 @@ if __name__ == "__main__":
     test_the_keyboard_obeys_the_same_floor()
     test_the_guide_says_which_way_it_goes()
     test_the_arrow_rides_the_handle()
+    test_the_top_handle_aims_at_the_middle_and_keeps_the_row_readable()
     test_it_splits_across_the_longer_side()
     test_the_aspect_is_the_configured_one()
     test_it_falls_back_to_the_axis_that_fits()

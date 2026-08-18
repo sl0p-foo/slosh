@@ -45,9 +45,11 @@ nothing you click can disagree with what is on screen.
   wall. Resting *on* the handle adds a dashed line where the new boundary will
   land. The rest of the edge does nothing when clicked.
 - **The top row is the drag handle, and its handle splits upward.** Clicking a
-  pane's header to focus it never splits it. On a titled pane the handle sits
-  wherever the title and the buttons left room, since the title keeps its own
-  cells for the double-click rename.
+  pane's header to focus it never splits it. Its handle goes as near the middle
+  of the row as the row allows: centred when the row is empty, and against the
+  title when the title is holding the middle, since the title keeps its own cells
+  for the double-click rename. Arming an edge leaves the name, the buttons and a
+  dead pane's epitaph legible — the heavy rule goes round them.
 - **Drag the gap between panes** to move that boundary. Where two gaps cross,
   drag the crossing to move both at once.
 - **Drag a pane by its title** onto another to swap them. Everything it could

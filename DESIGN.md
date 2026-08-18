@@ -333,12 +333,31 @@ The top border keeps its other job: **the row drags the pane, its handle also
 splits upward**. A press that never moves is a click — the same distinction the
 drag machine already had to make — and the row itself now takes no side, so
 clicking a pane's header to focus it cannot split it. That row is also the one
-place the handle cannot simply sit in the middle: the buttons own its right,
-and a centred title (the default) owns exactly the middle. The title winning is
-the rule — that is what keeps a double-click rename from splitting twice on its
-way — so the handle is placed last, in the widest run of cells the row has
-left, nearest the middle among equals. A row with nothing left offers no upward
-split and its other three edges are unaffected.
+place the handle cannot simply sit in the middle: the buttons own its right, and
+a centred title (the default) owns exactly the middle. The title winning is the
+rule — that is what keeps a double-click rename from splitting twice on its way
+— so the handle is placed last, **as near the middle of the row as the row
+allows**: aimed at the middle and slid into the nearest run of cells that is
+still free. With nothing in the way that is simply centred, like the other three
+sides; with a title in the way the handle ends up against it, where the eye
+already is. A row with nothing left offers no upward split and its other three
+edges are unaffected.
+
+Choosing the *widest* free run was the first rule and it was wrong in a way
+worth recording: two runs either side of a centred title differ by a cell for
+reasons nobody can see, so the handle jumped to whichever won and looked as
+though it had been dropped at random. Placement should be stated in terms of
+where the thing wants to be, not of the leftovers it is allowed to occupy.
+
+**The armed edge stays off the row's own furniture.** A pane's name, its
+buttons, its scroll indicator and a dead pane's epitaph all live on a border,
+and ruling the heavy line straight through them made the row unreadable exactly
+while the pointer was on it — and hid the title the handle had just been placed
+beside, which is what made a merely-off position look arbitrary. Each cell of the
+edge is painted only if the hit list says the edge still owns it, which is the
+same question the handle asks and the same one the click will ask. The epitaph
+had to start claiming its cells to take part; it answers `panestatus:` and does
+nothing when clicked, because an epitaph is not a button.
 
 **The guide arms on dwell, not on contact** (`hover_delay_ms`, 250ms). A
 pointer crossing a border on its way somewhere else should not make the screen

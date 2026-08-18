@@ -3316,9 +3316,18 @@ static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
       len = room;
       buf[len] = 0;
     }
-    screen_text(s, left, y, buf,
-                dead ? DEAD_C : (focused ? TITLE_FOCUS : TITLE_IDLE), NO_COLOR,
-                dead ? ATTR_BOLD : 0);
+    uint16_t drawn = screen_text(
+        s, left, y, buf, dead ? DEAD_C : (focused ? TITLE_FOCUS : TITLE_IDLE),
+        NO_COLOR, dead ? ATTR_BOLD : 0);
+    /* Claims its cells, the way the name on the top row does. Nothing clicks it
+     * -- an epitaph is not a button -- but owning the cells is what keeps the
+     * armed split guide from ruling a line through the one sentence saying how
+     * this pane died. */
+    if (drawn) {
+      char action[48];
+      snprintf(action, sizeof action, "panestatus:%u", leaf->id);
+      hit_add(&s->hits, left, y, drawn, 1, action);
+    }
   }
 }
 
@@ -3377,6 +3386,17 @@ static void split_handle_action(const node_t *leaf, char side, char *buf,
     snprintf(buf, cap, "title:%u:t", leaf->id);
   else
     snprintf(buf, cap, "border:%u:%c", leaf->id, side);
+}
+
+/* And what the rest of that side is called: the part that arms the guide and
+ * does nothing when pressed. The top row's rim is the drag handle, so it keeps
+ * the plain `title:` name it always had. */
+static void split_rim_action(const node_t *leaf, char side, char *buf,
+                             size_t cap) {
+  if (side == 't')
+    snprintf(buf, cap, "title:%u", leaf->id);
+  else
+    snprintf(buf, cap, "brim:%u:%c", leaf->id, side);
 }
 
 /* The split guide, in two stages, because a hover answers two questions.
@@ -3445,15 +3465,35 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
   color_t hi = GUIDE;
 
-  /* Stage one: the armed edge, and the handle on it. */
+  /* Stage one: the armed edge, on the cells the edge actually owns.
+   *
+   * A pane's name, its buttons and its scroll indicator all live on the top
+   * border, and the first version ruled straight through them: the row went
+   * unreadable exactly while the pointer was on it, and the handle looked as
+   * though it had been dropped at random, because the title it sits beside had
+   * been painted over. Asking the hit list which cells belong to this edge is
+   * the same question the handle already asks two lines down, and it costs one
+   * lookup per cell of one edge.
+   *
+   * The dead row's own buttons sit on the bottom border for the same reason, so
+   * this is not a top-row special case. */
+  char rim[48], act[48];
+  split_rim_action(leaf, side, rim, sizeof rim);
+  split_handle_action(leaf, side, act, sizeof act);
   if (side == 'l' || side == 'r') {
     uint16_t bx = side == 'l' ? r.x : x1;
-    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
-      screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+      const char *own = hit_test(&s->hits, bx, y);
+      if (own && (strcmp(own, rim) == 0 || strcmp(own, act) == 0))
+        screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
+    }
   } else {
     uint16_t by = side == 't' ? r.y : y1;
-    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++)
-      screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+      const char *own = hit_test(&s->hits, x, by);
+      if (own && (strcmp(own, rim) == 0 || strcmp(own, act) == 0))
+        screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
+    }
   }
 
   /* The handle, made heavier, and — where that means claiming a cell the pane
@@ -3474,8 +3514,6 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
    * where it is. Each cell is then painted only if the list still says it
    * belongs to the handle, which is what keeps a block off the pane's name.
    * Drawing asks the question the click is going to ask. */
-  char act[48];
-  split_handle_action(leaf, side, act, sizeof act);
   const hit_t *core = hit_find(&s->hits, act);
   if (core) {
     rect_t h = {core->x, core->y, core->w, core->h};
@@ -3815,27 +3853,44 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
       runs[nruns++] = (struct run){lo, (uint16_t)(right_lo - 1)};
     }
 
+    /* As near the middle of the row as the row allows.
+     *
+     * Centred in the widest *run* was the first rule and it looked arbitrary,
+     * because it is: with a centred title the row leaves two runs of nearly the
+     * same size, one of them a cell longer for reasons no one can see, and the
+     * handle floated off into the middle of whichever won. Aiming at the row's
+     * middle and sliding into the run instead means the handle hugs whatever is
+     * in the way -- so it sits against the title, where the eye already is,
+     * rather than halfway to the corner. With nothing in the way it is simply
+     * centred, which is the same rule the other three sides follow. */
     uint16_t mid = (uint16_t)(r.x + r.w / 2);
-    uint16_t best_lo = 0, best_len = 0, best_dist = 0;
+    uint16_t cap = split_handle_len((uint16_t)(r.w - 2));
+    bool found = false;
+    uint16_t best_x = 0, best_w = 0, best_dist = 0;
     for (size_t i = 0; i < nruns; i++) {
       if (runs[i].hi < runs[i].lo) continue;
       uint16_t len = (uint16_t)(runs[i].hi - runs[i].lo + 1);
       if (len < 3) continue;
-      uint16_t c = (uint16_t)(runs[i].lo + len / 2);
+      uint16_t want = cap > len ? len : cap;
+      uint16_t last = (uint16_t)(runs[i].hi - want + 1);
+      uint16_t start = mid > want / 2 ? (uint16_t)(mid - want / 2) : runs[i].lo;
+      if (start < runs[i].lo) start = runs[i].lo;
+      if (start > last) start = last;
+      uint16_t c = (uint16_t)(start + want / 2);
       uint16_t dist = (uint16_t)(c > mid ? c - mid : mid - c);
-      if (len > best_len || (len == best_len && dist < best_dist)) {
-        best_lo = runs[i].lo;
-        best_len = len;
+      /* Nearest wins; a tie goes to the longer handle, which can only happen
+       * when one run is too short to hold a full one. */
+      if (!found || dist < best_dist || (dist == best_dist && want > best_w)) {
+        found = true;
+        best_x = start;
+        best_w = want;
         best_dist = dist;
       }
     }
-    if (best_len >= 3) {
-      uint16_t want = split_handle_len((uint16_t)(r.w - 2));
-      if (want > best_len) want = best_len;
+    if (found) {
       char action[48];
       split_handle_action(leaf, 't', action, sizeof action);
-      hit_add(&s->hits, (uint16_t)(best_lo + (best_len - want) / 2), r.y, want,
-              1, action);
+      hit_add(&s->hits, best_x, r.y, best_w, 1, action);
     }
   }
 }
