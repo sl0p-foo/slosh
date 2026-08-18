@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What sl0ppty says, out of the box, about a pane you are not in.
+"""What slosh says, out of the box, about a pane you are not in.
 
 Three states mean "these cells are not a running program's present": its
 program exited, it never started, or you are looking at the past. None of them
@@ -28,7 +28,7 @@ SH = [
 ]
 
 # Only the theme, so "what colour is this cell" has one answer. No states: the
-# point is what sl0ppty does when you have said nothing.
+# point is what slosh does when you have said nothing.
 CFG = None
 
 

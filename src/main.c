@@ -1,15 +1,15 @@
 /* Entry point and argument parsing.
  *
- *   sl0ppty                  attach to session "main", creating it if needed
- *   sl0ppty -s NAME          ... a named session
- *   sl0ppty ls               live sessions
- *   sl0ppty cmd LINE         one control command against a session
- *   sl0ppty --server NAME    run a session in the foreground (internal)
- *   sl0ppty --script         the headless driver (no server, no tty)
- *   sl0ppty --headless       run once, print the screen
+ *   slosh                  attach to session "main", creating it if needed
+ *   slosh -s NAME          ... a named session
+ *   slosh ls               live sessions
+ *   slosh cmd LINE         one control command against a session
+ *   slosh --server NAME    run a session in the foreground (internal)
+ *   slosh --script         the headless driver (no server, no tty)
+ *   slosh --headless       run once, print the screen
  */
 #define _GNU_SOURCE
-#include "sl0ppty.h"
+#include "slosh.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,7 +59,7 @@ static bool looks_like_layout(const char *path) {
   return layout;
 }
 
-/* `sl0ppty --check FILE` on a layout. Telling somebody they handed a layout to
+/* `slosh --check FILE` on a layout. Telling somebody they handed a layout to
  * the config checker was honest and unhelpful: the file they want checked is
  * the one they were told to check. Same output shape, same exit status. */
 static int check_layout(const char *path) {
@@ -76,7 +76,7 @@ static int check_layout(const char *path) {
   return n ? 1 : 0;
 }
 
-/* `sl0ppty --check [FILE]`: read a config the way a session would and say what
+/* `slosh --check [FILE]`: read a config the way a session would and say what
  * it could not honour, one problem per line, `file:line: what`. Exits 1 when
  * there is anything to say, so it drops into an editor's compile step or a
  * pre-commit hook without any glue.
@@ -123,7 +123,7 @@ static int check_config(const char *path) {
 }
 
 static void usage(void) {
-  fputs("usage: sl0ppty [-s NAME] [--layout FILE] [--no-reload]\n"
+  fputs("usage: slosh [-s NAME] [--layout FILE] [--no-reload]\n"
         "                [--version] [--dump-config] [--check [FILE]]\n"
         "                [ls | cmd LINE | -- CMD...]\n",
         stderr);
@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
       watch = false;
     else if (strcmp(a, "--check") == 0) {
       /* An optional path, so it lints a file you have not installed yet:
-       * `sl0ppty --check theme.kdl`. Without one it checks the config a session
+       * `slosh --check theme.kdl`. Without one it checks the config a session
        * would actually read. A layout is checked as a layout: one flag, and the
        * file decides which schema it is held to. */
       const char *path =
@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
                                              : check_config(path);
     } else if (strcmp(a, "--dump-config") == 0) {
       /* Every setting with its *default*, as a file you could have written:
-       * `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl` is a supported
+       * `slosh --dump-config > ~/.config/slosh/config.kdl` is a supported
        * way to start one. Deliberately not the values a config in effect gives
        * them -- this is the file to begin from, and `--check` is the one that
        * reads yours and says what it understood. */
@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
     } else if (strcmp(a, "--version") == 0) {
       /* The same string the status line shows, so "which build is this" has
        * one answer whether you ask the binary or the session. */
-      printf("sl0ppty %s\n", SL0PPTY_VERSION);
+      printf("slosh %s\n", SLOSH_VERSION);
       return 0;
     } else if (strcmp(a, "ls") == 0)
       list = true;
@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
         cmd_argv[cmd_n++] = argv[j];
       break;
     } else {
-      fprintf(stderr, "sl0ppty: unknown argument: %s\n", a);
+      fprintf(stderr, "slosh: unknown argument: %s\n", a);
       usage();
       return 2;
     }
@@ -231,7 +231,7 @@ int main(int argc, char **argv) {
   if (cmd_line) {
     int fd = server_connect(name);
     if (fd < 0) {
-      fprintf(stderr, "sl0ppty: no session named %s\n", name);
+      fprintf(stderr, "slosh: no session named %s\n", name);
       return 1;
     }
     return client_control(fd, cmd_line);
@@ -247,7 +247,7 @@ int main(int argc, char **argv) {
   int fd = server_connect(name);
   if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows, layout, watch);
   if (fd < 0) {
-    fprintf(stderr, "sl0ppty: cannot start session %s\n", name);
+    fprintf(stderr, "slosh: cannot start session %s\n", name);
     return 1;
   }
   return client_run(fd);

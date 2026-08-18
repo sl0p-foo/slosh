@@ -1,4 +1,4 @@
-"""Drive sl0ppty's headless driver and assert on the composited screen.
+"""Drive slosh's headless driver and assert on the composited screen.
 
     with Session(["/bin/sh", "-c", "echo hi"], cols=20, rows=3) as s:
         s.settle()
@@ -14,11 +14,11 @@ import os
 import subprocess
 import time
 
-# $SL0PPTY_BIN lets the same suite drive a differently-built binary — the
+# $SLOSH_BIN lets the same suite drive a differently-built binary — the
 # coverage build, say — without a second copy of the harness.
 BIN = os.environ.get(
-    "SL0PPTY_BIN",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"),
+    "SLOSH_BIN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "slosh"),
 )
 
 
@@ -107,9 +107,9 @@ class Session:
         self.cols, self.rows = cols, rows
         environ = dict(os.environ)
         if config:
-            environ["SL0PPTY_CONFIG"] = str(config)
+            environ["SLOSH_CONFIG"] = str(config)
         else:
-            environ["SL0PPTY_CONFIG"] = "/nonexistent/sl0ppty.kdl"
+            environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
         if env:
             environ.update(env)
         cmd = [BIN, "--script", "--cols", str(cols), "--rows", str(rows)]
@@ -188,7 +188,7 @@ class Session:
         self._cmd("snapshot json")
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("sl0ppty exited before answering snapshot")
+            raise RuntimeError("slosh exited before answering snapshot")
         return Snapshot(json.loads(line))
 
     def api(self, cmd, **kw):
@@ -197,7 +197,7 @@ class Session:
         self._cmd(json.dumps(kw))
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("sl0ppty exited before answering " + cmd)
+            raise RuntimeError("slosh exited before answering " + cmd)
         return json.loads(line)
 
     def tabs(self):
@@ -208,7 +208,7 @@ class Session:
         self._cmd("panes")
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("sl0ppty exited before answering panes")
+            raise RuntimeError("slosh exited before answering panes")
         return json.loads(line)
 
     def pane(self, n=0):

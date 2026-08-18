@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M0 live check: drive sl0ppty under a real pty and read the screen back.
+"""M0 live check: drive slosh under a real pty and read the screen back.
 
 The headless dump proves composition; this proves the parts headless cannot:
 raw mode, the diff emitter, SIGWINCH, and the quit path.
@@ -19,7 +19,7 @@ import time
 import uuid
 
 BIN = os.environ.get(
-    "SL0PPTY_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "sl0ppty")
+    "SLOSH_BIN", os.path.join(os.path.dirname(__file__), "..", "build", "slosh")
 )
 
 
@@ -32,7 +32,7 @@ def spawn(cols=60, rows=12, argv=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.environ["SL0PPTY_CONFIG"] = "/nonexistent/sl0ppty.kdl"
+        os.environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
         os.execv(BIN, [BIN, "-s", SESSION] + (argv or ["--", "/bin/sh", "-i"]))
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))

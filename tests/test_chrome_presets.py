@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every chrome preset in contrib/chrome/ works in sl0ppty.
+"""Every chrome preset in contrib/chrome/ works in slosh.
 
 The content presets are cross-checked against the toy that previews them
 (test_shadertoy.py). A frame has no preview — the toy draws a pane's contents —

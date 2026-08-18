@@ -1,4 +1,4 @@
-# sl0ppty
+# slosh
 
 A terminal multiplexer — panes, tabs, sessions you can detach from — written in
 C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
@@ -33,9 +33,9 @@ make test      # optional: the whole suite, about thirteen seconds
 ## Run
 
 ```bash
-sl0ppty              # attach to session "main", creating it if needed
-sl0ppty -s work      # a named session
-sl0ppty ls           # what is running
+slosh              # attach to session "main", creating it if needed
+slosh -s work      # a named session
+slosh ls           # what is running
 ```
 
 Sessions keep running when you detach, or when your terminal or ssh connection

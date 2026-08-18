@@ -2,7 +2,7 @@
 """Render docs/ into a static site.
 
     contrib/gen-docs [outdir]        default: build/docs
-    SL0PPTY_DOCS=dir contrib/gen-docs out    ...from another docs tree
+    SLOSH_DOCS=dir contrib/gen-docs out    ...from another docs tree
 
 No dependencies and no toolchain: this is one file of stdlib Python and one
 stylesheet, for the same reason src/kdl.c is a hand-rolled KDL subset rather
@@ -26,9 +26,9 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-# $SL0PPTY_DOCS points it at another tree, which is how the tests drive it over
+# $SLOSH_DOCS points it at another tree, which is how the tests drive it over
 # fixtures -- including the trees that are supposed to be refused.
-DOCS = os.environ.get("SL0PPTY_DOCS") or os.path.join(ROOT, "docs")
+DOCS = os.environ.get("SLOSH_DOCS") or os.path.join(ROOT, "docs")
 
 
 # ---- the markdown subset --------------------------------------------------
@@ -218,7 +218,7 @@ def render(md):
         i += 1
 
     close(stack)
-    return "\n".join(out), title or "sl0ppty", toc
+    return "\n".join(out), title or "slosh", toc
 
 
 # ---- the site -------------------------------------------------------------
@@ -241,7 +241,7 @@ def read_nav(path):
 
 
 def sidebar(sections, pages, current):
-    out = ['<nav class="side"><a class="brand" href="index.html">sl0ppty</a>']
+    out = ['<nav class="side"><a class="brand" href="index.html">slosh</a>']
     for name, files in sections:
         out.append("<h6>%s</h6><ul>" % html.escape(name))
         for f in files:
@@ -280,7 +280,7 @@ SHELL = """<!doctype html>
 </head><body>
 <input type="checkbox" id="menu" hidden>
 <header><label for="menu" class="burger" aria-label="Menu">≡</label>
-<a href="index.html">sl0ppty</a><span class="crumb">{crumb}</span></header>
+<a href="index.html">slosh</a><span class="crumb">{crumb}</span></header>
 <div class="wrap">
 {sidebar}
 <main>
@@ -334,7 +334,7 @@ def build(outdir):
             )
         section = next(name for name, files in sections if f in files)
         out = SHELL.format(
-            title=html.escape(p["title"] + (" — sl0ppty" if f != "index.md" else "")),
+            title=html.escape(p["title"] + (" — slosh" if f != "index.md" else "")),
             crumb=html.escape(section),
             sidebar=sidebar(sections, pages, f),
             body=p["body"],

@@ -12,11 +12,11 @@
  * library already handles. Decoding only, never encoding — we hand the client
  * RGBA.
  */
-#ifndef SL0PPTY_PNG_H
-#define SL0PPTY_PNG_H
+#ifndef SLOSH_PNG_H
+#define SLOSH_PNG_H
 
 /* Install the process-global PNG decoder. Must be called before any terminal
  * exists, and is idempotent. */
 void png_init(void);
 
-#endif /* SL0PPTY_PNG_H */
+#endif /* SLOSH_PNG_H */

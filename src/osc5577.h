@@ -23,8 +23,8 @@
  * discards an OSC it does not know — nothing is drawn, and we need no
  * buffering that could stall a pane's output.
  */
-#ifndef SL0PPTY_OSC5577_H
-#define SL0PPTY_OSC5577_H
+#ifndef SLOSH_OSC5577_H
+#define SLOSH_OSC5577_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -53,4 +53,4 @@ size_t osc5577_unescape(const char *in, size_t in_len, char *out, size_t cap);
  * to defend against what a hostile label could smuggle through. */
 bool osc5577_valid_id(const char *id);
 
-#endif /* SL0PPTY_OSC5577_H */
+#endif /* SLOSH_OSC5577_H */

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""How much of sl0ppty the test suite actually runs.
+"""How much of slosh the test suite actually runs.
 
     make coverage
 
 Builds a second binary with gcc's `--coverage`, points the suite at it with
-$SL0PPTY_BIN, and reads the counters back with gcov. Nothing is installed and
+$SLOSH_BIN, and reads the counters back with gcov. Nothing is installed and
 nothing else changes: the normal build is still zig, and this one lives
 entirely in build/cov.
 
@@ -62,7 +62,7 @@ def main():
 
     if not rows:
         print(
-            "no counters: did the suite run against build/cov/sl0ppty?", file=sys.stderr
+            "no counters: did the suite run against build/cov/slosh?", file=sys.stderr
         )
         return 1
 

@@ -2,11 +2,11 @@
 
 A shader is a C function from one cell to that cell's colours. The built-in
 ones live in the binary; you can add your own as a shared library, without
-rebuilding sl0ppty.
+rebuilding slosh.
 
 ```bash
 make            # builds example.so
-make install    # copies it to ~/.config/sl0ppty/shaders/
+make install    # copies it to ~/.config/slosh/shaders/
 ```
 
 Then name it in your config exactly as you would a built-in:
@@ -31,7 +31,7 @@ a plugin, restart the session.
 ## Writing one
 
 Everything you need is in [`src/shader_abi.h`](../../src/shader_abi.h) — one
-header, no libghostty-vt, no other sl0ppty types. `example.c` is a working
+header, no libghostty-vt, no other slosh types. `example.c` is a working
 plugin with two effects and comments about what each one demonstrates.
 
 The shape is:
@@ -47,7 +47,7 @@ static void sh_mine(const shader_t *sh, const shade_ctx_t *ctx, cell_t *c) {
 }
 
 static const shader_def_t SHADERS[] = {{"mine", sh_mine}};
-SL0PPTY_SHADER_PLUGIN("my-shaders", SHADERS)
+SLOSH_SHADER_PLUGIN("my-shaders", SHADERS)
 ```
 
 Three rules, which are also why shaders can be this simple:
@@ -92,7 +92,7 @@ under a name of its own.
 ## Compatibility
 
 The plugin declares which ABI it was built against, and the sizes of the three
-structs it shares with sl0ppty. A mismatch is refused at load with a line on
+structs it shares with slosh. A mismatch is refused at load with a line on
 stderr rather than trusted into a crash, so a plugin left over from an older
 version fails safely and everything else still loads.
 

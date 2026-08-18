@@ -10,9 +10,9 @@
 # the watcher.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
-bin="$here/../build/sl0ppty"
+bin="$here/../build/slosh"
 SESSION=${SESSION:-themes}
-CONF=${SL0PPTY_CONFIG:-/tmp/sl0ppty-theme-tour.kdl}
+CONF=${SLOSH_CONFIG:-/tmp/slosh-theme-tour.kdl}
 DWELL=${DWELL:-4}
 
 apply() {
@@ -29,7 +29,7 @@ fi
 if ! "$bin" ls 2>/dev/null | grep -q "^$SESSION "; then
   cp "$here/themes/sl0p.kdl" "$CONF"
   echo "starting a session called $SESSION..."
-  SL0PPTY_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
+  SLOSH_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
   sleep 1
 fi
 

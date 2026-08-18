@@ -1324,9 +1324,9 @@ static void cb_chain(cfgbuf_t *b, const char *indent, const shader_t *sh,
 char *config_render(const config_t *c) {
   cfgbuf_t b = {0};
 
-  cb_add(&b, "// sl0ppty config, as it currently stands.\n");
+  cb_add(&b, "// slosh config, as it currently stands.\n");
   cb_add(&b, "//\n");
-  cb_add(&b, "// Written by `sl0ppty --dump-config`, so every value here is\n");
+  cb_add(&b, "// Written by `slosh --dump-config`, so every value here is\n");
   cb_add(&b, "// the one in force rather than one somebody typed up. Delete\n");
   cb_add(&b, "// anything you do not want to pin; what is missing is a\n");
   cb_add(&b, "// default, and defaults are allowed to improve.\n");
@@ -1423,7 +1423,7 @@ char *config_render(const config_t *c) {
   if (c->shader_dir)
     cb_qstr(&b, "shader_dir", c->shader_dir, NULL);
   else
-    cb_add(&b, "// shader_dir \"~/.config/sl0ppty/shaders\"\n");
+    cb_add(&b, "// shader_dir \"~/.config/slosh/shaders\"\n");
   if (c->nproject_roots) {
     cb_add(&b, "project_roots");
     for (size_t i = 0; i < c->nproject_roots; i++) {
@@ -1438,7 +1438,7 @@ char *config_render(const config_t *c) {
   if (c->project_layout)
     cb_qstr(&b, "project_layout", c->project_layout, NULL);
   else
-    cb_add(&b, "// project_layout \"~/.config/sl0ppty/project.layout.kdl\"\n");
+    cb_add(&b, "// project_layout \"~/.config/slosh/project.layout.kdl\"\n");
 
   cb_add(&b, "\n// ---- colour ----\ntheme {\n");
   for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)
@@ -1552,17 +1552,17 @@ static action_t action_by_name(const char *name) {
 
 const char *config_default_path(void) {
   static char path[512];
-  const char *explicit_ = getenv("SL0PPTY_CONFIG");
+  const char *explicit_ = getenv("SLOSH_CONFIG");
   if (explicit_ && *explicit_) {
     snprintf(path, sizeof path, "%s", explicit_);
     return path;
   }
   const char *xdg = getenv("XDG_CONFIG_HOME");
   if (xdg && *xdg)
-    snprintf(path, sizeof path, "%s/sl0ppty/config.kdl", xdg);
+    snprintf(path, sizeof path, "%s/slosh/config.kdl", xdg);
   else {
     const char *home = getenv("HOME");
-    snprintf(path, sizeof path, "%s/.config/sl0ppty/config.kdl",
+    snprintf(path, sizeof path, "%s/.config/slosh/config.kdl",
              home ? home : ".");
   }
   return path;
@@ -1649,9 +1649,8 @@ static void complain_unknown_top(config_t *c, const kdl_node_t *root, char *err,
     if (!n || !n->name) continue;
     if (config_is_setting(n->name)) continue;
     if (strcmp(n->name, "layout") == 0)
-      complain(
-          c, err, errcap, n->line,
-          "this is a layout, not a config: `sl0ppty --layout` reads those");
+      complain(c, err, errcap, n->line,
+               "this is a layout, not a config: `slosh --layout` reads those");
     else
       complain(c, err, errcap, n->line, "unknown setting: %s", n->name);
   }

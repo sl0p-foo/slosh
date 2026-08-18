@@ -197,7 +197,7 @@ def test_cwd_expands_a_tilde():
     Unexpanded it reached chdir() literally, failed, and left the pane in
     whatever directory the session was started from — with the pane running,
     so nothing looked wrong until you typed `ls`."""
-    home = tempfile.mkdtemp(prefix="sl0ppty-home-")
+    home = tempfile.mkdtemp(prefix="slosh-home-")
     text = """
     layout {
         tab name="t" {

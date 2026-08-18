@@ -13,9 +13,9 @@
 # `curx`/`cury` is where the cursor is, and standing still tells you nothing.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
-bin="$here/../build/sl0ppty"
+bin="$here/../build/slosh"
 SESSION=${SESSION:-shaders}
-CONF=${SL0PPTY_CONFIG:-/tmp/sl0ppty-shader-tour.kdl}
+CONF=${SLOSH_CONFIG:-/tmp/slosh-shader-tour.kdl}
 DWELL=${DWELL:-5}
 
 # A name can be the whole slug (guides-torch), or just the interesting half
@@ -48,7 +48,7 @@ ensure_session() {
   "$bin" ls 2>/dev/null | grep -q "^$SESSION " && return 0
   cp "$here/themes/sl0p.kdl" "$CONF"
   echo "starting a session called $SESSION..."
-  SL0PPTY_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
+  SLOSH_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
   sleep 1
 }
 

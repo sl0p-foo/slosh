@@ -4,8 +4,8 @@
  * config file costs you a warning, never a terminal (the fail-open property
  * D9 asks of the CLI, applied to the mux itself).
  */
-#ifndef SL0PPTY_CONFIG_H
-#define SL0PPTY_CONFIG_H
+#ifndef SLOSH_CONFIG_H
+#define SLOSH_CONFIG_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -13,7 +13,7 @@
 
 #include "expr.h"
 #include "shader.h"
-#include "sl0ppty.h"
+#include "slosh.h"
 
 /* Pane states a shader can be hung off, in the order they are tested. Only
  * states a pane can actually be seen in — which `dead` now is: a pane whose
@@ -137,7 +137,7 @@ typedef struct {
    * Discoverability for a frame whose affordances are mostly one character
    * wide; off if you already know them. */
   bool hints;
-  /* What sl0ppty this is, in the middle of the status line, whenever there is
+  /* What slosh this is, in the middle of the status line, whenever there is
    * no hint to put there. The slot is otherwise empty most of the time, and
    * "which build am I attached to" is the first question when a session is
    * behaving oddly -- a session keeps the binary it started with, so the
@@ -377,7 +377,7 @@ typedef struct {
   char *shader_dir;
 
   /* Where projects live: `project_roots "~/dev" "~/work" depth=2`. A project is
-   * a subdirectory of one of these with a `sl0ppty.layout.kdl` in it -- or a
+   * a subdirectory of one of these with a `slosh.layout.kdl` in it -- or a
    * `.git`, which gets `project_layout` instead. Empty means the feature is
    * dormant and costs nothing.
    *
@@ -420,7 +420,7 @@ typedef struct {
  * it keeps the defaults and writes the reason to `err`. */
 void config_defaults(config_t *c);
 bool config_load(config_t *c, const char *path, char *err, size_t errcap);
-/* $SL0PPTY_CONFIG, else $XDG_CONFIG_HOME/sl0ppty/config.kdl, else ~/.config/… */
+/* $SLOSH_CONFIG, else $XDG_CONFIG_HOME/slosh/config.kdl, else ~/.config/… */
 const char *config_default_path(void);
 /* Every complaint from the last load, oldest first: "config.kdl:12: ...".
  * Returns how many were written. */
@@ -497,4 +497,4 @@ const char *config_action_group(action_t a);
 /* "ctrl+a", "alt+left", "\\", "f" -> key + mods. False if unparseable. */
 bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods);
 
-#endif /* SL0PPTY_CONFIG_H */
+#endif /* SLOSH_CONFIG_H */

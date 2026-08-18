@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every shader in contrib/shaders/ works in sl0ppty.
+"""Every shader in contrib/shaders/ works in slosh.
 
 The toy proves the *language* matches (test_shadertoy.py). This proves the
 shipped files: that each one parses as config, is accepted by the shader
@@ -140,7 +140,7 @@ def test_the_tour_can_name_every_one_of_them():
     tour = os.path.join(CONTRIB, "shader-tour")
     conf = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
     conf.close()
-    env = dict(os.environ, SL0PPTY_CONFIG=conf.name)
+    env = dict(os.environ, SLOSH_CONFIG=conf.name)
 
     # Named explicitly rather than derived: a group name with a hyphen in it
     # (built-ins) makes "the short half" ambiguous to compute and easy to get

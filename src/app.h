@@ -2,13 +2,13 @@
  *
  * Both front ends (the interactive client and the headless driver) drive this
  * same object, so there is exactly one implementation of what a key does. */
-#ifndef SL0PPTY_APP_H
-#define SL0PPTY_APP_H
+#ifndef SLOSH_APP_H
+#define SLOSH_APP_H
 
 #include "kdl.h"
 #include "project.h"
 #include "shader.h"
-#include "sl0ppty.h"
+#include "slosh.h"
 
 typedef enum { SPLIT_COLS, SPLIT_ROWS } split_dir_t;
 
@@ -174,7 +174,7 @@ typedef struct {
 } app_workspace_save_t;
 
 /* Write one tab out as a project's layout: the same dump `dump-layout` answers
- * with, relative to the project, into `sl0ppty.layout.kdl` beside it. `tab` 0 is
+ * with, relative to the project, into `slosh.layout.kdl` beside it. `tab` 0 is
  * the current one; `path` names the project for a tab that is not yet a
  * workspace (and saving adopts it, which is the whole of onboarding one).
  * Refused without `force` when the project already has a layout: that file is
@@ -319,4 +319,4 @@ char *app_dump_layout(app_t *a, dump_layout_t *o);
 char *app_panes_json(app_t *a);
 char *app_tabs_json(app_t *a);
 
-#endif /* SL0PPTY_APP_H */
+#endif /* SLOSH_APP_H */

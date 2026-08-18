@@ -37,8 +37,8 @@ function render(group, name, chain) {
 // Generated from contrib/shadertoy.html by contrib/gen-shaders; edit the
 // preset there, where you can see what it does, and run that again.
 //
-// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up
-// when you save), or point $SL0PPTY_CONFIG at this file. To hang it off a
+// Drop this into ~/.config/slosh/config.kdl (a running session picks it up
+// when you save), or point $SLOSH_CONFIG at this file. To hang it off a
 // pane state instead of every pane, put the same passes inside one:
 //
 //     states { unfocused { ... } }

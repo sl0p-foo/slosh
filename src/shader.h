@@ -19,15 +19,15 @@
  * Shaders chain: each is a complete pass, so `grayscale` then `tint` differs
  * from `tint` then `grayscale`, and both are expressible.
  */
-#ifndef SL0PPTY_SHADER_H
-#define SL0PPTY_SHADER_H
+#ifndef SLOSH_SHADER_H
+#define SLOSH_SHADER_H
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "shader_abi.h"
-#include "sl0ppty.h"
+#include "slosh.h"
 
 /* Per pane, and separately per config. Small and fixed: a stack this deep is
  * already a lot of passes over the same cells. */
@@ -80,4 +80,4 @@ size_t shader_load_dir(const char *dir, char *err, size_t errcap);
 void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
                  const rect_t *hole, const shade_ctx_t *base);
 
-#endif /* SL0PPTY_SHADER_H */
+#endif /* SLOSH_SHADER_H */

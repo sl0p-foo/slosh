@@ -1,6 +1,6 @@
 # Scripting
 
-Three things make sl0ppty easy to drive from other programs: a socket that does
+Three things make slosh easy to drive from other programs: a socket that does
 everything the keyboard does, an escape sequence a pane can use to draw its own
 chrome, and a headless mode that is the whole program without a terminal.
 
@@ -10,9 +10,9 @@ One JSON object per line, over the session's socket. A detached session answers
 exactly as an attached one does.
 
 ```bash
-$ sl0ppty -s work cmd '{"cmd":"new-tab","name":"api"}'
+$ slosh -s work cmd '{"cmd":"new-tab","name":"api"}'
 {"ok":true,"id":2}
-$ sl0ppty -s work cmd '{"cmd":"panes"}'
+$ slosh -s work cmd '{"cmd":"panes"}'
 {"ok":true,"panes":[{"id":1,"title":"nvim","alive":true,...}]}
 ```
 
@@ -54,9 +54,9 @@ Everything a program needs in a project it has never seen — open it, ask what 
 in it, act on the purposes the project's own layout declared:
 
 ```bash
-$ sl0ppty -s work cmd '{"cmd":"open-workspace","name":"api"}'
+$ slosh -s work cmd '{"cmd":"open-workspace","name":"api"}'
 {"ok":true,"tab":3,"purpose":"project:api.5c1f0a3b","path":"/home/you/dev/api","created":true,"tabs":1,"honoured":0}
-$ sl0ppty -s work cmd '{"cmd":"open-workspace","name":"api"}'
+$ slosh -s work cmd '{"cmd":"open-workspace","name":"api"}'
 {"ok":true,"tab":3,"purpose":"project:api.5c1f0a3b","path":"/home/you/dev/api","created":false,"tabs":0,"honoured":0}
 ```
 
@@ -68,11 +68,11 @@ re-attach.
 Then read the tab it handed back:
 
 ```bash
-$ sl0ppty -s work cmd '{"cmd":"panes"}' \
+$ slosh -s work cmd '{"cmd":"panes"}' \
     | jq -c '.panes[] | select(.tab_id == 3) | {id, purpose, suspended}'
 {"id":7,"purpose":"agent:main","suspended":false}
 {"id":8,"purpose":"service:web","suspended":true}
-$ sl0ppty -s work cmd '{"cmd":"rerun","id":8}'    # start the dev server
+$ slosh -s work cmd '{"cmd":"rerun","id":8}'    # start the dev server
 ```
 
 The project's own layout file decided that `service:web` is the dev server and
@@ -124,9 +124,9 @@ otherwise be answered into a loop, which is exactly what `hello` used to do:
 ## Driving it from an agent
 
 Everything above is what an agent needs, and none of it says which parts matter.
-`.agents/skills/driving-sl0ppty/SKILL.md` is the same socket written as
+`.agents/skills/driving-slosh/SKILL.md` is the same socket written as
 instructions: how a program in a pane finds out which session it is in
-(`SL0PPTY_SESSION`, `SL0PPTY_BIN`), why work belongs in a pane that *was given a
+(`SLOSH_SESSION`, `SLOSH_BIN`), why work belongs in a pane that *was given a
 command* rather than typed into somebody's shell, that `alive` and `exit_code` are
 how you wait rather than reading the screen for a marker your own echo matches, and
 that `purpose` is the handle to find things by because titles change underneath
@@ -141,14 +141,14 @@ reading it first.
 
 ## Headless
 
-`sl0ppty --script` is the whole program without a terminal: commands on stdin,
+`slosh --script` is the whole program without a terminal: commands on stdin,
 answers on stdout. It is how the test suite works — drive these events, assert
 this screen — which is also why the suite is 1,500-odd real end-to-end checks that
 finish in about thirteen seconds.
 
 ```bash
 $ printf '%s\n' '{"cmd":"split","dir":"cols"}' '{"cmd":"snapshot","format":"text"}' \
-    | sl0ppty --script --cols 80 --rows 24 -- /bin/sh
+    | slosh --script --cols 80 --rows 24 -- /bin/sh
 ```
 
 The bare-verb form (`snapshot text`, `send \x01\\`, `resize 100 30`) is a

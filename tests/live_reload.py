@@ -14,8 +14,8 @@ import time
 import uuid
 
 BIN = os.environ.get(
-    "SL0PPTY_BIN",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"),
+    "SLOSH_BIN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "slosh"),
 )
 
 fails = 0
@@ -54,7 +54,7 @@ def wait_for_colour(session, want, timeout=5.0):
 
 
 def start(session, cfg_path, extra=()):
-    env = dict(os.environ, SL0PPTY_CONFIG=cfg_path)
+    env = dict(os.environ, SLOSH_CONFIG=cfg_path)
     p = subprocess.Popen(
         [
             BIN,

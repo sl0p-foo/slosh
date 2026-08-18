@@ -1,10 +1,10 @@
-/* An example sl0ppty shader plugin.
+/* An example slosh shader plugin.
  *
  * Two effects, chosen to show the whole of what a shader is given: where the
  * cell is, how big the pane is, where the cursor is, what time it is, and the
  * three parameters the config can set (`color`, `amount`, and one number).
  *
- * Build it with `make`, drop the .so in ~/.config/sl0ppty/shaders/, and name
+ * Build it with `make`, drop the .so in ~/.config/slosh/shaders/, and name
  * it in your config exactly like a built-in:
  *
  *   shaders {
@@ -79,4 +79,4 @@ static const shader_def_t SHADERS[] = {
     {"pulse", sh_pulse},
 };
 
-SL0PPTY_SHADER_PLUGIN("example", SHADERS)
+SLOSH_SHADER_PLUGIN("example", SHADERS)

@@ -88,7 +88,7 @@ carry their own shift: `"?"` is `"shift+slash"`, `"H"` is `"shift+h"`, `"|"` is
 encodings, because whether your terminal reports `?` with a shift modifier or as
 a bare byte is up to your terminal and not to what you meant.
 
-`sl0ppty --check` reads a config and says what it could not honour, one problem
+`slosh --check` reads a config and says what it could not honour, one problem
 per line with a file and a line number. Worth running after editing bindings by
 hand.
 

@@ -89,7 +89,7 @@ int client_run(int fd) {
   term_size(&cols, &rows, &cell_w, &cell_h);
 
   if (tcgetattr(STDIN_FILENO, &g_saved) != 0) {
-    fprintf(stderr, "sl0ppty: not a terminal\n");
+    fprintf(stderr, "slosh: not a terminal\n");
     return 1;
   }
   g_saved_ok = true;

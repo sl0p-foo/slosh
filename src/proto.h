@@ -4,8 +4,8 @@
  * the interesting protocol is the JSON control channel (M3) that rides on
  * MSG_CMD, and it speaks the same vocabulary as the headless driver.
  */
-#ifndef SL0PPTY_PROTO_H
-#define SL0PPTY_PROTO_H
+#ifndef SLOSH_PROTO_H
+#define SLOSH_PROTO_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -57,7 +57,7 @@ bool msg_reader_next(msg_reader_t *r, msg_t *out);
 /* Blocking send of one frame. Returns 0 on success, -1 if the peer is gone. */
 int msg_send(int fd, uint8_t type, const void *data, size_t len);
 
-/* $XDG_RUNTIME_DIR/sl0ppty/<name>.sock, or /tmp/sl0ppty-<uid>/<name>.sock.
+/* $XDG_RUNTIME_DIR/slosh/<name>.sock, or /tmp/slosh-<uid>/<name>.sock.
  * Creates the directory (0700). Returns 0 on success. */
 int session_socket_path(const char *name, char *out, size_t cap);
 int session_log_path(const char *name, char *out, size_t cap);
@@ -65,4 +65,4 @@ int session_log_path(const char *name, char *out, size_t cap);
  * array. Returns the count. */
 size_t session_list(char ***out_names);
 
-#endif /* SL0PPTY_PROTO_H */
+#endif /* SLOSH_PROTO_H */

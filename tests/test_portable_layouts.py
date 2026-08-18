@@ -24,10 +24,10 @@ SH = ["/bin/sh", "-c", "read x"]
 
 def project(name, text):
     """A directory with a layout file in it, the way a checkout would have."""
-    root = tempfile.mkdtemp(prefix="sl0ppty-proj-")
+    root = tempfile.mkdtemp(prefix="slosh-proj-")
     d = os.path.join(root, name)
     os.makedirs(os.path.join(d, "src"))
-    path = os.path.join(d, "sl0ppty.layout.kdl")
+    path = os.path.join(d, "slosh.layout.kdl")
     with open(path, "w") as f:
         f.write(text)
     return d, path
@@ -278,7 +278,7 @@ layout {
         check("it names: " + want, want in said, said)
     check(
         "every problem carries a file and a line",
-        said.count("sl0ppty.layout.kdl:") >= 6,
+        said.count("slosh.layout.kdl:") >= 6,
         said,
     )
 
@@ -325,7 +325,7 @@ def test_a_syntax_error_in_a_layout_is_reported_as_the_layout_it_is():
     code, said = lint(path)
     check(
         "it says which file and which line the syntax broke on",
-        "sl0ppty.layout.kdl:" in said and "unclosed" in said,
+        "slosh.layout.kdl:" in said and "unclosed" in said,
         said,
     )
     check(

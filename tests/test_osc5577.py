@@ -346,7 +346,7 @@ def test_hello_handshake():
         out = s.snapshot().pane_text(s.pane())
         check(
             "hello is answered with an implementation and a version",
-            "5577;1;hello-reply;sl0ppty;1" in out,
+            "5577;1;hello-reply;slosh;1" in out,
             repr(out[:120]),
         )
 
@@ -364,10 +364,18 @@ def test_a_reply_is_not_a_request():
         s.settle()
         time.sleep(0.5)  # real time: a loop needs none of our help to run
         out = s.snapshot().pane_text(s.pane())
+        # The one answer can appear on screen twice: `cat -v` prints it, and if
+        # it arrived before the pane's `stty -echo` took effect, ECHOCTL echoed
+        # it too, as the same printable `^[`. Both are one reply, displayed by
+        # the pane's own doing; a loop is hundreds. Count on de-wrapped text --
+        # at 60 columns the second copy can straddle a line break, which is how
+        # a seven-character implementation name hid it from this count and made
+        # `== 1` pass for the wrong reason.
+        n = out.replace("\n", "").count("hello-reply")
         check(
             "a reply the pane echoes back is not answered again",
-            out.count("hello-reply") == 1,
-            repr(out[:200]),
+            1 <= n <= 2,
+            "%d copies: %r" % (n, out[:200]),
         )
         check(
             "and the pane is still usable afterwards",

@@ -6,13 +6,13 @@
  * cannot reach anything else, because nothing else is declared here.
  *
  * Everything in here is ABI. Changing the layout of these structs breaks
- * every plugin built against the old one, so SL0PPTY_SHADER_ABI is bumped
+ * every plugin built against the old one, so SLOSH_SHADER_ABI is bumped
  * when they change, and a plugin that reports the wrong version (or the wrong
  * sizes, which catches a plugin built against an edited copy of this file) is
  * refused at load rather than trusted into a crash.
  */
-#ifndef SL0PPTY_SHADER_ABI_H
-#define SL0PPTY_SHADER_ABI_H
+#ifndef SLOSH_SHADER_ABI_H
+#define SLOSH_SHADER_ABI_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -21,7 +21,7 @@
 /* 3: shade_ctx_t gained `state_ms`, so an effect can know how long the pane has
  *    been as it is and not only what time it is; struct shader gained
  *    `channels`, which is the pass's business rather than a shader's. */
-#define SL0PPTY_SHADER_ABI 3
+#define SLOSH_SHADER_ABI 3
 
 /* Which of a cell's two colours a pass is allowed to keep. Enforced by the
  * pass, not by the shader: every shader writes whatever it writes, and the
@@ -134,9 +134,9 @@ struct shader {
  *
  * A shared library dropped in the shader directory, exporting one symbol:
  *
- *   const shader_plugin_t *sl0ppty_shader_plugin(void);
+ *   const shader_plugin_t *slosh_shader_plugin(void);
  *
- * SL0PPTY_SHADER_PLUGIN() writes that for you. See
+ * SLOSH_SHADER_PLUGIN() writes that for you. See
  * contrib/shader-plugin/ for a complete one.
  */
 
@@ -146,7 +146,7 @@ typedef struct {
 } shader_def_t;
 
 typedef struct {
-  uint32_t abi;         /* SL0PPTY_SHADER_ABI it was built against */
+  uint32_t abi;         /* SLOSH_SHADER_ABI it was built against */
   uint32_t cell_size;   /* the three sizes catch a plugin built against a */
   uint32_t ctx_size;    /* copy of this header that has drifted, which a */
   uint32_t shader_size; /* version number alone would not */
@@ -155,14 +155,14 @@ typedef struct {
   const shader_def_t *shaders;
 } shader_plugin_t;
 
-#define SL0PPTY_SHADER_PLUGIN_SYM "sl0ppty_shader_plugin"
+#define SLOSH_SHADER_PLUGIN_SYM "slosh_shader_plugin"
 
 /* Define the entry point. `defs` is a static array of shader_def_t. */
-#define SL0PPTY_SHADER_PLUGIN(bundle_name, defs)                               \
-  const shader_plugin_t *sl0ppty_shader_plugin(void);                          \
-  const shader_plugin_t *sl0ppty_shader_plugin(void) {                         \
+#define SLOSH_SHADER_PLUGIN(bundle_name, defs)                                 \
+  const shader_plugin_t *slosh_shader_plugin(void);                            \
+  const shader_plugin_t *slosh_shader_plugin(void) {                           \
     static const shader_plugin_t table = {                                     \
-        .abi = SL0PPTY_SHADER_ABI,                                             \
+        .abi = SLOSH_SHADER_ABI,                                               \
         .cell_size = sizeof(cell_t),                                           \
         .ctx_size = sizeof(shade_ctx_t),                                       \
         .shader_size = sizeof(shader_t),                                       \
@@ -173,4 +173,4 @@ typedef struct {
     return &table;                                                             \
   }
 
-#endif /* SL0PPTY_SHADER_ABI_H */
+#endif /* SLOSH_SHADER_ABI_H */

@@ -178,7 +178,7 @@ def test_history_survives_the_next_run():
     fill."""
     path = cfg("in_band_shaders true\n")
     home = tempfile.mkdtemp()
-    hist = os.path.join(home, "sl0ppty", "shader-repl.history")
+    hist = os.path.join(home, "slosh", "shader-repl.history")
 
     with session(path, home) as s:
         s.until_text("chrome>")

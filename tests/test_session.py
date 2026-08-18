@@ -18,8 +18,8 @@ import time
 import uuid
 
 BIN = os.environ.get(
-    "SL0PPTY_BIN",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "sl0ppty"),
+    "SLOSH_BIN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "slosh"),
 )
 
 fails = 0
@@ -37,7 +37,7 @@ def attach(name, cols=80, rows=24, inner=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.environ["SL0PPTY_CONFIG"] = "/nonexistent/sl0ppty.kdl"
+        os.environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
         args = [BIN, "-s", name]
         if inner:
             args += ["--"] + inner

@@ -1,7 +1,7 @@
 /* A pane: one pty, one libghostty-vt terminal, and the code that composites
  * its viewport into the screen. */
 #define _GNU_SOURCE
-#include "sl0ppty.h"
+#include "slosh.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -155,7 +155,7 @@ static void on_osc5577(const char *verb, const char *payload, void *ud) {
   } else if (strcmp(verb, "hello") == 0) {
     /* Our addition to the fork's protocol, which is unversioned in practice:
      * a program can ask what it is talking to before using anything new. */
-    const char *reply = "\033]5577;1;hello-reply;sl0ppty;1\033\\";
+    const char *reply = "\033]5577;1;hello-reply;slosh;1\033\\";
     pane_write(p, reply, strlen(reply));
   } else if (p->osc_cb) {
     p->osc_cb(p, verb, payload, p->osc_ud); /* purpose, and anything later */

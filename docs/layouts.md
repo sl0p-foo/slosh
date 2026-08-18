@@ -16,7 +16,7 @@ layout {
 ```
 
 ```bash
-sl0ppty --layout project.layout.kdl
+slosh --layout project.layout.kdl
 ```
 
 ## What to call them
@@ -28,7 +28,7 @@ Calling it something else would trade one wrong signal for another: it *is*
 KDL, and an editor that highlights KDL is worth keeping.
 
 A filename cannot enforce anything, so **the document decides which schema it is
-held to, not the flag that read it**. `sl0ppty --check` reads what is in front of
+held to, not the flag that read it**. `slosh --check` reads what is in front of
 it: a file with `layout` or `tab` at the top of it is checked as a layout, and a
 config handed to the same flag is still checked as a config. A file too broken to
 parse at all is judged by its name, because by then there is nothing else left to
@@ -38,7 +38,7 @@ layout, not a config` — replied to a question about a file with the name of
 another flag.
 
 ```
-$ sl0ppty --check project.layout.kdl
+$ slosh --check project.layout.kdl
 project.layout.kdl: ok, a layout
 ```
 
@@ -49,7 +49,7 @@ summary, and exits 1 — the shape [checking a config](config.md#checking-one)
 already has, so one editor compile step and one pre-commit hook read both:
 
 ```
-$ sl0ppty --check broken.layout.kdl
+$ slosh --check broken.layout.kdl
   broken.layout.kdl:2: unknown pane property: cmd
   broken.layout.kdl:3: split is cols or rows, not `diagonal`
   broken.layout.kdl:4: weight is a number of 150 or more, not `40`
@@ -69,8 +69,8 @@ end rather than first so it reads as the summary it is.
 Loading is the other half of the same answer:
 
 ```
-$ sl0ppty --layout ~/.config/sl0ppty/config.kdl
-sl0ppty: config.kdl: this is a config, not a layout: `gap` is a setting
+$ slosh --layout ~/.config/slosh/config.kdl
+slosh: config.kdl: this is a config, not a layout: `gap` is a setting
 ```
 
 A config handed to `--layout` is named for what it is instead of refused for
@@ -105,7 +105,7 @@ That is what lets a layout be checked in beside the project it describes and mea
 the same thing in everybody's clone:
 
 ```kdl
-// ~/dev/api/sl0ppty.layout.kdl — no absolute path in it anywhere
+// ~/dev/api/slosh.layout.kdl — no absolute path in it anywhere
 layout {
     tab name="api" cwd="." {
         pane command="nvim"
@@ -133,14 +133,14 @@ A full annotated example is
 ## Writing one back out
 
 ```bash
-sl0ppty -s work cmd '{"cmd":"dump-layout"}' > project.layout.kdl
+slosh -s work cmd '{"cmd":"dump-layout"}' > project.layout.kdl
 ```
 
 writes the session as a layout file: tabs, splits, proportions, directories,
 commands, which pane you were in. So a session can be checked in, or put back
 after a restart.
-`contrib/sl0ppty-dev`
-is that loop, for when the thing you are rebuilding is sl0ppty itself.
+`contrib/slosh-dev`
+is that loop, for when the thing you are rebuilding is slosh itself.
 
 **A pane is dumped with the command it is running**, whether a layout gave it one
 or you typed it. `label` — what a layout said — comes first and outlives the
@@ -170,8 +170,8 @@ restoring gives you a fresh one.
 Three arguments shape what comes out:
 
 ```bash
-sl0ppty -s work cmd '{"cmd":"dump-layout","tab":3}'
-sl0ppty -s work cmd '{"cmd":"dump-layout","relative_to":"~/dev/api","suspend":"commands"}'
+slosh -s work cmd '{"cmd":"dump-layout","tab":3}'
+slosh -s work cmd '{"cmd":"dump-layout","relative_to":"~/dev/api","suspend":"commands"}'
 ```
 
 | argument | what it says |
@@ -210,8 +210,8 @@ tab and wherever the file happened to begin in the other five.
 ## Applying one to a running session
 
 ```bash
-sl0ppty -s work cmd '{"cmd":"apply-layout","path":"project.layout.kdl"}'
-sl0ppty -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","replace":true}'
+slosh -s work cmd '{"cmd":"apply-layout","path":"project.layout.kdl"}'
+slosh -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","replace":true}'
 ```
 
 Without `replace`, the tabs the file describes are added to what is already
@@ -220,9 +220,9 @@ there.
 ## Moving a pane between tabs
 
 ```bash
-sl0ppty cmd '{"cmd":"move-pane","id":3,"tab":2}'              # beside that tab's focus
-sl0ppty cmd '{"cmd":"move-pane","id":3,"tab":2,"dir":"rows"}' # under it instead
-sl0ppty cmd '{"cmd":"move-pane","id":3,"tab":0,"name":"logs"}' # into a tab of its own
+slosh cmd '{"cmd":"move-pane","id":3,"tab":2}'              # beside that tab's focus
+slosh cmd '{"cmd":"move-pane","id":3,"tab":2,"dir":"rows"}' # under it instead
+slosh cmd '{"cmd":"move-pane","id":3,"tab":0,"name":"logs"}' # into a tab of its own
 ```
 
 The pane keeps running: same pty, same scrollback, same process — a move is tree
@@ -266,7 +266,7 @@ The [finder](panes.md#finding-a-pane) matches on purposes as well as titles, and
 ## When the layout is found rather than named
 
 Everything above assumes you name the file. When it lives *in* the project —
-`sl0ppty.layout.kdl` beside the `.git` — you do not have to: `C-a w` lists the
+`slosh.layout.kdl` beside the `.git` — you do not have to: `C-a w` lists the
 projects under the roots you configured and opening one applies the layout it
 found there, or a default layout bound to that directory when the project has
 none, and `C-a W` writes this tab back out as that file. Same syntax, same

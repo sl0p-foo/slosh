@@ -1,10 +1,10 @@
 # chrome presets
 
 Colour passes over a pane's **frame** rather than its contents — `where="chrome"`
-— each in its own file, ready to paste into `~/.config/sl0ppty/config.kdl`.
+— each in its own file, ready to paste into `~/.config/slosh/config.kdl`.
 
 ```sh
-cat contrib/chrome/shine.kdl >> ~/.config/sl0ppty/config.kdl   # then save
+cat contrib/chrome/shine.kdl >> ~/.config/slosh/config.kdl   # then save
 ```
 
 Hand-written, unlike [`contrib/shaders`](../shaders), which is generated from

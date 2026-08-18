@@ -17,8 +17,8 @@ different palette — there is a test that keeps them that way.
 | `paper` | a light theme, for a light terminal |
 | `mono` | no colour at all, only weight and brightness |
 
-To use one, put it in `~/.config/sl0ppty/config.kdl` (or point
-`$SL0PPTY_CONFIG` at it). A running session re-reads it the moment you save,
+To use one, put it in `~/.config/slosh/config.kdl` (or point
+`$SLOSH_CONFIG` at it). A running session re-reads it the moment you save,
 so you can edit and watch.
 
 ## theme-tour
@@ -34,19 +34,19 @@ It works by writing the theme over the file the session was started with and
 letting the config watcher notice, which is also a fair demonstration of the
 watcher.
 
-## sl0ppty-dev
+## slosh-dev
 
-For working *on* sl0ppty: build a new binary and pick it up without losing
+For working *on* slosh: build a new binary and pick it up without losing
 your screen.
 
 ```sh
-contrib/sl0ppty-dev              # start, or reattach to, the dev session
-contrib/sl0ppty-dev restart      # from inside it, after a build
+contrib/slosh-dev              # start, or reattach to, the dev session
+contrib/slosh-dev restart      # from inside it, after a build
 ```
 
 A running session keeps the binary it started with — `reload` re-reads the
 config, it cannot re-read the code — so a new build needs a new server. The
-only thing worth carrying across is the layout, and sl0ppty can write its own:
+only thing worth carrying across is the layout, and slosh can write its own:
 `{"cmd":"dump-layout"}` is the inverse of `--layout`, so `restart` dumps,
 quits, and the loop outside comes back with the same tabs, splits,
 proportions, directories, and the same tab and pane focused.
@@ -68,11 +68,11 @@ Thirty-two ready-made shaders, one file each, generated from the presets in
 previewed, and a second copy kept by hand would be a second copy kept badly.
 `tests/test_shader_presets.py` fails if the two ever disagree.
 
-To use one, append it to `~/.config/sl0ppty/config.kdl`; a running session
+To use one, append it to `~/.config/slosh/config.kdl`; a running session
 picks it up when you save.
 
 ```sh
-cat contrib/shaders/guides-torch.kdl >> ~/.config/sl0ppty/config.kdl
+cat contrib/shaders/guides-torch.kdl >> ~/.config/slosh/config.kdl
 ```
 
 To look before choosing:
@@ -97,7 +97,7 @@ the cursor is, and standing still tells you nothing about a torch.
 
 A skeleton for adding your own shaders as a shared library, with a Makefile
 and two worked examples (`checker`, `pulse`). Build it, drop the `.so` in
-`~/.config/sl0ppty/shaders/`, and name it in your config like a built-in.
+`~/.config/slosh/shaders/`, and name it in your config like a built-in.
 
 The only header a plugin needs is `src/shader_abi.h`. What a shader may and
 may not do — and why a plugin is native code rather than a sandboxed one —
@@ -142,7 +142,7 @@ make coverage
 ```
 
 Builds a second binary with gcc's `--coverage` into `build/cov`, runs every
-suite against it (`$SL0PPTY_BIN` is how the same tests drive a different
+suite against it (`$SLOSH_BIN` is how the same tests drive a different
 build), and reads the counters back with gcov. Nothing is installed, the
 normal zig build is untouched, and it takes about a minute.
 
@@ -157,7 +157,7 @@ are rather than about the code.
 
 ## the agent skill
 
-`.agents/skills/driving-sl0ppty/SKILL.md` is the control socket written as
+`.agents/skills/driving-slosh/SKILL.md` is the control socket written as
 instructions rather than as a reference: which environment variables tell a
 program in a pane which session it is in, why work belongs in a pane that was
 *given* a command instead of typed into a shell, and that `purpose` is the handle

@@ -7,8 +7,8 @@
 #include "shader_abi.h"
 
 #ifdef BAD_ABI
-#undef SL0PPTY_SHADER_ABI
-#define SL0PPTY_SHADER_ABI 9999
+#undef SLOSH_SHADER_ABI
+#define SLOSH_SHADER_ABI 9999
 #endif
 
 /* Paints every cell's background the configured colour, at full strength when
@@ -32,4 +32,4 @@ static const shader_def_t SHADERS[] = {
     {"teststripe", sh_stripe},
 };
 
-SL0PPTY_SHADER_PLUGIN("test-fixture", SHADERS)
+SLOSH_SHADER_PLUGIN("test-fixture", SHADERS)

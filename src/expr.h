@@ -33,8 +33,8 @@
  * rather than a trap: an expression that is wrong should look wrong, not take
  * the session with it.
  */
-#ifndef SL0PPTY_EXPR_H
-#define SL0PPTY_EXPR_H
+#ifndef SLOSH_EXPR_H
+#define SLOSH_EXPR_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -88,4 +88,4 @@ int expr_eval(const expr_prog_t *p, const expr_env_t *env);
  * case there is nothing to reuse. */
 bool expr_amount_map(expr_prog_t *p, const expr_env_t *env, uint8_t **out);
 
-#endif /* SL0PPTY_EXPR_H */
+#endif /* SLOSH_EXPR_H */

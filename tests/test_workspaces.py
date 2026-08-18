@@ -1,6 +1,6 @@
 """Workspaces: projects on disk, and the tabs they open as.
 
-A *project* is a directory somebody works in -- one with a `sl0ppty.layout.kdl`
+A *project* is a directory somebody works in -- one with a `slosh.layout.kdl`
 saying what it needs, or a `.git` and nothing said yet. A *workspace* is the tab
 it occupies here, and membership is that tab's `purpose` in the `project:`
 namespace, so there is no second answer to "what is this tab" and a dumped
@@ -40,7 +40,7 @@ def roots(**projects):
     Values: layout text (a declared project), "git" (a `.git` and nothing else),
     or None (a directory that is neither, which must not be listed).
     """
-    base = tempfile.mkdtemp(prefix="sl0ppty-ws-")
+    base = tempfile.mkdtemp(prefix="slosh-ws-")
     dev = os.path.join(base, "dev")
     for name, what in projects.items():
         d = os.path.join(dev, *name.split("__"))
@@ -48,7 +48,7 @@ def roots(**projects):
         if what == "git":
             os.makedirs(os.path.join(d, ".git"), exist_ok=True)
         elif what:
-            with open(os.path.join(d, "sl0ppty.layout.kdl"), "w") as f:
+            with open(os.path.join(d, "slosh.layout.kdl"), "w") as f:
                 f.write(what)
     cfg = os.path.join(base, "config.kdl")
     with open(cfg, "w") as f:
@@ -82,7 +82,7 @@ def test_a_project_is_a_layout_file_or_a_git():
         check("a directory that is neither is not listed", "notes" not in got, str(got))
         check(
             "the declared one names its file",
-            got["api"]["layout"].endswith("sl0ppty.layout.kdl"),
+            got["api"]["layout"].endswith("slosh.layout.kdl"),
             str(got["api"]),
         )
         check(
@@ -303,7 +303,7 @@ def test_saving_a_tab_writes_a_portable_layout_file():
         saved = s.api("save-workspace")
         check(
             "it says where it wrote",
-            saved["path"] == os.path.join(dev, "web", "sl0ppty.layout.kdl"),
+            saved["path"] == os.path.join(dev, "web", "slosh.layout.kdl"),
             str(saved),
         )
         check(
@@ -554,7 +554,7 @@ def test_every_verb_has_a_bare_form():
         wrote = bare1(s, "save-workspace")
         check(
             "save-workspace names the file it wrote",
-            "sl0ppty.layout.kdl" in wrote,
+            "slosh.layout.kdl" in wrote,
             repr(wrote),
         )
         check(
@@ -609,9 +609,7 @@ def test_the_picker_lists_projects_and_opens_one():
         s.key("w")
         screen = s.snapshot().screen()
         check("it is titled as projects", "projects" in screen, screen)
-        check(
-            "a declared project shows its file", "sl0ppty.layout.kdl" in screen, screen
-        )
+        check("a declared project shows its file", "slosh.layout.kdl" in screen, screen)
         check("and one without says so", "no layout" in screen, screen)
 
         s.send("web")
@@ -651,11 +649,11 @@ def test_saving_from_the_keyboard_says_what_it_did():
         s.api("open-workspace", name="web")
         s.key("W")
         screen = s.snapshot().screen()
-        check("the toast names the file", "sl0ppty.layout.kdl" in screen, screen)
+        check("the toast names the file", "slosh.layout.kdl" in screen, screen)
         check("and counts what it wrote", "1 pane" in screen, screen)
         check(
             "the file is there",
-            os.path.exists(os.path.join(dev, "web", "sl0ppty.layout.kdl")),
+            os.path.exists(os.path.join(dev, "web", "slosh.layout.kdl")),
             screen,
         )
 

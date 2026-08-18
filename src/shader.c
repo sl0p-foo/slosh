@@ -247,20 +247,20 @@ static size_t load_one(const char *path, char *err, size_t errcap) {
   union {
     void *obj;
     const shader_plugin_t *(*fn)(void);
-  } entry = {.obj = dlsym(lib, SL0PPTY_SHADER_PLUGIN_SYM)};
+  } entry = {.obj = dlsym(lib, SLOSH_SHADER_PLUGIN_SYM)};
 
   if (!entry.obj) {
     if (err && !err[0])
-      snprintf(err, errcap, "%s: no " SL0PPTY_SHADER_PLUGIN_SYM, path);
+      snprintf(err, errcap, "%s: no " SLOSH_SHADER_PLUGIN_SYM, path);
     dlclose(lib);
     return 0;
   }
 
   const shader_plugin_t *t = entry.fn();
-  if (!t || t->abi != SL0PPTY_SHADER_ABI) {
+  if (!t || t->abi != SLOSH_SHADER_ABI) {
     if (err && !err[0])
       snprintf(err, errcap, "%s: shader ABI %u, we speak %u", path,
-               t ? t->abi : 0, SL0PPTY_SHADER_ABI);
+               t ? t->abi : 0, SLOSH_SHADER_ABI);
     dlclose(lib);
     return 0;
   }

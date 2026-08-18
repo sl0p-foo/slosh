@@ -10,8 +10,8 @@
  * Values are kept as strings and converted on read, which keeps the parser
  * small and puts type decisions where the meaning is.
  */
-#ifndef SL0PPTY_KDL_H
-#define SL0PPTY_KDL_H
+#ifndef SLOSH_KDL_H
+#define SLOSH_KDL_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -47,4 +47,4 @@ const char *kdl_prop(const kdl_node_t *n, const char *key,
 long kdl_prop_int(const kdl_node_t *n, const char *key, long fallback);
 bool kdl_prop_bool(const kdl_node_t *n, const char *key, bool fallback);
 
-#endif /* SL0PPTY_KDL_H */
+#endif /* SLOSH_KDL_H */

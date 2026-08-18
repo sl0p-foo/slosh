@@ -23,7 +23,7 @@ special case of anything.
 
 ## It runs headless
 
-`sl0ppty --script` is the whole thing without a terminal: commands in, the
+`slosh --script` is the whole thing without a terminal: commands in, the
 composited screen out as JSON. The interactive client and the test suite drive
 the same object through the same commands, so there is exactly one implementation
 of what a key does.

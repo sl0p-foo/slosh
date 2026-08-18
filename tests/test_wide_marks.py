@@ -58,7 +58,7 @@ def run(mark, cols=100, rows=14):
         ],
         input=b"settle 250\npanes\nsnapshot json\n",
         capture_output=True,
-        env={**os.environ, "SL0PPTY_CONFIG": cfg.name},
+        env={**os.environ, "SLOSH_CONFIG": cfg.name},
     )
     os.unlink(lay.name)
     os.unlink(cfg.name)

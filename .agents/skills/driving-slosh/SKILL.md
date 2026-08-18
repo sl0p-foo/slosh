@@ -1,18 +1,18 @@
 ---
-name: driving-sl0ppty
+name: driving-slosh
 description: >-
-  Drive a sl0ppty terminal multiplexer: run a long-lived command somewhere its
+  Drive a slosh terminal multiplexer: run a long-lived command somewhere its
   output can be watched, read a pane's screen, arrange panes and tabs, find a
   pane by purpose, open a project workspace, and report progress or ask a
-  question from inside a pane. Activates when `SL0PPTY` is set in the
+  question from inside a pane. Activates when `SLOSH` is set in the
   environment, when a task needs a dev server, log tailer or build left running
-  while other work continues, or when the user mentions sl0ppty, panes, tabs or
+  while other work continues, or when the user mentions slosh, panes, tabs or
   workspaces.
 ---
 
-# Driving sl0ppty
+# Driving slosh
 
-sl0ppty is a terminal multiplexer whose control socket does everything the
+slosh is a terminal multiplexer whose control socket does everything the
 keyboard does. One JSON object per line in, one JSON object out. A detached
 session answers exactly as an attached one does, so nothing here needs a
 terminal, a tty, or anybody watching.
@@ -31,38 +31,38 @@ Every pane gets these:
 
 | variable | means |
 |---|---|
-| `SL0PPTY=1` | this process is running inside a sl0ppty pane |
-| `SL0PPTY_SESSION` | the name of the session it is in — empty under `--script` |
-| `SL0PPTY_BIN` | the binary that started it |
+| `SLOSH=1` | this process is running inside a slosh pane |
+| `SLOSH_SESSION` | the name of the session it is in — empty under `--script` |
+| `SLOSH_BIN` | the binary that started it |
 
-Use `$SL0PPTY_BIN`, not `sl0ppty`: a session may have been started from a build
-tree, and `sl0ppty` is then not on your `PATH`. Both are *set* by the thing that
-made your pane, never inherited from whatever started it: `SL0PPTY_SESSION` is
+Use `$SLOSH_BIN`, not `slosh`: a session may have been started from a build
+tree, and `slosh` is then not on your `PATH`. Both are *set* by the thing that
+made your pane, never inherited from whatever started it: `SLOSH_SESSION` is
 unset under `--script`, which has no socket, rather than carrying the name of a
 session the pane is not in. So empty means there is nothing to send commands to,
 and it is worth checking before you build a command line out of it:
 
 ```bash
-[ -n "$SL0PPTY_SESSION" ] || { echo "no session to talk to"; exit 1; }
+[ -n "$SLOSH_SESSION" ] || { echo "no session to talk to"; exit 1; }
 ```
 
 From *outside* a pane, list sessions:
 
 ```bash
-sl0ppty ls
+slosh ls
 # main       running
 # work       stale
 ```
 
 `stale` is a socket whose server is gone. Addressing a session that does not
-exist prints `sl0ppty: no session named X` and exits 1 — so a failed call is
+exist prints `slosh: no session named X` and exits 1 — so a failed call is
 distinguishable from a call that answered `{"ok":false}`.
 
 ## The one interface
 
 ```bash
-SL=${SL0PPTY_BIN:-sl0ppty}
-S="$SL -s $SL0PPTY_SESSION cmd"   # empty means no session, not `main`
+SL=${SLOSH_BIN:-slosh}
+S="$SL -s $SLOSH_SESSION cmd"   # empty means no session, not `main`
 
 $S '{"cmd":"panes"}'
 $S '{"cmd":"new-tab","name":"build"}'
@@ -243,7 +243,7 @@ Two rules:
   *keybinding* action name, not a socket verb.)
 - Do not `{"cmd":"quit"}` a session you did not start. It ends every pane in it,
   including the user's.
-- A session you started for your own work is yours to quit: `sl0ppty -s mine cmd quit`.
+- A session you started for your own work is yours to quit: `slosh -s mine cmd quit`.
 
 ## Verbs
 
@@ -270,7 +270,7 @@ Two rules:
 
 ```bash
 printf '%s\n' '{"cmd":"split","dir":"cols"}' '{"cmd":"snapshot","format":"text"}' \
-  | sl0ppty --script --cols 80 --rows 24 -- /bin/sh
+  | slosh --script --cols 80 --rows 24 -- /bin/sh
 ```
 
 `--script` is the whole program without a terminal: verbs on stdin, answers on

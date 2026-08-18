@@ -29,7 +29,7 @@ SH = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; printf "BLOCK\\n"; read x']
 
 def session_dir(plugins, config, shaders_subdir=False):
     """A config file, and the plugins it should find beside it."""
-    d = tempfile.mkdtemp(prefix="sl0ppty-plug-")
+    d = tempfile.mkdtemp(prefix="slosh-plug-")
     dest = os.path.join(d, "shaders") if shaders_subdir else d
     os.makedirs(dest, exist_ok=True)
     for p in plugins:
@@ -137,7 +137,7 @@ def test_no_shader_directory_at_all_is_normal():
     cfg, d = session_dir([], "")
     with open(cfg, "w") as f:
         f.write(
-            'shader_dir "/nonexistent/sl0ppty/shaders"\n'
+            'shader_dir "/nonexistent/slosh/shaders"\n'
             "shaders {\n    dim amount=100\n}\n"
         )
 

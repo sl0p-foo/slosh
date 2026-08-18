@@ -6,7 +6,7 @@
  * session happened to be in. Silently \u2014 which is the worst way for a path to
  * be wrong, because the pane still starts and still works.
  */
-#include "sl0ppty.h"
+#include "slosh.h"
 
 #include <sys/stat.h>
 

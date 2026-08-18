@@ -1,4 +1,4 @@
-# SPEED — sl0ppty
+# SPEED — slosh
 
 All numbers measured on this box, 2026-08-14. Re-measure only if something
 structural changes.

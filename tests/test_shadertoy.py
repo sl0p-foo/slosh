@@ -235,7 +235,7 @@ def rand_exprs(n, seed=20260814):
 
 
 def c_values(pairs):
-    """Every (env, expr) through the compiler sl0ppty actually uses."""
+    """Every (env, expr) through the compiler slosh actually uses."""
     lines = []
     for env, expr in pairs:
         vals = " ".join(

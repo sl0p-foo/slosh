@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`sl0ppty --dump-config`: every setting, with its default value.
+"""`slosh --dump-config`: every setting, with its default value.
 
 Generated from the code rather than kept as a file on disk, because a
 checked-in copy of the defaults is a second source of truth and drifts — ours
@@ -26,7 +26,7 @@ SRC = os.path.join(HERE, "..", "src", "config.c")
 
 def dump(config=None):
     env = dict(os.environ)
-    env["SL0PPTY_CONFIG"] = config or "/nonexistent/sl0ppty.kdl"
+    env["SLOSH_CONFIG"] = config or "/nonexistent/slosh.kdl"
     return subprocess.run(
         [BIN, "--dump-config"], capture_output=True, text=True, env=env
     ).stdout
@@ -154,7 +154,7 @@ def test_the_dump_is_a_working_config():
 def test_edit_config_writes_it_when_there_is_none():
     """The reason it exists: C-a e on a fresh install opened an empty buffer,
     which tells you nothing about what you can set."""
-    home = tempfile.mkdtemp(prefix="sl0ppty-home-")
+    home = tempfile.mkdtemp(prefix="slosh-home-")
     sh = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; read x']
     # No config, and no ~/.config either: a fresh container has neither.
     with Session(
@@ -162,7 +162,7 @@ def test_edit_config_writes_it_when_there_is_none():
         cols=74,
         rows=24,
         env={"HOME": home, "EDITOR": "tail -f"},
-        config=os.path.join(home, ".config", "sl0ppty", "config.kdl"),
+        config=os.path.join(home, ".config", "slosh", "config.kdl"),
     ) as s:
         s.settle()
         s.key("e")
@@ -175,7 +175,7 @@ def test_edit_config_writes_it_when_there_is_none():
             snap.screen()[-400:],
         )
 
-    path = os.path.join(home, ".config", "sl0ppty", "config.kdl")
+    path = os.path.join(home, ".config", "slosh", "config.kdl")
     check("and it was written, directories and all", os.path.exists(path), path)
     if os.path.exists(path):
         check(
@@ -186,7 +186,7 @@ def test_edit_config_writes_it_when_there_is_none():
 
 
 def test_it_never_overwrites_a_config_you_already_have():
-    home = tempfile.mkdtemp(prefix="sl0ppty-home-")
+    home = tempfile.mkdtemp(prefix="slosh-home-")
     path = os.path.join(home, "config.kdl")
     open(path, "w").write("// mine\ngap 3\n")
     sh = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; read x']

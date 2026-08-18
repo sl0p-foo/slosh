@@ -126,7 +126,7 @@ not always in a state to put it back:
 |---|---|
 | `printf '\033]5577;1;shader;\033\\'` | from the program, one exchange, both rects |
 | `printf '\033]5577;1;shader-load;/path/to/preset.kdl\033\\'` | a `shaders { }` file, read by the session and routed by `where=` |
-| `sl0ppty cmd '{"cmd":"clear-shaders","id":3}'` | from outside; `id` 0 or absent means the focused pane |
+| `slosh cmd '{"cmd":"clear-shaders","id":3}'` | from outside; `id` 0 or absent means the focused pane |
 | the `clear-shaders` action | on a key you bind, or from the palette |
 
 None of them is gated on `in_band_shaders`. A chain can outlive the setting that
@@ -162,7 +162,7 @@ a config file would be a second opinion about what it says, exactly where commen
 meet quoted strings.
 
 It is a readline prompt, so editing, up/down and ctrl-r work as they do in a shell,
-and history is kept between runs in `$XDG_DATA_HOME/sl0ppty/shader-repl.history` --
+and history is kept between runs in `$XDG_DATA_HOME/slosh/shader-repl.history` --
 the chains only, since `:quit` is not something you want to press up past. Tab
 completes the commands, the shader names, the property keys, the expression
 language's own variables, constants and functions, and filenames after `:load`.
@@ -179,7 +179,7 @@ said about anybody else.
 ## Your own, compiled
 
 A shader is a C function from one cell to that cell's colours. Any `*.so` in
-`~/.config/sl0ppty/shaders/` that exports one is loaded at startup and named in
+`~/.config/slosh/shaders/` that exports one is loaded at startup and named in
 the config exactly like a built-in. Skeleton, Makefile and the rules a shader
 has to keep:
 `contrib/shader-plugin`.

@@ -17,7 +17,7 @@ A subdirectory of a configured root with one of two markers in it:
 
 | marker | what it is |
 |---|---|
-| `sl0ppty.layout.kdl` | a *declared* project — it says what it needs open |
+| `slosh.layout.kdl` | a *declared* project — it says what it needs open |
 | `.git` | an *inferred* one — you work here, but you have not said how |
 
 Anything else is not a project, and nothing is guessed from what is inside it.
@@ -40,7 +40,7 @@ Two settings, both in your [config](config.md):
 
 ```kdl
 project_roots "~/dev" "~/work" depth=2
-project_layout "~/.config/sl0ppty/project.layout.kdl"
+project_layout "~/.config/slosh/project.layout.kdl"
 ```
 
 `project_roots` takes more than one directory because people have more than one —
@@ -59,7 +59,7 @@ paths in it bind to the project being opened, not to the directory the file live
 in** — deliberately the opposite of the rule for a layout you name yourself, where
 a relative `cwd=` is relative to that file ([layouts](layouts.md#the-shape)). The
 whole point of one shared layout is that `cwd="."` means *this* project; bound to
-itself it would open every project in `~/.config/sl0ppty`. Unset, a project opens
+itself it would open every project in `~/.config/slosh`. Unset, a project opens
 as one pane running your shell in it.
 
 **Nothing sniffs `package.json` or `Cargo.toml` to guess what to run.** A table
@@ -94,7 +94,7 @@ C-a w                       picker: ~/work  newthing   .git · no layout
 Enter                       your project_layout, cwd bound to newthing
 C-a Enter, npm run dev      arrange it, run things
 C-a P  service:web  Enter   tag the pane that matters
-C-a W                       "wrote sl0ppty.layout.kdl · 4 panes, 2 suspended"
+C-a W                       "wrote slosh.layout.kdl · 4 panes, 2 suspended"
 ```
 
 Tomorrow, `C-a w Enter` rebuilds that tab with the dev server in the pane you put
@@ -109,9 +109,9 @@ every tab carrying that purpose and says how many.
 
 ## Saving one
 
-`C-a W` writes the focused tab to `sl0ppty.layout.kdl` in the project's directory,
+`C-a W` writes the focused tab to `slosh.layout.kdl` in the project's directory,
 and the toast says what happened:
-`wrote sl0ppty.layout.kdl · 4 panes, 2 suspended`.
+`wrote slosh.layout.kdl · 4 panes, 2 suspended`.
 
 **What each pane is running goes in with it.** That is what makes writing a layout
 the same act as arranging one: split the tab, start the dev server, start the log
@@ -155,7 +155,7 @@ the screen — so it says so in the request.
 how a hand-arranged tab becomes a project's layout without opening it through the
 picker first.
 
-`sl0ppty --check sl0ppty.layout.kdl` holds the result to the layout schema and
+`slosh --check slosh.layout.kdl` holds the result to the layout schema and
 prints one `file:line: what` per problem, so a project's layout goes through the
 same check as everything else you commit — see
 [layouts](layouts.md#what-to-call-them).
@@ -202,9 +202,9 @@ Open one and act on what is in it, over the [control
 socket](scripting.md#the-control-socket):
 
 ```bash
-$ sl0ppty -s work cmd '{"cmd":"open-workspace","name":"api"}'
+$ slosh -s work cmd '{"cmd":"open-workspace","name":"api"}'
 {"ok":true,"tab":3,"purpose":"project:api.9f3c1d20","created":true,...}
-$ sl0ppty -s work cmd '{"cmd":"panes"}'      # keep the ones whose tab_id is 3
+$ slosh -s work cmd '{"cmd":"panes"}'      # keep the ones whose tab_id is 3
 ```
 
 | verb | takes | answers |
@@ -214,8 +214,8 @@ $ sl0ppty -s work cmd '{"cmd":"panes"}'      # keep the ones whose tab_id is 3
 | `close-workspace` | `name` or `purpose` | `closed` — how many tabs went |
 | `save-workspace` | `tab` (0 for the current one), `path` for a tab that is not a workspace yet, `suspend`, `force` | `path` `purpose` `panes` `suspended` `replaced` |
 
-Every one of them is in the bare dispatcher too, so `sl0ppty -s work cmd
-workspaces` and `sl0ppty -s work cmd open-workspace api` do the same from a shell
+Every one of them is in the bare dispatcher too, so `slosh -s work cmd
+workspaces` and `slosh -s work cmd open-workspace api` do the same from a shell
 without quoting JSON ([scripting](scripting.md#the-control-socket)).
 
 `open-workspace` is idempotent, which is the property that makes it safe to call

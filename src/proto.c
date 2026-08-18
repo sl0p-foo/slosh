@@ -95,9 +95,9 @@ int msg_send(int fd, uint8_t type, const void *data, size_t len) {
 static int session_dir(char *out, size_t cap) {
   const char *run = getenv("XDG_RUNTIME_DIR");
   if (run && *run)
-    snprintf(out, cap, "%s/sl0ppty", run);
+    snprintf(out, cap, "%s/slosh", run);
   else
-    snprintf(out, cap, "/tmp/sl0ppty-%u", (unsigned)getuid());
+    snprintf(out, cap, "/tmp/slosh-%u", (unsigned)getuid());
   if (mkdir(out, 0700) != 0 && errno != EEXIST) return -1;
   return 0;
 }

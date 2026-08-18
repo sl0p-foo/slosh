@@ -3346,7 +3346,7 @@ pub fn eraseDisplay(
                 // with `a=p` per frame, and freeing the data on a screen clear
                 // makes every later placement of that id draw nothing. The
                 // storage limit (320MB, LRU) is what bounds this, which is why
-                // it exists. sl0ppty patch; see vendor/patches.
+                // it exists. slosh patch; see vendor/patches.
                 self.screens.active.kitty_images.delete(
                     self.io(),
                     self.screens.active.alloc,
@@ -3409,7 +3409,7 @@ pub fn eraseDisplay(
                 // with `a=p` per frame, and freeing the data on a screen clear
                 // makes every later placement of that id draw nothing. The
                 // storage limit (320MB, LRU) is what bounds this, which is why
-                // it exists. sl0ppty patch; see vendor/patches.
+                // it exists. slosh patch; see vendor/patches.
                 self.screens.active.kitty_images.delete(
                     self.io(),
                     self.screens.active.alloc,

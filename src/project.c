@@ -9,7 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "sl0ppty.h"
+#include "slosh.h"
 
 /* FNV-1a over the resolved path, printed as eight hex digits.
  *

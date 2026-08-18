@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`sl0ppty --check`: the config linter.
+"""`slosh --check`: the config linter.
 
 The loader is the only checker that cannot drift from the loader, so this is a
 mode rather than a script. The difference between it and a session is what they
@@ -95,16 +95,16 @@ def test_a_file_that_will_not_parse_says_nothing_applied():
 
 
 def test_a_missing_file_is_a_problem_not_a_crash():
-    r = run("/nonexistent/sl0ppty.kdl")
+    r = run("/nonexistent/slosh.kdl")
     check("exit 1", r.returncode == 1, r.stdout)
     check("and it says so", "not loaded" in r.stderr or "cannot" in r.stderr, r.stderr)
 
 
 def test_without_a_path_it_checks_the_config_a_session_would_read():
     good = conf("gap 3\n")
-    env = dict(os.environ, SL0PPTY_CONFIG=good)
+    env = dict(os.environ, SLOSH_CONFIG=good)
     r = subprocess.run([BIN, "--check"], capture_output=True, text=True, env=env)
-    check("it read $SL0PPTY_CONFIG", good in r.stdout, r.stdout + r.stderr)
+    check("it read $SLOSH_CONFIG", good in r.stdout, r.stdout + r.stderr)
     check("and was happy with it", r.returncode == 0, r.stderr)
 
 

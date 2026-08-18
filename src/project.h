@@ -10,8 +10,8 @@
  * which is nothing next to the keystroke that asked -- and an answer nobody
  * remembered cannot be stale, which no watcher can promise on a bind mount.
  */
-#ifndef SL0PPTY_PROJECT_H
-#define SL0PPTY_PROJECT_H
+#ifndef SLOSH_PROJECT_H
+#define SLOSH_PROJECT_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,7 +20,7 @@
 /* The file a project uses to say what it needs. One name, so there is no
  * precedence question: a layout file by D2's rule, checked by `--check`, and
  * highlighted by anything that knows KDL. */
-#define PROJECT_LAYOUT_FILE "sl0ppty.layout.kdl"
+#define PROJECT_LAYOUT_FILE "slosh.layout.kdl"
 
 /* How many projects one session will look at. A picker is not a filesystem
  * browser: past this many the answer to "which project" is a search, not a
@@ -61,4 +61,4 @@ bool project_find(const char *const *roots, int depth, const char *name,
  * worktrees of one repo are two workspaces, which is what they are. */
 void project_slug(const char *path, const char *name, char *out, size_t cap);
 
-#endif /* SL0PPTY_PROJECT_H */
+#endif /* SLOSH_PROJECT_H */

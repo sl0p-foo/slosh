@@ -175,8 +175,8 @@ def test_it_stays_put_when_the_ends_change_length():
             s.api("set-purpose", target="tab", id=s.tabs()[0]["id"], purpose=name)
             s.settle(20)
             row = bar(s)
-            check(f"the banner is up with {name!r}", "sl0ppty 0." in row, row)
-            seen.add(row.index("sl0ppty 0."))
+            check(f"the banner is up with {name!r}", "slosh 0." in row, row)
+            seen.add(row.index("slosh 0."))
     check("and in the same column every time", len(seen) == 1, str(seen))
 
 
@@ -212,7 +212,7 @@ def test_it_keeps_a_blank_column_on_each_side():
     with Session(SH, cols=96, rows=18) as s:
         s.settle(20)
         row = bar(s)
-        at = row.index("sl0ppty 0.")
+        at = row.index("slosh 0.")
         end = at + len(row[at:].split("  ")[0])
         check("a gap before it", row[at - 1] == " ", repr(row[at - 4 : at + 4]))
         check("a gap after it", row[end] == " ", repr(row[end - 4 : end + 4]))
@@ -225,20 +225,20 @@ def test_the_version_sits_in_the_slot_when_no_hint_does():
     started with."""
     with Session(SH, cols=96, rows=18) as s:
         s.settle(20)
-        check("the banner is there by default", "sl0ppty 0." in bar(s), bar(s))
+        check("the banner is there by default", "slosh 0." in bar(s), bar(s))
 
         s.api("split", dir="cols")
         s.settle(20)
         h = hit(s, "close:")
         hover(s, h["x"], h["y"])
         check("a hint takes the slot back", "close this pane" in bar(s), bar(s))
-        check("and the banner gives way", "sl0ppty 0." not in bar(s), bar(s))
+        check("and the banner gives way", "slosh 0." not in bar(s), bar(s))
 
         hover(s, h["x"], h["y"] + 4)  # off the button, into the pane
         s.settle(20)
         check(
             "the banner returns when the pointer moves off",
-            "sl0ppty 0." in bar(s),
+            "slosh 0." in bar(s),
             bar(s),
         )
 
@@ -247,7 +247,7 @@ def test_the_banner_and_the_hints_are_separate_knobs():
     off = cfg("version_banner false\n")
     with Session(SH, cols=96, rows=18, config=off) as s:
         s.settle(20)
-        check("version_banner false says nothing", "sl0ppty" not in bar(s), bar(s))
+        check("version_banner false says nothing", "slosh" not in bar(s), bar(s))
         s.api("split", dir="cols")
         s.settle(20)
         h = hit(s, "close:")
@@ -258,12 +258,12 @@ def test_the_banner_and_the_hints_are_separate_knobs():
     nohints = cfg("hints false\n")
     with Session(SH, cols=96, rows=18, config=nohints) as s:
         s.settle(20)
-        check("hints false leaves the banner alone", "sl0ppty 0." in bar(s), bar(s))
+        check("hints false leaves the banner alone", "slosh 0." in bar(s), bar(s))
         s.api("split", dir="cols")
         s.settle(20)
         h = hit(s, "close:")
         hover(s, h["x"], h["y"])
-        check("and nothing replaces it", "sl0ppty 0." in bar(s), bar(s))
+        check("and nothing replaces it", "slosh 0." in bar(s), bar(s))
     os.unlink(nohints)
 
 

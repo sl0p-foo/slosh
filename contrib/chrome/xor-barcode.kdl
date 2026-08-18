@@ -1,7 +1,7 @@
 // xor barcode — chrome
 //
-// Drop this into ~/.config/sl0ppty/config.kdl (a running session picks it up when
-// you save), or point $SL0PPTY_CONFIG at this file. To hang it off a pane state
+// Drop this into ~/.config/slosh/config.kdl (a running session picks it up when
+// you save), or point $SLOSH_CONFIG at this file. To hang it off a pane state
 // instead of every pane, put the same pass inside one:
 //
 //     states { bell { ... } }

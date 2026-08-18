@@ -31,7 +31,7 @@ DOCS = os.path.join(ROOT, "docs")
 def run(outdir, docs=None, expect_ok=True):
     env = dict(os.environ)
     if docs:
-        env["SL0PPTY_DOCS"] = docs
+        env["SLOSH_DOCS"] = docs
     r = subprocess.run(
         [sys.executable, GEN, outdir], capture_output=True, text=True, env=env
     )

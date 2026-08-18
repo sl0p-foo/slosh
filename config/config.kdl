@@ -1,6 +1,6 @@
 // This file is the *reasoning*: what each setting is for, what it cost to
 // get right, and which ones are opinions. The values themselves come out of
-// the code -- `sl0ppty --dump-config` writes every knob with its default, and
+// the code -- `slosh --dump-config` writes every knob with its default, and
 // `C-a e` seeds a missing config with exactly that.
 //
 // So if the two ever disagree, the dump is right and this file is stale;
@@ -22,17 +22,17 @@
 //                .so is picked up and a replaced one needs a new session
 //
 // A session started before this file existed still notices it appearing: the
-// watch is on the directory, and sl0ppty creates that directory at startup so
+// watch is on the directory, and slosh creates that directory at startup so
 // there is always something to watch.
 //
-// sl0ppty — every value here is also the compiled-in default, so this file is
+// slosh — every value here is also the compiled-in default, so this file is
 // documentation as much as configuration. Copy it to
-// ~/.config/sl0ppty/config.kdl (or point $SL0PPTY_CONFIG at it) and edit.
+// ~/.config/slosh/config.kdl (or point $SLOSH_CONFIG at it) and edit.
 //
 // A broken file costs a warning on stderr and nothing else: the defaults
 // stand. Saving this file re-reads it into every running session on its own;
-// `sl0ppty --no-reload` starts one that does not watch, and
-// `sl0ppty cmd '{"cmd":"reload"}'` asks for a re-read explicitly. And
+// `slosh --no-reload` starts one that does not watch, and
+// `slosh cmd '{"cmd":"reload"}'` asks for a re-read explicitly. And
 // refuses a file it cannot parse rather than half-applying it.
 
 // ── include ─────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@
 // complains about: an unknown shader, a binding that does not parse, an include
 // that is not there. The file applied; one line of it did not; you get told.
 //
-// `sl0ppty --check` says all of them at once, with a file and line each, and
+// `slosh --check` says all of them at once, with a file and line each, and
 // exits non-zero if there were any. A session only has room for the first.
 
 // ── geometry ────────────────────────────────────────────────────────────────
@@ -147,12 +147,12 @@ title_inset 2
 hints true
 
 // When there is no hint to show — which is most of the time, since a hint
-// needs the pointer to be on something — that space says which sl0ppty this
-// is: `sl0ppty 0.1.0+d9dee7f`. It reads as decoration and is not: a session
+// needs the pointer to be on something — that space says which slosh this
+// is: `slosh 0.1.0+d9dee7f`. It reads as decoration and is not: a session
 // keeps the binary it started with, so after a rebuild the version on screen
-// is the one you are actually talking to, and `sl0ppty --version` is the one
+// is the one you are actually talking to, and `slosh --version` is the one
 // on disk. When those disagree, that is the answer to whatever you were about
-// to debug. (contrib/sl0ppty-dev restarts into the new one.)
+// to debug. (contrib/slosh-dev restarts into the new one.)
 //
 // It gives way to a hint, and both give way to the ends of the line -- they
 // are centred on the row and simply not drawn when that would overlap.
@@ -270,7 +270,7 @@ focus_follows_mouse true
 //
 // The way back, whatever a pane did to itself and whether or not this is still
 // true afterwards: the `clear-shaders` action (bind it, or run it from the
-// palette), or `sl0ppty cmd '{"cmd":"clear-shaders","id":0}'`.
+// palette), or `slosh cmd '{"cmd":"clear-shaders","id":0}'`.
 in_band_shaders false
 
 // The floor below which a pane is not small but useless. A split that cannot
@@ -366,7 +366,7 @@ word_separators "\"'`()[]{}<>;,|"
 modal_scrim 120
 
 // Extra shaders can be loaded from shared libraries: any `*.so` in the
-// directory below that exports a sl0ppty shader plugin. Once loaded they are
+// directory below that exports a slosh shader plugin. Once loaded they are
 // named here exactly like a built-in. Default: a `shaders` directory beside
 // this file, so dropping the .so next to your config is the whole install.
 //
@@ -379,7 +379,7 @@ modal_scrim 120
 // *replacing* one needs a new session. Skeleton and Makefile:
 // contrib/shader-plugin/
 //
-// shader_dir "~/.config/sl0ppty/shaders"
+// shader_dir "~/.config/slosh/shaders"
 
 // ── projects ────────────────────────────────────────────────────────────────
 //
@@ -389,7 +389,7 @@ modal_scrim 120
 // directory that *is* a project is never descended into, which is what keeps
 // the scan off node_modules without a rule about node_modules.
 //
-// A subdirectory is a project when it has a `sl0ppty.layout.kdl` saying what it
+// A subdirectory is a project when it has a `slosh.layout.kdl` saying what it
 // needs -- or a `.git`, which is the project that has not said yet. Both,
 // because a ~/dev of forty checkouts and three layout files would otherwise be
 // a picker with three rows, and `C-a W` writes the missing file from whatever
@@ -406,11 +406,11 @@ modal_scrim 120
 // guess about your stack from whatever config files it happens to contain. A
 // relative `cwd=` in it binds to whichever project is being opened, not to the
 // directory this file lives in, so one file is the shape you start every
-// checkout in -- and a project that grows its own `sl0ppty.layout.kdl` wins
+// checkout in -- and a project that grows its own `slosh.layout.kdl` wins
 // over it, the way an included file is the base and the file including it wins.
 //
 // Unset, so a project with no layout is one pane running your shell in it:
-// project_layout "~/.config/sl0ppty/project.layout.kdl"
+// project_layout "~/.config/slosh/project.layout.kdl"
 
 // ── shaders ─────────────────────────────────────────────────────────────────
 //
@@ -775,7 +775,7 @@ theme {
 // copied off C-a ? is a chord you can paste in here. Anything else is the
 // character you press, shift included: "?" is shift+slash, "H" is shift+h.
 //
-// `sl0ppty --check` reads this file and says what it could not honour.
+// `slosh --check` reads this file and says what it could not honour.
 //
 // Actions: split split-cols split-rows close-pane focus-left focus-right focus-up
 // focus-down focus-next resize-left resize-right resize-up resize-down equalize

@@ -3,8 +3,8 @@
 One file, in [KDL](https://kdl.dev):
 
 ```
-$SL0PPTY_CONFIG, else $XDG_CONFIG_HOME/sl0ppty/config.kdl, else
-~/.config/sl0ppty/config.kdl
+$SLOSH_CONFIG, else $XDG_CONFIG_HOME/slosh/config.kdl, else
+~/.config/slosh/config.kdl
 ```
 
 `C-a e` opens it in a pane, writing a starting file first if you have none.
@@ -22,11 +22,11 @@ plugin that replaced one already loaded needs a new session.
 
 ## Two files worth knowing
 
-- **`sl0ppty --dump-config`** writes every setting with its *default* value —
+- **`slosh --dump-config`** writes every setting with its *default* value —
   not the value your config gives it. It is generated from the code, so it
   cannot drift, and it is a supported way to start a config:
-  `sl0ppty --dump-config > ~/.config/sl0ppty/config.kdl`. To see what your own
-  file does, `sl0ppty --check` reads it and reports what it understood.
+  `slosh --dump-config > ~/.config/slosh/config.kdl`. To see what your own
+  file does, `slosh --check` reads it and reports what it understood.
 - **`config/config.kdl`**
   in the source tree is the same list with the *reasoning* attached — what each
   setting is for, what it cost to get right, and which ones are opinions. When
@@ -35,21 +35,21 @@ plugin that replaced one already loaded needs a new session.
 ## Checking one
 
 ```bash
-$ sl0ppty --check                     # the config a session would read
-$ sl0ppty --check themes/mine.kdl     # or one you have not installed yet
+$ slosh --check                     # the config a session would read
+$ slosh --check themes/mine.kdl     # or one you have not installed yet
 ```
 
 Every problem it found, one per line, with the file and line it happened at —
 including a setting it does not know:
 
 ```
-  cannot open /home/you/.config/sl0ppty/themes/nope.kdl
+  cannot open /home/you/.config/slosh/themes/nope.kdl
   config.kdl:2: bad prefix: ctrl+nope
   config.kdl:3: bad key: wobble
   config.kdl:5: padding takes 1, 2 or 4 values (all, vertical horizontal, or top right bottom left), not 3
   config.kdl:6: unknown setting: wobble
   themes/mine.kdl:7: unknown shader: bloom
-~/.config/sl0ppty/config.kdl: 6 problems
+~/.config/slosh/config.kdl: 6 problems
 ```
 
 The problems go to stderr and the summary with them. It exits 1 when it has
@@ -99,7 +99,7 @@ Six ready-made themes are in
 own two lines on top:
 
 ```kdl
-include "~/.config/sl0ppty/themes/phosphor.kdl"
+include "~/.config/slosh/themes/phosphor.kdl"
 theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 ```
 

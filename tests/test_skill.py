@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`.agents/skills/driving-sl0ppty/SKILL.md`: the agent-facing interface, checked.
+"""`.agents/skills/driving-slosh/SKILL.md`: the agent-facing interface, checked.
 
 A skill is documentation an agent acts on without a human reading it first, which
 makes a stale one worse than a missing one: a wrong verb becomes a failed tool call
@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness import BIN, Session, check, report
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKILL = os.path.join(ROOT, ".agents", "skills", "driving-sl0ppty", "SKILL.md")
+SKILL = os.path.join(ROOT, ".agents", "skills", "driving-slosh", "SKILL.md")
 SH = ["/bin/sh", "-c", "read x"]
 
 
@@ -36,11 +36,11 @@ def test_the_skill_is_where_agents_look_for_it():
     body = text()
     check("it opens with YAML frontmatter", body.startswith("---\n"), body[:40])
     fm = body.split("---")[1]
-    check("naming itself for its directory", "name: driving-sl0ppty" in fm, fm)
+    check("naming itself for its directory", "name: driving-slosh" in fm, fm)
     check("and saying when it applies", "description:" in fm, fm)
     # The description is what a harness matches on, so it has to mention the
     # things a user would say.
-    for word in ("sl0ppty", "pane", "workspace", "SL0PPTY"):
+    for word in ("slosh", "pane", "workspace", "SLOSH"):
         check("the description mentions " + word, word in fm, fm)
 
 
@@ -69,7 +69,7 @@ def test_every_verb_it_names_is_a_verb_the_program_has():
 
 def test_the_environment_it_promises_is_the_environment_panes_get():
     body = text()
-    for var in ("SL0PPTY", "SL0PPTY_SESSION", "SL0PPTY_BIN"):
+    for var in ("SLOSH", "SLOSH_SESSION", "SLOSH_BIN"):
         check("the skill documents " + var, var in body, "missing " + var)
 
     # Started from an environment that already names a session and a binary,
@@ -79,11 +79,11 @@ def test_the_environment_it_promises_is_the_environment_panes_get():
     # panes the outer session's name and a script in there sends its commands
     # somewhere else. Passing the lie in makes the difference visible from any
     # shell, rather than only from one that happens to have them set.
-    lie = {"SL0PPTY_SESSION": "somebody-elses-session", "SL0PPTY_BIN": "/nope/x"}
+    lie = {"SLOSH_SESSION": "somebody-elses-session", "SLOSH_BIN": "/nope/x"}
     probe = [
         "/bin/sh",
         "-c",
-        'echo "V=[$SL0PPTY] S=[$SL0PPTY_SESSION] B=[$SL0PPTY_BIN]"; read x',
+        'echo "V=[$SLOSH] S=[$SLOSH_SESSION] B=[$SLOSH_BIN]"; read x',
     ]
     with Session(probe, cols=120, rows=8, env=lie) as s:
         s.until_text("V=[")
@@ -99,7 +99,7 @@ def test_the_environment_it_promises_is_the_environment_panes_get():
         )
         check(
             "the binary is the one that made the pane, not an inherited path",
-            "/nope/x" not in screen and "sl0ppty" in screen.split("B=[")[1],
+            "/nope/x" not in screen and "slosh" in screen.split("B=[")[1],
             screen,
         )
     flat = " ".join(body.split())  # the file is wrapped; the claim is not
@@ -114,10 +114,10 @@ def test_a_real_session_names_itself_to_its_panes():
     """The other half, and the reason `--script` clearing it is not just
     `unsetenv` everywhere: a session *does* tell its panes which one it is, and it
     is its own name even when it was started from inside another session."""
-    out = os.path.join(tempfile.mkdtemp(prefix="sl0ppty-env-"), "seen")
+    out = os.path.join(tempfile.mkdtemp(prefix="slosh-env-"), "seen")
     name = "envclaim-%d" % os.getpid()
     env = dict(os.environ)
-    env["SL0PPTY_SESSION"] = "somebody-elses-session"
+    env["SLOSH_SESSION"] = "somebody-elses-session"
     try:
         subprocess.run(
             [
@@ -127,7 +127,7 @@ def test_a_real_session_names_itself_to_its_panes():
                 "--",
                 "/bin/sh",
                 "-c",
-                'echo "S=[$SL0PPTY_SESSION]" > %s; read x' % out,
+                'echo "S=[$SLOSH_SESSION]" > %s; read x' % out,
             ],
             capture_output=True,
             text=True,
@@ -223,7 +223,7 @@ def test_it_is_free_of_this_machine():
     check("no path from the machine it was written on", not bad, str(set(bad)))
     check(
         "it reaches the binary through the environment",
-        "SL0PPTY_BIN" in body and "not on your `PATH`" in body,
+        "SLOSH_BIN" in body and "not on your `PATH`" in body,
         "no PATH note",
     )
 
@@ -251,7 +251,7 @@ def test_the_skill_is_reachable_from_the_docs_people_read():
     ):
         with open(path) as f:
             body = f.read()
-        check("%s points at the skill" % what, "driving-sl0ppty" in body, path)
+        check("%s points at the skill" % what, "driving-slosh" in body, path)
 
 
 if __name__ == "__main__":

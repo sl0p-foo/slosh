@@ -1,6 +1,6 @@
 // amber -- the other CRT, for people who found green loud
 //
-// Drop into ~/.config/sl0ppty/config.kdl, or point $SL0PPTY_CONFIG at a file
+// Drop into ~/.config/slosh/config.kdl, or point $SLOSH_CONFIG at a file
 // that contains it. A running session re-reads it the moment you save.
 theme {
     // what a shader takes "terminal default" to mean

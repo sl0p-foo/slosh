@@ -2,7 +2,7 @@
 """Writing a session back out as a layout, and getting it back.
 
 This is what makes a restart survivable: build a new binary, dump what you
-have, quit, come back with --layout. contrib/sl0ppty-dev is that loop.
+have, quit, come back with --layout. contrib/slosh-dev is that loop.
 
 The only assertion worth much here is the round trip. A dump that *looks*
 right and rebuilds a different tree is exactly the failure this would have —

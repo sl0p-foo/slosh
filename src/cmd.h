@@ -1,7 +1,7 @@
 /* The command vocabulary, shared by the headless driver and the control
  * socket, so a script written against one works against the other. */
-#ifndef SL0PPTY_CMD_H
-#define SL0PPTY_CMD_H
+#ifndef SLOSH_CMD_H
+#define SLOSH_CMD_H
 
 #include "app.h"
 
@@ -10,4 +10,4 @@
 char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
                bool *quit);
 
-#endif /* SL0PPTY_CMD_H */
+#endif /* SLOSH_CMD_H */

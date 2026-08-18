@@ -83,7 +83,7 @@ suspect what `server.c` does that `headless.c` does not.
 before the next paint, so nothing had to think about it. Now that they stay,
 an EOF fd left in the poll set is *readable forever*: the session would spin a
 core behind a pane that looks idle. `collect_cb` skips `fd < 0` for the same
-reason, and that is why `sl0ppty run cmd` still terminates — the settle loop
+reason, and that is why `slosh run cmd` still terminates — the settle loop
 ends when no pane has an fd left.
 
 **`settle N` in the test harness is a sleep in disguise.** `send` and
@@ -312,7 +312,7 @@ says "<prefix> then:" and these are exactly the ones that is not true of.
 
 ## Restarting into the same screen
 
-`dump-layout` is the inverse of `--layout`, and `contrib/sl0ppty-dev` is the
+`dump-layout` is the inverse of `--layout`, and `contrib/slosh-dev` is the
 loop that uses it: dump, quit, come back on the new binary with the same
 shape. Three things it got wrong first, all of the same kind -- a dump that
 loads without complaint and rebuilds something subtly different:
@@ -334,7 +334,7 @@ there immediately, where "does it look right" would not.
 ## Coverage, and what its numbers mean
 
 `make coverage` builds a gcc `--coverage` binary into build/cov, runs every
-suite against it through `$SL0PPTY_BIN`, and prints a per-file table. About a
+suite against it through `$SLOSH_BIN`, and prints a per-file table. About a
 minute, nothing installed, the zig build untouched. Currently ~85%.
 
 Two things about the numbers, both worth knowing before anyone acts on them:
@@ -352,7 +352,7 @@ Two things about the numbers, both worth knowing before anyone acts on them:
 
 ## The config file, and the two places it lives
 
-`sl0ppty --dump-config` renders every setting from the live values -- there is
+`slosh --dump-config` renders every setting from the live values -- there is
 no checked-in copy of the defaults to drift, which was the actual problem:
 config/config.kdl had already lost four theme colours before anyone noticed.
 That file is now explicitly the *prose* (why a setting exists), and the values

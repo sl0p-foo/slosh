@@ -44,7 +44,7 @@ static int64_t now_ms(void) {
  * by sending MSG_HELLO; anything else (a control command, a liveness probe
  * from `ls`) is just a connection and never displaces anybody.
  *
- * This distinction is not fussiness. The zellij fork sl0ppty replaces had a
+ * This distinction is not fussiness. The zellij fork slosh replaces had a
  * 20-25%% CLI failure rate because every action probed liveness by connecting,
  * that probe counted as a client, and its teardown removed the *real* one. */
 #define MAX_CONNS 16
@@ -239,21 +239,21 @@ static bool watch_hit(const watchset_t *w, const char *name) {
 
 /* What every pane is told about the session around it. Panes inherit this
  * process's environment, so this is how a program *inside* one learns which
- * session it is in -- and therefore which socket to talk to. `SL0PPTY=1`
+ * session it is in -- and therefore which socket to talk to. `SLOSH=1`
  * (pty.c) says "you are in a pane"; this says which one of possibly several,
  * which is the part a program cannot work out for itself: `ls` lists them all
  * and none of them is labelled "the one you are in".
  *
  * NULL for a mode with no socket, and that case is why this is a function both
  * modes call rather than two setenvs in the mode that has one. `--script` has
- * always been *documented* as leaving `SL0PPTY_SESSION` unset -- but a value it
+ * always been *documented* as leaving `SLOSH_SESSION` unset -- but a value it
  * never set was a value it inherited, and a script driver started from inside a
  * pane handed its own panes the *outer* session's name. Anything following the
- * documented recipe (`-s ${SL0PPTY_SESSION:-main} cmd`) then sent its commands
+ * documented recipe (`-s ${SLOSH_SESSION:-main} cmd`) then sent its commands
  * to a session it was not in, confidently, because the name it read was real.
  *
- * `SL0PPTY_BIN` is set in both modes for the same reason it is set in either: a
- * program in a pane that finds `sl0ppty` missing from its PATH -- a session
+ * `SLOSH_BIN` is set in both modes for the same reason it is set in either: a
+ * program in a pane that finds `slosh` missing from its PATH -- a session
  * started from a build tree, an agent with a trimmed environment -- can
  * otherwise see the session it is in and have no way to reach it. Read from
  * /proc rather than argv[0], which is whatever the caller felt like passing,
@@ -261,14 +261,14 @@ static bool watch_hit(const watchset_t *w, const char *name) {
  * pane, not one that made some pane somewhere. */
 void session_env(const char *name) {
   if (name)
-    setenv("SL0PPTY_SESSION", name, 1);
+    setenv("SLOSH_SESSION", name, 1);
   else
-    unsetenv("SL0PPTY_SESSION");
+    unsetenv("SLOSH_SESSION");
   char self[512];
   ssize_t sn = readlink("/proc/self/exe", self, sizeof self - 1);
   if (sn > 0) {
     self[sn] = 0;
-    setenv("SL0PPTY_BIN", self, 1);
+    setenv("SLOSH_BIN", self, 1);
   }
 }
 
@@ -278,8 +278,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   if (session_socket_path(name, path, sizeof path) != 0) return 1;
   int lfd = listen_socket(path);
   if (lfd < 0) {
-    fprintf(stderr, "sl0ppty: cannot listen on %s: %s\n", path,
-            strerror(errno));
+    fprintf(stderr, "slosh: cannot listen on %s: %s\n", path, strerror(errno));
     return 1;
   }
 
@@ -305,7 +304,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   if (layout) {
     char err[256] = {0};
     if (!app_apply_layout_file(s.app, layout, true, err, sizeof err))
-      fprintf(stderr, "sl0ppty: %s: %s\n", layout, err[0] ? err : "bad layout");
+      fprintf(stderr, "slosh: %s: %s\n", layout, err[0] ? err : "bad layout");
   }
   app_resize(s.app, cols, rows);
   screen_init(&s.screen, cols, rows);

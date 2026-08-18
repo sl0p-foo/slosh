@@ -1,7 +1,7 @@
 /* The compositor: a cell buffer for the whole screen, and a diff that turns
  * two of them into the minimal byte stream for the real terminal. */
 #define _GNU_SOURCE
-#include "sl0ppty.h"
+#include "slosh.h"
 
 #include <ghostty/vt.h>
 

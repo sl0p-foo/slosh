@@ -100,11 +100,11 @@ def test_a_config_written_after_the_session_started_is_noticed():
     but a directory that does not exist cannot be watched at all, and then
     nothing is ever noticed for the life of the session. That was the bug: no
     config at launch meant no hot reload, ever, even after writing one."""
-    home = tempfile.mkdtemp(prefix="sl0ppty-home-")
-    path = os.path.join(home, ".config", "sl0ppty", "config.kdl")
+    home = tempfile.mkdtemp(prefix="slosh-home-")
+    path = os.path.join(home, ".config", "slosh", "config.kdl")
     check("the directory really is missing", not os.path.isdir(os.path.dirname(path)))
 
-    env = dict(os.environ, SL0PPTY_CONFIG=path)
+    env = dict(os.environ, SLOSH_CONFIG=path)
     name = "reloadtest-%d" % os.getpid()
     subprocess.run(
         [BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],
@@ -162,8 +162,8 @@ def test_an_included_file_is_watched_too():
     so the watch covers every file the config was built from -- not only the one
     the session was started with. Driven through a real session, because the
     watcher is the thing under test and the headless driver has none."""
-    home = tempfile.mkdtemp(prefix="sl0ppty-inc-")
-    cfgdir = os.path.join(home, ".config", "sl0ppty")
+    home = tempfile.mkdtemp(prefix="slosh-inc-")
+    cfgdir = os.path.join(home, ".config", "slosh")
     os.makedirs(os.path.join(cfgdir, "themes"))
     main = os.path.join(cfgdir, "config.kdl")
     theme = os.path.join(cfgdir, "themes", "t.kdl")
@@ -172,7 +172,7 @@ def test_an_included_file_is_watched_too():
     with open(theme, "w") as f:
         f.write('theme { frame_focus "#00ff00" }\n')
 
-    env = dict(os.environ, SL0PPTY_CONFIG=main)
+    env = dict(os.environ, SLOSH_CONFIG=main)
     name = "inctest-%d" % os.getpid()
     subprocess.run(
         [BIN, "-s", name, "--", "/bin/sh", "-c", "read x"],

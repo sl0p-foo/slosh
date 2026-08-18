@@ -43,12 +43,12 @@ static void ensure_config(void) {
     /* A missing file is the normal case; a broken one is worth a line in the
      * log, and in both the compiled-in defaults stand (fail open). */
     if (access(path, R_OK) == 0) {
-      fprintf(stderr, "sl0ppty: %s: %s\n", path, err[0] ? err : "parse error");
+      fprintf(stderr, "slosh: %s: %s\n", path, err[0] ? err : "parse error");
       snprintf(CFG_COMPLAINT, sizeof CFG_COMPLAINT, "%s",
                err[0] ? err : "config parse error");
     }
   } else if (err[0]) {
-    fprintf(stderr, "sl0ppty: %s: %s\n", path, err);
+    fprintf(stderr, "slosh: %s: %s\n", path, err);
     snprintf(CFG_COMPLAINT, sizeof CFG_COMPLAINT, "%s", err);
   }
   CFG_LOADED = true;
@@ -821,7 +821,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
   if (n) screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
 
   /* What goes between the two ends: the hint for whatever the pointer is on,
-   * and when there is none, which sl0ppty this is. The hint wins because it is
+   * and when there is none, which slosh this is. The hint wins because it is
    * about right now and the banner is about always; the banner takes the slot
    * back the moment the pointer moves off, which is most of the time.
    *
@@ -843,7 +843,7 @@ static void draw_status_line(app_t *a, screen_t *s) {
   if (!middle && CFG.version_banner) {
     /* Quieter than a hint: this is ambient, and a hint is an answer to
      * something you are doing. */
-    middle = "sl0ppty " SL0PPTY_VERSION;
+    middle = "slosh " SLOSH_VERSION;
     middle_fg = STATUS_C;
   }
   if (!middle) return;
@@ -2932,7 +2932,7 @@ bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
    * timestamp, for the same reason the dump has none: a file that differs every
    * time is a bad diff, and this one is meant to be committed. */
   fputs("// What this project needs open, written by `save-workspace`.\n"
-        "// Checked by `sl0ppty --check`; opened by `open-workspace`.\n",
+        "// Checked by `slosh --check`; opened by `open-workspace`.\n",
         f);
   fputs(kdl, f);
   bool wrote = fclose(f) == 0;
@@ -6671,7 +6671,7 @@ void app_event(app_t *a, const input_event_t *ev) {
  *
  * The inverse of apply-layout, and the thing that makes a restart survivable:
  * build a fresh binary, dump what you have, quit, come back with `--layout`.
- * contrib/sl0ppty-dev wraps exactly that.
+ * contrib/slosh-dev wraps exactly that.
  *
  * What can honestly be restored is the *shape*: tabs, their names and
  * purposes, how the panes are split, in what proportion, in which directory,
