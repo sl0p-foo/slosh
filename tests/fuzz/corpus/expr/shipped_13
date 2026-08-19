@@ -1,0 +1,1 @@
+clamp(220 - min(min(dist(x, y, 0, 0), dist(x, y, cols - 1, 0)), min(dist(x, y, 0, rows - 1), dist(x, y, cols - 1, rows - 1))) * 55, 0, 220) * (55 + abs(t / 3 % 90 - 45)) / 100

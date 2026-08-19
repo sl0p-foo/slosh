@@ -1,0 +1,1 @@
+clamp(dist(x, y, curx, cury) * 9, 0, 200)

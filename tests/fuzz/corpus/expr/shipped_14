@@ -1,0 +1,1 @@
+clamp(235 - min(abs((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y) - (t / 14 % (2 * cols + 2 * rows - 4))), (2 * cols + 2 * rows - 4) - abs((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y) - (t / 14 % (2 * cols + 2 * rows - 4)))) * 30, 0, 235)

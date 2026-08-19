@@ -1,0 +1,1 @@
+(abs(dist(x, y, curx, cury) - (t / 22) % 80) < 3) * 220

@@ -1,0 +1,1 @@
+clamp((dist(x, y, curx, cury) - 8) * 22, 0, 215)

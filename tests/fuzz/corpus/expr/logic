@@ -1,0 +1,1 @@
+focused && cursor || !above ? t % 1000 : since / -7

@@ -1,0 +1,11 @@
+# Built binaries
+fuzz_*
+replay_*
+!fuzz_*.c
+
+# libFuzzer findings (crashes go here, committed as regression seeds in corpus/)
+findings/
+
+# Grown corpora are local; only hand-written seeds and named regression
+# inputs should be committed. The fuzzer names its files with hex hashes.
+corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*

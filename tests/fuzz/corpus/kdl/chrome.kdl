@@ -1,0 +1,18 @@
+// heartbeat — chrome
+//
+// Drop this into ~/.config/slosh/config.kdl (a running session picks it up when
+// you save), or point $SLOSH_CONFIG at this file. To hang it off a pane state
+// instead of every pane, put the same pass inside one:
+//
+//     states { bell { ... } }
+//
+// Lub-dub, then a rest: `abs(sin())` over a full turn is two humps, and the window
+// mask leaves 1.2 seconds of nothing after them. A pane that is alive and has
+// nothing to say, which is most of what a long-running one is -- so it belongs on
+// a state rather than on everything:
+//
+//     states { suspended { ... } }
+
+shaders {
+    tint where="chrome" channel="fg" color="#ff0033" amount="(t % 1800 < 620) * abs(sin(t % 1800 * 3 / 5))"
+}

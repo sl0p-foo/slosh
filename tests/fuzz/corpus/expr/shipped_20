@@ -1,0 +1,1 @@
+clamp(dist(x, y, cols / 2, rows / 2) * 4, 0, 150)

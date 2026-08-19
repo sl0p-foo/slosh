@@ -1,0 +1,970 @@
+// This file is the *reasoning*: what each setting is for, what it cost to
+// get right, and which ones are opinions. The values themselves come out of
+// the code -- `slosh --dump-config` writes every knob with its default, and
+// `C-a e` seeds a missing config with exactly that.
+//
+// So if the two ever disagree, the dump is right and this file is stale;
+// tests/test_dump_config.py fails when a setting exists and is not rendered.
+//
+// ---- what reloads ----
+//
+// Saving this file applies it to every running session, and nearly everything
+// here takes effect on the next frame: colours, geometry, the status bar and
+// line, the marks, shader chains and their states, hints, and the keys --
+// including the leader itself.
+//
+// The exceptions, both because of *when* they are read rather than any
+// reluctance to reload:
+//
+//   shell        consulted when a pane is made, so it applies to the next
+//                pane you open rather than to the ones already running
+//   shader_dir   plugins are loaded on reload but never unloaded, so a new
+//                .so is picked up and a replaced one needs a new session
+//
+// A session started before this file existed still notices it appearing: the
+// watch is on the directory, and slosh creates that directory at startup so
+// there is always something to watch.
+//
+// slosh — every value here is also the compiled-in default, so this file is
+// documentation as much as configuration. Copy it to
+// ~/.config/slosh/config.kdl (or point $SLOSH_CONFIG at it) and edit.
+//
+// A broken file costs a warning on stderr and nothing else: the defaults
+// stand. Saving this file re-reads it into every running session on its own;
+// `slosh --no-reload` starts one that does not watch, and
+// `slosh cmd '{"cmd":"reload"}'` asks for a re-read explicitly. And
+// refuses a file it cannot parse rather than half-applying it.
+
+// ── include ─────────────────────────────────────────────────────────────────
+//
+// A config can be made of files:
+//
+//     include "themes/amber.kdl"        // contrib/themes has seven
+//     include "keys/vim.kdl" "shaders/crt.kdl"
+//
+// which is how you switch a theme by editing one line instead of pasting one.
+// Nothing about it is theme-specific: an include is another config file applied
+// here, so the same line composes keys, shader chains, states or geometry.
+//
+// A relative path is relative to *the file doing the including*, never to the
+// directory you happened to start the session from -- a config is a thing on
+// disk that refers to its neighbours. A leading `~` is your home directory, and
+// an absolute path is itself. Included files may include others.
+//
+// What you include is the *base*: the file with the `include` line in it wins
+// wherever they disagree, and a later include wins over an earlier one. That is
+// true wherever the line sits in the file, because the loader reads a document
+// by asking it for the keys it knows rather than walking it top to bottom -- so
+// "here" is not a position it could honour, and "the file you are editing wins"
+// is the rule worth having anyway.
+//
+// `keys` blocks *add* to what came before, like every keys block; a `shaders`
+// or `states` block replaces the one it inherited, like every one of those.
+//
+// A file that will not load is skipped and the rest of the config still
+// applies -- losing your keybindings over a mistyped theme name would be the
+// worse answer -- and the session says which file it could not honour, in the
+// same place it says "config reloaded". That goes for anything a config
+// complains about: an unknown shader, a binding that does not parse, an include
+// that is not there. The file applied; one line of it did not; you get told.
+//
+// `slosh --check` says all of them at once, with a file and line each, and
+// exits non-zero if there were any. A session only has room for the first.
+
+// ── geometry ────────────────────────────────────────────────────────────────
+
+// Blank cells between panes and around the screen edge, in ROWS.
+gap 1
+
+// Columns per row. Terminal cells are about twice as tall as they are wide, so
+// a gap of 1 row and 2 columns looks square.
+gap_aspect 2
+
+// Space between a pane's frame and its contents, in ROWS like `gap` -- a
+// horizontal one is multiplied by `gap_aspect`, so `padding 1` is a ring that
+// looks square rather than a squashed one. One number does every side; two are
+// vertical then horizontal; four are CSS order, top right bottom left:
+//
+//     padding 1              // all round
+//     padding 0 2            // none above or below, two either side
+//     padding 1 2 1 2        // the same thing, spelled out
+//     padding 2 0 0 1        // room for a title above, a gutter on the left
+//
+// A number means the same thing however many of them you write, which is why
+// the first three of those are two paddings rather than three. Three values is
+// refused: CSS reads it as top/horizontal/bottom, and a line whose meaning you
+// have to look up is a line nobody can read.
+padding 0
+
+// ╭╮╰╯ versus ┌┐└┘
+rounded true
+
+// "left" | "center" | "right"
+title_align "center"
+
+// Cells between a frame's corner and the start of its title, for the edge the
+// title is anchored to. The title always carries a space on each side on top
+// of this, so it can never end up welded to the rule beside it.
+title_inset 2
+
+// ── the bell ────────────────────────────────────────────────────────────────
+//
+// A BEL from a program marks the pane it came from, and the tab that pane is
+// in -- a bell exists for the pane you are *not* looking at, and one that only
+// showed on screen would be useless in a background tab. Looking at the pane
+// is what puts it out. Off makes a bell silent *and* invisible, which is a
+// real choice rather than an oversight.
+//
+// The mark is one cell wide, which is not news you can see from the corner of
+// your eye -- so by default the pane says it too, in theme's `bell` colour.
+// The *frame*: three sharp blinks the moment it rings, then a slow breathe
+// until it is answered. The *body*: a shimmer -- one soft diagonal sheen
+// gliding across, the way light crosses something glossy, gone within the
+// same 900ms the blinks take. It is quiet on purpose: peak 95 where the
+// blinks are 255, its colour softened halfway towards default_fg so it reads
+// as light rather than paint, and its width breathing on a sine as it
+// travels. Motion is what pulls the eye, not brightness, so it draws you to
+// the pane without shouting over what it says. Both are derived, like
+// the scrolled wash: built from the theme after the theme is read, so a theme
+// moves the mark, the flash and the shimmer together, and they are commented
+// out in the states block below for the same reason scrolled is. Both read
+// `since`, so the frame clock they cost runs only while a rung pane is
+// actually on screen.
+//
+// Turning it off is either of the things it hangs from: `bell_indicator
+// false` silences the bell everywhere (mark and flash -- that is what
+// invisible means), and `states { bell { } }` removes just the flash. A
+// `bell { ... }` chain of your own replaces it outright, like every state --
+// the chrome passes further down have a few worth stealing.
+// ── the frame's own buttons ─────────────────────────────────────────────────
+//
+// Minimise, zoom and close, in the top-right of every pane's frame: the mark
+// and one space each, seven columns for the three of them. They are drawn
+// right to left and stop when they run out of room, so a narrow pane keeps
+// close and zoom and loses minimise first.
+//
+// The split button was removed from this frame once already, on the grounds
+// that one glyph cannot mean four directions and the border can. These are two
+// verbs a single glyph *can* mean, which is why they are here and splitting is
+// still done by clicking an edge. They do cost six columns of every frame, so
+// this turns them off -- the keybindings (C-a z, C-a x) are unaffected, because
+// the setting is about the affordance and not the verb.
+// A word in the middle of the status line for whatever the pointer is on:
+// which way a border would split, what a one-character button does, that the
+// gap between two panes can be dragged. The frame's affordances are mostly one
+// character wide and a border that splits when clicked looks exactly like a
+// border, so this is where they say so.
+//
+// It sits in the middle of the *row*, not in the space the two ends leave
+// over: centred in the gap it moved every time a pane title changed length,
+// and a thing you glance at should be in the same place twice. When the row is
+// too full for it there it is not drawn at all -- the ends say which session
+// and pane you are in, and a hint you can get back by hovering is the part
+// that can afford to disappear.
+hints true
+
+// When there is no hint to show — which is most of the time, since a hint
+// needs the pointer to be on something — that space says which slosh this
+// is: `slosh 0.1.0+d9dee7f`. It reads as decoration and is not: a session
+// keeps the binary it started with, so after a rebuild the version on screen
+// is the one you are actually talking to, and `slosh --version` is the one
+// on disk. When those disagree, that is the answer to whatever you were about
+// to debug. (contrib/slosh-dev restarts into the new one.)
+//
+// It gives way to a hint, and both give way to the ends of the line -- they
+// are centred on the row and simply not drawn when that would overlap.
+version_banner true
+
+pane_buttons true
+
+// Four shapes, one verb each: down for away, an outline for "make it fill the
+// tab", the same outline filled in for "it is filling it", a cross for gone.
+//
+// Deliberately not one tidy family. A set of boxed operators (⊞ ⊟ ⊡ ⊠) was
+// tried and read as four identical smudges: they are *math* symbols, sized to
+// sit beside x and y in an equation, so at a terminal's cell size the interior
+// carrying the whole meaning is two or three pixels of it. Geometric shapes and
+// dingbats are drawn at full cell size, which is what makes them readable at
+// all, and picking glyphs that fill their cell is also the answer to the
+// evenness that put plain ASCII here originally -- a glyph that does not fill
+// its cell hands the slack to the gap beside it, by an amount the font decides.
+//
+// Single width, and never emoji: many terminals draw those two columns wide
+// while chrome here is booked as one, which shifts everything after them.
+//
+// A mark may be more than one character; the button is measured rather than
+// assumed, so "[]" and "][" work if you prefer them. Put the character itself
+// here; this file has no \u escape.
+zoom_mark "□"          // click to fill the tab with this pane
+zoom_on_mark "■"       // ...and this is what it says while it is filling it
+close_mark "✕"
+min_mark "▼"           // into the strip along the bottom, still running
+
+// The new-tab button at the end of the tab strip. Drawn with a space on each
+// side, so a one-character mark is still a three-cell target -- a one-cell
+// target is a thing you miss with a mouse. It reads as a bare "+" because
+// nothing else in the UI is one: the frame's old "+" for splitting went when
+// the border became the button. Try "[+]" or "new" if you prefer a word.
+newtab_mark "+"
+
+// Which dead panes stay, and which just go.
+//
+//   commands   panes that were *given* a command -- from a layout, or the
+//              control API. Default. Their death is news: the pane keeps what
+//              it printed, says in its own backlog why it ended, and offers
+//              [re-run] and [close] in its frame.
+//   all        shells too. A pane you split off and typed `exit` in stays
+//              until you dismiss it.
+//   none       nothing stays; the pane is closed on the next paint, and with
+//              the last pane, the session.
+//
+// The line is the command, not who made the pane: a shell is a shell whether
+// it came from a layout or from C-a \, and when you type `exit` in one you
+// are done with it. A pane running `npm run dev` is a different thing -- you
+// want the error it left, and the button that runs it again.
+//
+// (`true` and `false` are still read, as `all` and `none`, because they used
+// to be the spelling.)
+keep_dead "commands"
+
+// How far the panes you are *not* in are pushed back, 0..255, and 0 for not
+// at all. On by default and gently: at 60 white text lands on #c3c3c3, which
+// reads as "not this one" without reading as "not available", because half
+// the time you are still reading the other pane.
+//
+// This is the one taste shipped as a default, and it is shipped because
+// turning it off is a single obvious number rather than a shader incantation.
+// Writing the chain yourself still wins -- `states { unfocused { ... } }`
+// replaces it, and `states { unfocused { } }` means nothing at all.
+dim_unfocused 60
+
+bell_indicator true
+
+// What to draw. A short string rather than a fixed glyph, because the obvious
+// choice is an emoji bell and emoji are drawn two columns wide by many
+// terminals while chrome here is booked as one -- so the default is narrow and
+// anyone who knows their own terminal can say otherwise. (This file has no
+// \u escape, so put the character itself here.)
+bell_mark "•"
+
+// The one-row bar with tabs, the new-tab button and the pane count.
+status_bar true
+
+// The line along the bottom: which session and tab you are in, what the
+// focused pane calls itself, and whether it is in a state worth knowing about
+// - scrolled back, on an alternate screen, or not started yet. On the right it
+// says which of *this tab's* panes is open, as `pane 2/5`; the strip above
+// counts the whole session, so the two disagree as soon as you have two tabs.
+status_line true
+
+// How far the strip and the line are held off the left and right edges. This
+// is separate from `gap`, which is the space around the panes, and wider than
+// it by default so the two bars read as chrome outside the layout rather than
+// as another row of it.
+status_pad 4
+
+// Focus follows the pointer. It never steals focus mid-chord (while the prefix
+// is held), never reaches past the finder, never interrupts a drag, and never
+// expands a collapsed pane just because the pointer crossed its header.
+focus_follows_mouse true
+
+// Whether the program running in a pane may set that pane's shader chains, by
+// printing an escape sequence:
+//
+//   printf '\033]5577;1;shader;chrome;tint color="#7aa2f7" amount=255\033\\'
+//
+// The payload after `chrome` (or `content`) is a chain in exactly the syntax the
+// `shaders` block below uses, so a chain you arrive at this way is a line you can
+// paste. `contrib/shader-repl` is a prompt that does it for you, and prints the
+// block to paste when you like what you see.
+//
+// Off, because a program restyling the session it happens to be running in is a
+// hazard and not a feature -- `cat` some hostile file and it can dim your panes.
+// On, it is scoped to the pane that asked: it cannot touch another pane, and it
+// cannot change anything this file said about everybody else. The pane is told
+// `off` rather than ignored, so a program can tell "you said no" from "this
+// build has never heard of it".
+//
+// The way back, whatever a pane did to itself and whether or not this is still
+// true afterwards: the `clear-shaders` action (bind it, or run it from the
+// palette), or `slosh cmd '{"cmd":"clear-shaders","id":0}'`.
+in_band_shaders false
+
+// The floor below which a pane is not small but useless. A split that cannot
+// give every child this much collapses into a stack instead, with one pane
+// expanded and its siblings as one-row headers. Recomputed every frame, so
+// widening the terminal always restores exactly the layout you had.
+min_pane cols=24 rows=6
+
+// The smallest pane a split is allowed to *produce*. min_pane above is where
+// the layout gives up and collapses; this is where splitting stopped being
+// worth offering, which is a larger number and a different question — two
+// twenty-five column panes technically fit and are not worth having.
+//
+// Below this the border stops being a button: no guide arms, clicking it does
+// nothing, and the keyboard says so with a toast. The control API and layout
+// files are deliberately exempt, because a script asking for a pane is saying
+// what it wants rather than being offered something, and the responsive
+// collapse is what catches it there.
+//
+// Never used below min_pane: refusing to offer what the layout would collapse
+// anyway is the floor under the floor. Raise it if you like fewer, bigger
+// panes; a column split needs 2*cols + 2 columns of pane to be offered, a row
+// split 2*rows + 1.
+min_split cols=32 rows=8
+
+// Rows per wheel notch, and per scroll-up/scroll-down.
+scroll_lines 3
+
+// How many lines of history a pane keeps. `0` keeps none: the screen and
+// nothing behind it.
+//
+// lib-vt is handed no limit by default and picks its own -- 10,000 *bytes*,
+// which measured at 622 lines of an 80-column pane, less than one `make` run.
+// This is that number replaced with the one every other multiplexer settled on.
+//
+// Read when a pane is created, so it applies to the next pane you open rather
+// than to the ones already holding history. Same as `shell`, and for the same
+// reason: retroactively shrinking a pane's scrollback would throw away output
+// somebody is reading.
+scrollback 10000
+
+// ...and the ceiling that line count runs into, per pane, in bytes. The two
+// limits work together because either can be reached first and neither can see
+// what the other depends on: a line count cannot know how wide your terminal is
+// or how many styles a program used, and a byte count cannot know how many lines
+// that bought. `0` removes the ceiling.
+//
+// Measured, 10,000 lines of a pane filled with styled output:
+//
+//    80 columns   ~6 MB    the ceiling is never reached
+//   200 columns   ~15 MB   it costs about 2% of the lines
+//   400 columns   ~32 MB   it costs about half of them
+//
+// So it is invisible at ordinary widths and a brake at extraordinary ones, which
+// is its whole job. It is per *pane*: sixty panes full of history is sixty times
+// this, which is the reason there is no "unlimited" -- with this many panes that
+// is a memory leak with a friendly name. Raise it if you have one very wide pane
+// and want every line of it; lower `scrollback` if you have very many.
+scrollback_bytes 16777216
+
+// How long the pointer must rest on a pane border before the split guide
+// arms. Contact alone is not enough: a pointer crossing a border on its way
+// somewhere else should not make the screen flash. 0 arms immediately.
+hover_delay_ms 250
+
+// How close together two clicks must be to count as a double-click. On a
+// pane's title that renames it in place -- Enter keeps the new name, Escape
+// abandons it, and an empty name gives the pane back to whatever its program
+// calls itself. On a pane's contents it selects the word under the pointer and
+// copies it, like any other selection.
+double_click_ms 400
+
+// What that word stops at. Listed as *separators*, not as word characters:
+// anything unlisted belongs to a word, so text nobody enumerated -- CJK,
+// accents, emoji -- needs no table and comes out whole. Whitespace always
+// separates, listed or not, because a double-click that selected the line
+// would be a different gesture arrived at by surprise.
+//
+// The default deliberately leaves `/ . - _ : = @ # % ? & + ~ $` *inside* words:
+// a path, a dotted name, a snake_case identifier, a key=value pair, a URL and
+// `src/app.c:1234` are each one thing you double-clicked to copy whole. `:` is
+// the difference between copying an error location and copying half of one.
+word_separators "\"'`()[]{}<>;,|"
+
+// How far everything behind a modal (the cheatsheet, C-a ?) is pushed back,
+// 0..255, and 0 for not at all. A modal floating over a screen as bright as
+// it is reads as another pane rather than as something in front.
+//
+// It is the shader pass aimed at the whole screen, so the same caveat applies
+// as for shaders: cells with no colour of their own are resolved through
+// theme's default_fg/default_bg first, and if those do not match your
+// terminal's real colours the screen will shift slightly while a modal is up.
+modal_scrim 120
+
+// Extra shaders can be loaded from shared libraries: any `*.so` in the
+// directory below that exports a slosh shader plugin. Once loaded they are
+// named here exactly like a built-in. Default: a `shaders` directory beside
+// this file, so dropping the .so next to your config is the whole install.
+//
+// A plugin is native code running in the session's own process, with your
+// privileges and no sandbox -- which is the same thing `shell` and a layout's
+// `command=` already are, and the reason the search path is a directory you
+// own rather than a value that can point anywhere. Install ones you trust.
+//
+// Adding a plugin and saving this file loads it; nothing is ever unloaded, so
+// *replacing* one needs a new session. Skeleton and Makefile:
+// contrib/shader-plugin/
+//
+// shader_dir "~/.config/slosh/shaders"
+
+// ── projects ────────────────────────────────────────────────────────────────
+//
+// Where you keep your work. Each of these is scanned for subdirectories that
+// are projects, and a project opens as a *workspace* -- a tab dedicated to it,
+// reached with `C-a w`. `depth` is how many levels below each root to look; a
+// directory that *is* a project is never descended into, which is what keeps
+// the scan off node_modules without a rule about node_modules.
+//
+// A subdirectory is a project when it has a `slosh.layout` saying what it
+// needs -- or a `.git`, which is the project that has not said yet. Both,
+// because a ~/dev of forty checkouts and three layout files would otherwise be
+// a picker with three rows, and `C-a W` writes the missing file from whatever
+// you arranged by hand.
+//
+// Nothing is watched. The list is worked out when something asks for it, which
+// is one readdir per root and a stat or two per entry -- next to the keystroke
+// that asked, nothing -- and an answer nobody remembered cannot be stale.
+//
+// Unset, so nothing is scanned until you say where to look:
+// project_roots "~/dev" "~/work" depth=2
+
+// The layout a project with no file of its own opens as: yours, rather than a
+// guess about your stack from whatever config files it happens to contain. A
+// relative `cwd=` in it binds to whichever project is being opened, not to the
+// directory this file lives in, so one file is the shape you start every
+// checkout in -- and a project that grows its own `slosh.layout` wins
+// over it, the way an included file is the base and the file including it wins.
+//
+// Unset, so a project with no layout is one pane running your shell in it:
+// project_layout "~/.config/slosh/project.layout"
+
+// ── shaders ─────────────────────────────────────────────────────────────────
+//
+// Colour passes over a pane's contents by default; `where="chrome"` aims one
+// at the frame instead (see the chrome passes further down), and the tab
+// strip and status line are never shaded. Strengths run 0 to 255, where 0 is
+// off and 255 is fully applied, and a pass resolves default-coloured text
+// through theme's default_fg/default_bg -- set those to your terminal's real
+// colours or a shaded pane will shift.
+
+// What a pane looks like while it is in a particular state. Each state takes
+// the same chain of passes `shaders` does.
+//
+// A pane is usually in several states at once — unfocused *and* scrolled,
+// suspended *and* something you could drop onto — so exactly one wins: the
+// first that matches, tested in this order.
+//
+//   dragging     the pane you have hold of
+//   drop_hover   the one under the pointer, where it would land
+//   drop_target  the others, all of them somewhere it could go
+//   dead         its program exited; waiting to be re-run or closed
+//   suspended    laid out, never started (its label is its contents)
+//   bell         a BEL arrived and nobody has looked since; ends when you do
+//   scrolled     looking at scrollback rather than at the present
+//   unfocused    the weakest thing that can be true of a pane
+//
+// The order is fixed rather than read from this block, because it is a ranking
+// by urgency and not a preference: a pane you are holding should not be
+// recoloured by anything, and a mode the whole screen is in outranks an
+// ambient hint about one pane. They do not stack, for the same reason two
+// reasons to be grey would compound into one muddy grey that reads as neither.
+//
+// Naming a state replaces its default outright — including with nothing, which
+// is how you turn one off:  states { drop_target { } }
+//
+// Which states have a default, and why the line falls where it does:
+//
+//   a pane that is *not live* gets one -- dead, suspended, scrolled. In all
+//   three the cells are showing something other than a running program's
+//   present: output from something that exited, a pane that never started, or
+//   the past. None of that is discoverable by looking unless something says
+//   so, which is the entire argument for colouring it.
+//
+//   a pane that is *news* gets one too -- bell. A ring is an event rather
+//   than a condition, so its default moves: a shimmer across the body that is
+//   gone within a second, and blinks then a breathe on the frame -- the one
+//   chrome pass in this table -- in theme's bell colour (see the bell section
+//   above, and `bell_indicator false` to silence it with the mark).
+//
+//   a pane that is merely *not the one you are in* is a taste rather than a
+//   fact, and gets a default anyway -- but through `dim_unfocused` above,
+//   which is one number to change or zero out. The objection to shipping a
+//   taste was never the taste, it was that turning it off should not require
+//   knowing this block exists. `dragging` still has no default: the pane in
+//   your hand keeping its colour is what makes it lift off the page.
+//
+// All the defaults are gentle: a dead pane, a suspended one and scrollback are
+// all things you still want to read. The scrolled default is *derived*, not
+// stored, and has two parts. The wash: the scrollback indicator's own colour
+// (theme's scroll_bg), worked out after the theme is read, so a theme moves
+// the wash and the indicator together. The edge fades: the viewport's top and
+// bottom rows melt towards the edge, the way a scrollable list fades where it
+// continues -- and each fade exists only while there is content past that
+// edge, so hitting the top of the buffer turns the top edge solid, and
+// returning to the present ends the state and everything is opaque again. Up
+// to three rows a side, never more than a quarter of the viewport each. All
+// of it is commented below because naming a state replaces its default
+// outright -- a declared copy would pin the wash to one theme's colour and
+// quietly stop following the next.
+states {
+    drop_hover { grayscale amount=200; dim amount=140 }
+    drop_target { grayscale amount=200; dim amount=140 }
+    dead { grayscale amount=200; dim amount=90 }
+    suspended { grayscale amount=170; dim amount=60 }
+    // scrolled {   // derived: a wash of theme's scroll_bg, and edge fades where more content is
+    //     tint amount=22 color="#7aa2f7"
+    //     dim amount="(above > 0) * max(0, (min(3, rows / 4) - y) * 45)"
+    //     dim amount="(below > 0) * max(0, (y - rows + min(3, rows / 4) + 1) * 45)"
+    // }
+    // dragging { }
+    // bell {   // derived: a body shimmer, and a frame blink-then-breathe, in theme's bell colour
+    //     tint color="#efd7b3" amount="(since < 900) * max(0, 95 - abs(x + 2 * y - since / 4) * (6 + sin(since / 2) / 96) - since / 64)"
+    //     tint where="chrome" channel="fg" color="#e0af68" amount="since < 900 ? (since / 150 % 2 == 0) * 255 : 120 + sin(since / 8 + 158) / 3"
+    // }
+    // unfocused { dim amount=60 }    // = dim_unfocused above; yours replaces it
+}
+
+// While a pane is being dragged its border stays solid and every other pane's
+// turns dashed, marking them as places it could be dropped. That is chrome,
+// not a shader, so it happens whatever the states above are set to.
+
+// Colour passes every pane gets, in the order written — a chain is a sequence,
+// so `grayscale` then `tint` is not `tint` then `grayscale`. Each node is one
+// pass; `amount` is 0..255 and defaults to 128. Listing a shader twice is how
+// you get two of it (two rulers, say). An unknown name is refused with a
+// warning and skipped, never guessed at.
+//
+//   dim        amount                    darken towards black
+//   grayscale  amount                    drain colour, weighted for the eye
+//   tint       amount color="#rrggbb"    pull towards a colour
+//   vignette   amount                    darken towards the pane's edges
+//   gradient   amount direction=0..3     fade towards the background
+//                                        0 down, 1 up, 2 right, 3 left
+//   zebra      amount band=1             darken alternate bands of `band` rows;
+//                                        band=1 is also a CRT scanline
+//   ruler      amount at=80 color=       mark a column, background only, so the
+//                                        text on it stays readable
+//   margin     amount at=100             everything from that column recedes
+//   spotlight  amount radius=12          brightness falls away from the cursor
+//
+// Two props are the *pass's* rather than the shader's, and work on any of them:
+//
+//   where="content"|"chrome"   the contents, or the frame (see further down)
+//   channel="both"|"fg"|"bg"   which of the cell's two colours it may keep;
+//                              `fg` recolours glyphs and leaves backgrounds
+//                              alone, which is what a border wants
+//
+// `amount` can also be an *expression* instead of a number, evaluated for
+// every cell. That is how you get an effect nobody built in, without building
+// anything:
+//
+//     shaders {
+//         dim  amount="(y % 2) * 40"                       // scanlines
+//         dim  amount="(x > cols - 10) * 120"              // the right margin
+//         tint amount="255 - dist(x, y, curx, cury) * 12" color="#7aa2f7"
+//     }
+//
+// The expression produces the *strength*, never the colour: the mixing stays
+// in C, so an expression cannot make an invalid cell, and its result is one
+// byte per cell -- which is what lets the whole program be evaluated once into
+// a per-cell map and then reused. A user-written positional shader therefore
+// costs about what a compiled one does. One that reads the clock cannot be
+// cached and is evaluated per cell per frame, which is the price of animation.
+//
+//   variables   x y            the cell, inside the pane's content rect
+//               cols rows      the size of that rect
+//               curx cury      the cursor, and `cursor` (0 or 1) for whether
+//                              this pane has it
+//               focused        0 or 1
+//               t              milliseconds, for animation
+//               since          milliseconds the pane has been in its current
+//                              state -- what a one-shot effect needs, because
+//                              `t` is the time, not how long ago
+//               above below    lines of scrollback hidden past the viewport's
+//                              top and bottom edges, both 0 at the present --
+//                              what lets an effect say "there is more this way"
+//   operators   + - * / %      integer only; division by zero is 0, not a crash
+//               < > <= >= == != and && || !, which give 0 or 1 -- so
+//                              `(x < 10) * 200` is how you write a rule
+//               & | ^ ~ << >>  on the 32-bit value. They bind *tighter* than
+//                              comparison, so `x & 7 == 0` means what it looks
+//                              like -- C reads that as `x & (7 == 0)`, which
+//                              Ritchie called a mistake and it is. The shift
+//                              count is masked to five bits and `>>` keeps the
+//                              sign, both matching the browser preview exactly.
+//                              `(x ^ y) & 1` is the cheapest interesting texture
+//                              there is.
+//               ? :            both sides are evaluated, then one is chosen
+//   functions   min(a,b) max(a,b) abs(a) clamp(v,lo,hi)
+//               dist(x1,y1,x2,y2)  counts a row double, because a cell is
+//                                  about twice as tall as it is wide
+//               sin(deg) cos(deg)  degrees in, -255..255 out. Degrees because
+//                                  they are what you guess, and 255 because it
+//                                  is the strength scale everything else here
+//                                  uses -- so `128 + sin(t / 4) / 2` is a
+//                                  breathe with nothing to rescale. Any angle
+//                                  wraps, negative ones included, since `t / 4`
+//                                  does not stop at 360.
+//   constants   PI TAU        180 and 360: pi as an *angle*, which is all it can
+//                             be here -- a half turn and a whole one. So a
+//                             radian-shaped formula ports across as written,
+//                             `sin(TAU * x / cols)` is one cycle over the pane,
+//                             and the common fractions stay exact where
+//                             `3.14159 / 6` in integers would be 0. There is no
+//                             deg2rad/rad2deg: one unit, nothing to convert.
+//
+// There are no loops and no recursion, on purpose: a config cannot spin, and
+// there is nothing to sandbox. An expression that does not compile drops that
+// one shader with a warning -- never the config, and never a half-strength
+// version of what you asked for.
+//
+// Empty by default: these are yours to ask for, not opinions we hold.
+//
+// shaders {
+//     vignette amount=70
+//     zebra amount=22
+//     ruler amount=60 at=80 color="#7aa2f7"
+//     spotlight amount=90 radius=14
+// }
+
+// ── chrome passes ───────────────────────────────────────────────────────────
+//
+// `where="chrome"` on any entry above runs that pass over a pane's *frame*
+// instead of its contents: the border, the padding inside it, the title and
+// the buttons. Everything else is identical -- same shaders, same `amount`,
+// same expressions -- because a frame is just another rect, so it is just
+// another pass. `where="content"` is the default and never has to be written.
+//
+// The two never touch each other's cells: the contents are cut out of the
+// frame pass, so a full-strength chrome tint leaves your text alone and a
+// full-strength content tint leaves the border alone.
+//
+// `channel="fg"` (or `"bg"`, or `"both"`, the default) says which of a cell's
+// two colours a pass may keep. On a frame you almost always want `fg`: a
+// border's *background* is the terminal's own default, and mixing that towards
+// a colour paints a rectangle behind the glyphs instead of colouring them --
+// and leaves it there until the pane changes state. `fg` also keeps the padding
+// inside the border out of it, since a blank cell has no foreground to colour,
+// so the effect lands on exactly the rules, the title and the buttons.
+//
+// `x`/`y` are the *whole frame's*, counted from its top-left corner, with
+// `cols`/`rows` the size of the pane's rect -- not of one side. That is what
+// lets an effect travel round a border rather than restart at every corner:
+//
+//     shaders {
+//         // the top rule only, where the title is
+//         tint where="chrome" channel="fg" color="#7aa2f7" amount="(y==0)*255"
+//         // a corner glow. One node per line: a newline ends a node, so a
+//         // pass split over two lines is two broken nodes, not one pass.
+//         tint where="chrome" channel="fg" color="#00ffd7" amount="255-dist(x,y,0,0)*20"
+//     }
+//
+// For anything that *travels*, though, `x`/`y` are rarely what you want: it
+// wants distance *along the ring*, which the language can work
+// out -- clockwise from the top-left corner, in cells:
+//
+//     (y == 0 ? x : x == cols - 1 ? cols - 1 + y
+//      : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)
+//
+// with the perimeter itself `2 * cols + 2 * rows - 4`. Two things fall out of
+// that: `min(d, P - d)` is distance the short way round, so an effect crosses
+// the corner it started from instead of stopping at a seam; and
+// `(p - head + P) % P` is "how far ahead of the head", which makes an arc
+// rotate rather than a blob slide. There is no way to name a subexpression, so
+// it has to be written out in full -- which is why a small effect is a long
+// line. contrib/chrome has a dozen-odd ready to paste -- a shine running
+// round the border, ripples from a corner, a rotating comet, corner glints, a
+// sheen across the title rule, and more; the directory is the list.
+//
+// Hung off a state, this is a border that says what a pane is doing -- which
+// is what chrome is for, and it costs no room and no text:
+//
+//     states {
+//         // a dead pane's frame breathes red until you deal with it: a
+//         // triangle wave, up and back down over about four seconds
+//         dead { tint where="chrome" channel="fg" color="#ff0033" amount="abs(t/8%510-255)" }
+//         // a bell nobody has answered yet: `since` is how long the pane has
+//         // been in this state, so this is a real *flash* -- full strength for
+//         // a quarter second and then gone, without the bell being answered.
+//         // `t` could not say that: it is the time, not how long ago. (The
+//         // default bell flash is this idea grown up: blinks, then a breathe.)
+//         bell { tint where="chrome" channel="fg" color="#ffcc00" amount="(since<250)*255" }
+//         // one that has not started yet is outlined, not filled
+//         suspended { tint where="chrome" channel="fg" color="#8a8a95" amount=160 }
+//         // the panes you are not in recede, frame and contents together.
+//         // Both passes are written out because naming a state replaces the
+//         // *whole* state: a block holding only chrome passes is a state with
+//         // no content pass, which for `unfocused` means dim_unfocused above
+//         // stops applying to it.
+//         unfocused { dim amount=60; dim where="chrome" amount=90 }
+//     }
+//
+// A pane a small window has collapsed to a single row (see min_pane) is chrome
+// all the way through, so a chrome pass is the only kind that can still colour
+// it -- which is the state where a colour is worth the most.
+//
+// The global chain is empty by default, like the content passes: yours to ask
+// for. One chrome pass does ship, hung off a state rather than here: the bell
+// flash (see the bell section, and the states table above).
+
+// How often to repaint while a shader is animated, in milliseconds -- which
+// means one whose `amount` reads `t` or `since`. Nothing else needs a frame
+// clock: every
+// other repaint has an event behind it, and this one is only asked for while
+// such a shader is actually on screen. 0 turns it off, which leaves an
+// animated shader advancing only when something else causes a frame.
+anim_ms 50
+
+// How long an announcement ("copied 13 chars", a pane's OSC 9 notification,
+// "config reloaded") stays in the bottom-right corner.
+toast_ms 2500
+
+// The logo, centered over everything for a moment when a client attaches,
+// wearing a different shader effect each time -- a greeting, and an
+// advertisement for the pass machinery that painted it (the effects are
+// ordinary amount-expressions over the logo's rect). Any key or click ends
+// it early and still does what it was going to do; a screen the logo does
+// not fit on gets no greeting rather than a cropped one; headless and
+// scripted sessions have nobody to greet. 0 for never.
+splash_ms 900
+
+// What a new pane runs. Unset means $SHELL.
+// shell "/bin/bash"
+
+// ── theme ───────────────────────────────────────────────────────────────────
+
+// Every colour the compositor draws has its own name here. They started as six
+// names doing thirty jobs, which meant the split guide could not be recoloured
+// without also recolouring the focused frame, because they were the same
+// entry. Several still share a default: that says they look right together,
+// not that they are the same thing.
+theme {
+    // What a cell's "terminal default" colour is taken to be when a shader has
+    // to compute on it. See the shaders section above.
+    default_fg "#ffffff"
+    default_bg "#000000"
+
+    // ── panes ───────────────────────────────────────────────────────────────
+    frame_focus "#7aa2f7"      // border of the focused pane
+    frame_idle "#45454a"       // border of every other pane
+    title "#ffffff"            // its title, and its OSC 5577 status text
+    title_idle "#45454a"       // the same, on a pane that is not focused
+
+    // A pane's own OSC 5577 buttons.
+    button_fg "#141418"
+    button_bg "#7aa2f7"
+    button_bg_idle "#55555c"   // buttons on a pane that is not focused
+
+    // ── things that appear under the pointer ────────────────────────────────
+    guide "#7aa2f7"            // split guide: armed edge, handle, its arrow, boundary
+    resize "#7aa2f7"           // the handle in the gap between two panes
+    drop_target "#7aa2f7"      // frame of a pane a drag could land on
+
+    // ── a pane's scrollback indicator ───────────────────────────────────────
+    scroll_fg "#141418"
+    scroll_bg "#7aa2f7"
+
+    // ── rows of a tab that has collapsed into a list ────────────────────────
+    header "#45454a"
+    header_hover "#7aa2f7"          // the rule, under the pointer
+    header_hover_title "#ffffff"    // the name, under the pointer
+
+    // ── the strip along the top ─────────────────────────────────────────────
+    // The tab you are in is filled rather than merely bold: bold alone is easy
+    // to miss on a strip of short labels. It keeps that fill while the pointer
+    // is on it -- it is still the tab you are in -- so its hover lands on the
+    // text instead.
+    tab_active_fg "#141418"
+    tab_active_bg "#7aa2f7"
+    tab_active_hover_fg "#ffffff"
+    tab_idle "#45454a"
+    tab_hover "#7aa2f7"
+    prefix_fg "#141418"        // the "C-a" badge, while the prefix is pending
+    prefix_bg "#7aa2f7"
+    tab_count "#45454a"        // panes in the whole session
+
+    // ── the line along the bottom ───────────────────────────────────────────
+    status "#45454a"           // session, tab, pane, and the pane index
+    status_state "#ffffff"     // scrolled / alt screen / not started / exited
+    hint "#ffffff"             // what the pointer is on, in the middle
+
+    // ── marks on a pane's frame ─────────────────────────────────────────────
+    bell "#e0af68"             // a pane rang and has not been looked at:
+                               // amber, not the accent -- attention, not focus
+    dead "#ff875f"             // its program exited: the line in its backlog,
+                               // and the words in its frame and the status line
+    pane_button "#45454a"      // the frame's own close/zoom/minimise marks
+    pane_button_hover "#7aa2f7"
+
+    // ── the row of minimised panes ──────────────────────────────────────────
+    minbar "#45454a"
+    minbar_hover "#7aa2f7"
+
+    // ── modals: a surface that floats over the layout ───────────────────────
+    // Named apart from the pane colours they resemble because a modal is a
+    // different surface: opaque, on top of everything, and legible against a
+    // background that has been dimmed underneath it. (The first version drew
+    // the close button in the pane button colour on the finder background,
+    // which are the same value — an invisible button until you hovered it.)
+    modal_bg "#1c1c22"          // a shade lighter than the dimmed screen
+    modal_fg "#e8e8ea"
+    modal_border "#7aa2f7"
+    modal_title "#ffffff"
+    modal_button "#8a8a95"      // visible *without* the pointer on it
+    modal_button_hover "#7aa2f7"
+
+    // ── the pane finder ─────────────────────────────────────────────────────
+    // The finder is a modal, so its box is the modal colours above; these are
+    // the parts only it has. `finder_bg` is the query field and the row under
+    // the pointer — a band that is not the box, so typing and hovering both
+    // have somewhere to show.
+    finder_fg "#ffffff"
+    finder_bg "#45454a"
+    finder_sel_fg "#141418"
+    finder_sel_bg "#7aa2f7"      // the row enter would take
+
+    // ── the in-place editor a double-click opens on a pane title ────────────
+    rename_fg "#141418"
+    rename_bg "#7aa2f7"
+
+    // ── announcements ───────────────────────────────────────────────────────
+    toast_fg "#141418"
+    toast_bg "#7aa2f7"
+}
+
+// ── keys ────────────────────────────────────────────────────────────────────
+//
+// Everything is `prefix` then a key. Pressing the prefix twice sends the
+// prefix itself to the pane. Modifiers are ctrl+ alt+ shift+ super+, and named
+// keys are left/right/up/down/enter/tab/escape/space/backspace/home/end/
+// pageup/pagedown/delete/insert/backslash/minus/slash/comma/period.
+//
+// The cheatsheet's shorthand also parses -- C- M- S-, and ← → ↑ ↓ -- so a chord
+// copied off C-a ? is a chord you can paste in here. Anything else is the
+// character you press, shift included: "?" is shift+slash, "H" is shift+h.
+//
+// `slosh --check` reads this file and says what it could not honour.
+//
+// Actions: split split-cols split-rows close-pane focus-left focus-right focus-up
+// focus-down focus-next resize-left resize-right resize-up resize-down equalize
+// rotate-layout clear-shaders pane-to-next-tab pane-to-prev-tab pane-to-new-tab
+// scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
+// scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder
+// palette help detach quit
+// literal-prefix none
+
+// What C-a e opens this file with. Empty means $EDITOR, and then vi -- the
+// one editor a POSIX system is required to have, so a wrong guess you can see
+// beats a pane that opens empty.
+//
+// The pane it opens is *ephemeral*: quit the editor and the pane goes, with
+// no corpse to dismiss and no trace in a dumped layout. You asked for an
+// editor, not for a record of having had one.
+//
+// editor "nvim"
+
+keys {
+    // The leader. Every binding below is this key, then the key on the line.
+    // ctrl+a is a default and not a decision -- it is start-of-line to half
+    // the world, and if that is you, change it here and nothing else: the
+    // badge in the status bar and the cheatsheet (C-a ?) both name whatever
+    // is bound, and the old key goes straight through to your shell.
+    //
+    // Pressing it twice always sends the key itself, whichever key it is.
+    prefix "ctrl+a"
+
+    // Enter splits whichever way there is room for, preferring the longer side;
+    // the next two are for when you mean a particular axis.
+    bind "enter" "split"
+    bind "\\" "split-cols"
+    bind "-" "split-rows"
+    bind "x" "close-pane"
+    // Run a dead pane's command again, in the same pane and on top of the
+    // same scrollback. Refused on a pane that is still running.
+    bind "r" "rerun"
+    bind "z" "zoom"
+    bind "m" "minimize"
+
+    bind "h" "focus-left"
+    bind "l" "focus-right"
+    bind "k" "focus-up"
+    bind "j" "focus-down"
+    bind "left" "focus-left"
+    bind "right" "focus-right"
+    bind "up" "focus-up"
+    bind "down" "focus-down"
+    bind "o" "focus-next"
+
+    // The boundary moves in the direction you press, whichever side of it the
+    // focused pane is on.
+    bind "shift+h" "resize-left"
+    bind "shift+l" "resize-right"
+    bind "shift+k" "resize-up"
+    bind "shift+j" "resize-down"
+
+    // Undo every drag and nudge at once: each split divided between the panes
+    // behind it, so every visible pane gets an even share of the rows and
+    // columns it competes for.
+    bind "=" "equalize"
+
+    // A quarter turn of the whole tab, clockwise: every split changes axis and
+    // a row split's children reverse, because the pane on top of a stack is the
+    // pane on the right once you turn it. Four presses come back exactly, so
+    // there is nothing to undo -- which is what earns it the space bar, the
+    // easiest key there is and the one tmux spends on cycling layouts. Refused
+    // with a word when the turn would leave a pane under the floor: a share of
+    // the height is not always a share the width can afford, and `=` first
+    // usually fixes that.
+    bind "space" "rotate-layout"
+
+    // Push the focused pane one tab along, or out into a tab of its own. `>` and
+    // `<` are the shifted period and comma; a terminal does not report the shift
+    // for punctuation, so `.` and `,` answer to them too -- the same deal `/`
+    // already has with `?`.
+    bind ">" "pane-to-next-tab"
+    bind "<" "pane-to-prev-tab"
+    bind "b" "pane-to-new-tab"
+    bind "c" "new-tab"
+    // Tab cycles tabs, the way every other tabbed thing does. `n` and `p`
+    // used to, and are free again: `p` is worth more as the palette, which is
+    // pressed rather more often than "the tab before this one".
+    bind "tab" "next-tab"
+    bind "shift+tab" "prev-tab"
+    bind "1" "select-tab-1"
+    bind "2" "select-tab-2"
+    bind "3" "select-tab-3"
+
+    bind "f" "finder"
+
+    // Every action by name, including the ones nothing is bound to -- which
+    // is the whole point of it, since an unbound action has no other way in.
+    bind "p" "palette"
+
+    // The cheatsheet, built from whatever is bound below rather than from a
+    // list of what the defaults were -- rebind something and it says so.
+    // Bound twice because a terminal may or may not tell us `?` was shifted.
+    bind "?" "help"
+    bind "/" "help"
+
+    // Scrollback. The wheel does this too, unless the program in the pane
+    // wants the mouse itself, or is a full-screen program with no scrollback
+    // of ours to show — then the wheel means arrow keys to it.
+    bind "pageup" "scroll-page-up"
+    bind "pagedown" "scroll-page-down"
+    bind "home" "scroll-top"
+    bind "end" "scroll-bottom"
+    bind "d" "detach"
+    bind "q" "quit"
+
+    // ── bindings that need no leader ────────────────────────────────────────
+    //
+    // Anything in here fires the moment you press it, with no prefix first.
+    // That also means the chord is *gone* from every program in every pane:
+    // vim will never see it, your shell will never see it, and the only sign
+    // will be that the key does not work in there any more.
+    //
+    // It is a footgun and it is yours: this is your keyboard, and a
+    // multiplexer that refuses to get out of the way is its own kind of
+    // wrong. Prefer chords no program wants -- ctrl+alt+something is usually
+    // safe, a bare letter certainly is not.
+    //
+    // `none` gives a chord back, the same as anywhere else.
+    //
+    // direct {
+    //     bind "ctrl+alt+left" "focus-left"
+    //     bind "ctrl+alt+right" "focus-right"
+    //     bind "ctrl+alt+up" "focus-up"
+    //     bind "ctrl+alt+down" "focus-down"
+    // }
+}

@@ -303,6 +303,13 @@ fmt-check: ## ...or just say what is not formatted
 	  echo "run: make fmt"; exit 1; \
 	else echo "all $(words $(CSRC)) C and $(words $(PYSRC)) Python files formatted"; fi
 
+fuzz: $(BIN) ## build and run all fuzz targets (TIME=15)
+	$(MAKE) -C tests/fuzz run-all TIME=$(or $(TIME),15)
+
+fuzz-corpus: ## replay fuzz seed corpora (CI-friendly, no fuzzing)
+	$(MAKE) -C tests/fuzz replay
+	$(MAKE) -C tests/fuzz corpus
+
 hooks: ## install the pre-commit hook (formats staged C)
 	$(Q)git config core.hooksPath .githooks
 	@echo "core.hooksPath -> .githooks   (git commit --no-verify to skip)"

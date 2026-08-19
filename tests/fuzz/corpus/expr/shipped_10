@@ -1,0 +1,1 @@
+(abs(min((y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y), (2 * cols + 2 * rows - 4) - (y == 0 ? x : x == cols - 1 ? cols - 1 + y : y == rows - 1 ? 2 * cols + rows - 3 - x : 2 * cols + 2 * rows - 4 - y)) - (t / 18 % (cols + rows - 2))) < 3) * 220

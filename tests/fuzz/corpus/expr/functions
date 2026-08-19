@@ -1,0 +1,1 @@
+min(max(abs(x - cols / 2), 1), 255) + clamp(y, 0, rows) * dist(x, y, curx, cury)
