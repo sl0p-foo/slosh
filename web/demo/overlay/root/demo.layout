@@ -1,0 +1,27 @@
+// What the visitor lands in: one tab, three panes, one screen.
+//
+//   slosh --layout /root/demo.layout
+//
+// which is the line /etc/inittab respawns. No `cwd=` anywhere in it: a relative
+// path in a layout file means the directory the file is in, and a pane with no
+// cwd at all starts there too -- so every pane here starts in /root.
+layout {
+    tab name="demo" purpose="demo" {
+
+        // The greeting, and a shell under it. This pane was *given* a command,
+        // so typing `exit` leaves the corpse and an offer to re-run it (`C-a r`)
+        // rather than closing the pane -- which is a pane state worth seeing.
+        pane focus=true purpose="demo:welcome" command="cat /etc/motd; exec /bin/sh"
+
+        pane split="rows" {
+
+            // Laid out, running nothing, started by your first keystroke: the
+            // pane shows what it *would* run. Here it is also the proof that
+            // the machine underneath is a real riscv64 one.
+            pane purpose="demo:machine" command="cat /proc/cpuinfo" suspended=true
+
+            // No command: the session's shell, in /root.
+            pane purpose="demo:shell"
+        }
+    }
+}

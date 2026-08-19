@@ -1,0 +1,184 @@
+/* Dark, quiet, one column. The terminal is the only thing on the page that
+   should be worth looking at, so everything else is grey and small. Colours are
+   contrib/themes/sl0p.kdl -- hot pink on near-black -- so the chrome and the
+   thing running inside it agree. */
+
+:root {
+    --bg: #0b0b0e;
+    --panel: #141418;
+    --fg: #e8e8ea;
+    --dim: #8a8a95;
+    --faint: #45454a;
+    --pink: #ff5fd7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0 auto;
+    padding: 2rem 1.5rem 3rem;
+    max-width: 102rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+a { color: var(--pink); }
+a:hover { color: #fff; }
+
+code, kbd {
+    font-family: "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font-size: 0.9em;
+}
+
+header { margin-bottom: 1.25rem; }
+
+h1 {
+    margin: 0;
+    color: var(--pink);
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 1.6rem;
+    letter-spacing: 0.02em;
+}
+
+/* The title is the way back to the front page, without growing a nav. */
+h1 a { color: inherit; text-decoration: none; }
+h1 a:hover { color: #fff; }
+
+header p {
+    margin: 0.4rem 0 0;
+    max-width: 46rem;
+    color: var(--dim);
+}
+
+/* The stage is a fixed box; the terminal inside it is a fixed grid scaled to
+   fit by demo.js. Absolute positioning keeps the scaled element from dragging
+   the layout around as it grows -- a transform does not reflow, but an
+   in-flow element that changed size would. */
+#stage {
+    position: relative;
+    overflow: hidden;
+    height: 78vh;
+    min-height: 360px;
+    padding: 10px;
+    border: 1px solid var(--faint);
+    border-radius: 6px;
+    background: var(--bg);
+}
+
+#stage:focus-within { border-color: var(--pink); }
+
+#term_wrap {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    transform-origin: top left;
+}
+
+#bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: baseline;
+    margin-top: 0.6rem;
+    color: var(--faint);
+    font-size: 13px;
+}
+
+#bar code { color: var(--dim); }
+
+#status {
+    color: var(--pink);
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+#fetching {
+    visibility: hidden;
+    padding: 0 0.4rem;
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--pink);
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+#fetching.on { visibility: visible; }
+
+.spacer { flex: 1; }
+
+#geometry { font-family: "JetBrains Mono", Menlo, Consolas, monospace; }
+
+#keys_btn {
+    padding: 0.1rem 0.7rem;
+    border: 1px solid var(--faint);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--dim);
+    font: inherit;
+    cursor: pointer;
+}
+
+#keys_btn:hover { color: var(--pink); border-color: var(--pink); }
+
+/* The cheat-sheet, out of the way until asked for. A native <dialog>, so Esc
+   and the backdrop come from the browser rather than from more script. */
+#keys {
+    max-width: 44rem;
+    padding: 1.5rem 2rem;
+    border: 1px solid var(--faint);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+}
+
+#keys::backdrop { background: rgba(0, 0, 0, 0.6); }
+
+#keys h2 {
+    margin: 0 0 0.3rem;
+    color: var(--fg);
+    font-size: 1rem;
+}
+
+#keys p {
+    margin: 0 0 1rem;
+    color: var(--dim);
+}
+
+#keys dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.35rem 1.25rem;
+    margin: 0;
+    font-size: 14px;
+}
+
+#keys dt { text-align: right; white-space: nowrap; }
+#keys dd { margin: 0; color: var(--dim); }
+
+#keys .dismiss {
+    margin: 1rem 0 0;
+    color: var(--faint);
+    font-size: 12px;
+}
+
+kbd {
+    padding: 0.05em 0.35em;
+    border: 1px solid var(--faint);
+    border-radius: 3px;
+    background: var(--panel);
+    color: var(--pink);
+}
+
+footer {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--panel);
+    color: var(--faint);
+    font-size: 13px;
+}
+
+footer p { margin: 0; max-width: 52rem; }
+
+@media (max-width: 40rem) {
+    #keys dl { grid-template-columns: 1fr; gap: 0 0; }
+    #keys dt { text-align: left; margin-top: 0.5rem; }
+}

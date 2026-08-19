@@ -1,0 +1,24 @@
+# The environment every pane inherits.
+#
+# Sourced by the line in /etc/inittab that starts the session, so slosh gets
+# it and hands it on. A pane's shell is not a login shell and reads nothing at
+# startup, which is why PS1 is exported here rather than left in a file no pane
+# will ever open.
+#
+# TERM is what *slosh itself* is looking at -- xterm.js in the browser. It is
+# not what a program in a pane is told: slosh sets TERM=xterm-ghostty on the
+# far side of every pty it opens (src/pty.c:67), because that is the terminal
+# it implements. That name resolves: build-rootfs aliases xterm-ghostty to
+# xterm-256color in the image's terminfo, which is the subset both speak.
+#
+# COLORTERM because it is true -- the VT does 24-bit colour -- and because it
+# is what lets vim pick truecolor over the 256 the terminfo alias admits to.
+TERM=xterm-256color
+COLORTERM=truecolor
+HOME=/root
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+PS1='slosh-demo:\w \$ '
+export TERM COLORTERM HOME PATH PS1
+
+# The motd belongs in a pane, not on the console underneath the session: the
+# layout gives it a pane of its own, where it can be read.

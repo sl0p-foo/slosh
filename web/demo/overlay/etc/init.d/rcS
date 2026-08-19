@@ -1,0 +1,44 @@
+#!/bin/sh
+# Everything this machine needs before the session starts, and nothing else.
+#
+# Quiet on purpose: this writes to the console the visitor is about to watch
+# slosh draw on, and a wall of boot chatter under a terminal multiplexer
+# reads as something having gone wrong.
+#
+# Deliberately not `set -e`: a mount that is already there must not stop the
+# ones after it, and one of those is devpts -- without which the demo has no
+# panes at all.
+
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys || mount -t sysfs sysfs /sys
+
+# The guest kernel is built with CONFIG_DEVTMPFS_MOUNT, so /dev is already
+# populated by the time init runs. Kept as a guard rather than dropped: it is
+# one line, and it is what makes the rest of this script true on a kernel
+# without that option.
+mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev
+
+# Load-bearing, and the first thing to look at if the demo comes up with no
+# panes in it: slosh gives every pane a pty of its own through
+# posix_openpt(3), which is devpts or nothing. gid 5 is `tty` in Alpine's
+# /etc/group, and ptmxmode is what makes /dev/ptmx openable at all.
+mkdir -p /dev/pts
+mountpoint -q /dev/pts ||
+	mount -t devpts -o ptmxmode=0666,gid=5,mode=620 devpts /dev/pts
+[ -e /dev/ptmx ] || ln -s pts/ptmx /dev/ptmx
+
+# Somewhere to write. The session's control socket lands under /tmp
+# (/tmp/slosh-0/<name>.sock, since $XDG_RUNTIME_DIR is unset here), so a
+# read-only /tmp is a session that cannot start. /dev/shm is not used by
+# anything we ship, but musl's shm_open expects it and the cost is nothing.
+mountpoint -q /tmp || mount -t tmpfs -o size=16m,mode=1777 tmpfs /tmp
+mountpoint -q /run || mount -t tmpfs -o size=4m,mode=0755 tmpfs /run
+mkdir -p /dev/shm
+mountpoint -q /dev/shm || mount -t tmpfs -o size=8m,mode=1777 tmpfs /dev/shm
+
+hostname slosh-demo
+
+# The console is a terminal a full-screen program is about to own, and a kernel
+# message arriving mid-session would be painted straight over it. Only panics
+# get through from here on.
+dmesg -n 1 2>/dev/null

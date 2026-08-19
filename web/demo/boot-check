@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Boot the demo filesystem in a native TinyEMU and check slosh runs.
+
+The browser is the target, but it is a terrible place to find out that the
+guest binary does not start: the emulator, the kernel and the image are the
+same in both, so everything except the page can be checked here in about
+twenty seconds, without a browser and without a web server.
+
+The same tarball fetch-vendor already downloaded for its licence text is the
+native emulator's source, so this costs one gcc build the first time and
+nothing after that.
+"""
+
+import argparse
+import os
+import pty
+import re
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+BUILD = os.path.join(HERE, "build")
+TEMU_SRC = os.path.join(BUILD, "tinyemu")
+TEMU = os.path.join(TEMU_SRC, "temu")
+TARBALL = os.path.join(HERE, "vendor", ".cache", "tinyemu.tar.gz")
+
+
+def build_temu():
+    """Build the native emulator, without the parts that need libraries.
+
+    CONFIG_FS_NET wants libcurl and openssl and exists to fetch a filesystem
+    over HTTP -- which is exactly what the browser does and exactly what we do
+    not, because here the image is a file. CONFIG_SDL wants SDL for a graphical
+    display we never open. Turning both off leaves a build that needs a C
+    compiler and nothing else.
+    """
+    if os.path.exists(TEMU):
+        return
+    if not os.path.exists(TARBALL):
+        sys.exit(f"{TARBALL} is missing -- run ./fetch-vendor first")
+    print("  building the native emulator (once)")
+    if os.path.exists(TEMU_SRC):
+        shutil.rmtree(TEMU_SRC)
+    os.makedirs(TEMU_SRC)
+    with tarfile.open(TARBALL) as tf:
+        for m in tf.getmembers():
+            parts = m.name.split("/", 1)
+            if len(parts) == 2 and parts[1]:
+                m.name = parts[1]
+                tf.extract(m, TEMU_SRC, filter="data")
+    mk = os.path.join(TEMU_SRC, "Makefile")
+    with open(mk) as f:
+        text = f.read()
+    text = text.replace("\nCONFIG_FS_NET=y", "\n#CONFIG_FS_NET=y")
+    text = text.replace("\nCONFIG_SDL=y", "\n#CONFIG_SDL=y")
+    with open(mk, "w") as f:
+        f.write(text)
+    r = subprocess.run(
+        ["make", "-s", f"-j{os.cpu_count() or 4}", "temu"],
+        cwd=TEMU_SRC,
+        capture_output=True,
+        text=True,
+    )
+    if not os.path.exists(TEMU):
+        sys.exit(f"temu did not build:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
+
+
+def write_cfg(path, image, kernel, bios, cmdline, mem):
+    with open(path, "w") as f:
+        f.write(
+            "{\n"
+            "    version: 1,\n"
+            '    machine: "riscv64",\n'
+            f"    memory_size: {mem},\n"
+            f'    bios: "{bios}",\n'
+            f'    kernel: "{kernel}",\n'
+            f'    cmdline: "{cmdline}",\n'
+            f'    drive0: {{ file: "{image}" }},\n'
+            "}\n"
+        )
+
+
+class VM:
+    """A booted guest on a pty, driven a line at a time."""
+
+    def __init__(self, cfg, cols=100, rows=30):
+        env = dict(
+            os.environ, TERM="xterm-256color", COLUMNS=str(cols), LINES=str(rows)
+        )
+        self.pid, self.fd = pty.fork()
+        if self.pid == 0:
+            os.execve(TEMU, [TEMU, cfg], env)
+            os._exit(127)
+        self.buf = ""
+
+    def read(self, deadline):
+        while True:
+            timeout = deadline - time.time()
+            if timeout <= 0:
+                return False
+            r, _, _ = select.select([self.fd], [], [], min(timeout, 0.5))
+            if not r:
+                continue
+            try:
+                data = os.read(self.fd, 65536)
+            except OSError:
+                return False
+            if not data:
+                return False
+            self.buf += data.decode("utf-8", "replace")
+            return True
+
+    def expect(self, pattern, timeout=60):
+        rx = re.compile(pattern, re.S)
+        deadline = time.time() + timeout
+        while True:
+            m = rx.search(self.buf)
+            if m:
+                return m
+            if not self.read(deadline):
+                return None
+
+    def send(self, s):
+        os.write(self.fd, s.encode())
+
+    def close(self):
+        try:
+            os.kill(self.pid, signal.SIGKILL)
+            os.waitpid(self.pid, 0)
+        except OSError:
+            pass
+        try:
+            os.close(self.fd)
+        except OSError:
+            pass
+
+    def tail(self, n=40):
+        return "\n".join(self.buf.replace("\r", "").splitlines()[-n:])
+
+
+def phase_shell(cfg_dir, image, kernel, bios, mem, timeout):
+    """Boot straight to a shell and put slosh through its paces.
+
+    init=/bin/sh deliberately skips our inittab: this phase is about the
+    binary, not about the boot scripts, and a failure here means the
+    cross-compile is wrong rather than the overlay.
+    """
+    cfg = os.path.join(cfg_dir, "boot-check-shell.cfg")
+    write_cfg(
+        cfg, image, kernel, bios, "console=hvc0 root=/dev/vda rw init=/bin/sh", mem
+    )
+    vm = VM(cfg)
+    try:
+        if not vm.expect(r"[#$] $|/ #|# ", timeout=timeout):
+            return "no shell prompt after boot", vm.tail()
+        # devpts is what /etc/init.d/rcS does for the real boot; slosh cannot
+        # open a pane without it, so the failure is worth reproducing exactly.
+        vm.send(
+            "mkdir -p /dev/pts && mount -t devpts -o ptmxmode=0666 devpts /dev/pts\n"
+        )
+        vm.send("echo MOUNT_RC=$?\n")
+        if not vm.expect(r"MOUNT_RC=0", timeout=20):
+            return "devpts would not mount", vm.tail()
+
+        vm.send("/usr/bin/slosh --version; echo VERSION_RC=$?\n")
+        if not vm.expect(r"VERSION_RC=0", timeout=30):
+            return "slosh --version failed", vm.tail()
+
+        # The same composition the top-level `make smoke` does, in the guest:
+        # a real pty, a real child process, a screen composed and printed. The
+        # child sleeps because a process that exits before the first compose
+        # races it: the pane is then drawn already dead, showing "[process
+        # exited]" and none of its output. That race exists on the host too --
+        # it is not something the emulator introduced.
+        vm.send(
+            "/usr/bin/slosh --headless --cols 40 --rows 8 -- "
+            "/bin/sh -c 'printf \"HEADLESS-OK\\n\"; sleep 2'; echo SMOKE_RC=$?\n"
+        )
+        if not vm.expect(r"HEADLESS-OK", timeout=60):
+            return "headless compose produced no output", vm.tail()
+        if not vm.expect(r"SMOKE_RC=0", timeout=30):
+            return "headless compose exited non-zero", vm.tail()
+
+        # The config and layout we ship are read by the guest's own binary
+        # rather than by the one on this machine, which is the only reading
+        # that counts -- `--check` is what it does to them at startup anyway.
+        for path in ("/root/.config/slosh/config.kdl", "/root/demo.layout"):
+            vm.send(f"/usr/bin/slosh --check {path}; echo CHECK_RC=$?\n")
+            if not vm.expect(r"CHECK_RC=0", timeout=30):
+                return f"{path} did not pass --check", vm.tail()
+
+        # vim, with the runtime pruned to syntax highlighting: prove the prune
+        # kept enough. Batch ex mode loads synload.vim and filetype detection
+        # exactly the way `:syntax on` does, and writes what it found -- if
+        # the autoload/dist detection functions or syntax/ went missing, this
+        # is what breaks, not `vim --version`.
+        vm.send(
+            "HOME=/root TERM=xterm-ghostty vim -es"
+            " -c 'syntax on' -c 'e /etc/init.d/rcS'"
+            ' -c \'call writefile([exists("g:syntax_on")."-".&filetype], "/tmp/vimprobe")\''
+            " -c 'qa!'; cat /tmp/vimprobe; echo VIM_RC=$?\n"
+        )
+        if not vm.expect(r"1-sh.*VIM_RC=0", timeout=60):
+            return "vim did not come up highlighting (want '1-sh')", vm.tail()
+
+        # And once more full-screen in a pane, the way a visitor runs it,
+        # because -es skips plugin loading and cannot see a plugin startup
+        # trips over (the pruned netrw's loader did exactly that, with E919,
+        # while the batch probe stayed green). --idle-ms is load-bearing:
+        # headless composes at the first quiet moment and exits, and both a
+        # half-started vim and a vim blocked at its hit-enter prompt are
+        # quiet. Four seconds lets startup finish, so the one frame shows
+        # either the file's text or the error that stopped it.
+        mark = len(vm.buf)
+        vm.send(
+            ". /etc/profile; /usr/bin/slosh --headless --idle-ms 4000 "
+            "--cols 70 --rows 16 -- vim /etc/init.d/rcS; echo FS''VIM_END\n"
+        )
+        if not vm.expect(r"FSVIM_END", timeout=120):
+            return "full-screen vim run did not finish", vm.tail(30)
+        frame = vm.buf[mark:]
+        if re.search(r"E\d{2,4}:", frame):
+            return "vim startup raised an error in a pane", vm.tail(30)
+        if "#!/bin/sh" not in frame:
+            return "vim did not paint the file in a pane", vm.tail(30)
+        return None, vm.tail(12)
+    finally:
+        vm.close()
+
+
+def phase_boot(cfg_dir, image, kernel, bios, mem, expect, timeout):
+    """Boot the way a visitor will, and wait for what they should see."""
+    cfg = os.path.join(cfg_dir, "boot-check-boot.cfg")
+    write_cfg(cfg, image, kernel, bios, "console=hvc0 root=/dev/vda rw", mem)
+    vm = VM(cfg)
+    try:
+        # Either outcome ends the wait: a panic is a result, not a timeout, and
+        # sitting out the full two minutes to report one is a waste of a loop.
+        m = vm.expect(rf"(?P<panic>Kernel panic)|(?P<ok>{expect})", timeout=timeout)
+        if m is None:
+            return f"never saw {expect!r} on the console", vm.tail()
+        if m.group("panic"):
+            return "kernel panic", vm.tail()
+        return None, vm.tail(20)
+    finally:
+        vm.close()
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--image", default=os.path.join(BUILD, "rootfs.bin"))
+    ap.add_argument(
+        "--kernel", default=os.path.join(HERE, "vendor", "kernel-riscv64.bin")
+    )
+    ap.add_argument("--bios", default=os.path.join(HERE, "vendor", "bbl64.bin"))
+    ap.add_argument("--mem", type=int, default=128, help="guest memory in MB")
+    ap.add_argument("--timeout", type=int, default=120)
+    ap.add_argument(
+        "--expect",
+        default=r"pane \d+/\d+",
+        # The status line, which only exists once a session has composed a
+        # screen. Matching the word "slosh" would also match the error a
+        # failing one prints.
+        help="regex the normal boot must print on the console",
+    )
+    ap.add_argument("--phase", choices=("shell", "boot", "both"), default="both")
+    ap.add_argument(
+        "--interactive",
+        action="store_true",
+        help="boot it and hand over the keyboard (C-a x quits temu)",
+    )
+    args = ap.parse_args()
+
+    # Relative paths in a VM config are resolved against the config file, which
+    # lives in build/ -- so `--image build/rootfs.bin` would be looked for in
+    # build/build/. Absolute paths sidestep the question entirely.
+    args.image = os.path.abspath(args.image)
+    args.kernel = os.path.abspath(args.kernel)
+    args.bios = os.path.abspath(args.bios)
+    for p in (args.image, args.kernel, args.bios):
+        if not os.path.exists(p):
+            sys.exit(f"{p} is missing -- run `make` first")
+    build_temu()
+
+    if args.interactive:
+        cfg = os.path.join(BUILD, "boot-check-interactive.cfg")
+        write_cfg(
+            cfg,
+            args.image,
+            args.kernel,
+            args.bios,
+            "console=hvc0 root=/dev/vda rw",
+            args.mem,
+        )
+        os.execv(TEMU, [TEMU, cfg])
+
+    failures = 0
+    if args.phase in ("shell", "both"):
+        err, tail = phase_shell(
+            BUILD, args.image, args.kernel, args.bios, args.mem, args.timeout
+        )
+        print(
+            f"  {'FAIL' if err else 'ok  '} guest binary   {err or 'runs, opens a pty, composes a screen'}"
+        )
+        if err:
+            failures += 1
+            print(tail)
+    if args.phase in ("boot", "both"):
+        err, tail = phase_boot(
+            BUILD,
+            args.image,
+            args.kernel,
+            args.bios,
+            args.mem,
+            args.expect,
+            args.timeout,
+        )
+        print(
+            f"  {'FAIL' if err else 'ok  '} normal boot    {err or 'init reaches slosh'}"
+        )
+        if err:
+            failures += 1
+            print(tail)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,5 @@
+slosh: panes, tabs and sessions, on riscv64 Linux inside your browser.
+The machine is yours and it is throwaway -- reload the page and it is gone.
+The leader is C-a: C-a Enter splits, C-a z zooms, C-a ? lists every key.
+These three panes are a file, /root/demo.layout, and so is the theme.
+The real thing, and the source of all of this, is linked beside the terminal.

@@ -1,0 +1,6 @@
+# Downloaded upstream artifacts (fetch-vendor puts them here, by sha256) and
+# everything the build produces. The emulator is MIT, but the kernel and the
+# busybox userland are GPL binaries: we link to Bellard's tarball rather than
+# redistribute them without their source.
+vendor/
+build/

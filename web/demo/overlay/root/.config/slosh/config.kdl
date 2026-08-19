@@ -1,0 +1,29 @@
+// The demo's config. Deliberately about twenty lines: the reference config with
+// every setting and the reasoning attached is config/config.kdl in the source
+// tree, and 48KB of commentary is the wrong thing to ship to a browser.
+//
+// Saving a config applies to a running session, so this file is also a thing to
+// edit from inside the demo: `C-a e` opens it in a pane.
+
+// The default palette, from the file the repo ships rather than a second copy
+// of it -- overlay/root/.config/slosh/themes/sl0p.kdl is a symlink to
+// contrib/themes/sl0p.kdl, so this is the same sl0p as everywhere else and it
+// cannot fall behind. An include is resolved against *this* file's directory.
+include "themes/sl0p.kdl"
+
+// Busybox ash is the only shell on this machine and $SHELL is not set on it.
+shell "/bin/sh"
+
+// A tenth of the default history. The whole machine is 32MB of disk and
+// whatever RAM the page asked for, and nothing here will produce 1000 lines.
+scrollback 1000
+
+// Enough gap to see the frames, without spending a column this terminal does
+// not have. `gap` is in rows and comes out square (gap_aspect).
+gap 1
+padding 0 1
+
+// No shader by default: a cursor-line wash reads as a rendering artifact to
+// anyone who did not ask for it. The shader system is one paste away --
+// contrib/shaders/ has thirty-two of them, and `C-a e` opens this file in a
+// pane; it is re-read the moment you save.

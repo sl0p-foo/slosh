@@ -1,0 +1,138 @@
+#!/bin/sh
+# Fetch the third-party pieces of the web demo into vendor/.
+#
+# None of this is committed. The emulator is MIT and could be, but the kernel
+# and the busybox userland are GPL binaries, and a repository that ships those
+# owes their source -- so we point at the upstream tarball instead and let it
+# stay Bellard's to distribute. Everything is pinned by sha256, tarball and
+# extracted member both: a mirror that quietly changes underneath us should
+# fail the build rather than boot something else in the visitor's browser.
+set -eu
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+vendor="$here/vendor"
+cache="$vendor/.cache"
+mkdir -p "$cache"
+
+JSLINUX_URL=https://bellard.org/tinyemu/jslinux-2019-12-21.tar.gz
+JSLINUX_SHA=c57e46f8eab6656cd9ce5c7e2825230177919b147c8c2befd1f327bbdf254088
+JSLINUX_DIR=jslinux-2019-12-21
+
+# The guest userland: Alpine's riscv64 minirootfs. A musl busybox userland with
+# apk, vi, less and top in it, which is a machine worth being dropped into --
+# and, unlike a rootfs lifted out of the jslinux tarball, one whose provenance
+# and licence we can point at.
+ALPINE_VER=3.22.5
+ALPINE_URL=https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/riscv64/alpine-minirootfs-$ALPINE_VER-riscv64.tar.gz
+ALPINE_SHA=24cd94b1be923179737cd50cb357aa7e72ed086ac08c2360f7e866ae2eb0cba5
+
+# Only for the licence text: the jslinux tarball ships none, and we redistribute
+# Bellard's MIT-licensed emulator in build/site.
+TINYEMU_URL=https://bellard.org/tinyemu/tinyemu-2019-12-21.tar.gz
+TINYEMU_SHA=be8351f2121819b3172fcedce5cb1826fa12c87da1b7ed98f269d3e802a05555
+TINYEMU_DIR=tinyemu-2019-12-21
+
+XTERM_VER=5.5.0
+XTERM_JS_URL=https://unpkg.com/@xterm/xterm@$XTERM_VER/lib/xterm.js
+XTERM_JS_SHA=1f991ac3b4b283ebf96e60ae23a00a52765dd3a2e46fa6fdda9f1aab032f7495
+XTERM_CSS_URL=https://unpkg.com/@xterm/xterm@$XTERM_VER/css/xterm.css
+XTERM_CSS_SHA=ba8e6985669488981ccf40c0cefe3aba80722cb6c92de7ad628b0bd717faf2b6
+
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+
+# Re-downloading a 4 MB tarball on every make is rude to bellard.org; the cache
+# is checked by hash, so a truncated download is refetched and a good one is not.
+fetch() { # url sha dest
+	if [ -f "$3" ] && [ "$(sha "$3")" = "$2" ]; then
+		printf '  have  %s\n' "$(basename "$3")"
+		return 0
+	fi
+	printf '  get   %s\n' "$(basename "$3")"
+	curl -fsSL --retry 3 -o "$3.part" "$1"
+	got=$(sha "$3.part")
+	if [ "$got" != "$2" ]; then
+		rm -f "$3.part"
+		printf 'sha256 mismatch for %s\n  expected %s\n  got      %s\n' "$1" "$2" "$got" >&2
+		exit 1
+	fi
+	mv "$3.part" "$3"
+}
+
+# member sha dest: extract one file from a tarball and check it on its own, so a
+# right tarball unpacked wrong is still an error.
+take() { # tarball member sha dest
+	tar -xzf "$1" -O "$2" >"$4.part"
+	got=$(sha "$4.part")
+	if [ "$got" != "$3" ]; then
+		rm -f "$4.part"
+		printf 'sha256 mismatch for %s\n  expected %s\n  got      %s\n' "$2" "$3" "$got" >&2
+		exit 1
+	fi
+	mv "$4.part" "$4"
+	printf '  ok    %s\n' "$(basename "$4")"
+}
+
+fetch "$JSLINUX_URL" "$JSLINUX_SHA" "$cache/jslinux.tar.gz"
+fetch "$TINYEMU_URL" "$TINYEMU_SHA" "$cache/tinyemu.tar.gz"
+
+# Deliberately NOT taken from the tarball: riscvemu64-wasm.{js,wasm}. Bellard's
+# prebuilt blob does not match his source release -- it stops issuing block
+# fetches at 16 MiB into the disk, which his 4 MiB demo images never noticed
+# and our 32 MiB one hit as a hang or a segfault in the guest. The emulator we
+# ship is built from this same tarball's source by emulator/build-emulator and
+# committed in emulator/dist/.
+
+# bbl is the BIOS, and the kernel is Bellard's 4.15 riscv64 build. We keep his
+# kernel deliberately: it is what these emulator binaries were tested against,
+# and building our own means building a riscv toolchain to get one feature
+# (CONFIG_BLK_DEV_INITRD) that a virtio root device does not need.
+take "$cache/jslinux.tar.gz" "$JSLINUX_DIR/bbl64.bin" \
+	293610cea7af6c75e4a8337e16c0d62834becbf31ffd9cca35e0c211602349db \
+	"$vendor/bbl64.bin"
+take "$cache/jslinux.tar.gz" "$JSLINUX_DIR/kernel-riscv64.bin" \
+	65ca70a6560a730396ab61488d1cf46089b32da5af7e535e03c180cd5bcc8e75 \
+	"$vendor/kernel-riscv64.bin"
+
+# The guest userland. build-rootfs unpacks this into a staging tree, lays the
+# overlay and slosh on top, and makes an image out of the result -- the
+# tarball itself is never modified. Bellard's own root-riscv64.bin is the
+# obvious alternative and is deliberately not used: it is a 2017 glibc busybox
+# image with 1.4 MiB free, no package manager, and /sbin/init as a shell script
+# that loops a bare shell.
+fetch "$ALPINE_URL" "$ALPINE_SHA" "$vendor/alpine-minirootfs-riscv64.tar.gz"
+
+# Guest packages beyond the minirootfs, as pinned .apk files. The machine has
+# no network, so anything it is to have must be baked into the image;
+# build-rootfs unpacks these into the staging tree (and prunes them -- vim
+# alone unpacks to 26 MiB of which the syntax machinery is under half).
+# An .apk is tar.gz segments, so nothing here needs apk-tools.
+APK_BASE=https://dl-cdn.alpinelinux.org/alpine/v3.22/main/riscv64
+mkdir -p "$vendor/apks"
+fetch "$APK_BASE/vim-9.1.1566-r0.apk" \
+	a6c60d2343b3432c7b1cf0953132e67b83e666da969a05196a23fb6a41f6dbfa \
+	"$vendor/apks/vim.apk"
+fetch "$APK_BASE/vim-common-9.1.1566-r0.apk" \
+	cd0b9d6990cb1d89c9559c8683b071689eef79b6b78c10e7906551ef8d429937 \
+	"$vendor/apks/vim-common.apk"
+fetch "$APK_BASE/xxd-9.1.1566-r0.apk" \
+	9e8e77c39c286d5f515bd377be0c2c55e706d9821910ecaa51e4880b0c0706b1 \
+	"$vendor/apks/xxd.apk"
+fetch "$APK_BASE/libncursesw-6.5_p20250503-r0.apk" \
+	7d88384bd34c276bafcaae52289e62b895bc5265f74369dc0ad523ef204d9607 \
+	"$vendor/apks/libncursesw.apk"
+fetch "$APK_BASE/ncurses-terminfo-base-6.5_p20250503-r0.apk" \
+	8e523158d782d13d311fffde76d891812be9e4e0d5b4e30dd14ad1c21848243a \
+	"$vendor/apks/ncurses-terminfo-base.apk"
+
+take "$cache/tinyemu.tar.gz" "$TINYEMU_DIR/MIT-LICENSE.txt" \
+	a75690160a50d8085bcd25acf34faa5b1c484e15ffd0bd662e5f4d7a289da080 \
+	"$vendor/TINYEMU-MIT-LICENSE.txt"
+
+# xterm.js rather than the term.js in the jslinux tarball: that one has no
+# truecolor and no wide characters, and a demo of a multiplexer that renders
+# 24-bit shaders and CJK would be lying about both. UMD bundle, so a plain
+# <script> puts Terminal on the global object -- no npm, no bundler.
+fetch "$XTERM_JS_URL" "$XTERM_JS_SHA" "$vendor/xterm.js"
+fetch "$XTERM_CSS_URL" "$XTERM_CSS_SHA" "$vendor/xterm.css"
+
+printf 'vendor/ ready (%s)\n' "$vendor"

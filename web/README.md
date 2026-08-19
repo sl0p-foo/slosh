@@ -1,21 +1,22 @@
-# web_new — the slosh website
+# web — the slosh website
 
-One front page, plus the two things the repository already builds, assembled
-into a single static site:
+Everything the website is made of lives here (plus the docs generator, which
+`make docs` shares). One front page, the documentation, and the in-browser
+demo, assembled into a single static site:
 
 | path | what | comes from |
 |---|---|---|
 | `/` | the front page: what it is, the demo video, install | `index.html` + `site.css`, hand-written, no build step |
 | `/docs/` | the documentation | `contrib/gen-docs`, the same pages `make docs` renders |
-| `/demo/` | the in-browser machine | `contrib/webdemo`, on its own page so the front page stays light |
+| `/demo/` | the in-browser machine | `demo/`, on its own page so the front page stays light |
 | `/install.sh` | what `curl \| sudo sh` fetches | `install.sh` here |
 
 ## Build
 
 ```sh
-web_new/build-site              # everything -> build/www
-NO_DEMO=1 web_new/build-site    # without the demo (it cross-compiles a guest)
-contrib/webdemo/serve --dir build/www
+make www                    # everything -> build/www (same as web/build-site)
+NO_DEMO=1 web/build-site    # without the demo (it cross-compiles a guest)
+web/demo/serve --dir build/www
 ```
 
 The output is only static files. Any host that serves a directory works, with

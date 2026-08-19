@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Serve the built demo out of web/demo/build/site.
+
+    web/demo/serve                     http://localhost:8000/
+    web/demo/serve --port 9000
+    web/demo/serve --dir build/site
+
+Not `python3 -m http.server`, for two reasons that both look like the emulator
+being broken. Older mimetypes databases do not know .wasm, so the module
+arrives as application/octet-stream and instantiation refuses it; and the
+default handler caches, so a rebuilt root filesystem serves the old blocks
+until someone thinks to hard-refresh.
+"""
+
+import argparse
+import functools
+import http.server
+import os
+import sys
+
+TYPES = {
+    ".wasm": "application/wasm",
+    ".bin": "application/octet-stream",  # bios, kernel, rootfs blocks
+    ".cfg": "text/plain; charset=utf-8",  # the VM config, read by the emulator
+    ".txt": "text/plain; charset=utf-8",  # the rootfs block index
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+}
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def guess_type(self, path):
+        return TYPES.get(os.path.splitext(path)[1].lower()) or super().guess_type(path)
+
+    def send_head(self):
+        """Serve <path>.gz with Content-Encoding: gzip when the client allows.
+
+        The build writes a .gz twin beside every block and every big asset;
+        XHR and the browser decode transparently, so the emulator sees the
+        same bytes off a wire carrying about half as many. This is what any
+        competent static host does on its own -- this server is just not one.
+        """
+        path = self.translate_path(self.path)
+        gz = path + ".gz"
+        if (
+            not path.endswith(".gz")
+            and os.path.isfile(gz)
+            and "gzip" in self.headers.get("Accept-Encoding", "")
+        ):
+            try:
+                f = open(gz, "rb")
+            except OSError:
+                return super().send_head()
+            self.send_response(200)
+            self.send_header("Content-Type", self.guess_type(path))
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(os.fstat(f.fileno()).st_size))
+            self.end_headers()
+            return f
+        return super().send_head()
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("  %s\n" % (fmt % args))
+
+
+def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    ap = argparse.ArgumentParser(description="serve the slosh web demo")
+    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--dir", default=os.path.join(here, "build", "site"))
+    args = ap.parse_args()
+
+    if not os.path.isdir(args.dir):
+        sys.exit("%s does not exist -- run `make` in %s first" % (args.dir, here))
+
+    http.server.ThreadingHTTPServer.allow_reuse_address = True
+    handler = functools.partial(Handler, directory=args.dir)
+    with http.server.ThreadingHTTPServer(("", args.port), handler) as httpd:
+        print("serving %s at http://localhost:%d/" % (args.dir, args.port))
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print()
+
+
+if __name__ == "__main__":
+    main()

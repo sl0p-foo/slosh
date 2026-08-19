@@ -1,17 +1,17 @@
 #!/bin/sh
 # Assemble the whole website into build/www:
 #
-#     /            web_new/         the front page (this directory)
+#     /            web/             the front page (this directory)
 #     /docs/       contrib/gen-docs the rendered documentation
-#     /demo/       contrib/webdemo  the in-browser machine, on its own page
+#     /demo/       web/demo/        the in-browser machine, on its own page
 #
-#     web_new/build-site               everything
-#     NO_DEMO=1 web_new/build-site     skip the demo (it cross-compiles a
-#                                      guest and needs zig + e2fsprogs)
+#     web/build-site               everything (or: make www)
+#     NO_DEMO=1 web/build-site     skip the demo (it cross-compiles a
+#                                  guest and needs zig + e2fsprogs)
 #
 # The output is only static files. Serve it with anything that serves a
 # directory; the one condition is .wasm as application/wasm, which
-# `contrib/webdemo/serve --dir build/www` handles locally.
+# `web/demo/serve --dir build/www` handles locally.
 
 set -eu
 
@@ -32,10 +32,10 @@ python3 "$root/contrib/gen-docs" "$out/docs"
 if [ "${NO_DEMO:-0}" = 1 ]; then
     echo "build-site: skipping demo (NO_DEMO=1)"
 else
-    make -C "$root/contrib/webdemo" site
+    make -C "$here/demo" site
     mkdir -p "$out/demo"
-    cp -R "$root/contrib/webdemo/build/site/." "$out/demo/"
+    cp -R "$here/demo/build/site/." "$out/demo/"
 fi
 
 echo "build-site: $out"
-echo "build-site: serve with: contrib/webdemo/serve --dir build/www"
+echo "build-site: serve with: web/demo/serve --dir build/www"

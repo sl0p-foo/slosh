@@ -136,21 +136,6 @@ that computes zero everywhere, because an example that does nothing reads as
 a broken shader system rather than a bad example. It found its first bug on
 its first run.
 
-## webdemo/
-
-slosh in a browser tab, for people who want to try it without installing it:
-a riscv64 Linux booted by Bellard's TinyEMU compiled to WebAssembly, an Alpine
-userland we build into a disk image, and slosh as the thing you land in.
-
-```sh
-cd contrib/webdemo && make && make serve
-```
-
-The output is static files, so it can be served from anywhere that can serve a
-directory. `make check` boots the same image in a native emulator and asserts
-the session comes up, which is how a change to the guest is tested without
-opening a browser at all.
-
 ## coverage
 
 ```sh

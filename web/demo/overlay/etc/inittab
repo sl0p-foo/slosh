@@ -1,0 +1,25 @@
+# busybox init, on a machine whose entire job is to hold one slosh session.
+#
+# This replaces Alpine's own inittab, which hands everything to openrc -- a
+# service manager that is not in the minirootfs and that this machine has no
+# services for. Four lines is the whole boot.
+#
+# Fields are <tty>:<runlevels>:<action>:<command>. The tty field is empty so
+# every entry inherits init's console, which is the one the kernel was told
+# about on the command line (console=hvc0) rather than a device this file has
+# to name.
+::sysinit:/etc/init.d/rcS
+
+# The visitor lands *in* slosh. There is nothing else on this machine to do,
+# and a shell prompt in front of a demo of a terminal multiplexer is a wasted
+# screen. `respawn` because quitting the session -- C-a q, or closing the last
+# pane -- has to bring it straight back: an empty console reads as a crash.
+#
+# It goes through a shell for two reasons: /etc/profile is the environment
+# every pane will inherit, and busybox init would otherwise split this line on
+# spaces itself and exec it directly.
+::respawn:/bin/sh -c '. /etc/profile; exec /usr/bin/slosh --layout /root/demo.layout'
+
+# There is no reset button on a browser tab.
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r

@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""Assemble the guest filesystem: Alpine + slosh + overlay, then split it.
+
+Unprivileged from end to end -- no loop mount, no chroot, no sudo. The tarball
+is unpacked into a staging directory, our files are laid on top, and `mke2fs
+-d` turns the whole tree into an ext2 image in one go. The one thing that
+needs root, and does not get it, is ownership: everything mke2fs writes is
+owned by whoever ran it, so a debugfs pass sets every inode back to root.
+
+The output is two things: build/rootfs.bin, which `boot-check` hands to a
+native emulator, and build/site/rootfs/, the same image cut into 256 KiB
+pieces with an index -- which is how TinyEMU's HTTP block device reads a disk
+off a plain static web server, fetching only the blocks the guest touches.
+"""
+
+import argparse
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+
+# ext2, and no feature the 2018-vintage guest kernel might not know. Pinned
+# rather than left to mke2fs's defaults so that a newer e2fsprogs on somebody
+# else's machine cannot quietly produce an image this kernel will not mount.
+FS_FEATURES = "^metadata_csum,^64bit,^huge_file,^dir_nlink,^extra_isize,^resize_inode"
+FS_BLOCK = 1024
+
+
+def need(*tools):
+    missing = [t for t in tools if shutil.which(t) is None]
+    if missing:
+        sys.exit(
+            f"missing: {', '.join(missing)}\n"
+            "these come from e2fsprogs (apt install e2fsprogs)"
+        )
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def parse_size(s):
+    m = re.fullmatch(r"(\d+)([KMG]?)", s.strip(), re.I)
+    if not m:
+        sys.exit(f"cannot read a size from {s!r} (try 32M)")
+    return (
+        int(m.group(1))
+        * {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3}[m.group(2).upper()]
+    )
+
+
+# What of vim's 26 MiB runtime actually serves syntax highlighting: the syntax
+# definitions themselves, the filetype detection they key off (filetype.vim
+# calls into autoload/dist/), the colour schemes, and the handful of top-level
+# scripts `:syntax on` sources. Docs, spell, translations, GUI menus, indent
+# and per-filetype plugins are none of that.
+VIM_PRUNE = (
+    "usr/share/vim/vim91/doc",
+    "usr/share/vim/vim91/spell",
+    "usr/share/vim/vim91/lang",
+    "usr/share/vim/vim91/tutor",
+    "usr/share/vim/vim91/pack",
+    "usr/share/vim/vim91/indent",
+    "usr/share/vim/vim91/ftplugin",
+    "usr/share/vim/vim91/compiler",
+    "usr/share/vim/vim91/keymap",
+    "usr/share/vim/vim91/print",
+    "usr/share/vim/vim91/macros",
+    "usr/share/vim/vim91/tools",
+    "usr/share/vim/vim91/menu.vim",
+    "usr/share/vim/vim91/synmenu.vim",
+    "usr/share/vim/vim91/optwin.vim",
+    # vim 9.1 moved netrw itself into pack/, which is pruned above; the loader
+    # left in plugin/ then greets every interactive start with E919. A
+    # directory browser is not syntax highlighting.
+    "usr/share/vim/vim91/plugin/netrwPlugin.vim",
+)
+
+
+def unpack_apks(apk_dir, root):
+    """Unpack pinned .apk files into the staging tree.
+
+    An .apk is three concatenated gzip streams -- signature, control, data --
+    and Python's gzip reads straight across the joins, so the whole thing
+    parses as one tar with some `.SIGN`/`.PKGINFO` entries to skip. No
+    apk-tools, no package database in the guest: on a machine with no network
+    and a lifetime of one browser tab, `apk list` has nobody to answer to.
+    """
+    import gzip
+    import io
+
+    for name in sorted(os.listdir(apk_dir)):
+        if not name.endswith(".apk"):
+            continue
+        with gzip.open(os.path.join(apk_dir, name)) as gz:
+            data = gz.read()
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:", ignore_zeros=True) as tf:
+            for m in tf.getmembers():
+                if m.name.startswith(".") or m.isdev():
+                    continue
+                # The minirootfs seeds busybox applets as absolute symlinks
+                # (usr/bin/xxd -> /bin/busybox); extracting the real binary
+                # through one both fails tarfile's containment check and would
+                # be wrong. Replacing the applet is the point of the package.
+                dest = os.path.join(root, m.name)
+                if not m.isdir() and os.path.lexists(dest) and not os.path.isdir(dest):
+                    os.remove(dest)
+                tf.extract(m, root, filter="tar")
+
+    for rel in VIM_PRUNE:
+        p = os.path.join(root, rel)
+        if os.path.isdir(p):
+            shutil.rmtree(p)
+        elif os.path.exists(p):
+            os.remove(p)
+
+
+def stage(base, apks, overlay, slosh, root):
+    """Unpack Alpine, lay our files on top, install the binary.
+
+    Nothing here needs privilege: the minirootfs tarball contains no device
+    nodes (the kernel mounts devtmpfs over /dev anyway) and no setuid bits.
+    """
+    if os.path.exists(root):
+        shutil.rmtree(root)
+    os.makedirs(root)
+
+    with tarfile.open(base) as tf:
+        for m in tf.getmembers():
+            if m.isdev():
+                continue
+            tf.extract(m, root, filter="tar")
+
+    if apks:
+        unpack_apks(apks, root)
+        # Panes get TERM=xterm-ghostty (src/pty.c), and no packaged terminfo
+        # knows that name. An alias to xterm-256color is the honest subset:
+        # slosh's VT speaks everything that entry claims, and vim gets its
+        # colours from COLORTERM=truecolor rather than from the palette here.
+        # Alpine's ncurses keeps its base entries in /etc/terminfo.
+        ti = os.path.join(root, "etc/terminfo/x")
+        if not os.path.isdir(ti):
+            sys.exit("ncurses-terminfo-base did not provide etc/terminfo/x")
+        if not os.path.lexists(os.path.join(ti, "xterm-ghostty")):
+            os.symlink("xterm-256color", os.path.join(ti, "xterm-ghostty"))
+
+    installed = []
+    overlay = os.path.abspath(overlay)
+    for dirpath, _dirs, files in os.walk(overlay):
+        for name in sorted(files):
+            host = os.path.join(dirpath, name)
+            rel = os.path.relpath(host, overlay)
+            dest = os.path.join(root, rel)
+            real = os.path.realpath(host)
+            if not os.path.exists(real):
+                sys.exit(f"{host} points at {real}, which is not there")
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copyfile(real, dest)
+            # A checkout on a filesystem with no permission bits, or a zip
+            # download, would otherwise produce an init script that cannot run.
+            executable = os.access(real, os.X_OK) or rel.split(os.sep)[0] in (
+                "sbin",
+                "bin",
+            )
+            os.chmod(dest, 0o755 if executable else 0o644)
+            installed.append(("/" + rel.replace(os.sep, "/"), os.path.getsize(real)))
+
+    dest = os.path.join(root, "usr/bin/slosh")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copyfile(slosh, dest)
+    os.chmod(dest, 0o755)
+    installed.append(("/usr/bin/slosh", os.path.getsize(slosh)))
+    if apks:
+        vim = os.path.join(root, "usr/bin/vim")
+        if not os.path.exists(vim):
+            sys.exit("apks were given but usr/bin/vim did not appear")
+        installed.append(("/usr/bin/vim", os.path.getsize(vim)))
+
+    # Mountpoints the guest needs to exist before anything can mount on them.
+    for d in ("dev/pts", "proc", "sys", "tmp", "var/log", "root"):
+        os.makedirs(os.path.join(root, d), exist_ok=True)
+    os.chmod(os.path.join(root, "tmp"), 0o1777)
+    return installed
+
+
+def mkfs(root, image, size):
+    if os.path.exists(image):
+        os.remove(image)
+    r = run(
+        [
+            "mke2fs",
+            "-q",
+            "-F",
+            "-t",
+            "ext2",
+            "-b",
+            str(FS_BLOCK),
+            "-O",
+            FS_FEATURES,
+            "-d",
+            root,
+            "-E",
+            "root_owner=0:0",
+            "-L",
+            "slosh-demo",
+            image,
+            str(size // FS_BLOCK),
+        ]
+    )
+    if r.returncode != 0 or not os.path.exists(image):
+        sys.exit(f"mke2fs failed:\n{r.stdout}{r.stderr}")
+
+
+def chown_root(root, image):
+    """Give every inode back to root.
+
+    mke2fs -d copies the staging tree's ownership, and the staging tree
+    belongs to whoever ran the build. Left alone, the guest boots with a
+    userland owned by uid 1000: root can still read and execute all of it, so
+    it works, but `ls -l` tells a lie about the machine and anything that
+    checks ownership is wrong. One debugfs run fixes the lot.
+    """
+    paths = ["/"]
+    for dirpath, dirs, files in os.walk(root):
+        for name in sorted(dirs) + sorted(files):
+            p = os.path.join(dirpath, name)
+            paths.append("/" + os.path.relpath(p, root).replace(os.sep, "/"))
+    script = "".join(f"sif {p} uid 0\nsif {p} gid 0\n" for p in paths)
+    r = run(["debugfs", "-w", "-f", "/dev/stdin", image], input=script)
+    if "Bad magic" in (r.stdout + r.stderr):
+        sys.exit(f"debugfs would not open the image:\n{r.stdout}{r.stderr}")
+    return len(paths)
+
+
+STAT_SIZE = re.compile(r"\bSize: (\d+)")
+STAT_MODE = re.compile(r"\bMode:\s+(\d+)")
+STAT_USER = re.compile(r"\bUser:\s+(\d+)")
+
+
+def verify(image, installed):
+    """Read our own files back out of the finished image.
+
+    Presence is not the check that matters. A build that ran out of space
+    leaves a file with the right name, the right mode and no contents, which
+    boots into something that looks installed and is not -- so this compares
+    sizes, and insists the binary is executable and owned by root.
+    """
+    bad = []
+    for guest, want in installed:
+        out = run(["debugfs", "-R", f"stat {guest}", image]).stdout
+        size, mode, user = (
+            STAT_SIZE.search(out),
+            STAT_MODE.search(out),
+            STAT_USER.search(out),
+        )
+        if not (size and mode and user):
+            bad.append(f"{guest}: not in the image")
+            continue
+        if int(size.group(1)) != want:
+            bad.append(f"{guest}: {size.group(1)} bytes in the image, {want} staged")
+        if user.group(1) != "0":
+            bad.append(f"{guest}: owned by uid {user.group(1)}")
+        if guest.endswith("/slosh") and not int(mode.group(1), 8) & stat.S_IXUSR:
+            bad.append(f"{guest}: mode {mode.group(1)}, not executable")
+    if bad:
+        sys.exit("the image is not what it should be:\n  " + "\n  ".join(bad))
+
+
+def split(image, outdir, block_kib):
+    """Cut the image up the way TinyEMU's splitimg does, index and all.
+
+    Each block also gets a `.gz` twin. The emulator cannot be taught about
+    compression -- but it never has to be: `serve` (or any host that can map
+    Accept-Encoding onto a precompressed file) sends the .gz with
+    Content-Encoding: gzip, XHR decodes it before the emulator looks, and the
+    wire carries about half the bytes. mtime=0 so a rebuild of identical
+    content produces identical files.
+    """
+    import gzip
+
+    block = block_kib * 1024
+    os.makedirs(outdir, exist_ok=True)
+    # A smaller image than last time would otherwise leave its tail behind and
+    # the guest would read a stale block as though it were live disk.
+    for stale in os.listdir(outdir):
+        if re.fullmatch(r"blk\d+\.bin(\.gz)?", stale):
+            os.remove(os.path.join(outdir, stale))
+    n = 0
+    with open(image, "rb") as f:
+        while True:
+            buf = f.read(block)
+            if not buf:
+                break
+            with open(os.path.join(outdir, f"blk{n:09d}.bin"), "wb") as out:
+                out.write(buf)
+            with open(os.path.join(outdir, f"blk{n:09d}.bin.gz"), "wb") as out:
+                with gzip.GzipFile(
+                    fileobj=out, mode="wb", compresslevel=9, mtime=0
+                ) as gz:
+                    gz.write(buf)
+            n += 1
+    # Every block, ascending, in the prefetch list: the emulator streams the
+    # whole disk in at device init while boot proceeds -- a demand read of a
+    # block already in flight joins it rather than re-requesting. Ascending
+    # order front-loads what boot touches (superblock, early inode tables,
+    # /bin and /lib), so time-to-prompt stays demand-paced and the tail of
+    # the disk arrives behind it. Once the stream ends, the session never
+    # touches the network again -- which is the point: a mid-session pause
+    # for a cold block reads as the demo hanging.
+    with open(os.path.join(outdir, "blk.txt"), "w") as f:
+        blocks = ",".join(str(i) for i in range(n))
+        f.write(
+            "{\n  block_size: %d,\n  n_block: %d,\n  prefetch: [ %s ],\n}\n"
+            % (block_kib, n, blocks)
+        )
+    return n
+
+
+def free_space(image):
+    r = run(["dumpe2fs", "-h", image])
+    out = r.stdout + r.stderr
+    free = re.search(r"Free blocks:\s+(\d+)", out)
+    return "%.1f MiB" % (int(free.group(1)) * FS_BLOCK / 1024 / 1024) if free else "?"
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--base", required=True, help="Alpine minirootfs tarball")
+    ap.add_argument("--slosh", required=True, help="the riscv64 binary to install")
+    ap.add_argument("--overlay", required=True, help="tree to copy in at /")
+    ap.add_argument(
+        "--apks", default=None, help="directory of pinned .apk files to unpack"
+    )
+    ap.add_argument("--out", required=True, help="image to write")
+    ap.add_argument("--split", required=True, help="directory for the HTTP blocks")
+    ap.add_argument(
+        "--stage", default=None, help="staging directory (default: beside --out)"
+    )
+    ap.add_argument("--size", default="32M", help="image size (default 32M)")
+    ap.add_argument(
+        "--block-size", type=int, default=256, help="block KiB (default 256)"
+    )
+    args = ap.parse_args()
+
+    need("mke2fs", "debugfs", "dumpe2fs")
+    for p in (args.base, args.slosh, args.overlay):
+        if not os.path.exists(p):
+            sys.exit(f"{p} is missing")
+
+    out = os.path.abspath(args.out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    root = args.stage or os.path.join(os.path.dirname(out), "root")
+
+    installed = stage(args.base, args.apks, args.overlay, args.slosh, root)
+    mkfs(root, out, parse_size(args.size))
+    n_inodes = chown_root(root, out)
+    verify(out, installed)
+    n = split(out, args.split, args.block_size)
+
+    print(
+        "  fs    %s: %d ours of %d files, %s free, %d x %d KiB blocks"
+        % (
+            os.path.relpath(out),
+            len(installed),
+            n_inodes,
+            free_space(out),
+            n,
+            args.block_size,
+        )
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())

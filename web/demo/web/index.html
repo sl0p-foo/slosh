@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>slosh — demo</title>
+<link rel="stylesheet" href="xterm.css">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+
+<header>
+  <h1><a href="../">slosh</a></h1>
+  <p>A demo machine with the terminal multiplexer running in it, booted inside
+  this tab. It is yours and it is throwaway &mdash; reload the page for a fresh
+  one.</p>
+</header>
+
+<main>
+  <div id="stage"><div id="term_wrap"></div></div>
+  <div id="bar">
+    <span id="status">booting&hellip;</span>
+    <span id="fetching">fetching&hellip;</span>
+    <span class="spacer"></span>
+    <span id="geometry"></span>
+    <button id="keys_btn" type="button">keys</button>
+  </div>
+</main>
+
+<dialog id="keys">
+  <h2>Keys</h2>
+  <p>Everything is the leader, <kbd>C-a</kbd>, and then a key. Press it twice to
+  send a literal <kbd>C-a</kbd> to whatever is in the pane. <kbd>C-a</kbd>
+  <kbd>?</kbd> shows the full sheet inside the session, built from the bindings
+  the config actually has.</p>
+  <dl>
+    <dt><kbd>Enter</kbd></dt><dd>split whichever way there is more room</dd>
+    <dt><kbd>\</kbd> <kbd>-</kbd></dt><dd>split into columns / rows, when you mean one</dd>
+    <dt><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></dt><dd>move focus (arrows work too)</dd>
+    <dt><kbd>o</kbd></dt><dd>the next pane</dd>
+    <dt><kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd></dt><dd>move the boundary between panes</dd>
+    <dt><kbd>=</kbd></dt><dd>give every visible pane an even share</dd>
+    <dt><kbd>Space</kbd></dt><dd>turn the layout a quarter turn</dd>
+    <dt><kbd>z</kbd></dt><dd>zoom this pane to fill the tab, and back</dd>
+    <dt><kbd>m</kbd></dt><dd>minimise it into the strip along the bottom</dd>
+    <dt><kbd>x</kbd> <kbd>X</kbd></dt><dd>close this pane / this whole tab</dd>
+    <dt><kbd>c</kbd></dt><dd>new tab</dd>
+    <dt><kbd>Tab</kbd> <kbd>1</kbd>&hellip;<kbd>9</kbd></dt><dd>next tab / that tab</dd>
+    <dt><kbd>f</kbd></dt><dd>find a pane by name</dd>
+    <dt><kbd>p</kbd></dt><dd>the command palette</dd>
+    <dt><kbd>e</kbd></dt><dd>edit the config, in a pane &mdash; it is re-read the moment you save</dd>
+    <dt><kbd>?</kbd></dt><dd>the cheatsheet</dd>
+    <dt><kbd>d</kbd> <kbd>q</kbd></dt><dd>detach, leaving it running / quit the session</dd>
+  </dl>
+  <p class="dismiss">Esc, or click outside, to close.</p>
+</dialog>
+
+<footer>
+  <p>The emulator is <a href="https://bellard.org/tinyemu/">TinyEMU / JSLinux</a>
+  by Fabrice Bellard, MIT licence; the kernel and BIOS are his, unmodified. The
+  terminal is <a href="https://xtermjs.org/">xterm.js</a>. The machine's disk
+  streams in during startup &mdash; that is <em>fetching</em> blinking &mdash;
+  and after that the session is entirely local. The terminal size is fixed at
+  boot, so resizing this window scales the picture; <code>?cols=</code> and
+  <code>?rows=</code> pick another grid.</p>
+</footer>
+
+<script src="xterm.js"></script>
+<script src="demo.js"></script>
+</body>
+</html>

@@ -53,7 +53,7 @@ else
 endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
-        docs fmt fmt-check hooks tools
+        docs www fmt fmt-check hooks tools
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -192,6 +192,9 @@ smoke: $(BIN) ## compose a screen headlessly and print it
 docs: ## render docs/ into build/docs (no dependencies; open build/docs/index.html)
 	$(Q)python3 contrib/gen-docs build/docs
 
+www: ## assemble the website into build/www (NO_DEMO=1 to skip the browser demo)
+	$(Q)web/build-site
+
 run: $(BIN) ## build and run
 	./$(BIN)
 
@@ -259,7 +262,7 @@ coverage: $(COV_DIR)/slosh $(COV_UNITS) ## how much of the code the tests run
 CSRC  := $(shell git ls-files '*.c' '*.h' 2>/dev/null | grep -v '^vendor/')
 PYSRC := $(shell git ls-files '*.py' 2>/dev/null | grep -v '^vendor/') \
          contrib/coverage contrib/gen-docs contrib/shader-repl \
-         contrib/webdemo/boot-check contrib/webdemo/build-rootfs contrib/webdemo/serve
+         web/demo/boot-check web/demo/build-rootfs web/demo/serve
 
 # clang-format is a system package. ruff usually is not, and `pip install --user`
 # is refused outright on a distro python (PEP 668), so `make tools` puts it in a

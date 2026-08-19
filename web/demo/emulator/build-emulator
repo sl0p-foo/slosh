@@ -1,0 +1,47 @@
+#!/bin/sh
+# Rebuild dist/riscvemu64-wasm.{js,wasm} from the TinyEMU source tarball.
+#
+# The demo does NOT use Bellard's prebuilt emulator, and this is why: his
+# 2019 wasm blob does not match the 2019 source release. Compiled natively,
+# that source serves our 32 MiB image over HTTP flawlessly; his blob stops
+# issuing block fetches at the 16 MiB boundary, so the first read past it --
+# `ls -la` stat-ing an inode table in a later block group -- wedges in the
+# guest or, depending on timing, segfaults it. His own images are 4 MiB, so
+# the public demo never crossed the line. Building from the released source
+# gives us the code we actually audited, and it comes out half the size.
+#
+# The output is committed in dist/, because rebuilding it needs the
+# emscripten SDK and nothing else in this demo does. Run this only to change
+# or verify the emulator:
+#
+#   . /path/to/emsdk/emsdk_env.sh && ./build-emulator
+#
+# patches/0001-modern-emscripten.patch is the whole port: emcc 6.x lost
+# Pointer_stringify and Runtime.dynCall, dead-strips JS library functions
+# that lack __deps, and no longer coerces JS strings passed as wasm i32
+# parameters. The C side is untouched except renaming our XHR helper so it
+# cannot collide with emscripten's own library symbol of the same name.
+set -eu
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+tarball="$here/../vendor/.cache/tinyemu.tar.gz"
+work="$here/../build/emulator-src"
+
+command -v emcc >/dev/null 2>&1 || {
+	echo "emcc not found -- source emsdk_env.sh first (https://emscripten.org)" >&2
+	exit 1
+}
+[ -f "$tarball" ] || {
+	echo "$tarball is missing -- run ../fetch-vendor first" >&2
+	exit 1
+}
+
+rm -rf "$work"
+mkdir -p "$work"
+tar -xzf "$tarball" -C "$work" --strip-components=1
+patch -d "$work" -p1 -s <"$here/patches/0001-modern-emscripten.patch"
+
+make -C "$work" -f Makefile.emcc -j"$(nproc 2>/dev/null || echo 4)" >/dev/null
+
+cp "$work/riscvemu64-wasm.js" "$work/riscvemu64-wasm.wasm" "$here/dist/"
+sha256sum "$here/dist/riscvemu64-wasm.js" "$here/dist/riscvemu64-wasm.wasm"
