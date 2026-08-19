@@ -48,7 +48,13 @@ static bool looks_like_layout(const char *path) {
   char buf[1024];
   kdl_node_t *root =
       kdl_parse_file(path_expand(path, buf, sizeof buf), NULL, 0);
-  if (!root) return strstr(path, ".layout.") != NULL;
+  if (!root) {
+    /* `x.layout` is the spelling, `x.layout.kdl` the one it replaced: both
+     * are somebody's layout, whatever it was that would not parse. */
+    size_t n = strlen(path), s = strlen(".layout");
+    if (n >= s && strcmp(path + n - s, ".layout") == 0) return true;
+    return strstr(path, ".layout.") != NULL;
+  }
   bool layout = false;
   for (size_t i = 0; i < root->nkids && !layout; i++) {
     const char *name = root->kids[i] ? root->kids[i]->name : NULL;

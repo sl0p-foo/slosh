@@ -406,7 +406,7 @@ modal_scrim 120
 // directory that *is* a project is never descended into, which is what keeps
 // the scan off node_modules without a rule about node_modules.
 //
-// A subdirectory is a project when it has a `slosh.layout.kdl` saying what it
+// A subdirectory is a project when it has a `slosh.layout` saying what it
 // needs -- or a `.git`, which is the project that has not said yet. Both,
 // because a ~/dev of forty checkouts and three layout files would otherwise be
 // a picker with three rows, and `C-a W` writes the missing file from whatever
@@ -423,11 +423,11 @@ modal_scrim 120
 // guess about your stack from whatever config files it happens to contain. A
 // relative `cwd=` in it binds to whichever project is being opened, not to the
 // directory this file lives in, so one file is the shape you start every
-// checkout in -- and a project that grows its own `slosh.layout.kdl` wins
+// checkout in -- and a project that grows its own `slosh.layout` wins
 // over it, the way an included file is the base and the file including it wins.
 //
 // Unset, so a project with no layout is one pane running your shell in it:
-// project_layout "~/.config/slosh/project.layout.kdl"
+// project_layout "~/.config/slosh/project.layout"
 
 // ── shaders ─────────────────────────────────────────────────────────────────
 //

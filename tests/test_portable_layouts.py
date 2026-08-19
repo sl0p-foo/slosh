@@ -27,7 +27,7 @@ def project(name, text):
     root = tempfile.mkdtemp(prefix="slosh-proj-")
     d = os.path.join(root, name)
     os.makedirs(os.path.join(d, "src"))
-    path = os.path.join(d, "slosh.layout.kdl")
+    path = os.path.join(d, "slosh.layout")
     with open(path, "w") as f:
         f.write(text)
     return d, path
@@ -234,7 +234,7 @@ layout {
     )
     with Session(SH, layout=path) as s:
         first = s.api("dump-layout", tab=s.tabs()[0]["id"], relative_to=d)["kdl"]
-        again = os.path.join(d, "again.layout.kdl")
+        again = os.path.join(d, "again.layout")
         with open(again, "w") as f:
             f.write(first)
     with Session(SH, layout=again) as s2:
@@ -278,7 +278,7 @@ layout {
         check("it names: " + want, want in said, said)
     check(
         "every problem carries a file and a line",
-        said.count("slosh.layout.kdl:") >= 6,
+        said.count("slosh.layout:") >= 6,
         said,
     )
 
@@ -325,7 +325,7 @@ def test_a_syntax_error_in_a_layout_is_reported_as_the_layout_it_is():
     code, said = lint(path)
     check(
         "it says which file and which line the syntax broke on",
-        "slosh.layout.kdl:" in said and "unclosed" in said,
+        "slosh.layout:" in said and "unclosed" in said,
         said,
     )
     check(

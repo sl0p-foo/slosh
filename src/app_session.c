@@ -228,7 +228,7 @@ bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
 
 bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
                            size_t errcap) {
-  /* Expanded here rather than left to a shell: `--layout "~/x.layout.kdl"` in
+  /* Expanded here rather than left to a shell: `--layout "~/x.layout"` in
    * quotes, and every path arriving over the control socket, reach fopen with
    * the tilde still on them. */
   char pathbuf[1024], dirbuf[1024];

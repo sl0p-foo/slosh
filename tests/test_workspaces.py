@@ -1,6 +1,6 @@
 """Workspaces: projects on disk, and the tabs they open as.
 
-A *project* is a directory somebody works in -- one with a `slosh.layout.kdl`
+A *project* is a directory somebody works in -- one with a `slosh.layout`
 saying what it needs, or a `.git` and nothing said yet. A *workspace* is the tab
 it occupies here, and membership is that tab's `purpose` in the `project:`
 namespace, so there is no second answer to "what is this tab" and a dumped
@@ -48,7 +48,7 @@ def roots(**projects):
         if what == "git":
             os.makedirs(os.path.join(d, ".git"), exist_ok=True)
         elif what:
-            with open(os.path.join(d, "slosh.layout.kdl"), "w") as f:
+            with open(os.path.join(d, "slosh.layout"), "w") as f:
                 f.write(what)
     cfg = os.path.join(base, "config.kdl")
     with open(cfg, "w") as f:
@@ -70,6 +70,32 @@ def session(cfg, argv=None, **kw):
 # ---- discovery -------------------------------------------------------------
 
 
+def test_the_old_layout_spelling_is_still_found_never_preferred():
+    """`slosh.layout.kdl` was the name before the extension collided with
+    zellij's. A checked-in workspace must not vanish on upgrade, so the scan
+    still finds the old spelling -- and where both exist, the new one wins,
+    because two files disagreeing needs one answer."""
+    base, dev, cfg = roots(old=None, both=None)
+    with open(os.path.join(dev, "old", "slosh.layout.kdl"), "w") as f:
+        f.write(API_LAYOUT)
+    with open(os.path.join(dev, "both", "slosh.layout"), "w") as f:
+        f.write(API_LAYOUT)
+    with open(os.path.join(dev, "both", "slosh.layout.kdl"), "w") as f:
+        f.write(API_LAYOUT)
+    with session(cfg) as s:
+        got = {w["name"]: w for w in s.api("workspaces")["workspaces"]}
+        check(
+            "a project with only the old name is still a project",
+            "old" in got and got["old"]["layout"].endswith("slosh.layout.kdl"),
+            str(got.get("old")),
+        )
+        check(
+            "where both spellings exist the new one wins",
+            "both" in got and got["both"]["layout"].endswith("/slosh.layout"),
+            str(got.get("both")),
+        )
+
+
 def test_a_project_is_a_layout_file_or_a_git():
     """Both, because `~/dev` with forty checkouts and three layout files would
     otherwise be a picker with three rows -- and a `.git` is exactly the project
@@ -82,7 +108,7 @@ def test_a_project_is_a_layout_file_or_a_git():
         check("a directory that is neither is not listed", "notes" not in got, str(got))
         check(
             "the declared one names its file",
-            got["api"]["layout"].endswith("slosh.layout.kdl"),
+            got["api"]["layout"].endswith("slosh.layout"),
             str(got["api"]),
         )
         check(
@@ -208,7 +234,7 @@ def test_a_project_with_no_layout_opens_as_your_project_layout():
     bind to whichever project is opening -- not to the directory the file lives
     in, which would open every project in ~/.config."""
     base, dev, cfg = roots(web="git")
-    shared = os.path.join(base, "project.layout.kdl")
+    shared = os.path.join(base, "project.layout")
     with open(shared, "w") as f:
         f.write('layout { tab { pane purpose="agent:main"; pane cwd="src" } }\n')
     with open(cfg, "a") as f:
@@ -303,7 +329,7 @@ def test_saving_a_tab_writes_a_portable_layout_file():
         saved = s.api("save-workspace")
         check(
             "it says where it wrote",
-            saved["path"] == os.path.join(dev, "web", "slosh.layout.kdl"),
+            saved["path"] == os.path.join(dev, "web", "slosh.layout"),
             str(saved),
         )
         check(
@@ -554,7 +580,7 @@ def test_every_verb_has_a_bare_form():
         wrote = bare1(s, "save-workspace")
         check(
             "save-workspace names the file it wrote",
-            "slosh.layout.kdl" in wrote,
+            "slosh.layout" in wrote,
             repr(wrote),
         )
         check(
@@ -588,7 +614,7 @@ def test_a_dumped_session_restores_workspace_membership():
     with session(cfg) as s:
         r = s.api("open-workspace", name="api")
         whole = s.api("dump-layout")["kdl"]
-    restored = os.path.join(base, "session.layout.kdl")
+    restored = os.path.join(base, "session.layout")
     with open(restored, "w") as f:
         f.write(whole)
     with Session(SH, config=cfg, layout=restored, cols=100, rows=30) as s2:
@@ -609,7 +635,7 @@ def test_the_picker_lists_projects_and_opens_one():
         s.key("w")
         screen = s.snapshot().screen()
         check("it is titled as projects", "projects" in screen, screen)
-        check("a declared project shows its file", "slosh.layout.kdl" in screen, screen)
+        check("a declared project shows its file", "slosh.layout" in screen, screen)
         check("and one without says so", "no layout" in screen, screen)
 
         s.send("web")
@@ -649,11 +675,11 @@ def test_saving_from_the_keyboard_says_what_it_did():
         s.api("open-workspace", name="web")
         s.key("W")
         screen = s.snapshot().screen()
-        check("the toast names the file", "slosh.layout.kdl" in screen, screen)
+        check("the toast names the file", "slosh.layout" in screen, screen)
         check("and counts what it wrote", "1 pane" in screen, screen)
         check(
             "the file is there",
-            os.path.exists(os.path.join(dev, "web", "slosh.layout.kdl")),
+            os.path.exists(os.path.join(dev, "web", "slosh.layout")),
             screen,
         )
 

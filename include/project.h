@@ -18,9 +18,15 @@
 #include <stdint.h>
 
 /* The file a project uses to say what it needs. One name, so there is no
- * precedence question: a layout file by D2's rule, checked by `--check`, and
- * highlighted by anything that knows KDL. */
-#define PROJECT_LAYOUT_FILE "slosh.layout.kdl"
+ * precedence question. `.layout` rather than `.kdl`: zellij speaks the same
+ * syntax under the same extension with a different schema, and an extension
+ * that names the wrong owner is worse than one that does not name the
+ * parser -- the file says what it is, `--check` says how it was read. */
+#define PROJECT_LAYOUT_FILE "slosh.layout"
+/* The spelling this replaced. Still *found* by the project scan, so nobody's
+ * checked-in workspace vanishes on upgrade; everything slosh writes is the
+ * new name, and the new name wins where both exist. */
+#define PROJECT_LAYOUT_FILE_OLD "slosh.layout.kdl"
 
 /* How many projects one session will look at. A picker is not a filesystem
  * browser: past this many the answer to "which project" is a search, not a

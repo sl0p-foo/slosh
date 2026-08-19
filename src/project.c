@@ -81,6 +81,13 @@ static bool describe(const char *path, project_t *p) {
     p->mtime = (int64_t)lst.st_mtime;
     return true;
   }
+  /* The old spelling, found but never written: see PROJECT_LAYOUT_FILE_OLD. */
+  if (exists(p->path, PROJECT_LAYOUT_FILE_OLD, &lst)) {
+    snprintf(p->layout, sizeof p->layout, "%s/%s", p->path,
+             PROJECT_LAYOUT_FILE_OLD);
+    p->mtime = (int64_t)lst.st_mtime;
+    return true;
+  }
   return exists(p->path, ".git", NULL);
 }
 

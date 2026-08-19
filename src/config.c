@@ -1592,7 +1592,7 @@ char *config_render(const config_t *c) {
   if (c->project_layout)
     cb_qstr(&b, "project_layout", c->project_layout, NULL);
   else
-    cb_add(&b, "// project_layout \"~/.config/slosh/project.layout.kdl\"\n");
+    cb_add(&b, "// project_layout \"~/.config/slosh/project.layout\"\n");
 
   cb_add(&b, "\n// ---- colour ----\ntheme {\n");
   for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)

@@ -181,7 +181,7 @@ typedef struct {
 } app_workspace_save_t;
 
 /* Write one tab out as a project's layout: the same dump `dump-layout` answers
- * with, relative to the project, into `slosh.layout.kdl` beside it. `tab` 0 is
+ * with, relative to the project, into `slosh.layout` beside it. `tab` 0 is
  * the current one; `path` names the project for a tab that is not yet a
  * workspace (and saving adopts it, which is the whole of onboarding one).
  * Refused without `force` when the project already has a layout: that file is

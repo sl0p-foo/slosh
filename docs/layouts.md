@@ -16,16 +16,21 @@ layout {
 ```
 
 ```bash
-slosh --layout project.layout.kdl
+slosh --layout project.layout
 ```
 
 ## What to call them
 
-**`*.layout.kdl`.** The syntax is the same KDL subset the config uses — one
-parser reads both files — so the extension says how to read it and `.layout`
-says what is in it, the way `docker-compose.yml` and `tsconfig.json` do it.
-Calling it something else would trade one wrong signal for another: it *is*
-KDL, and an editor that highlights KDL is worth keeping.
+**`*.layout`** — a project's is `slosh.layout`. The syntax is still the same
+KDL subset the config uses, one parser reads both files, and for a while the
+files were `*.layout.kdl` on the argument that the extension should say so.
+The argument lost to a collision: zellij speaks the same syntax under that
+same extension with a different schema, and to anyone arriving from there
+`.kdl` said *whose* file it is — naming the wrong owner is worse than not
+naming the parser. The name says what the file is; `slosh --check` says how
+it was read. (Point your editor's KDL highlighting at `*.layout` — it *is*
+still KDL underneath.) The old spelling is still found by the project scan,
+never written.
 
 A filename cannot enforce anything, so **the document decides which schema it is
 held to, not the flag that read it**. `slosh --check` reads what is in front of
@@ -38,8 +43,8 @@ layout, not a config` — replied to a question about a file with the name of
 another flag.
 
 ```
-$ slosh --check project.layout.kdl
-project.layout.kdl: ok, a layout
+$ slosh --check project.layout
+project.layout: ok, a layout
 ```
 
 A clean layout says which schema it passed, because otherwise a layout nothing
@@ -49,14 +54,14 @@ summary, and exits 1 — the shape [checking a config](config.md#checking-one)
 already has, so one editor compile step and one pre-commit hook read both:
 
 ```
-$ slosh --check broken.layout.kdl
-  broken.layout.kdl:2: unknown pane property: cmd
-  broken.layout.kdl:3: split is cols or rows, not `diagonal`
-  broken.layout.kdl:4: weight is a number of 150 or more, not `40`
-  broken.layout.kdl:5: suspended takes true or false, not `yes`
-  broken.layout.kdl:6: purpose is ignored on a pane with panes in it
-  broken.layout.kdl:8: a pane holds panes, not `wobble`
-broken.layout.kdl: 6 problems
+$ slosh --check broken.layout
+  broken.layout:2: unknown pane property: cmd
+  broken.layout:3: split is cols or rows, not `diagonal`
+  broken.layout:4: weight is a number of 150 or more, not `40`
+  broken.layout:5: suspended takes true or false, not `yes`
+  broken.layout:6: purpose is ignored on a pane with panes in it
+  broken.layout:8: a pane holds panes, not `wobble`
+broken.layout: 6 problems
 ```
 
 Those are the mistakes a layout can make that still parses: a property no pane
@@ -105,7 +110,7 @@ That is what lets a layout be checked in beside the project it describes and mea
 the same thing in everybody's clone:
 
 ```kdl
-// ~/dev/api/slosh.layout.kdl — no absolute path in it anywhere
+// ~/dev/api/slosh.layout — no absolute path in it anywhere
 layout {
     tab name="api" cwd="." {
         pane command="nvim"
@@ -128,12 +133,12 @@ was a base: relative to wherever the session is. Inventing one for text would
 mean guessing on behalf of whoever sent it.
 
 A full annotated example is
-`config/example.layout.kdl`.
+`config/example.layout`.
 
 ## Writing one back out
 
 ```bash
-slosh -s work cmd '{"cmd":"dump-layout"}' > project.layout.kdl
+slosh -s work cmd '{"cmd":"dump-layout"}' > project.layout
 ```
 
 writes the session as a layout file: tabs, splits, proportions, directories,
@@ -210,7 +215,7 @@ tab and wherever the file happened to begin in the other five.
 ## Applying one to a running session
 
 ```bash
-slosh -s work cmd '{"cmd":"apply-layout","path":"project.layout.kdl"}'
+slosh -s work cmd '{"cmd":"apply-layout","path":"project.layout"}'
 slosh -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","replace":true}'
 ```
 
@@ -266,7 +271,7 @@ The [finder](panes.md#finding-a-pane) matches on purposes as well as titles, and
 ## When the layout is found rather than named
 
 Everything above assumes you name the file. When it lives *in* the project —
-`slosh.layout.kdl` beside the `.git` — you do not have to: `C-a w` lists the
+`slosh.layout` beside the `.git` — you do not have to: `C-a w` lists the
 projects under the roots you configured and opening one applies the layout it
 found there, or a default layout bound to that directory when the project has
 none, and `C-a W` writes this tab back out as that file. Same syntax, same

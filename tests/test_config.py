@@ -713,8 +713,8 @@ def test_the_shipped_files_are_what_they_claim():
     check(
         "config/config.kdl lints clean", conf.returncode == 0, repr(conf.stderr[:160])
     )
-    lay = root / "config" / "example.layout.kdl"
-    check("the example layout is named `*.layout.kdl`", lay.exists(), str(lay))
+    lay = root / "config" / "example.layout"
+    check("the example layout is named `*.layout`", lay.exists(), str(lay))
     exl = subprocess.run([BIN, "--check", str(lay)], capture_output=True, text=True)
     check("and it lints clean as a layout", exl.returncode == 0, repr(exl.stderr[:200]))
     out = subprocess.run(

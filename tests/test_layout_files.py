@@ -287,7 +287,7 @@ def test_bad_layouts():
         r = s.api("apply-layout", kdl="layout { }")
         check("a layout with no tabs is refused", not r["ok"], str(r))
 
-        r = s.api("apply-layout", path="/nonexistent/layout.kdl")
+        r = s.api("apply-layout", path="/nonexistent/x.layout")
         check("a missing file is refused", not r["ok"], str(r))
 
         check(

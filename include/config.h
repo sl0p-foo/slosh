@@ -390,7 +390,7 @@ typedef struct {
   char *shader_dir;
 
   /* Where projects live: `project_roots "~/dev" "~/work" depth=2`. A project is
-   * a subdirectory of one of these with a `slosh.layout.kdl` in it -- or a
+   * a subdirectory of one of these with a `slosh.layout` in it -- or a
    * `.git`, which gets `project_layout` instead. Empty means the feature is
    * dormant and costs nothing.
    *

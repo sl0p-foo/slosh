@@ -23,7 +23,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 bin="$here/../build/slosh"
 SESSION=${SESSION:-dev}
 state="${XDG_RUNTIME_DIR:-/tmp}/slosh-dev-$SESSION"
-layout="$state/session.layout.kdl"
+layout="$state/session.layout"
 flag="$state/restart"
 mkdir -p "$state"
 
