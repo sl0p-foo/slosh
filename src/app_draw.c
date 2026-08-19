@@ -1753,9 +1753,22 @@ char *app_graphics_json(app_t *a) {
 #include "logo.h" /* generated from logo.txt; see the Makefile */
 
 typedef struct {
-  const char *kind;   /* tint or dim: colour it, or carve it */
-  const char *amount; /* the whole effect, as an expression over the rect */
-  bool on_fg;         /* tint towards default_fg rather than the accent */
+  const char *kind; /* tint or dim: colour it, or carve it */
+  uint32_t rgb;     /* the colour, spelled 0xrrggbb; unused by dim */
+  uint8_t channels; /* SHADE_FG for glyphs only, 0 to light the box too */
+  const char *amount;
+} splash_pass_t;
+
+/* A splash effect is a *chain*, because one tint is one colour and a greeting
+ * in a single hue is a screensaver from a sadder time: phase-shifted passes
+ * mix per cell, which is how a fixed-colour pass machinery does rainbows.
+ * The colours are literal and loud on purpose -- this is the one place that
+ * does not defer to the theme, because it is branding wearing a demo, not
+ * chrome. Passes with channels 0 also tint the blank backdrop's background,
+ * which is what turns the box into a lit scene rather than tinted text. */
+#define SPLASH_CHAIN 4
+typedef struct {
+  splash_pass_t p[SPLASH_CHAIN];
 } splash_fx_t;
 
 /* Every entry reads `t` or `since`, deliberately: an animated splash keeps
@@ -1763,23 +1776,46 @@ typedef struct {
  * one would just be a logo. `since` here is milliseconds since the splash
  * began, so one-shot effects can sweep exactly once. */
 static const splash_fx_t SPLASH_FX[] = {
-    /* a sheen looping along the diagonal, the bell shimmer's big sibling */
-    {"tint",
-     "max(0, 230 - abs(x + 2 * y - (since / 3) % (cols + 2 * rows + 24)) * 25)",
-     true},
-    /* plasma: two sines that disagree */
-    {"tint", "128 + sin(x * 24 + t / 4) / 4 + sin(y * 48 - t / 6) / 4", false},
-    /* rings spreading from the middle */
-    {"tint", "128 + sin(dist(x, y, cols / 2, rows / 2) * 55 - t / 2) / 2",
-     false},
-    /* sparkle: a cheap hash of position and time */
-    {"tint", "((x * 37 + y * 91 + (since / 90) * 53) % 89 < 7) * 230", true},
-    /* a left-to-right reveal over the first half second */
-    {"dim", "(x * 500 > since * cols) * 255", false},
-    /* breathe */
-    {"tint", "120 + sin(since / 2) / 3", false},
+    /* spectrum: rainbow bands rolling across the glyphs */
+    {{{"tint", 0xff2d95, SHADE_FG, "128 + sin(x * 9 - t / 3) / 2"},
+      {"tint", 0x00e5ff, SHADE_FG, "128 + sin(x * 9 - t / 3 + 120) / 2"},
+      {"tint", 0xffd400, SHADE_FG, "128 + sin(x * 9 - t / 3 + 240) / 2"}}},
+    /* plasma: two interference patterns in clashing hues, box and all */
+    {{{"tint", 0xff2d95, 0,
+       "128 + sin(x * 21 + t / 4) / 4 + sin(y * 47 - t / 6) / 4"},
+      {"tint", 0x2de5ff, 0,
+       "128 + sin(x * 17 - t / 5) / 4 + sin(y * 61 + t / 7) / 4"}}},
+    /* fire: heat rising through the glyphs, embers in the box */
+    {{{"tint", 0xff3b00, 0, "clamp(y * 34 + sin(x * 53 + t / 3) / 6, 0, 255)"},
+      {"tint", 0xffc400, SHADE_FG,
+       "max(0, (y - rows / 2) * 40 + sin(x * 97 - t / 2) / 5)"}}},
+    /* rings: rainbow ripples spreading from the middle */
+    {{{"tint", 0x7a5cff, 0,
+       "128 + sin(dist(x, y, cols / 2, rows / 2) * 55 - t / 2) / 2"},
+      {"tint", 0x00ffa8, 0,
+       "128 + sin(dist(x, y, cols / 2, rows / 2) * 55 - t / 2 + 120) / 2"},
+      {"tint", 0xff2d95, 0,
+       "128 + sin(dist(x, y, cols / 2, rows / 2) * 55 - t / 2 + 240) / 2"}}},
+    /* glitch: a left-to-right reveal under two colours of static */
+    {{{"tint", 0x00e5ff, SHADE_FG,
+       "((x * 31 + y * 83 + (t / 70) * 47) % 89 < 9) * 255"},
+      {"tint", 0xff2d95, SHADE_FG,
+       "((x * 53 + y * 29 + (t / 90) * 31) % 97 < 9) * 255"},
+      {"dim", 0, 0, "(x * 500 > since * cols) * 255"}}},
+    /* aurora: slow curtains of green and violet drifting over cyan */
+    {{{"tint", 0x19ff8c, 0,
+       "128 + sin(x * 13 + sin(y * 40 + t / 9) / 8 + t / 6) / 2"},
+      {"tint", 0x8c5cff, 0, "128 + sin(x * 11 - t / 8 + 90) / 3"},
+      {"tint", 0x00d0ff, SHADE_FG, "max(0, sin(x * 7 + t / 5) / 2)"}}},
 };
 #define NSPLASH_FX (sizeof SPLASH_FX / sizeof *SPLASH_FX)
+
+static color_t splash_rgb(uint32_t rgb) {
+  return (color_t){.set = true,
+                   .r = (uint8_t)(rgb >> 16),
+                   .g = (uint8_t)(rgb >> 8),
+                   .b = (uint8_t)rgb};
+}
 
 void draw_splash(app_t *a, screen_t *s) {
   if (!a->splash_until) return;
@@ -1809,32 +1845,42 @@ void draw_splash(app_t *a, screen_t *s) {
   blank[nb] = 0;
   for (uint16_t y = 0; y < bh; y++)
     screen_text(s, x0, (uint16_t)(y0 + y), blank, NO_COLOR, NO_COLOR, 0);
+  /* White, not the accent: the effect passes below paint the hues, and white
+   * is the canvas that takes every one of them at full saturation -- tinting
+   * an already-blue glyph towards pink lands on mud. */
   for (size_t i = 0; i < nlines; i++)
     screen_text(s, (uint16_t)(x0 + 2), (uint16_t)(y0 + 1 + i), LOGO[i],
-                FRAME_FOCUS, NO_COLOR, ATTR_BOLD);
+                CFG.default_fg, NO_COLOR, ATTR_BOLD);
 
-  /* The effect. Compiled on first wear and kept for the life of the process:
-   * the sources are string literals above, and a splash that recompiled its
-   * expression every frame would be spending the one cost the map exists to
-   * avoid. */
-  static expr_prog_t *progs[NSPLASH_FX];
-  size_t idx = (size_t)a->splash_until % NSPLASH_FX;
-  if (!progs[idx]) {
-    char err[128] = {0};
-    progs[idx] = expr_compile(SPLASH_FX[idx].amount, err, sizeof err);
+  /* The effect chain. Programs are compiled on first wear and kept for the
+   * life of the process: the sources are string literals above, and a splash
+   * that recompiled its expressions every frame would be spending the one
+   * cost the map exists to avoid. */
+  static expr_prog_t *progs[NSPLASH_FX][SPLASH_CHAIN];
+  size_t idx = a->splash_fx >= 0 ? (size_t)a->splash_fx % NSPLASH_FX
+                                 : (size_t)a->splash_until % NSPLASH_FX;
+  const splash_fx_t *fx = &SPLASH_FX[idx];
+  shader_t chain[SPLASH_CHAIN];
+  size_t nc = 0;
+  for (size_t i = 0; i < SPLASH_CHAIN && fx->p[i].kind; i++) {
+    if (!progs[idx][i]) {
+      char err[128] = {0};
+      progs[idx][i] = expr_compile(fx->p[i].amount, err, sizeof err);
+    }
+    if (!progs[idx][i]) continue; /* cannot happen; skip the pass, not all */
+    shader_make(&chain[nc], fx->p[i].kind, splash_rgb(fx->p[i].rgb), 128);
+    chain[nc].channels = fx->p[i].channels;
+    chain[nc].amount_expr = progs[idx][i];
+    nc++;
   }
-  if (!progs[idx]) return; /* cannot happen; the bare logo still greets */
+  if (!nc) return; /* the bare logo still greets */
 
-  shader_t sh;
-  shader_make(&sh, SPLASH_FX[idx].kind,
-              SPLASH_FX[idx].on_fg ? CFG.default_fg : CFG.frame_focus, 128);
-  sh.amount_expr = progs[idx];
   shade_ctx_t ctx = {
       .now_ms = now,
       .state_ms = now - (a->splash_until - CFG.splash_ms),
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };
-  note_animation(a, &sh, 1);
-  shade_apply(s, &sh, 1, (rect_t){x0, y0, bw, bh}, NULL, &ctx);
+  note_animation(a, chain, nc);
+  shade_apply(s, chain, nc, (rect_t){x0, y0, bw, bh}, NULL, &ctx);
 }

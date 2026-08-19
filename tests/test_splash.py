@@ -64,6 +64,36 @@ def test_any_key_ends_it_and_still_lands():
     os.unlink(conf)
 
 
+def test_the_splash_is_colourful_not_a_tinted_logo():
+    """The first version painted every effect in the theme accent, which made
+    six effects into one dull one. An effect is a chain of vivid tints now, so
+    the logo must show genuinely different *hues* -- counted as dominant-
+    channel families, because two hundred shades of the same blue is exactly
+    the failure this guards against."""
+    conf = cfg("splash_ms 10000\n")
+    with Session(SH, cols=80, rows=24, config=conf) as s:
+        s.settle(30)
+        s.api("splash", fx=0)  # spectrum: deterministic, and the loudest
+        s.settle(60)
+        snap = s.snapshot()
+        rows = [i for i, line in enumerate(snap.text) if GLYPHS in line]
+        families = set()
+        for y in rows:
+            for x in range(16, 64):
+                st = snap.style_at(x, y)
+                fg = (st or {}).get("fg")
+                if not fg or fg == "#000000":
+                    continue
+                r, g, b = int(fg[1:3], 16), int(fg[3:5], 16), int(fg[5:7], 16)
+                families.add((r > g + 32, g > b + 32, r > b + 32))
+        check(
+            "the logo wears several hues at once",
+            len(families) >= 3,
+            f"{len(families)} families: {sorted(families)}",
+        )
+    os.unlink(conf)
+
+
 def test_splash_ms_zero_means_never():
     conf = cfg("splash_ms 0\n")
     with Session(SH, cols=80, rows=24, config=conf) as s:

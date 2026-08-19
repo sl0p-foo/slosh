@@ -1312,9 +1312,12 @@ bool run_action(app_t *a, action_t act) {
   }
 }
 
-void app_splash(app_t *a) {
+void app_splash(app_t *a) { app_splash_fx(a, -1); }
+
+void app_splash_fx(app_t *a, int fx) {
   if (!CFG.splash_ms) return;
   a->splash_until = now_ms_() + CFG.splash_ms;
+  a->splash_fx = fx;
 }
 
 void app_event(app_t *a, const input_event_t *ev) {
