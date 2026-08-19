@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "jsonval.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -80,9 +81,17 @@ static char *parse_string_raw(P *s, size_t *out_len) {
       case '"': *o++ = '"'; break;
       case '\\': *o++ = '\\'; break;
       case 'u': {
+        /* \uXXXX needs exactly four hex digits after the 'u'; a truncated
+         * escape must not read past the NUL terminator. */
+        if (!s->p[1] || !s->p[2] || !s->p[3] || !s->p[4]) {
+          s->bad = true;
+          free(buf);
+          return NULL;
+        }
         unsigned cp = hex4(s->p + 1);
         s->p += 4;
-        if (cp >= 0xd800 && cp < 0xdc00 && s->p[1] == '\\' && s->p[2] == 'u') {
+        if (cp >= 0xd800 && cp < 0xdc00 && s->p[1] == '\\' && s->p[2] == 'u' &&
+            s->p[3] && s->p[4] && s->p[5] && s->p[6]) {
           unsigned lo = hex4(s->p + 3);
           s->p += 6;
           cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
@@ -273,7 +282,14 @@ const char *jv_str(const jv_t *v, const char *fallback) {
 
 long jv_int(const jv_t *v, long fallback) {
   if (!v) return fallback;
-  if (v->kind == JV_NUM) return (long)v->num;
+  if (v->kind == JV_NUM) {
+    /* A double outside LONG_MIN..LONG_MAX is UB to cast.  Clamp rather than
+     * returning fallback so a "big number" is still big and not silently
+     * replaced by a default. */
+    if (v->num >= (double)LONG_MAX) return LONG_MAX;
+    if (v->num <= (double)LONG_MIN) return LONG_MIN;
+    return (long)v->num;
+  }
   if (v->kind == JV_STR) return strtol(v->str, NULL, 10);
   return fallback;
 }

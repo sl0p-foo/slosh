@@ -3,6 +3,7 @@
 #include "input.h"
 
 #include <ghostty/vt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,9 @@ void input_free(input_parser_t *p) {
 }
 
 static void buf_append(input_parser_t *p, const uint8_t *d, size_t n) {
+  /* input_timeout() re-parses the buffer via input_feed(p, NULL, 0), and
+   * memcpy with a NULL source is UB even for zero bytes. */
+  if (n == 0) return;
   if (p->len + n > p->cap) {
     while (p->cap < p->len + n) p->cap *= 2;
     p->buf = realloc(p->buf, p->cap);
@@ -273,8 +277,9 @@ static size_t parse_one(input_parser_t *p, input_cb_t cb, void *ud) {
             fi++;
             continue;
           }
-          if (params[k] >= '0' && params[k] <= '9')
-            f[fi] = f[fi] * 10 + (params[k] - '0');
+          if (params[k] >= '0' && params[k] <= '9') {
+            if (f[fi] <= INT_MAX / 10) f[fi] = f[fi] * 10 + (params[k] - '0');
+          }
         }
         input_event_t ev = {.kind = EV_MOUSE};
         int btn = f[0];
@@ -310,10 +315,15 @@ static size_t parse_one(input_parser_t *p, input_cb_t cb, void *ud) {
         uint8_t ch = params[k];
         if (ch >= '0' && ch <= '9') {
           any = true;
-          if (sub_i == 0)
-            nums[ncount] = nums[ncount] * 10 + (ch - '0');
-          else if (sub_i <= 2)
-            subs[ncount][sub_i] = subs[ncount][sub_i] * 10 + (ch - '0');
+          /* Saturate rather than overflowing: no real terminal parameter
+           * exceeds a few thousand, and INT_MAX is "big". */
+          if (sub_i == 0) {
+            if (nums[ncount] <= INT_MAX / 10)
+              nums[ncount] = nums[ncount] * 10 + (ch - '0');
+          } else if (sub_i <= 2) {
+            if (subs[ncount][sub_i] <= INT_MAX / 10)
+              subs[ncount][sub_i] = subs[ncount][sub_i] * 10 + (ch - '0');
+          }
         } else if (ch == ':') {
           if (sub_i < 2) sub_i++;
         } else if (ch == ';') {

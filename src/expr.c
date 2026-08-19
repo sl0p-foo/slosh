@@ -151,7 +151,10 @@ typedef struct {
   char *err;
   size_t errcap;
   bool failed;
+  int depth;
 } parser_t;
+
+#define MAX_DEPTH 256
 
 static void fail(parser_t *ps, const char *what) {
   if (ps->failed) return;
@@ -193,9 +196,14 @@ static void parse_primary(parser_t *ps, expr_prog_t *pr) {
   if (ps->failed) return;
 
   if (*ps->p == '(') {
+    if (++ps->depth > MAX_DEPTH) {
+      fail(ps, "expression nested too deeply");
+      return;
+    }
     ps->p++;
     parse_expr(ps, pr);
     skip_ws(ps);
+    ps->depth--;
     if (*ps->p != ')') {
       fail(ps, "expected )");
       return;
@@ -534,8 +542,10 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
     switch (in->op) {
     case OP_PUSH: st[sp++] = in->imm; break;
     case OP_VAR: st[sp++] = vars[in->imm]; break;
+    /* Negation wraps: -INT32_MIN is itself, as `x|0` maths in the JS
+     * preview would have it, rather than the undefined overflow it is in C. */
     case OP_NEG:
-      if (sp) st[sp - 1] = -st[sp - 1];
+      if (sp) st[sp - 1] = (int32_t)(0u - (uint32_t)st[sp - 1]);
       break;
     case OP_NOT:
       if (sp) st[sp - 1] = !st[sp - 1];
@@ -544,13 +554,14 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
       if (sp) st[sp - 1] = (int32_t)~(uint32_t)st[sp - 1];
       break;
     case OP_ABS:
-      if (sp) st[sp - 1] = st[sp - 1] < 0 ? -st[sp - 1] : st[sp - 1];
+      if (sp && st[sp - 1] < 0)
+        st[sp - 1] = (int32_t)(0u - (uint32_t)st[sp - 1]);
       break;
     case OP_SIN:
       if (sp) st[sp - 1] = isin(st[sp - 1]);
       break;
     case OP_COS:
-      if (sp) st[sp - 1] = isin(st[sp - 1] + 90);
+      if (sp) st[sp - 1] = isin((int32_t)((uint32_t)st[sp - 1] + 90u));
       break;
     default: {
       int need = in->op == OP_CLAMP    ? 3
@@ -560,26 +571,33 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
       if (sp < need) return 0;
       int32_t b = st[sp - 1], a = st[sp - 2];
       switch (in->op) {
+      /* Arithmetic wraps as two's-complement int32, like `|0` in JS and
+           * unlike C, where signed overflow is undefined: `t` only grows, so
+           * a long-lived session's animation must not be able to walk an
+           * expression into UB. Done unsigned, where wrapping is defined. */
       case OP_ADD:
-        st[sp - 2] = a + b;
+        st[sp - 2] = (int32_t)((uint32_t)a + (uint32_t)b);
         sp--;
         break;
       case OP_SUB:
-        st[sp - 2] = a - b;
+        st[sp - 2] = (int32_t)((uint32_t)a - (uint32_t)b);
         sp--;
         break;
       case OP_MUL:
-        st[sp - 2] = a * b;
+        st[sp - 2] = (int32_t)((uint32_t)a * (uint32_t)b);
         sp--;
         break;
       /* Defined rather than trapping: an expression that divides by zero
-           * should look wrong, not take the session with it. */
+           * should look wrong, not take the session with it. INT32_MIN / -1
+           * is the one other trapping division (SIGFPE on x86); it wraps to
+           * INT32_MIN like the other arithmetic, and the matching modulo
+           * is 0. */
       case OP_DIV:
-        st[sp - 2] = b ? a / b : 0;
+        st[sp - 2] = !b ? 0 : (a == INT32_MIN && b == -1) ? a : a / b;
         sp--;
         break;
       case OP_MOD:
-        st[sp - 2] = b ? a % b : 0;
+        st[sp - 2] = !b ? 0 : (a == INT32_MIN && b == -1) ? 0 : a % b;
         sp--;
         break;
       case OP_LT:
@@ -671,14 +689,24 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
              * ellipse, which is the first thing anyone notices. */
         int32_t y2 = st[sp - 1], x2 = st[sp - 2], y1 = st[sp - 3],
                 x1 = st[sp - 4];
-        int32_t dx = x1 - x2, dy = (y1 - y2) * 2;
-        int32_t d2 = dx * dx + dy * dy;
+        /* 64-bit, because the operands are arbitrary int32 and squaring a
+             * difference of those overflows any int32 with room to spare --
+             * and the components saturate at 2^16, because the result is
+             * capped at 4096 anyway and a doubled int32 difference squared
+             * would overflow even 64 bits. Unobservable except by not
+             * crashing. */
+        int64_t dx = (int64_t)x1 - x2, dy = ((int64_t)y1 - y2) * 2;
+        if (dx > 65536) dx = 65536;
+        if (dx < -65536) dx = -65536;
+        if (dy > 65536) dy = 65536;
+        if (dy < -65536) dy = -65536;
+        int64_t d2 = dx * dx + dy * dy;
         /* Integer square root, so `dist` is a distance and not its
              * square: expressions that scale linearly with it are what people
              * write, and squaring is easy to ask for and hard to undo. */
-        int32_t r = 0;
+        int64_t r = 0;
         while ((r + 1) * (r + 1) <= d2 && r < 4096) r++;
-        st[sp - 4] = r;
+        st[sp - 4] = (int32_t)r;
         sp -= 3;
         break;
       }

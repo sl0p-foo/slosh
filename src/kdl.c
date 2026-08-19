@@ -83,7 +83,12 @@ static char *parse_string(K *k) {
   while (*k->p && *k->p != '"') {
     char c = *k->p++;
     if (c == '\\') {
-      char e = *k->p++;
+      /* A backslash as the last byte must not step past the terminator:
+       * consuming the NUL would leave the loop reading out of bounds. Break
+       * and let the unterminated-string check below report it. */
+      char e = *k->p;
+      if (!e) break;
+      k->p++;
       switch (e) {
       case 'n': c = '\n'; break;
       case 't': c = '\t'; break;
