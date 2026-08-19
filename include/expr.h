@@ -93,6 +93,10 @@ int expr_eval(const expr_prog_t *p, const expr_env_t *env);
  * pretend an expression was a number. */
 const char *expr_source(const expr_prog_t *p);
 
+/* The language's sine, for C code that animates: degrees in (any angle
+ * wraps), -255..255 out -- the same table `sin()` in an expression uses. */
+int expr_sin(int deg);
+
 /* Evaluate for every cell of a cols x rows rect into `out` (cols*rows bytes,
  * clamped to 0..255), reusing the last result when nothing it reads has
  * changed. Returns false when the program reads the clock, which is the one

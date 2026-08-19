@@ -762,6 +762,11 @@ void expr_free(expr_prog_t *p) {
 
 const char *expr_source(const expr_prog_t *p) { return p ? p->src : NULL; }
 
+/* The language's own sine, exported: C-side animation (the splash particles)
+ * wants the same table the expressions use, so a motion sketched in the repl
+ * and one compiled into the binary cannot disagree about what sin(90) is. */
+int expr_sin(int deg) { return (int)isin(deg); }
+
 unsigned expr_deps(const expr_prog_t *p) { return p ? p->deps : 0; }
 int expr_constant(const expr_prog_t *p) { return p ? p->value : 0; }
 

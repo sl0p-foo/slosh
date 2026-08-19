@@ -1812,6 +1812,124 @@ static const splash_fx_t SPLASH_FX[] = {
 };
 #define NSPLASH_FX (sizeof SPLASH_FX / sizeof *SPLASH_FX)
 
+/* ---- the particle engine ------------------------------------------------- *
+ *
+ * Every non-space glyph of the logo is a particle that flies to its cell over
+ * the first two fifths of splash_ms, then *is* the logo for the rest. There
+ * is deliberately no particle state anywhere: a particle's position is a pure
+ * function of (target, elapsed, seed), recomputed every frame like the layout
+ * and the pane states and for the same reason -- physics that is stored can
+ * drift, physics that is derived cannot. The seed is the splash timestamp, so
+ * every attach flies differently and a single splash is coherent frame to
+ * frame; a per-particle hash of it staggers departures and scatters spawns. */
+
+typedef struct {
+  int tx, ty;    /* target, in screen cells */
+  char glyph[8]; /* one UTF-8 cluster */
+} splash_p_t;
+#define SPLASH_P_MAX 512
+
+/* The logo as particles, re-derived per frame: ~300 tiny copies against a
+ * struct someone has to keep in sync with logo.txt is no contest. */
+static size_t splash_particles(splash_p_t *out, int x0, int y0) {
+  size_t n = 0, nlines = sizeof LOGO / sizeof *LOGO;
+  for (size_t ly = 0; ly < nlines; ly++) {
+    const char *sline = LOGO[ly];
+    int cx = 0;
+    for (size_t off = 0; sline[off] && n < SPLASH_P_MAX; cx++) {
+      unsigned char lead = (unsigned char)sline[off];
+      size_t len = lead < 0x80 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+      if (sline[off] != ' ') {
+        out[n].tx = x0 + cx;
+        out[n].ty = y0 + (int)ly;
+        memcpy(out[n].glyph, sline + off, len);
+        out[n].glyph[len] = 0;
+        n++;
+      }
+      off += len;
+    }
+  }
+  return n;
+}
+
+/* Ease-out cubic in 0..256 fixed point: fast off the line, gentle landing. */
+static int splash_ease(int p8) {
+  int q = 256 - p8;
+  return 256 - q * q / 256 * q / 256;
+}
+
+/* This particle's progress, 0..256. `delay` (0..255) eats the front of the
+ * window and the remainder is rescaled, so stragglers still land exactly at
+ * the end -- an assembly that is only mostly assembled reads as a bug. */
+static int splash_p8(int64_t since, int asm_ms, int delay) {
+  if (asm_ms <= 0) return 256;
+  int p = (int)(since * 256 / asm_ms);
+  if (p >= 256) return 256;
+  if (delay > 224) delay = 224;
+  p = (p - delay) * 256 / (256 - delay);
+  return p < 0 ? 0 : p > 256 ? 256 : p;
+}
+
+/* The motions. Each computes where particle i is *from* and how late it
+ * leaves; the flight itself is one shared eased lerp, plus whatever offset
+ * the motion adds along the way (the vortex's orbit). Coordinates may leave
+ * the screen; the draw clips. */
+enum {
+  SPLASH_MO_RAIN,    /* fall in, column by column */
+  SPLASH_MO_SCATTER, /* converge from everywhere */
+  SPLASH_MO_SLIDE,   /* rows enter from alternating sides */
+  SPLASH_MO_VORTEX,  /* spiral in around the centre */
+  SPLASH_MO_SHUFFLE, /* the glyphs trade places, then sort themselves */
+  NSPLASH_MO
+};
+
+static void splash_place(int motion, const splash_p_t *p, size_t i, size_t n,
+                         const splash_p_t *all, uint32_t seed,
+                         const screen_t *s, int64_t since, int asm_ms, int *ox,
+                         int *oy) {
+  uint32_t h = ((uint32_t)i * 2654435761u) ^ (seed * 2246822519u);
+  int sx = p->tx, sy = p->ty, delay = 0;
+  switch (motion) {
+  case SPLASH_MO_RAIN:
+    sy = -1 - (int)(h % 12);
+    delay = (int)(h % 160);
+    break;
+  case SPLASH_MO_SCATTER:
+    sx = (int)(h % (s->cols ? s->cols : 1));
+    sy = (int)((h >> 9) % (s->rows ? s->rows : 1));
+    delay = (int)((h >> 18) % 96);
+    break;
+  case SPLASH_MO_SLIDE:
+    sx = (p->ty % 2) ? (int)s->cols + 2 + (int)(h % 8) : -3 - (int)(h % 8);
+    delay = (p->ty * 31) % 128;
+    break;
+  case SPLASH_MO_SHUFFLE: {
+    /* Everybody starts on somebody else's cell: a fixed rotation of the
+     * particle list, which is a permutation by construction. */
+    size_t j = (i + 1 + seed % (n > 1 ? n - 1 : 1)) % n;
+    sx = all[j].tx;
+    sy = all[j].ty;
+    delay = (int)(h % 112);
+    break;
+  }
+  case SPLASH_MO_VORTEX:
+  default: delay = (int)(h % 64); break;
+  }
+
+  int e = splash_ease(splash_p8(since, asm_ms, delay));
+  *ox = sx + (p->tx - sx) * e / 256;
+  *oy = sy + (p->ty - sy) * e / 256;
+
+  if (motion == SPLASH_MO_VORTEX && e < 256) {
+    /* An orbit that shrinks and unwinds as the flight completes. dist counts
+     * a row double everywhere else, so the y radius is halved here too. */
+    int r = (24 + (int)(h % 20)) * (256 - e) / 256;
+    int ang = (int)(h % 360) + e * 2;
+    *ox += r * expr_sin(ang + 90) / 255;
+    *oy += r * expr_sin(ang) / 510;
+  }
+}
+
 static color_t splash_rgb(uint32_t rgb) {
   return (color_t){.set = true,
                    .r = (uint8_t)(rgb >> 16),
@@ -1847,12 +1965,27 @@ void draw_splash(app_t *a, screen_t *s) {
   blank[nb] = 0;
   for (uint16_t y = 0; y < bh; y++)
     screen_text(s, x0, (uint16_t)(y0 + y), blank, NO_COLOR, NO_COLOR, 0);
-  /* White, not the accent: the effect passes below paint the hues, and white
-   * is the canvas that takes every one of them at full saturation -- tinting
-   * an already-blue glyph towards pink lands on mud. */
-  for (size_t i = 0; i < nlines; i++)
-    screen_text(s, (uint16_t)(x0 + 2), (uint16_t)(y0 + 1 + i), LOGO[i],
-                CFG.default_fg, NO_COLOR, ATTR_BOLD);
+  /* The glyphs, wherever their flight has them this frame. White, not the
+   * accent: the effect passes below paint the hues, and white is the canvas
+   * that takes every one of them at full saturation -- tinting an
+   * already-blue glyph towards pink lands on mud. Assembly takes the first
+   * two fifths of splash_ms; from then on every particle sits on its target
+   * and this is exactly the static logo. */
+  splash_p_t parts[SPLASH_P_MAX];
+  size_t np = splash_particles(parts, x0 + 2, y0 + 1);
+  int64_t since = now - (a->splash_until - CFG.splash_ms);
+  int asm_ms = (int)CFG.splash_ms * 2 / 5;
+  uint32_t seed = (uint32_t)a->splash_until;
+  int motion = a->splash_motion >= 0 ? a->splash_motion % NSPLASH_MO
+                                     : (int)((seed / NSPLASH_FX) % NSPLASH_MO);
+  for (size_t i = 0; i < np; i++) {
+    int px, py;
+    splash_place(motion, &parts[i], i, np, parts, seed, s, since, asm_ms, &px,
+                 &py);
+    if (px < 0 || py < 0 || px >= s->cols || py >= s->rows) continue;
+    screen_text(s, (uint16_t)px, (uint16_t)py, parts[i].glyph, CFG.default_fg,
+                NO_COLOR, ATTR_BOLD);
+  }
 
   /* The effect chain. Programs are compiled on first wear and kept for the
    * life of the process: the sources are string literals above, and a splash
@@ -1879,7 +2012,7 @@ void draw_splash(app_t *a, screen_t *s) {
 
   shade_ctx_t ctx = {
       .now_ms = now,
-      .state_ms = now - (a->splash_until - CFG.splash_ms),
+      .state_ms = since, /* the splash's own age, for one-shot effects */
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };

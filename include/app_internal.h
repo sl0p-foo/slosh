@@ -264,10 +264,12 @@ struct app {
 
   /* The logo splash: shown until this instant, 0 for not at all. Set when a
    * client attaches (app_splash), ended early by any key or click. The
-   * timestamp doubles as the seed that picks which effect this one wears,
-   * unless splash_fx (>= 0, from the control API) already chose. */
+   * timestamp doubles as the seed that picks the colour effect and the
+   * particle motion this one wears, unless splash_fx / splash_motion (>= 0,
+   * from the control API) already chose. */
   int64_t splash_until;
   int splash_fx;
+  int splash_motion;
 };
 
 /* One config per process, owned by app.c (ensure_config/app_reload_config

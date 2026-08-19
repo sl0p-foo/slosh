@@ -429,9 +429,11 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
   if (strcmp(cmd, "splash") == 0) {
     /* The attach greeting, on demand -- which is also what makes it testable
      * from a scripted session, where nobody ever attaches. `fx` picks the
-     * effect by index instead of by the clock: a test needs a deterministic
-     * one, and "show me the aurora again" deserves an answer too. */
-    app_splash_fx(a, (int)jv_geti(req, "fx", -1));
+     * colour effect and `motion` the particle assembly by index instead of
+     * by the clock: a test needs a deterministic one, and "show me the
+     * aurora again" deserves an answer too. */
+    app_splash_fx(a, (int)jv_geti(req, "fx", -1),
+                  (int)jv_geti(req, "motion", -1));
     return jok_int(NULL, 0);
   }
   if (strcmp(cmd, "reload") == 0) {
