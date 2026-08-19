@@ -1,0 +1,1742 @@
+/* Drawing, the shader passes, and kitty graphics re-emission. Split from app.c. */
+#define _GNU_SOURCE
+#include "app.h"
+
+#include <ghostty/vt.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "expr.h"
+#include "json.h"
+#include "version.h"
+#include "graphics.h"
+#include "kdl.h"
+#include "app_internal.h"
+
+/* ---- drawing ------------------------------------------------------------ */
+
+/* A pane's own status line and buttons, drawn in its bottom frame row.
+ *
+ * Two things end up here, because they are the same thing: what a *live* pane
+ * asked for over OSC 5577, and what a *dead* one is offered instead. A dead
+ * pane's own buttons are inert — clicking one would write a click report into
+ * a pty that is closed — so the row is given over to the two verbs that do
+ * still mean something: run it again, or let it go. Same row, same shape,
+ * same budgeting, so a dead pane is not a second kind of frame.
+ *
+ * Buttons are budgeted from the right *before* the status text gets any
+ * columns, and each registers its hit as it is painted — the same rule the
+ * frame's own buttons follow, for the same reason. Rightmost is last in the
+ * list, so what drops off a narrow frame is what is listed first: `close`
+ * outlives `re-run`, because being unable to dismiss a dead pane is a trap
+ * and being unable to re-run one is an inconvenience. */
+struct row_btn {
+  char label[40];
+  char action[48];
+};
+
+static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
+                             bool focused) {
+  struct row_btn row[8];
+  size_t nbtn = 0;
+  char status[256] = {0};
+  bool dead = !pane_alive(leaf->pane) && !pane_suspended(leaf->pane);
+
+  if (dead) {
+    snprintf(row[nbtn].label, sizeof row[0].label, "re-run");
+    snprintf(row[nbtn].action, sizeof row[0].action, "rerun:%u", leaf->id);
+    nbtn++;
+    snprintf(row[nbtn].label, sizeof row[0].label, "close");
+    snprintf(row[nbtn].action, sizeof row[0].action, "close:%u", leaf->id);
+    nbtn++;
+    exit_words(leaf->pane, status, sizeof status);
+  } else {
+    const pane_button_t *btns = NULL;
+    size_t n = pane_buttons(leaf->pane, &btns);
+    for (size_t i = 0; i < n && nbtn < sizeof row / sizeof *row; i++) {
+      snprintf(row[nbtn].label, sizeof row[0].label, "%s", btns[i].label);
+      snprintf(row[nbtn].action, sizeof row[0].action, "btn:%u:%s", leaf->id,
+               btns[i].id);
+      nbtn++;
+    }
+    snprintf(status, sizeof status, "%s", pane_status(leaf->pane));
+  }
+  if (!nbtn && !*status) return;
+
+  rect_t r = leaf->rect;
+  if (r.w < 6 || r.h < 3) return;
+  uint16_t y = (uint16_t)(r.y + r.h - 1);
+  uint16_t left = (uint16_t)(r.x + 1), right = (uint16_t)(r.x + r.w - 1);
+
+  /* right to left, so a button that does not fit is simply not drawn */
+  uint16_t x = right;
+  for (size_t i = nbtn; i-- > 0;) {
+    uint16_t w = (uint16_t)(cells(row[i].label) + 2); /* [label] */
+    if (x < left + w + 1) break;
+    x = (uint16_t)(x - w - 1);
+    char label[80];
+    snprintf(label, sizeof label, "[%s]", row[i].label);
+    bool hot = ptr_on(a, x, y, w, 1);
+    uint16_t drawn =
+        screen_text(s, x, y, label, focused || hot ? BTN_FG : fg,
+                    focused || hot ? BTN_BG : BTN_BG_IDLE, hot ? ATTR_BOLD : 0);
+    hit_add(&s->hits, x, y, drawn, 1, row[i].action);
+  }
+
+  if (*status && x > left + 1) {
+    char buf[256];
+    int len = snprintf(buf, sizeof buf, " %s ", status);
+    uint16_t room = (uint16_t)(x - left);
+    if (len > (int)room) {
+      len = room;
+      buf[len] = 0;
+    }
+    uint16_t drawn = screen_text(
+        s, left, y, buf, dead ? DEAD_C : (focused ? TITLE_FOCUS : TITLE_IDLE),
+        NO_COLOR, dead ? ATTR_BOLD : 0);
+    /* Claims its cells, the way the name on the top row does. Nothing clicks it
+     * -- an epitaph is not a button -- but owning the cells is what keeps the
+     * armed split guide from ruling a line through the one sentence saying how
+     * this pane died. */
+    if (drawn) {
+      char action[48];
+      snprintf(action, sizeof action, "panestatus:%u", leaf->id);
+      hit_add(&s->hits, left, y, drawn, 1, action);
+    }
+  }
+}
+
+/* The split handle: the middle of a border, and the only part of it that
+ * splits.
+ *
+ * The whole side used to be the button, which reads well until you count the
+ * accidents. A border is the longest target on a screen, it sits between two
+ * things you did mean to click, and the cost of brushing it was a changed
+ * layout. The gesture is worth keeping -- the side you click is the side the
+ * pane arrives on, which no single glyph can say -- so what changes is the size
+ * of the target: a *place* on the edge rather than the whole edge. The guide
+ * (`draw_split_guide`) thickens it on hover and reads its rect back from the
+ * hit list, so there is one opinion about where it is (D6: one geometry).
+ *
+ * Three cells is the floor the pane buttons already settled on, for the reason
+ * written there: a one-cell target is a thing you miss with a mouse. Seven is
+ * the ceiling, because a third of a tall pane's border is most of that border
+ * again, and the accidents come back with it. */
+static uint16_t split_handle_len(uint16_t span) {
+  uint16_t len = (uint16_t)(span / 3);
+  if (len < 3) len = 3;
+  if (len > 7) len = 7;
+  if (len > span) len = span;
+  return len;
+}
+
+/* One side's handle. False when the side is too short to hold one, which is a
+ * pane `split_fits` is about to refuse anyway. The top row is not here: its
+ * placement depends on what the title and the buttons left, so draw_frame does
+ * it once those are known. */
+static bool split_handle(const node_t *leaf, char side, rect_t *out) {
+  rect_t r = leaf->rect;
+  if (r.w < 4 || r.h < 4) return false;
+  bool vert = side == 'l' || side == 'r';
+  /* The span leaves the corners out: a corner is where two gaps cross and is a
+   * resize target already. */
+  uint16_t span = vert ? (uint16_t)(r.h - 2) : (uint16_t)(r.w - 2);
+  if (span < 3) return false;
+  uint16_t len = split_handle_len(span);
+  uint16_t off = (uint16_t)((span - len) / 2);
+  if (vert)
+    *out = (rect_t){side == 'l' ? r.x : (uint16_t)(r.x + r.w - 1),
+                    (uint16_t)(r.y + 1 + off), 1, len};
+  else
+    *out =
+        (rect_t){(uint16_t)(r.x + 1 + off), (uint16_t)(r.y + r.h - 1), len, 1};
+  return true;
+}
+
+/* What a press on this side is called. The top row answers to `title:` because
+ * it is the drag handle too, and one press has to be able to become either. */
+static void split_handle_action(const node_t *leaf, char side, char *buf,
+                                size_t cap) {
+  if (side == 't')
+    snprintf(buf, cap, "title:%u:t", leaf->id);
+  else
+    snprintf(buf, cap, "border:%u:%c", leaf->id, side);
+}
+
+/* And what the rest of that side is called: the part that arms the guide and
+ * does nothing when pressed. The top row's rim is the drag handle, so it keeps
+ * the plain `title:` name it always had. */
+static void split_rim_action(const node_t *leaf, char side, char *buf,
+                             size_t cap) {
+  if (side == 't')
+    snprintf(buf, cap, "title:%u", leaf->id);
+  else
+    snprintf(buf, cap, "brim:%u:%c", leaf->id, side);
+}
+
+/* The split guide, in two stages, because a hover answers two questions.
+ *
+ * Anywhere on the side: the edge goes heavy and the handle thickens. That says
+ * *where to click*, which is the thing you cannot otherwise know now that the
+ * whole edge is no longer the button.
+ *
+ * On the handle: the dashed line and the arrow as well, which say *what will
+ * happen*. So sweeping a border shows you the button without also drawing a
+ * boundary nobody asked about, and the hint (`hint_for`) follows the same
+ * split -- it is the caption on the second stage, not the first.
+ *
+ * Drawn *after* the pane's content, because the dashed line crosses it: the
+ * first version painted under the terminal and was invisible. Hover only, so
+ * an idle frame stays quiet. */
+static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
+  if (!a->ptr_valid) return;
+  if (a->drag.kind == DRAG_TITLE || a->drag.kind == DRAG_SELECT ||
+      a->drag.kind == DRAG_EDGE)
+    return; /* a drag in progress means the pointer is busy */
+
+  /* Arm on dwell, not on contact: a pointer merely crossing a border on its
+   * way somewhere else should not make the screen flash. Holding the button
+   * on a border is intent, so that skips the wait. */
+  if (a->drag.kind != DRAG_BORDER &&
+      now_ms_() - a->ptr_still_since < CFG.hover_delay_ms)
+    return;
+
+  /* Ask the hit list where the pointer is, using the entries this very pass
+   * registered for this pane. Drawing and hit-testing cannot disagree, and
+   * neither can drawing and *the layout*. */
+  const char *action = hit_test(&s->hits, a->ptr_x, a->ptr_y);
+  if (!action) return;
+  char side = 0;
+  bool on_handle = false;
+  char want[48];
+  snprintf(want, sizeof want, "border:%u:", leaf->id);
+  if (strncmp(action, want, strlen(want)) == 0) {
+    side = action[strlen(want)];
+    on_handle = true;
+  } else {
+    snprintf(want, sizeof want, "brim:%u:", leaf->id);
+    if (strncmp(action, want, strlen(want)) == 0) {
+      side = action[strlen(want)];
+    } else {
+      /* The top row, whose handle wears the `title:` name because a press
+       * there can still become a drag. Matched with the terminator checked, or
+       * pane 1 would answer for pane 12. */
+      snprintf(want, sizeof want, "title:%u", leaf->id);
+      size_t n = strlen(want);
+      if (strncmp(action, want, n) == 0 && (!action[n] || action[n] == ':')) {
+        side = 't';
+        on_handle = action[n] == ':';
+      }
+    }
+  }
+  if (!side) return;
+
+  /* Nothing is offered that cannot be delivered: below the floor this pane
+   * would only collapse, so the border simply stops being a button. */
+  if (!split_fits(leaf, side_dir(side))) return;
+
+  rect_t r = leaf->rect;
+  if (r.w < 4 || r.h < 4) return;
+  uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
+  color_t hi = GUIDE;
+
+  /* Stage one: the armed edge, on the cells the edge actually owns.
+   *
+   * A pane's name, its buttons and its scroll indicator all live on the top
+   * border, and the first version ruled straight through them: the row went
+   * unreadable exactly while the pointer was on it, and the handle looked as
+   * though it had been dropped at random, because the title it sits beside had
+   * been painted over. Asking the hit list which cells belong to this edge is
+   * the same question the handle already asks two lines down, and it costs one
+   * lookup per cell of one edge.
+   *
+   * The dead row's own buttons sit on the bottom border for the same reason, so
+   * this is not a top-row special case. */
+  char rim[48], act[48];
+  split_rim_action(leaf, side, rim, sizeof rim);
+  split_handle_action(leaf, side, act, sizeof act);
+  if (side == 'l' || side == 'r') {
+    uint16_t bx = side == 'l' ? r.x : x1;
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+      const char *own = hit_test(&s->hits, bx, y);
+      if (own && (strcmp(own, rim) == 0 || strcmp(own, act) == 0))
+        screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
+    }
+  } else {
+    uint16_t by = side == 't' ? r.y : y1;
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+      const char *own = hit_test(&s->hits, x, by);
+      if (own && (strcmp(own, rim) == 0 || strcmp(own, act) == 0))
+        screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
+    }
+  }
+
+  /* The handle, made heavier, and — where that means claiming a cell the pane
+   * was using — the hit for it registered here, because *this* is the frame in
+   * which it is that size.
+   *
+   * Only the upright sides grow. A cell is about twice as tall as it is wide
+   * (`gap_aspect`, and the split picker leans on the same fact), so one extra
+   * column is a nudge and one extra row is a slab: a two-row bar across a top or
+   * bottom border reads as a wall rather than as a thicker line, and eats a row
+   * of somebody's output to say so. The block glyph is already the heaviest
+   * thing a single cell can draw, and against `━` it is unmistakable, so a
+   * horizontal handle stays one row and says it with ink instead of size.
+   *
+   * The rect is read back from the list rather than recomputed: draw_frame
+   * placed it, and for the top row it places it wherever the title and the
+   * buttons left room, so recomputing it here would be a second opinion about
+   * where it is. Each cell is then painted only if the list still says it
+   * belongs to the handle, which is what keeps a block off the pane's name.
+   * Drawing asks the question the click is going to ask. */
+  const hit_t *core = hit_find(&s->hits, act);
+  if (core) {
+    rect_t h = {core->x, core->y, core->w, core->h};
+    if (side == 'l' || side == 'r') {
+      uint16_t in = side == 'l' ? (uint16_t)(h.x + 1) : (uint16_t)(h.x - 1);
+      hit_add(&s->hits, in, h.y, 1, h.h, act);
+      if (in < h.x) h.x = in;
+      h.w = 2;
+    }
+    /* The button carries its own verb. The arrow used to ride the dashed line,
+     * which put the two halves of the message in two places: the handle said
+     * *press here* and something over in the middle of the pane said *this is
+     * what happens*. On the handle it is one object that explains itself, and it
+     * is legible from the first stage -- brushing an edge now tells you which way
+     * that button splits without drawing a boundary you did not ask about.
+     *
+     * Knocked out of the bar with ATTR_INVERSE rather than drawn in a second
+     * colour: the block is solid `guide`, so a `guide` glyph on top of it would
+     * be invisible, and inverting spends no new theme knob to get contrast that
+     * follows whatever colour you set.
+     *
+     * Pointers rather than the matching triangles for left and right: U+25C0 and
+     * U+25B6 carry emoji presentation and terminals widely render them
+     * double-width, and screen_text books every chrome glyph as one cell — so a
+     * cell that draws as two would shift the rest of the row. U+25B2 is already
+     * the scroll indicator, so the vertical pair is known good here. */
+    const char *arrow = side == 'l'   ? "\u25c4"
+                        : side == 'r' ? "\u25ba"
+                        : side == 't' ? "\u25b2"
+                                      : "\u25bc";
+    /* Along the handle it goes in the middle, which is where the pointer is
+     * aiming. Across it, on the edge's own cell rather than the one over the
+     * content: the arrow marks a boundary, and the boundary lands on the frame.
+     * That distinction only exists on the upright pair, since those are the two
+     * that grew a second cell. */
+    bool vert = side == 'l' || side == 'r';
+    uint16_t ax = vert ? (side == 'l' ? h.x : (uint16_t)(h.x + h.w - 1))
+                       : (uint16_t)(h.x + h.w / 2);
+    uint16_t ay = vert ? (uint16_t)(h.y + h.h / 2) : h.y;
+    for (uint16_t y = h.y; y < h.y + h.h; y++) {
+      for (uint16_t x = h.x; x < h.x + h.w; x++) {
+        const char *own = hit_test(&s->hits, x, y);
+        if (!own || strcmp(own, act) != 0) continue;
+        bool tip = x == ax && y == ay;
+        screen_text(s, x, y, tip ? arrow : "\u2588", hi, NO_COLOR,
+                    tip ? (uint16_t)(ATTR_BOLD | ATTR_INVERSE) : ATTR_BOLD);
+      }
+    }
+  }
+
+  if (!on_handle) return;
+
+  /* Stage two: where the new boundary lands, and nothing about direction -- the
+   * handle is holding that end of the message now. A plain dashed line is also
+   * the honest shape for it: it is the *edge* of the new pane, and an edge has
+   * no middle worth marking. */
+  if (side == 'l' || side == 'r') {
+    uint16_t mid = (uint16_t)(r.x + r.w / 2);
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
+      screen_text(s, mid, y, "\u254e", hi, NO_COLOR, 0);
+  } else {
+    uint16_t mid = (uint16_t)(r.y + r.h / 2);
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++)
+      screen_text(s, x, mid, "\u254c", hi, NO_COLOR, 0);
+  }
+}
+
+static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
+  rect_t r = leaf->rect;
+  if (r.w < 3 || r.h < 3) return;
+  bool focused = leaf == cur(a)->focus;
+  bool drop_target = a->drag.kind == DRAG_TITLE && a->drag.target == leaf->id &&
+                     a->drag.src != leaf->id;
+  color_t fg = drop_target ? DROP_C : (focused ? FRAME_FOCUS : FRAME_IDLE);
+  uint16_t attrs = drop_target ? ATTR_BOLD : 0;
+
+  /* While a pane is being dragged, every other pane is somewhere it could be
+   * dropped, and a dashed border says so without needing a legend. The pane in
+   * your hand keeps a solid one, so the two states are told apart by the frame
+   * as well as by the colour — which matters on a terminal whose palette makes
+   * the greying subtle. The pane actually under the pointer still takes the
+   * drop_target highlight on top of the dashes: these are all targets, that is
+   * the one you are on. */
+  bool drag_target =
+      a->drag.kind == DRAG_TITLE && a->drag.moved && a->drag.src != leaf->id;
+  const char *hbar = drag_target ? "\u2504" : "\u2500";
+  const char *vbar = drag_target ? "\u2506" : "\u2502";
+
+  const char *tl = CFG.rounded ? "╭" : "┌", *tr = CFG.rounded ? "╮" : "┐";
+  const char *bl = CFG.rounded ? "╰" : "└", *br = CFG.rounded ? "╯" : "┘";
+
+  uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
+  screen_text(s, r.x, r.y, tl, fg, NO_COLOR, attrs);
+  screen_text(s, x1, r.y, tr, fg, NO_COLOR, attrs);
+  screen_text(s, r.x, y1, bl, fg, NO_COLOR, attrs);
+  screen_text(s, x1, y1, br, fg, NO_COLOR, attrs);
+  for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+    screen_text(s, x, r.y, hbar, fg, NO_COLOR, attrs);
+    screen_text(s, x, y1, hbar, fg, NO_COLOR, attrs);
+  }
+  for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+    screen_text(s, r.x, y, vbar, fg, NO_COLOR, attrs);
+    screen_text(s, x1, y, vbar, fg, NO_COLOR, attrs);
+  }
+
+  /* A pane that rang, marked just inside its corner: the same place on every
+   * pane, whatever its title is doing. */
+  if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4)
+    screen_text(s, (uint16_t)(r.x + 1), r.y, CFG.bell_mark, BELL_C, NO_COLOR,
+                ATTR_BOLD);
+
+  /* The frame's top row is the drag handle, all of it. Its *split* is a handle
+   * on the same row, but it is placed at the very end of this function rather
+   * than here: the title, the buttons and the scroll indicator all anchor
+   * wherever the config puts them, a centred title lands exactly where a
+   * centred handle would want to be, and this row's rule is that the title
+   * wins. So the handle is put where they are not, once they are all placed. */
+  {
+    char action[48];
+    snprintf(action, sizeof action, "title:%u", leaf->id);
+    hit_add(&s->hits, r.x, r.y, r.w, 1, action);
+  }
+
+  /* No split button. The border *is* the button -- or the middle of it is:
+   * clicking a side's handle splits toward that side, which encodes the
+   * direction a single glyph never could, and gives every frame its columns
+   * back. See split_handle(). */
+  uint16_t avail = (uint16_t)(r.w - 2);
+  bool has_btn = false;
+  uint16_t btn_x = x1;
+  /* Where the right-anchored group (buttons, then the scroll indicator) starts,
+   * and what the title took. Both are needed at the end of this function to
+   * find the top row's free cells; the corner counts as taken, hence x1. */
+  uint16_t right_lo = x1;
+  bool has_title = false;
+  uint16_t title_lo = 0, title_hi = 0;
+
+  /* The frame's own buttons, hard against the right of the top border. Three
+   * cells each: a one-cell target is a thing you miss with a mouse, and the
+   * spaces double as the gap between them. Budgeted before the scroll
+   * indicator, which then places itself to their left — the same right-first
+   * rule the tab strip and the status line use. */
+  if (CFG.pane_buttons && avail > 10) {
+    struct {
+      const char *mark;
+      const char *verb;
+    } btns[] = {
+        {CFG.close_mark, "close"},
+        {app_pane_zoomed(a, leaf->id) ? CFG.zoom_on_mark : CFG.zoom_mark,
+         "zoom"},
+        {CFG.min_mark, "minimize"},
+    };
+    uint16_t bx = (uint16_t)(x1 - 1);
+    for (size_t i = 0; i < sizeof btns / sizeof *btns; i++) {
+      char cell[24];
+      /* One space, not two. The gap between two marks is blank cells plus
+       * whatever blank each glyph carries inside its own cell, and that second
+       * part is not the same for a low underscore as for a square that fills
+       * its box. Two cells made the difference plain; one makes it small, and
+       * gives three columns of every frame back at the same time. */
+      snprintf(cell, sizeof cell, "%s ", btns[i].mark);
+      /* Measured in cells rather than assumed: a mark is yours to choose and
+       * may be more than one character. Booking three cells for a
+       * two-character mark would draw it over its neighbour and hand the
+       * neighbour's hit a cell it does not own. */
+      uint16_t mw = cells(btns[i].mark);
+      if (!mw) mw = 1;
+      uint16_t bw = (uint16_t)(mw + 1);
+      if (bx < r.x + 4 + bw) break;
+      uint16_t px = (uint16_t)(bx - bw + 1);
+      bool hot = ptr_on(a, px, r.y, bw, 1);
+      screen_text(s, px, r.y, cell, hot ? PANE_BTN_HOVER : PANE_BTN, NO_COLOR,
+                  hot ? ATTR_BOLD : 0);
+      char action[48];
+      snprintf(action, sizeof action, "%s:%u", btns[i].verb, leaf->id);
+      hit_add(&s->hits, px, r.y, bw, 1, action);
+      bx = (uint16_t)(px - 1);
+      has_btn = true;
+      btn_x = px;
+      avail = (uint16_t)(avail > bw ? avail - bw : 0);
+    }
+    /* One blank between the rule and the first button, so the group is not
+     * welded to the frame the way a title without its space would be. */
+    if (has_btn && btn_x > (uint16_t)(r.x + 1)) {
+      screen_text(s, (uint16_t)(btn_x - 1), r.y, " ", PANE_BTN, NO_COLOR, 0);
+      btn_x = (uint16_t)(btn_x - 1);
+      avail = (uint16_t)(avail > 1 ? avail - 1 : 0);
+    }
+    if (has_btn) right_lo = btn_x;
+  }
+
+  /* Each side twice over: `brim:` is the whole of it, which arms the guide on
+   * hover and does nothing at all on a click, and the handle on top of it is
+   * what splits. Registered in that order so the handle wins its own cells.
+   *
+   * The rim is a target rather than nothing so that hovering anywhere on an
+   * edge can still show you where the button is. Take it away and the handle
+   * becomes a thing you have to already know about. */
+  {
+    char action[48];
+    snprintf(action, sizeof action, "brim:%u:l", leaf->id);
+    hit_add(&s->hits, r.x, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
+    snprintf(action, sizeof action, "brim:%u:r", leaf->id);
+    hit_add(&s->hits, x1, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
+    snprintf(action, sizeof action, "brim:%u:b", leaf->id);
+    hit_add(&s->hits, r.x, y1, r.w, 1, action);
+    for (const char *side = "lrb"; *side; side++) {
+      rect_t h;
+      if (!split_handle(leaf, *side, &h)) continue;
+      split_handle_action(leaf, *side, action, sizeof action);
+      hit_add(&s->hits, h.x, h.y, h.w, h.h, action);
+    }
+  }
+
+  draw_pane_status(a, s, leaf, fg, focused);
+
+  /* Scroll position, when there is one: compact, right-aligned, and clickable
+   * to get back to the bottom. Budgeted after the button and before the title,
+   * because a title is the thing you can most afford to lose. */
+  if (pane_scrolled(leaf->pane) && avail >= 8) {
+    uint32_t above = 0, total = 0;
+    pane_scroll_pos(leaf->pane, &above, &total);
+    /* A space between the arrow and the count. U+25B2 is drawn wide enough in
+     * plenty of fonts to touch whatever follows it, and "▲12" then reads as
+     * one smudged token rather than an arrow and a number. */
+    char num[16];
+    int nd = snprintf(num, sizeof num, "%u", total > above ? total - above : 0);
+    if (nd < 0) nd = 0;
+    char ind[24];
+    snprintf(ind, sizeof ind, " \u25b2 %s ", num);
+    /* Counted in cells, not bytes: the arrow is three bytes and one column,
+     * and measuring it with strlen reserved two columns that were never used. */
+    uint16_t iw = (uint16_t)(nd + 4); /* space, arrow, space, digits, space */
+    if (iw + 2 < avail) {
+      uint16_t ix = (uint16_t)((has_btn ? btn_x : x1) - iw);
+      uint16_t drawn =
+          screen_text(s, ix, r.y, ind, SCROLL_FG, SCROLL_BG, ATTR_BOLD);
+      char action[48];
+      snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
+      hit_add(&s->hits, ix, r.y, drawn, 1, action);
+      right_lo = ix;
+      avail = (uint16_t)(avail - iw);
+    }
+  }
+
+  const char *title = pane_title(leaf->pane);
+  bool naming = a->renaming == RENAME_PANE && a->rename_id == leaf->id;
+  bool tagging = a->renaming == RENAME_PURPOSE && a->rename_id == leaf->id;
+  bool editing = naming || tagging;
+  if ((editing || (title && *title)) && avail >= 3) {
+    char buf[320]; /* a full-length name, plus the caret and its spaces */
+    /* The purpose editor says which label it is: typed into the same cell as a
+     * rename, an unlabelled caret would leave you guessing which one you are
+     * changing -- and the two are edited from keys one shift apart. */
+    int len =
+        tagging ? snprintf(buf, sizeof buf, " purpose %s\u2588 ", a->rename_buf)
+        : naming ? snprintf(buf, sizeof buf, " %s\u2588 ", a->rename_buf)
+                 : snprintf(buf, sizeof buf, " %s ", title);
+    /* snprintf reports what it *would* have written; clamp to what it did, or
+     * the scroll below would move bytes that are not there. */
+    if (len < 0) len = 0;
+    if ((size_t)len >= sizeof buf) len = (int)strlen(buf);
+    if (len > (int)avail) {
+      if (editing) {
+        /* Scroll the head off, not the tail: the cursor is the one thing that
+         * must stay on screen while typing. Whole characters only. */
+        size_t off = (size_t)(len - (int)avail);
+        while (off < (size_t)len && ((unsigned char)buf[off] & 0xC0) == 0x80)
+          off++;
+        memmove(buf, buf + off, (size_t)len - off + 1);
+        len = (int)((size_t)len - off);
+      } else {
+        len = (int)avail;
+        buf[len] = 0;
+      }
+    }
+    /* The inset is an edge offset, so it applies to whichever edge the title
+     * is anchored to and means nothing in the middle. */
+    uint16_t inset = CFG.title_inset < avail ? CFG.title_inset : 0;
+    uint16_t tx = (uint16_t)(r.x + 1 + inset);
+    if (CFG.title_align == ALIGN_CENTER)
+      tx = (uint16_t)(r.x + 1 + (avail - len) / 2);
+    else if (CFG.title_align == ALIGN_RIGHT)
+      tx = (uint16_t)(r.x + 1 + avail - len - inset);
+    /* An editor announces itself: the name sits in the button colours while it
+     * is being typed, so a half-finished rename can never be mistaken for what
+     * the pane is actually called. */
+    uint16_t drawn = screen_text(
+        s, tx, r.y, buf,
+        editing ? RENAME_FG : (focused ? TITLE_FOCUS : TITLE_IDLE),
+        editing ? RENAME_BG : NO_COLOR, editing || focused ? ATTR_BOLD : 0);
+
+    /* The title names the pane; it is not an edge. It carves its own cells out
+     * of the top row's handle so that resting there arms no split guide and
+     * clicking there splits nothing, which leaves the gesture free for a
+     * double-click rename — otherwise a rename would split twice on its way.
+     * Dragging still moves the pane: that reads as grabbing it by its name.
+     *
+     * Registered last, because hit_test() scans backwards and the title is
+     * painted last too. Hit-testing therefore agrees with what is on screen,
+     * and the width comes from screen_text() so a title of wide characters
+     * claims the cells it actually drew. */
+    if (drawn) {
+      char action[48];
+      snprintf(action, sizeof action, "panetitle:%u", leaf->id);
+      hit_add(&s->hits, tx, r.y, drawn, 1, action);
+      has_title = true;
+      title_lo = tx;
+      title_hi = (uint16_t)(tx + drawn - 1);
+    }
+  }
+
+  /* The top row's split handle, last of all, in whatever the row has left.
+   *
+   * The other three sides put it in the middle, which is where a person looks
+   * for it. This row cannot promise that: the buttons own its right, and a
+   * centred title -- the default -- owns exactly the cells the middle would
+   * want. The title winning is the rule (see above: that is what keeps a
+   * double-click rename from splitting twice on its way), so the handle takes
+   * the widest run the row still owns and, between equals, the one nearest the
+   * middle. A row with nothing left offers no upward split, and its other three
+   * edges are unaffected. */
+  {
+    uint16_t lo = (uint16_t)(r.x + 1);
+    if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4) lo++;
+    struct run {
+      uint16_t lo, hi;
+    } runs[2];
+    size_t nruns = 0;
+    if (has_title) {
+      if (title_lo > lo)
+        runs[nruns++] = (struct run){lo, (uint16_t)(title_lo - 1)};
+      if ((uint16_t)(title_hi + 1) < right_lo)
+        runs[nruns++] =
+            (struct run){(uint16_t)(title_hi + 1), (uint16_t)(right_lo - 1)};
+    } else if (lo < right_lo) {
+      runs[nruns++] = (struct run){lo, (uint16_t)(right_lo - 1)};
+    }
+
+    /* As near the middle of the row as the row allows.
+     *
+     * Centred in the widest *run* was the first rule and it looked arbitrary,
+     * because it is: with a centred title the row leaves two runs of nearly the
+     * same size, one of them a cell longer for reasons no one can see, and the
+     * handle floated off into the middle of whichever won. Aiming at the row's
+     * middle and sliding into the run instead means the handle hugs whatever is
+     * in the way -- so it sits against the title, where the eye already is,
+     * rather than halfway to the corner. With nothing in the way it is simply
+     * centred, which is the same rule the other three sides follow. */
+    uint16_t mid = (uint16_t)(r.x + r.w / 2);
+    uint16_t cap = split_handle_len((uint16_t)(r.w - 2));
+    bool found = false;
+    uint16_t best_x = 0, best_w = 0, best_dist = 0;
+    for (size_t i = 0; i < nruns; i++) {
+      if (runs[i].hi < runs[i].lo) continue;
+      uint16_t len = (uint16_t)(runs[i].hi - runs[i].lo + 1);
+      if (len < 3) continue;
+      uint16_t want = cap > len ? len : cap;
+      uint16_t last = (uint16_t)(runs[i].hi - want + 1);
+      uint16_t start = mid > want / 2 ? (uint16_t)(mid - want / 2) : runs[i].lo;
+      if (start < runs[i].lo) start = runs[i].lo;
+      if (start > last) start = last;
+      uint16_t c = (uint16_t)(start + want / 2);
+      uint16_t dist = (uint16_t)(c > mid ? c - mid : mid - c);
+      /* Nearest wins; a tie goes to the longer handle, which can only happen
+       * when one run is too short to hold a full one. */
+      if (!found || dist < best_dist || (dist == best_dist && want > best_w)) {
+        found = true;
+        best_x = start;
+        best_w = want;
+        best_dist = dist;
+      }
+    }
+    if (found) {
+      char action[48];
+      split_handle_action(leaf, 't', action, sizeof action);
+      hit_add(&s->hits, best_x, r.y, best_w, 1, action);
+    }
+  }
+}
+
+struct draw {
+  app_t *a;
+  screen_t *s;
+};
+
+/* Defined with the other shader passes below, because it is one. A collapsed
+ * row needs it here: the row is chrome, and it is the only thing a flattened
+ * tab draws of a pane. */
+static void shade_chrome(app_t *a, screen_t *s, node_t *n, rect_t r,
+                         const rect_t *hole);
+
+/* A collapsed subtree: one row, the title of the pane it stands for, and a hit
+ * that focuses it — which expands it on the next layout pass, because the
+ * expanded child is simply the one holding focus. */
+static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
+  node_t *leaf = first_leaf_of(n);
+  if (!leaf) return;
+  rect_t r = n->rect;
+  if (r.w < 4) return;
+
+  const char *title = pane_title(leaf->pane);
+  const char *status = pane_status(leaf->pane);
+  /* A pane that is not live says so here, in place of whatever its program
+   * last asked us to show — which is stale by definition once the program is
+   * gone or was never started.
+   *
+   * This row is the only thing a flattened tab draws of a pane, and the
+   * *content* shader pass deliberately never reaches it: those colour
+   * contents, and a header is chrome (D13). So the states that get a colour
+   * everywhere else have to be carried by the words here, in the same order
+   * the status line ranks them. Without this, collapsing a tab hides exactly
+   * the facts the colour exists to show. A `where="chrome"` chain does reach
+   * this row — it is a frame — but that is a thing you may have asked for,
+   * not something the words can rely on. */
+  bool dead = !pane_alive(leaf->pane) && !pane_suspended(leaf->pane);
+  char words[64];
+  if (dead) {
+    exit_words(leaf->pane, words, sizeof words);
+    status = words;
+  } else if (pane_suspended(leaf->pane)) {
+    status = "not started";
+  } else if (pane_scrolled(leaf->pane)) {
+    uint32_t above = 0, total = 0;
+    pane_scroll_pos(leaf->pane, &above, &total);
+    snprintf(words, sizeof words, "\u25b2 %u",
+             total > above ? total - above : 0);
+    status = words;
+  }
+  char line[256];
+  /* A space on each side, always. A title welded to the rule beside it reads
+   * as one longer word, and the rule is not part of the name. */
+  snprintf(line, sizeof line, " %s%s%s ", title && *title ? title : "pane",
+           status && *status ? " · " : "", status && *status ? status : "");
+
+  /* Once a tab is a list, its rows are what you are picking from, and a row
+   * under the pointer should say so. Immediate rather than on dwell: this is
+   * feedback about where the pointer *is*, not an action being armed, and a
+   * list you are scanning should track the mouse continuously — the dwell that
+   * stops a guide from flashing would only make this feel broken.
+   *
+   * Tested against the rect registered as the hit two lines below, so the row
+   * that lights up and the row that would be clicked are the same row by
+   * construction. A drag already owns the pointer and says nothing here. */
+  bool hot = ptr_on(a, r.x, r.y, r.w, 1);
+
+  /* Foreground only. A filled bar is louder than the thing it is telling you,
+   * and this row has to sit in a list of its own kind without shouting. */
+  color_t rule = hot ? HEADER_HOVER : HEADER;
+  color_t label = hot ? HEADER_HOVER_TITLE : (dead ? DEAD_C : HEADER);
+
+  /* A collapsed pane draws the top edge of a pane, corners and all. It is not
+   * decoration: this row *is* a pane, closed — so a stack of them reads as a
+   * stack of panes rather than as a list of labels that happen to be above
+   * one. The open pane below wears the same corners. */
+  const char *tl = CFG.rounded ? "╭" : "┌", *tr = CFG.rounded ? "╮" : "┐";
+  uint16_t x1 = (uint16_t)(r.x + r.w - 1);
+  for (uint16_t x = r.x; x <= x1; x++)
+    screen_text(s, x, r.y, "─", rule, NO_COLOR, 0);
+  screen_text(s, r.x, r.y, tl, rule, NO_COLOR, 0);
+  screen_text(s, x1, r.y, tr, rule, NO_COLOR, 0);
+
+  /* Just inside the corner, where it is in the same place on every pane
+   * whatever its title is doing. */
+  if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4)
+    screen_text(s, (uint16_t)(r.x + 1), r.y, CFG.bell_mark, BELL_C, NO_COLOR,
+                ATTR_BOLD);
+
+  uint16_t tx = (uint16_t)(r.x + 1 + CFG.title_inset);
+  if (tx < x1) {
+    size_t room = (size_t)(x1 - tx); /* never over the closing corner */
+    if (strlen(line) > room) line[room] = 0;
+    screen_text(s, tx, r.y, line, label, NO_COLOR, hot ? ATTR_BOLD : 0);
+  }
+
+  char action[48];
+  snprintf(action, sizeof action, "focus:%u", leaf->id);
+  hit_add(&s->hits, r.x, r.y, r.w, 1, action);
+
+  /* Last, so the pass sees the finished row: rule, bell, title and all. The
+   * state comes from the leaf this row stands for, not from the node that
+   * happens to own the rect — a collapsed subtree is drawn as its first pane
+   * and should be coloured as that pane. */
+  shade_chrome(a, s, leaf, r, NULL);
+}
+
+/* ---- shaders ------------------------------------------------------------ */
+
+/* A chain the program in the pane asked for, in the config's own syntax so that
+ * what you prototype is what you can paste (D13, revisited). Replaces that
+ * chain: empty text clears it, which is how a program puts a pane back.
+ *
+ * Refused, with a reason, when `in_band_shaders` is off -- a program restyling
+ * itself by accident is exactly what that decision was about, and the answer is
+ * a line of config rather than a rule nobody can lift. */
+/* A preset file, applied to this pane: both chains at once, routed by each entry's
+ * own `where=`. The session reads the file, because the session has the parser --
+ * a program that wants to prototype should not have to reimplement KDL, and a
+ * second reader of the format would be a second answer about what a file says.
+ *
+ * Gated like setting a chain by hand, and for the same reason: this is the program
+ * in the pane restyling the pane. Relative paths resolve against the *session's*
+ * working directory, which is why `contrib/shader-repl` sends an absolute one --
+ * the pane's own cwd is the pane's business and the session cannot see it. */
+bool app_load_pane_shaders(app_t *a, uint32_t pane_id, const char *path,
+                           size_t *nchrome, size_t *ncontent, char *err,
+                           size_t errcap) {
+  if (nchrome) *nchrome = 0;
+  if (ncontent) *ncontent = 0;
+  if (err && errcap) err[0] = 0;
+  if (!CFG.in_band_shaders) {
+    if (err && errcap) snprintf(err, errcap, "in_band_shaders is off");
+    return false;
+  }
+  node_t *n = pane_by_id(a, pane_id ? pane_id : app_focused_pane_id(a));
+  if (!n) {
+    if (err && errcap) snprintf(err, errcap, "no such pane");
+    return false;
+  }
+  if (!path || !path[0]) {
+    if (err && errcap) snprintf(err, errcap, "no path");
+    return false;
+  }
+
+  /* Both chains built beside the live ones and swapped in together, so a file
+   * that turns out to be unreadable half way through leaves the pane as it was
+   * rather than wearing the half that parsed. */
+  inband_chain_t con = {0}, chr = {0};
+  expr_prog_t *exprs[SHADE_MAX * 2];
+  size_t nexprs = 0;
+  size_t got =
+      config_parse_chain_file(path, CFG.frame_focus, con.sh, &con.n, chr.sh,
+                              &chr.n, exprs, &nexprs, err, errcap);
+  if (!got) {
+    for (size_t i = 0; i < nexprs; i++) expr_free(exprs[i]);
+    if (err && errcap && !err[0]) snprintf(err, errcap, "nothing in it to run");
+    return false;
+  }
+
+  /* The programs belong to whichever chain holds the shader that points at one.
+   * Walking the two chains rather than trusting the order they came back in: a
+   * chain that frees a program another chain is still using is the one bug in
+   * this that would not show up until the next repaint. */
+  for (size_t i = 0; i < nexprs; i++) {
+    bool mine = false;
+    for (size_t j = 0; j < chr.n && !mine; j++)
+      if (chr.sh[j].amount_expr == exprs[i]) {
+        chr.exprs[chr.nexprs++] = exprs[i];
+        mine = true;
+      }
+    for (size_t j = 0; j < con.n && !mine; j++)
+      if (con.sh[j].amount_expr == exprs[i]) {
+        con.exprs[con.nexprs++] = exprs[i];
+        mine = true;
+      }
+    if (!mine) expr_free(exprs[i]); /* its entry was dropped */
+  }
+
+  chain_clear(&n->chrome_chain);
+  chain_clear(&n->content_chain);
+  n->chrome_chain = chr;
+  n->content_chain = con;
+  pane_touch(n->pane);
+  if (nchrome) *nchrome = chr.n;
+  if (ncontent) *ncontent = con.n;
+  return true;
+}
+
+/* Everything this pane painted on itself, gone: both chains at once.
+ *
+ * Not gated on `in_band_shaders`, unlike setting one. A chain can outlive the
+ * consent that allowed it -- set it, then turn the setting off, and the paint is
+ * still there -- so the way out must not be the thing the setting controls. It is
+ * also the operator's answer to a pane that has made itself unreadable, and an
+ * answer you have to edit a config to reach is not one.
+ *
+ * Says nothing about the config's own chains or the session's policy passes:
+ * those are not this pane's doing and are derived every frame anyway. */
+bool app_clear_pane_shaders(app_t *a, uint32_t pane_id) {
+  node_t *n = pane_by_id(a, pane_id ? pane_id : app_focused_pane_id(a));
+  if (!n) return false;
+  bool had = n->content_chain.n || n->chrome_chain.n;
+  chain_clear(&n->content_chain);
+  chain_clear(&n->chrome_chain);
+  if (had) pane_touch(n->pane);
+  return had;
+}
+
+bool app_set_pane_shaders(app_t *a, uint32_t pane_id, bool default_chrome,
+                          const char *text, size_t *nchrome, size_t *ncontent,
+                          char *err, size_t errcap) {
+  if (nchrome) *nchrome = 0;
+  if (ncontent) *ncontent = 0;
+  if (err && errcap) err[0] = 0;
+  if (!CFG.in_band_shaders) {
+    if (err && errcap) snprintf(err, errcap, "in_band_shaders is off");
+    return false;
+  }
+  node_t *n = pane_by_id(a, pane_id);
+  if (!n) {
+    if (err && errcap) snprintf(err, errcap, "no such pane");
+    return false;
+  }
+
+  /* Both chains, because the text is a *document*: `where=` inside it decides
+   * where each pass goes, exactly as it does in the config file this syntax comes
+   * from, and `default_chrome` is only what a pass that keeps quiet means. An
+   * earlier version refused an entry that named the other rect, which made the
+   * prompt's mode a rule rather than a default -- and made a two-rect block, the
+   * thing `:paste` prints, impossible to paste back.
+   *
+   * Parsed beside the live chains and swapped in together, so text that turns out
+   * to be unreadable leaves the pane as it was rather than half-restyled. */
+  inband_chain_t con = {0}, chr = {0};
+  expr_prog_t *exprs[SHADE_MAX * 2];
+  size_t nexprs = 0;
+  config_parse_chain_doc(text, CFG.frame_focus, default_chrome, con.sh, &con.n,
+                         chr.sh, &chr.n, exprs, &nexprs, err, errcap);
+  if (err && errcap && err[0]) {
+    for (size_t i = 0; i < nexprs; i++) expr_free(exprs[i]);
+    return false;
+  }
+
+  /* Each program to the chain whose shader points at it. Walked rather than
+   * assumed: freeing one that the other chain still uses is the bug here that
+   * would not show up until the next repaint. */
+  for (size_t i = 0; i < nexprs; i++) {
+    bool mine = false;
+    for (size_t j = 0; j < chr.n && !mine; j++)
+      if (chr.sh[j].amount_expr == exprs[i]) {
+        chr.exprs[chr.nexprs++] = exprs[i];
+        mine = true;
+      }
+    for (size_t j = 0; j < con.n && !mine; j++)
+      if (con.sh[j].amount_expr == exprs[i]) {
+        con.exprs[con.nexprs++] = exprs[i];
+        mine = true;
+      }
+    if (!mine) expr_free(exprs[i]);
+  }
+
+  chain_clear(&n->chrome_chain);
+  chain_clear(&n->content_chain);
+  n->chrome_chain = chr;
+  n->content_chain = con;
+  pane_touch(n->pane);
+  if (nchrome) *nchrome = chr.n;
+  if (ncontent) *ncontent = con.n;
+  return true;
+}
+
+/* The session's opinion about this pane at this moment, as a shader.
+ *
+ * Derived every frame rather than attached and remembered. Focus and drags
+ * move through too many paths — hover, click, the finder, a close, a layout —
+ * to keep an attachment in sync with, and a pane left grey by the one path
+ * that forgot to clear it is a bug that only shows up in front of someone.
+ * The rect and the collapsed flag are recomputed every pass for exactly this
+ * reason; this is the same rule applied to colour. */
+/* Which state this pane is in, or PSTATE_COUNT for none.
+ *
+ * A pane is usually in several at once, so the order here is the answer: the
+ * first that matches wins and the rest are not asked. It runs from the most
+ * transient and deliberate to the most ambient, because a pane you are holding
+ * should not be recoloured by anything, a mode the whole screen is in outranks
+ * a hint about one pane, and "not focused" is the weakest thing that can be
+ * true of a pane. */
+static pane_state_t pane_state_of(app_t *a, node_t *n) {
+  /* Only once the pointer has actually moved: a press that turns out to be a
+   * click would otherwise flash the whole session on its way to nothing. */
+  if (a->drag.kind == DRAG_TITLE && a->drag.moved) {
+    if (n->id == a->drag.src) return PSTATE_DRAGGING;
+    if (n->id == a->drag.target) return PSTATE_DROP_HOVER;
+    return PSTATE_DROP_TARGET;
+  }
+  if (!pane_alive(n->pane) && !pane_suspended(n->pane)) return PSTATE_DEAD;
+  if (pane_suspended(n->pane)) return PSTATE_SUSPENDED;
+  /* A rung pane outranks a scrolled or unfocused one, and *replaces* it rather
+   * than stacking with it: states do not stack (D13), and of the things true
+   * of a pane that rang while you were elsewhere, the ringing is the one you
+   * needed telling. The focused pane never reaches here with a bell — looking
+   * at it answers the bell before anything is drawn. */
+  if (pane_bell(n->pane)) return PSTATE_BELL;
+  if (pane_scrolled(n->pane)) return PSTATE_SCROLLED;
+  if (n != cur(a)->focus) return PSTATE_UNFOCUSED;
+  return PSTATE_COUNT;
+}
+
+/* ...and when it last became that, which is the part a frame cannot tell you.
+ * Stamped here, in the one place that decides the state, so `since` cannot end
+ * up describing a state the pane is no longer in. Idempotent within a frame:
+ * the content pass and the chrome pass both ask, and the second sees no
+ * change. */
+static pane_state_t pane_state(app_t *a, node_t *n) {
+  pane_state_t st = pane_state_of(a, n);
+  if (st != n->last_state || !n->state_since) {
+    n->last_state = st;
+    n->state_since = now_ms_();
+  }
+  return st;
+}
+
+static size_t policy_shaders(app_t *a, node_t *n, shader_t *out, size_t cap) {
+  pane_state_t st = pane_state(a, n);
+  if (st >= PSTATE_COUNT) return 0;
+  size_t k = CFG.state_n[st];
+  if (k > cap) k = cap;
+  for (size_t i = 0; i < k; i++) out[i] = CFG.state_shaders[st][i];
+  return k;
+}
+
+static size_t chrome_policy_shaders(app_t *a, node_t *n, shader_t *out,
+                                    size_t cap) {
+  pane_state_t st = pane_state(a, n);
+  if (st >= PSTATE_COUNT) return 0;
+  size_t k = CFG.chrome_state_n[st];
+  if (k > cap) k = cap;
+  for (size_t i = 0; i < k; i++) out[i] = CFG.chrome_state_shaders[st][i];
+  return k;
+}
+
+/* Does anything in this chain read the clock? If so the session has to keep
+ * painting on its own, because the thing that will change next is the time.
+ * Asked of the chain that was actually applied rather than of the config: a
+ * pulse hung off `dead` costs a frame clock while a pane is dead and nothing
+ * for the rest of the session. */
+static void note_animation(app_t *a, const shader_t *chain, size_t n) {
+  for (size_t i = 0; i < n; i++)
+    if (chain[i].amount_expr &&
+        (expr_deps(chain[i].amount_expr) & EXPR_DEP_TIME)) {
+      a->animating = true;
+      return;
+    }
+}
+
+/* Scrollback as the viewport sees it, for content and chrome passes alike, so
+ * an expression can say "there is more this way": lines hidden above the top
+ * edge, and below the bottom. `total` from pane_scroll_pos is already the
+ * scrollable overhang (history minus the viewport), so the split needs no
+ * geometry of its own. */
+static void ctx_scroll(shade_ctx_t *base, const node_t *n) {
+  if (!n->pane) return;
+  uint32_t off = 0, total = 0;
+  pane_scroll_pos(n->pane, &off, &total);
+  base->above = off;
+  base->below = total > off ? total - off : 0;
+}
+
+/* A pane with nothing to apply costs nothing: no context is built and no cell
+ * is visited, so an unshaded session emits the same bytes it did before. */
+static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
+  shader_t chain[SHADE_CHAIN_MAX];
+  size_t nc = 0;
+
+  /* Configured first, then this pane's own, then policy last: what you asked
+   * every pane to look like, adjusted for this pane, and only then the
+   * session's opinion about this moment — which has to be able to grey out
+   * whatever the other two produced. */
+  for (size_t i = 0; i < CFG.nshaders && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = CFG.shaders[i];
+  for (size_t i = 0; i < n->content_chain.n && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = n->content_chain.sh[i];
+  nc += policy_shaders(a, n, &chain[nc], SHADE_CHAIN_MAX - nc);
+
+  if (!nc) return;
+  bool focused = n == cur(a)->focus;
+  /* After policy_shaders, which is what stamps the transition. */
+  int64_t now = now_ms_();
+  shade_ctx_t base = {
+      .now_ms = now,
+      .state_ms = n->state_since ? now - n->state_since : 0,
+      .focused = focused,
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  ctx_scroll(&base, n);
+  /* The screen's cursor belongs to whichever pane is focused, so it is only
+   * this pane's cursor when this pane is the focused one. Handing it to any
+   * other pane would have its spotlight chasing a cursor somewhere else. */
+  if (focused && s->cursor_visible && s->cursor_x >= n->content.x &&
+      s->cursor_y >= n->content.y) {
+    base.has_cursor = true;
+    base.cursor_x = (uint16_t)(s->cursor_x - n->content.x);
+    base.cursor_y = (uint16_t)(s->cursor_y - n->content.y);
+  }
+  note_animation(a, chain, nc);
+  shade_apply(s, chain, nc, n->content, NULL, &base);
+}
+
+/* Chrome: a pass over `r`, skipping `hole` (the contents, when the thing being
+ * drawn has any). One pass over the whole frame rather than one per side, so
+ * that an effect can travel round it — four passes would each count from zero
+ * and a sweep would restart at every corner.
+ *
+ * The rect is passed in rather than taken from the node because the two things
+ * that wear chrome are not the same shape: an open pane is its rect minus its
+ * contents, and a collapsed pane is one row that is chrome all the way through
+ * — its `content` is the size the program inside still believes it has, which
+ * is somewhere else entirely, and punching that out of the row would remove
+ * cells the row does not even overlap. `n` is only asked which state it is in,
+ * so a collapsed row is coloured by the pane it stands for.
+ *
+ * No cursor. The cursor is in the contents by construction, so a frame pass
+ * carrying one would hand an effect a position outside its own rect; `cursor`
+ * reads 0 here, which is the truth about a frame. */
+static void shade_chrome(app_t *a, screen_t *s, node_t *n, rect_t r,
+                         const rect_t *hole) {
+  shader_t chain[SHADE_CHAIN_MAX];
+  size_t nc = 0;
+
+  /* Configured, then this pane's own, then policy -- the same order the
+   * contents use, and for the same reason: the session's opinion about this
+   * moment has to be able to grey out whatever the other two produced. */
+  for (size_t i = 0; i < CFG.nchrome_shaders && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = CFG.chrome_shaders[i];
+  for (size_t i = 0; i < n->chrome_chain.n && nc < SHADE_CHAIN_MAX; i++)
+    chain[nc++] = n->chrome_chain.sh[i];
+  nc += chrome_policy_shaders(a, n, &chain[nc], SHADE_CHAIN_MAX - nc);
+  if (!nc) return;
+
+  int64_t now = now_ms_();
+  shade_ctx_t base = {
+      .now_ms = now,
+      .state_ms = n->state_since ? now - n->state_since : 0,
+      .focused = n == cur(a)->focus,
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  ctx_scroll(&base, n);
+  note_animation(a, chain, nc);
+  shade_apply(s, chain, nc, r, hole, &base);
+}
+
+/* Drawn after the panes, so the corner's hit is registered after the two gap
+ * hits it sits on and wins those cells: the cross is one target, not the
+ * overlap of two. */
+void draw_corners(app_t *a, screen_t *s) {
+  for (size_t i = 0; i < a->ncorners; i++) {
+    corner_t *c = &a->corners[i];
+    char action[48];
+    snprintf(action, sizeof action, "corner:%zu", i);
+    hit_add(&s->hits, c->r.x, c->r.y, c->r.w, c->r.h, action);
+
+    bool active = a->drag.kind == DRAG_EDGE && (a->drag.c_nh || a->drag.c_nv) &&
+                  a->drag.c_nh && c->nh && a->drag.c_h[0] == c->h_id[0] &&
+                  a->drag.c_hedge[0] == c->h_edge[0] &&
+                  a->drag.c_v[0] == c->v_id[0];
+    /* (C) The mark appears the moment the pointer is on it, before the dwell
+     * that arms the two boundaries. A crossing is two cells wide and gives no
+     * other sign it is anything: something has to say it is there, and the
+     * ghost costs nothing if you were only passing through. */
+    bool over =
+        a->drag.kind == DRAG_NONE && ptr_on(a, c->r.x, c->r.y, c->r.w, c->r.h);
+    if (!active && !over) continue;
+    bool armed = active || now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms;
+    for (uint16_t x = c->r.x; x < c->r.x + c->r.w; x++)
+      screen_text(s, x, c->r.y,
+                  armed ? (active ? "\u256c" : "\u253c") : "\u253c", RESIZE_C,
+                  NO_COLOR, active ? ATTR_BOLD : 0);
+  }
+}
+
+void draw_node(app_t *a, screen_t *s, node_t *n);
+
+static void draw_cb(node_t *n, void *ud) {
+  struct draw *d = ud;
+  char action[48];
+
+  /* Painted in order, so the hit list resolves last-painted-wins: the frame
+   * focuses, the content forwards the mouse, the button splits. */
+  snprintf(action, sizeof action, "focus:%u", n->id);
+  hit_add(&d->s->hits, n->rect.x, n->rect.y, n->rect.w, n->rect.h, action);
+
+  snprintf(action, sizeof action, "pane:%u", n->id);
+  hit_add(&d->s->hits, n->content.x, n->content.y, n->content.w, n->content.h,
+          action);
+
+  draw_frame(d->a, d->s, n);
+  if (pane_suspended(n->pane)) {
+    /* Falls through to the shader pass rather than returning: a pane that has
+     * not started is a state you can want to colour, and its label is the only
+     * content it has. */
+    /* The pane exists, is laid out, and has run nothing. Say what it would. */
+    const char *label = pane_label(n->pane);
+    char line[256];
+    snprintf(line, sizeof line, "press a key to run: %s",
+             label && *label ? label : "shell");
+    /* Truncate rather than vanish: a hint that only appears on wide panes is
+     * worse than a clipped one, and the pane may be narrow precisely because
+     * there are twelve of them. */
+    size_t w = strlen(line);
+    if (w > n->content.w) {
+      w = n->content.w;
+      if (w > 1) {
+        line[w - 1] = 0;
+        line[w - 2] =
+            0xe2; /* fall back to a plain dot rather than a cut UTF-8 */
+        line[w - 2] = '.';
+      } else {
+        line[w] = 0;
+      }
+    }
+    screen_text(d->s, (uint16_t)(n->content.x + (n->content.w - w) / 2),
+                (uint16_t)(n->content.y + n->content.h / 2), line, TITLE_IDLE,
+                NO_COLOR, 0);
+  } else {
+    pane_compose(n->pane, d->s, n->content.x, n->content.y,
+                 n == cur(d->a)->focus);
+  }
+  /* Between the contents and the chrome that goes over them: the frame was
+   * painted before this and lies outside the content rect, and the split guide
+   * is painted after, so it stays legible on top of a shaded pane.
+   *
+   * The chrome pass runs here too, and for the same reason: the frame it
+   * recolours is already painted, and the guide, the resize hints and the
+   * corners are painted after it and stay in their own colours. An affordance
+   * is not decoration and must not be dimmed along with the thing it is
+   * offered on. */
+  shade_leaf(d->a, d->s, n);
+  shade_chrome(d->a, d->s, n, n->rect, &n->content);
+  draw_split_guide(d->a, d->s, n);
+}
+
+struct bellsearch {
+  bool found;
+};
+static void bell_cb(node_t *n, void *ud) {
+  struct bellsearch *b = ud;
+  if (pane_bell(n->pane)) b->found = true;
+}
+static bool tab_has_bell(tab_t *t) {
+  struct bellsearch b = {false};
+  walk(t->root, bell_cb, &b);
+  return b.found;
+}
+
+void draw_tab_strip(app_t *a, screen_t *s) {
+  /* A pane is being carried: the strip is a row of destinations for as long as
+   * that is true. Worked out once rather than per tab. */
+  bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
+  uint16_t x = CFG.status_pad;
+  uint16_t y = CFG.gap;
+
+  /* Right side first, so a long tab list can never eat the indicators — the
+   * same budgeting rule as the split button and the OSC buttons. */
+  uint16_t right =
+      (uint16_t)(s->cols > CFG.status_pad ? s->cols - CFG.status_pad : s->cols);
+  char info[64];
+  size_t np = app_pane_count(a);
+  snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
+  uint16_t iw = (uint16_t)strlen(info);
+  if (right > iw + 4) {
+    screen_text(s, (uint16_t)(right - iw), y, info, TAB_COUNT, NO_COLOR, 0);
+    right = (uint16_t)(right - iw - 1);
+  }
+  if (a->prefix) { /* the prefix is a mode: say so, and say which key */
+    /* Rendered from the binding rather than written out, because it was
+     * written out: the badge said "C-a" whatever you had configured, which is
+     * the one place a rebound prefix could still lie to you. Measured too --
+     * a prefix is not always three columns wide (`C-space`, `M-\``). */
+    char pfx[24];
+    config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
+    uint16_t pw = cells(pfx);
+    if (right > pw + 2) {
+      screen_text(s, (uint16_t)(right - pw), y, pfx, PREFIX_FG, PREFIX_BG,
+                  ATTR_BOLD);
+      right = (uint16_t)(right - pw - 1);
+    }
+  }
+
+  for (size_t i = 0; i < a->ntabs && x < right; i++) {
+    tab_t *t = &a->tabs[i];
+    char label[80];
+    const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
+    /* A pane that rang in a tab you are not looking at is invisible without
+     * this, and that is the case the whole indicator exists for. */
+    bool rang = CFG.bell_indicator && tab_has_bell(t);
+    if (nm[0])
+      snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+    else
+      snprintf(label, sizeof label, " %zu ", i + 1);
+
+    /* Renaming: the tab's own cell becomes the editor, in the editor's
+     * colours, so a half-typed name can never be mistaken for the tab's real
+     * one. The caret is part of the label, so the width below — and therefore
+     * the hit — is the width of what is actually drawn. */
+    bool editing = a->renaming == RENAME_TAB && a->rename_id == t->id;
+    if (editing) snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
+
+    bool active = i == a->cur;
+    uint16_t attrs = active ? ATTR_BOLD : 0;
+    /* Two independent signals: weight says which tab you are in, colour says
+     * where the pointer is. Drawn once to learn the width, then again in the
+     * hover colour if that width turns out to be under the pointer — which
+     * costs a repaint of a few cells and guarantees the lit cells are the
+     * registered ones. */
+    uint16_t w =
+        screen_text(s, x, y, label,
+                    editing ? RENAME_FG : (active ? TAB_ACTIVE_FG : TAB_IDLE),
+                    editing ? RENAME_BG : (active ? TAB_ACTIVE_BG : NO_COLOR),
+                    editing ? ATTR_BOLD : attrs);
+    /* Hovering keeps the active tab's fill — it is still the tab you are in —
+     * so its feedback lands on the text instead. An inactive tab has no fill
+     * to keep, and brightens. */
+    /* The bell keeps its own colour here too, rather than taking the tab's —
+     * an indicator drawn in the same dim grey as the label it sits next to is
+     * an indicator you have to already be looking for. */
+    if (rang) {
+      char mark[24];
+      snprintf(mark, sizeof mark, "%s ", CFG.bell_mark);
+      w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), y, mark, BELL_C,
+                                     active ? TAB_ACTIVE_BG : NO_COLOR,
+                                     ATTR_BOLD));
+    }
+    if (!editing && ptr_on(a, x, y, w, 1))
+      screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
+                  active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
+
+    /* While a pane is in your hand, every tab it does not already live in is
+     * somewhere it could go, and `ptr_on` says nothing during a drag by design --
+     * so the strip has to draw the drop states itself. Same two states the panes
+     * use: all the candidates in the drop colour, and the one under the pointer
+     * filled, because these are all targets and that is the one you are on. */
+    if (dragging_pane) {
+      node_t *held = pane_by_id(a, a->drag.src);
+      bool mine = held && tab_of(a, held) == i;
+      if (!mine) {
+        bool on = a->drag.tab_target == t->id;
+        screen_text(s, x, y, label, on ? TAB_ACTIVE_HOVER_FG : DROP_C,
+                    on ? DROP_C : NO_COLOR, attrs | ATTR_BOLD);
+      }
+    }
+    char action[48];
+    snprintf(action, sizeof action, "tab:%u", t->id);
+    hit_add(&s->hits, x, y, w, 1, action);
+    x = (uint16_t)(x + w);
+  }
+
+  /* A bare mark, spaced like the frame's own buttons rather than spelled out.
+   * It used to read "+tab", because a pane frame carried a "+" for splitting
+   * and two verbs that look identical is a UI bug the fork shipped. That "+"
+   * went when the border became the button, so the collision it was avoiding
+   * no longer exists and the word was left explaining itself to nobody.
+   *
+   * Padded to three cells for the same reason the frame's buttons are: a
+   * one-cell target is a thing you miss with a mouse. What it does is said by
+   * the hint under the pointer, which is where every other one-character
+   * affordance here says it. */
+  {
+    char btn[24];
+    snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
+    uint16_t bw = (uint16_t)(cells(CFG.newtab_mark) + 2);
+    if (bw > 2 && x + bw <= right) {
+      uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
+      if (ptr_on(a, x, y, w, 1))
+        screen_text(s, x, y, btn, TAB_HOVER, NO_COLOR, ATTR_BOLD);
+      /* The button that makes a tab is also a place to drop a pane into one. */
+      if (dragging_pane)
+        screen_text(s, x, y, btn,
+                    a->drag.new_tab_target ? TAB_ACTIVE_HOVER_FG : DROP_C,
+                    a->drag.new_tab_target ? DROP_C : NO_COLOR, ATTR_BOLD);
+      hit_add(&s->hits, x, y, w, 1, "newtab");
+    }
+  }
+}
+
+/* The space between two of a split's children, or false if they are flush.
+ * One implementation, because the drawing, the hit and the corner-finding all
+ * have to agree about where a gap is down to the cell. */
+static bool gap_rect(node_t *n, size_t i, rect_t *out) {
+  if (!n || n->kind != NODE_SPLIT || i + 1 >= n->nkids) return false;
+  rect_t a_r = n->kids[i]->rect, b_r = n->kids[i + 1]->rect;
+  if (!a_r.w || !b_r.w) return false;
+  if (n->dir == SPLIT_COLS) {
+    uint16_t x0 = (uint16_t)(a_r.x + a_r.w);
+    if (b_r.x <= x0) return false;
+    *out = (rect_t){x0, a_r.y, (uint16_t)(b_r.x - x0), a_r.h};
+  } else {
+    uint16_t y0 = (uint16_t)(a_r.y + a_r.h);
+    if (b_r.y <= y0) return false;
+    *out = (rect_t){a_r.x, y0, a_r.w, (uint16_t)(b_r.y - y0)};
+  }
+  return true;
+}
+
+struct gapinfo {
+  node_t *sp;
+  size_t i;
+  rect_t r;
+};
+
+static size_t collect_gaps(node_t *n, struct gapinfo *out, size_t cap,
+                           size_t k) {
+  if (!n || n->kind != NODE_SPLIT || k >= cap) return k;
+  for (size_t i = 0; i + 1 < n->nkids && k < cap; i++) {
+    rect_t g;
+    if (!gap_rect(n, i, &g)) continue;
+    out[k].sp = n;
+    out[k].i = i;
+    out[k].r = g;
+    k++;
+  }
+  for (size_t i = 0; i < n->nkids; i++)
+    k = collect_gaps(n->kids[i], out, cap, k);
+  return k;
+}
+
+/* Where a boundary between rows crosses a boundary between columns.
+ *
+ * The two never overlap in the tree — a column boundary stops where the row
+ * boundary begins, because they belong to different splits — so a corner is
+ * found by adjacency rather than by intersection: the cells of the row gap
+ * that have a column gap running into them from above or below.
+ *
+ * Both are collected when both are there. In a two-by-two the column boundary
+ * above and the one below are separate splits that happen to line up, and
+ * moving one without the other would leave a step in what reads as one line. */
+void find_corners(app_t *a) {
+  a->ncorners = 0;
+  if (!a->ntabs || !cur(a)->root) return;
+
+  struct gapinfo g[64];
+  size_t n = collect_gaps(cur(a)->root, g, 64, 0);
+
+  /* Every place a column boundary meets a row boundary.
+   *
+   * They never overlap: whichever way the tree is nested, one of them stops
+   * where the other begins. Which one stops depends on the nesting — rows of
+   * columns give a full-width row boundary with column boundaries running into
+   * it from above and below, columns of rows give a full-height column
+   * boundary with row boundaries running into it from the sides — so the test
+   * is that the two touch at all, in either axis, rather than one particular
+   * arrangement of them.
+   *
+   * The crossing is always the column boundary's columns by the row
+   * boundary's rows, and boundaries are grouped by the crossing they land on.
+   * Two that line up are one crossing that moves both, because moving one of a
+   * matched pair would put a step in what reads as a single line; two that do
+   * not are separate crossings. */
+  for (size_t i = 0; i < n; i++) {
+    if (g[i].sp->dir != SPLIT_ROWS) continue;
+    rect_t h = g[i].r;
+    for (size_t j = 0; j < n; j++) {
+      if (g[j].sp->dir != SPLIT_COLS) continue;
+      rect_t v = g[j].r;
+
+      bool touch_y =
+          v.y <= (uint16_t)(h.y + h.h) && h.y <= (uint16_t)(v.y + v.h);
+      bool touch_x =
+          h.x <= (uint16_t)(v.x + v.w) && v.x <= (uint16_t)(h.x + h.w);
+      if (!touch_y || !touch_x) continue;
+
+      rect_t cr = {v.x, h.y, v.w, h.h};
+      corner_t *c = NULL;
+      for (size_t k = 0; k < a->ncorners; k++) {
+        rect_t e = a->corners[k].r;
+        if (e.x == cr.x && e.y == cr.y && e.w == cr.w && e.h == cr.h) {
+          c = &a->corners[k];
+          break;
+        }
+      }
+      if (!c) {
+        if (a->ncorners >= 16) break;
+        c = &a->corners[a->ncorners++];
+        *c = (corner_t){0};
+        c->r = cr;
+      }
+
+      bool have = false;
+      for (size_t k = 0; k < c->nh; k++)
+        if (c->h_id[k] == g[i].sp->id && c->h_edge[k] == g[i].i) have = true;
+      if (!have && c->nh < 2) {
+        c->h_id[c->nh] = g[i].sp->id;
+        c->h_edge[c->nh] = g[i].i;
+        c->nh++;
+      }
+      have = false;
+      for (size_t k = 0; k < c->nv; k++)
+        if (c->v_id[k] == g[j].sp->id && c->v_edge[k] == g[j].i) have = true;
+      if (!have && c->nv < 2) {
+        c->v_id[c->nv] = g[j].sp->id;
+        c->v_edge[c->nv] = g[j].i;
+        c->nv++;
+      }
+    }
+  }
+}
+
+static int corner_at(app_t *a, uint16_t x, uint16_t y) {
+  for (size_t i = 0; i < a->ncorners; i++) {
+    rect_t r = a->corners[i].r;
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return (int)i;
+  }
+  return -1;
+}
+
+static bool corner_uses(const corner_t *c, uint32_t id, size_t edge) {
+  for (size_t i = 0; i < c->nh; i++)
+    if (c->h_id[i] == id && c->h_edge[i] == edge) return true;
+  for (size_t i = 0; i < c->nv; i++)
+    if (c->v_id[i] == id && c->v_edge[i] == edge) return true;
+  return false;
+}
+
+/* The gap between two panes is a handle, and nothing about two blank columns
+ * says so. So it says it on hover — and says something else once you have hold
+ * of it, because "you could move this" and "you are moving this" are different
+ * claims and the second one should not have to be inferred from the panes
+ * changing size.
+ *
+ * Dotted while available, doubled and bold while engaged: the same grammar the
+ * split guide already uses, where dashes are a possibility and weight is a
+ * commitment. */
+static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
+                             rect_t gapr) {
+  bool active = a->drag.kind == DRAG_EDGE && a->drag.src == split->id &&
+                a->drag.edge == idx;
+  /* A corner moves two boundaries, so resting on it arms both of them: the
+   * hint has to show what is about to move, not where the pointer is. */
+  int ci = -1;
+  if (a->drag.kind == DRAG_EDGE && (a->drag.c_nv || a->drag.c_nh)) {
+    for (size_t k = 0; k < a->drag.c_nh; k++)
+      if (a->drag.c_h[k] == split->id && a->drag.c_hedge[k] == idx)
+        active = true;
+    for (size_t k = 0; k < a->drag.c_nv; k++)
+      if (a->drag.c_v[k] == split->id && a->drag.c_vedge[k] == idx)
+        active = true;
+  } else if (a->drag.kind == DRAG_NONE) {
+    ci = corner_at(a, a->ptr_x, a->ptr_y);
+  }
+  if (ci >= 0 && (size_t)ci < a->ncorners &&
+      corner_uses(&a->corners[ci], split->id, idx)) {
+    if (false)
+      active = true;
+    else if (now_ms_() - a->ptr_still_since >= CFG.hover_delay_ms) {
+      uint16_t attrs0 = 0;
+      if (split->dir == SPLIT_COLS) {
+        uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
+        for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
+          screen_text(s, x, y, "\u250a", RESIZE_C, NO_COLOR, attrs0);
+      } else {
+        uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
+        for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
+          screen_text(s, x, y, "\u2508", RESIZE_C, NO_COLOR, attrs0);
+      }
+      return;
+    }
+  }
+  if (!active) {
+    /* A pointer busy with anything else is not shopping for a boundary. */
+    if (a->drag.kind != DRAG_NONE || !a->ptr_valid) return;
+    /* Tested against the very rect just registered as this gap's hit, in the
+     * same loop iteration — so the hint cannot appear anywhere the click would
+     * not land, without having to trust a lookup to agree. */
+    if (a->ptr_x < gapr.x || a->ptr_x >= gapr.x + gapr.w || a->ptr_y < gapr.y ||
+        a->ptr_y >= gapr.y + gapr.h)
+      return;
+    /* Arm on dwell, like the split guide: crossing a gap on the way to a pane
+     * is the most ordinary mouse movement there is. */
+    if (now_ms_() - a->ptr_still_since < CFG.hover_delay_ms) return;
+  }
+
+  uint16_t attrs = active ? ATTR_BOLD : 0;
+
+  /* An arrow in the middle of the line, naming the verb: the dots say this is
+   * a handle, the arrow says what pulling it does. It points along the axis the
+   * boundary *moves*, not the one it lies on — a divider between two columns is
+   * drawn vertically and travels sideways, and the useful half of that is the
+   * travelling. Always bold: it is the one cell meant to be read.
+   *
+   * Double arrows rather than U+2194/U+2195, which carry emoji presentation and
+   * are widely drawn double-width; screen_text books a chrome cell as one, so a
+   * glyph that drew as two would shift the row. They also happen to rhyme with
+   * the doubled line the active state uses. */
+  if (split->dir == SPLIT_COLS) {
+    uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
+    for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
+      screen_text(s, x, y, active ? "\u2551" : "\u250a", RESIZE_C, NO_COLOR,
+                  attrs);
+    screen_text(s, x, (uint16_t)(gapr.y + gapr.h / 2), "\u21d4", RESIZE_C,
+                NO_COLOR, ATTR_BOLD);
+  } else {
+    uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
+    for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
+      screen_text(s, x, y, active ? "\u2550" : "\u2508", RESIZE_C, NO_COLOR,
+                  attrs);
+    screen_text(s, (uint16_t)(gapr.x + gapr.w / 2), y, "\u21d5", RESIZE_C,
+                NO_COLOR, ATTR_BOLD);
+  }
+}
+
+void draw_node(app_t *a, screen_t *s, node_t *n) {
+  if (n->collapsed) {
+    draw_collapsed(a, s, n);
+    return;
+  }
+  if (n->kind == NODE_LEAF) {
+    struct draw d = {a, s};
+    draw_cb(n, &d);
+    return;
+  }
+
+  /* The gap between two children is the boundary you can drag. It is drawn as
+   * nothing, but it is a real target, derived from the rects the children were
+   * just given rather than recomputed from the config. */
+  for (size_t i = 0; i + 1 < n->nkids; i++) {
+    rect_t gapr;
+    if (!gap_rect(n, i, &gapr)) continue;
+    char action[48];
+    snprintf(action, sizeof action, "edge:%u:%zu", n->id, i);
+    hit_add(&s->hits, gapr.x, gapr.y, gapr.w, gapr.h, action);
+    draw_resize_hint(a, s, n, i, gapr);
+  }
+
+  for (size_t i = 0; i < n->nkids; i++) draw_node(a, s, n->kids[i]);
+}
+
+/* ---- kitty graphics ------------------------------------------------------ */
+
+struct gfx_ctx {
+  app_t *a;
+  node_t *leaf;
+};
+
+static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
+  struct gfx_ctx *c = ud;
+  node_t *leaf = c->leaf;
+
+  /* Pane-local viewport cells become screen cells, and anything hanging over
+   * the pane's edge is cropped by asking for fewer columns and rows — the
+   * only clipping the protocol lets us do without knowing the client's cell
+   * size in pixels. */
+  if (g->col >= leaf->content.w || g->row >= leaf->content.h) return;
+  uint16_t cols = g->cols, rows = g->rows;
+  uint32_t sw = g->sw, sh = g->sh;
+  /* Cropping means moving the source rectangle, and how much source a lost
+   * cell is worth depends on whether the image is being scaled:
+   *
+   *   natural size  one source pixel is one screen pixel, so the crop is the
+   *                 screen pixels the pane has left -- measured from where
+   *                 the image starts, which is `x_off` into its first cell
+   *                 and not at the cell's edge. Cropping by whole cells alone
+   *                 let an offset image hang up to a cell over the border.
+   *   scaled        the program asked for c=/r=, so a cell is worth
+   *                 source/cells pixels and the crop is proportional. Taking
+   *                 screen pixels off a scaled image would crop far too much
+   *                 -- a 4px image across 40 cells loses its whole self. */
+  if (g->col + cols > leaf->content.w) {
+    uint16_t avail = (uint16_t)(leaf->content.w - g->col);
+    if (g->req_cols) {
+      sw = cols ? (uint32_t)((uint64_t)sw * avail / cols) : sw;
+    } else {
+      uint32_t px = (uint32_t)avail * g->cell_px_w;
+      px = px > g->x_off ? px - g->x_off : 0;
+      if (sw > px) sw = px;
+    }
+    cols = avail;
+  }
+  if (g->row + rows > leaf->content.h) {
+    uint16_t avail = (uint16_t)(leaf->content.h - g->row);
+    if (g->req_rows) {
+      sh = rows ? (uint32_t)((uint64_t)sh * avail / rows) : sh;
+    } else {
+      uint32_t px = (uint32_t)avail * g->cell_px_h;
+      px = px > g->y_off ? px - g->y_off : 0;
+      if (sh > px) sh = px;
+    }
+    rows = avail;
+  }
+  if (!cols || !rows) return;
+
+  gfx_place(
+      c->a->gfx,
+      &(gfx_req_t){
+          .pane = leaf->id,
+          .src_id = g->image_id,
+          .gen = g->generation,
+          .place_id = g->place_id,
+          .col = (uint16_t)(leaf->content.x + g->col),
+          .row = (uint16_t)(leaf->content.y + g->row),
+          .cols = cols,
+          .rows = rows,
+          /* Carried through untouched: the pane's own clipping already dealt with
+       * it, and the offset is relative to the first cell either way. */
+          .x_off = g->x_off,
+          .y_off = g->y_off,
+          /* Clipped the same way the cell counts were, and zero when the program
+       * never asked to scale. */
+          .scale_cols = g->req_cols ? cols : 0,
+          .scale_rows = g->req_rows ? rows : 0,
+          .sx = g->sx,
+          .sy = g->sy,
+          .sw = sw,
+          .sh = sh,
+          .px_w = g->src_w,
+          .px_h = g->src_h,
+          .format = g->format,
+          .compression = g->compression,
+          .data = g->data,
+          .data_len = g->data_len,
+      });
+}
+
+static void gfx_leaf_cb(node_t *n, void *ud) {
+  app_t *a = ud;
+  if (n->hidden) return; /* a collapsed pane draws nothing, images included */
+  struct gfx_ctx ctx = {a, n};
+  pane_graphics(n->pane, gfx_from_pane, &ctx);
+}
+
+/* Walk the visible tab's panes and produce the bytes the client's terminal
+ * needs this frame. Borrowed until the next call. */
+const char *app_graphics(app_t *a, size_t *len) {
+  gfx_begin(a->gfx);
+  if (a->ntabs && cur(a)->root) walk(cur(a)->root, gfx_leaf_cb, a);
+  return gfx_flush(a->gfx, len);
+}
+
+void app_graphics_reset(app_t *a) { gfx_reset(a->gfx); }
+
+char *app_graphics_json(app_t *a) {
+  size_t len = 0;
+  app_graphics(a, &len); /* refresh the model; the bytes are the caller's job */
+  const gfx_place_t *places = NULL;
+  size_t n = gfx_placements(a->gfx, &places);
+  json_t j;
+  json_init(&j);
+  json_arr_open(&j, NULL);
+  for (size_t i = 0; i < n; i++) {
+    json_obj_open(&j, NULL);
+    json_int(&j, "image", places[i].out_id);
+    json_int(&j, "placement", places[i].place_id);
+    json_int(&j, "x", places[i].col);
+    json_int(&j, "y", places[i].row);
+    json_int(&j, "cols", places[i].cols);
+    json_int(&j, "rows", places[i].rows);
+    /* Reported so a test can see sub-cell motion, which is otherwise only
+     * visible as "the picture moves smoothly" on somebody's screen. */
+    json_int(&j, "x_off", places[i].x_off);
+    json_int(&j, "y_off", places[i].y_off);
+    json_obj_close(&j);
+  }
+  json_arr_close(&j);
+  return j.buf;
+}

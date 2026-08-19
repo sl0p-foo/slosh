@@ -338,9 +338,11 @@ def test_a_syntax_error_in_a_layout_is_reported_as_the_layout_it_is():
 def test_the_layout_property_lists_cannot_go_stale():
     """The checker's lists and build_pane's reads are two copies of one schema, and
     the copy that silently gets it wrong is the one that only complains."""
-    src = (pathlib.Path(__file__).resolve().parent.parent / "src" / "app.c").read_text()
+    src = (
+        pathlib.Path(__file__).resolve().parent.parent / "src" / "app_session.c"
+    ).read_text()
     start = src.index("/* ---- layouts ---")
-    end = src.index("/* ---- resizing and reordering")
+    end = src.index("/* ---- dumping")
     section = src[start:end]
 
     import re

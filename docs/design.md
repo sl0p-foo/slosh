@@ -36,7 +36,11 @@ functions (the KDL parser, the shader pass, the expression compiler).
 ## The shape of it
 
 ```
-src/app.c      the session: tree, layout, chrome, input routing, control API
+src/app.c      the session core: pane and tab lifecycle, input routing
+src/app_layout.c    the layout: splits, tree edits, resizing, focus
+src/app_draw.c      drawing the chrome, the shader passes, graphics
+src/app_ui.c        the finder, the palette, modals, renaming
+src/app_session.c   layout files, workspaces, dumping a session out
 src/pane.c     one pty + one libghostty-vt terminal, composed into the screen
 src/screen.c   our cell buffer, and the minimal byte stream to update a terminal
 src/server.c   the session process: socket, poll loop, config watcher
