@@ -194,7 +194,10 @@ typedef struct {
    * and a silently wrapped limit is worse than a refused one. */
   size_t scrollback;
   size_t scrollback_bytes;
-  uint16_t toast_ms;        /* how long an announcement stays up */
+  uint16_t toast_ms; /* how long an announcement stays up */
+  /* How long the logo splash stays over a freshly attached screen, 0 for
+   * never. Attach-only: a headless or scripted session has nobody to greet. */
+  uint16_t splash_ms;
   uint16_t hover_delay_ms;  /* how long the pointer must rest to arm a guide */
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
   /* What a double-click's word stops at, listed as *separators* rather than as

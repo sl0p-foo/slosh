@@ -862,6 +862,9 @@ void config_defaults(config_t *c) {
    * checkout. No roots by default: the feature is dormant until you say where. */
   c->project_depth = 2;
   c->toast_ms = 2500;
+  /* Long enough to read as a greeting, short enough never to be in the way
+   * -- and any key or click ends it early. */
+  c->splash_ms = 900;
   c->hover_delay_ms = 250;
   c->double_click_ms = 400;
   /* Quotes, brackets, and the punctuation that ends a clause or a list.
@@ -1545,6 +1548,8 @@ char *config_render(const config_t *c) {
       "scrollback_bytes %zu  // the ceiling that count runs into; 0 for none\n",
       c->scrollback_bytes);
   cb_add(&b, "toast_ms %u\n", c->toast_ms);
+  cb_add(&b, "splash_ms %u          // the logo, on attach; 0 for never\n",
+         c->splash_ms);
   cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
   cb_add(&b, "double_click_ms %u\n", c->double_click_ms);
   cb_qstr(&b, "word_separators", c->word_separators,
@@ -1791,6 +1796,7 @@ static const char *const KNOWN_TOP[] = {
     "shader_dir",
     "shaders",
     "shell",
+    "splash_ms",
     "states",
     "status_bar",
     "status_line",
@@ -2095,6 +2101,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   }
   c->toast_ms =
       (uint16_t)kdl_arg_int(kdl_child(root, "toast_ms"), 0, c->toast_ms);
+  c->splash_ms =
+      (uint16_t)kdl_arg_int(kdl_child(root, "splash_ms"), 0, c->splash_ms);
   c->hover_delay_ms = (uint16_t)kdl_arg_int(kdl_child(root, "hover_delay_ms"),
                                             0, c->hover_delay_ms);
   c->double_click_ms = (uint16_t)kdl_arg_int(kdl_child(root, "double_click_ms"),

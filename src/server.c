@@ -428,6 +428,9 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
                 break;
               }
             s.conns[ci].display = true;
+            /* Someone is now looking, which is the one moment a greeting
+             * makes sense: a headless or scripted session never gets here. */
+            app_splash(s.app);
           }
           if (m.len >= 4 && s.conns[ci].display) {
             uint16_t c = (uint16_t)(m.data[0] << 8 | m.data[1]);

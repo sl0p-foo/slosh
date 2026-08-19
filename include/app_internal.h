@@ -261,6 +261,11 @@ struct app {
    * remembering "this session animates" would keep a clock running for a pulse
    * that was hung off a state no pane is in any more. */
   bool animating;
+
+  /* The logo splash: shown until this instant, 0 for not at all. Set when a
+   * client attaches (app_splash), ended early by any key or click. The
+   * timestamp doubles as the seed that picks which effect this one wears. */
+  int64_t splash_until;
 };
 
 /* One config per process, owned by app.c (ensure_config/app_reload_config
@@ -365,6 +370,8 @@ void picker_accept(app_t *a, const char *action);
 void purpose_begin(app_t *a, uint32_t id);
 void rename_begin(app_t *a, uint32_t id);
 void rename_tab_begin(app_t *a, uint32_t id);
+
+void draw_splash(app_t *a, screen_t *s);
 
 /* round two */
 void drop_pane_on_strip(app_t *a);

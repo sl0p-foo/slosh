@@ -1312,7 +1312,19 @@ bool run_action(app_t *a, action_t act) {
   }
 }
 
+void app_splash(app_t *a) {
+  if (!CFG.splash_ms) return;
+  a->splash_until = now_ms_() + CFG.splash_ms;
+}
+
 void app_event(app_t *a, const input_event_t *ev) {
+  /* The splash is a greeting, not a modal: the first thing you do ends it,
+   * and that thing still happens -- swallowing a keystroke someone aimed at
+   * their shell would make the greeting a nuisance. */
+  if (a->splash_until && (ev->kind == EV_KEY ||
+                          (ev->kind == EV_MOUSE && ev->maction == MOUSE_PRESS)))
+    a->splash_until = 0;
+
   if (!a->ntabs || !cur(a)->focus) return;
 
   /* A rename whose subject went away must not keep the keyboard. */

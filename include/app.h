@@ -66,6 +66,9 @@ size_t app_fds(app_t *a, int *out, size_t max);
 void app_reap(app_t *a);
 
 void app_compose(app_t *a, screen_t *s);
+/* Show the logo splash for splash_ms, centered over everything, wearing a
+ * different shader effect each time. Called on attach; any input ends it. */
+void app_splash(app_t *a);
 /* Bytes straight into the focused pane's pty (the harness's `raw`). */
 void app_write_focused(app_t *a, const void *buf, size_t len);
 bool app_should_quit(const app_t *a);

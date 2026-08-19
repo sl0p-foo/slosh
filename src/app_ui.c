@@ -1005,4 +1005,5 @@ void app_compose(app_t *a, screen_t *s) {
   if (a->picker) draw_picker(a, s);
   if (a->help) draw_help(a, s);
   draw_toasts(a, s); /* and above even that: it is transient */
+  draw_splash(a, s); /* the greeting outranks everything, briefly */
 }

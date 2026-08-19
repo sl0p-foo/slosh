@@ -1740,3 +1740,101 @@ char *app_graphics_json(app_t *a) {
   json_arr_close(&j);
   return j.buf;
 }
+
+/* ---- the splash ---------------------------------------------------------- *
+ *
+ * The logo, briefly, centered over everything, when a client attaches: a
+ * greeting, and a two-second advertisement for what the shader pass can do.
+ * Which effect it wears is picked by the splash's own timestamp, so every
+ * attach looks a little different without anybody keeping a counter. Any key
+ * or click ends it (app_event), and the pass machinery is exactly the one
+ * panes use -- same expressions, same clock, same cache. */
+
+#include "logo.h" /* generated from logo.txt; see the Makefile */
+
+typedef struct {
+  const char *kind;   /* tint or dim: colour it, or carve it */
+  const char *amount; /* the whole effect, as an expression over the rect */
+  bool on_fg;         /* tint towards default_fg rather than the accent */
+} splash_fx_t;
+
+/* Every entry reads `t` or `since`, deliberately: an animated splash keeps
+ * the frame clock only while it is on screen (note_animation), and a still
+ * one would just be a logo. `since` here is milliseconds since the splash
+ * began, so one-shot effects can sweep exactly once. */
+static const splash_fx_t SPLASH_FX[] = {
+    /* a sheen looping along the diagonal, the bell shimmer's big sibling */
+    {"tint",
+     "max(0, 230 - abs(x + 2 * y - (since / 3) % (cols + 2 * rows + 24)) * 25)",
+     true},
+    /* plasma: two sines that disagree */
+    {"tint", "128 + sin(x * 24 + t / 4) / 4 + sin(y * 48 - t / 6) / 4", false},
+    /* rings spreading from the middle */
+    {"tint", "128 + sin(dist(x, y, cols / 2, rows / 2) * 55 - t / 2) / 2",
+     false},
+    /* sparkle: a cheap hash of position and time */
+    {"tint", "((x * 37 + y * 91 + (since / 90) * 53) % 89 < 7) * 230", true},
+    /* a left-to-right reveal over the first half second */
+    {"dim", "(x * 500 > since * cols) * 255", false},
+    /* breathe */
+    {"tint", "120 + sin(since / 2) / 3", false},
+};
+#define NSPLASH_FX (sizeof SPLASH_FX / sizeof *SPLASH_FX)
+
+void draw_splash(app_t *a, screen_t *s) {
+  if (!a->splash_until) return;
+  int64_t now = now_ms_();
+  if (now >= a->splash_until) {
+    a->splash_until = 0;
+    return;
+  }
+
+  size_t nlines = sizeof LOGO / sizeof *LOGO;
+  uint16_t w = 0;
+  for (size_t i = 0; i < nlines; i++) {
+    uint16_t c = cells(LOGO[i]);
+    if (c > w) w = c;
+  }
+  /* Two cells of air each side, a row above and below. A screen the box does
+   * not fit on gets no greeting rather than a cropped one. */
+  uint16_t bw = (uint16_t)(w + 4), bh = (uint16_t)(nlines + 2);
+  if (bw > s->cols || bh > s->rows) return;
+  uint16_t x0 = (uint16_t)((s->cols - bw) / 2);
+  uint16_t y0 = (uint16_t)((s->rows - bh) / 2);
+
+  /* A cleared backdrop, so the logo reads over whatever a pane put there. */
+  char blank[512];
+  size_t nb = bw < sizeof blank - 1 ? bw : sizeof blank - 1;
+  memset(blank, ' ', nb);
+  blank[nb] = 0;
+  for (uint16_t y = 0; y < bh; y++)
+    screen_text(s, x0, (uint16_t)(y0 + y), blank, NO_COLOR, NO_COLOR, 0);
+  for (size_t i = 0; i < nlines; i++)
+    screen_text(s, (uint16_t)(x0 + 2), (uint16_t)(y0 + 1 + i), LOGO[i],
+                FRAME_FOCUS, NO_COLOR, ATTR_BOLD);
+
+  /* The effect. Compiled on first wear and kept for the life of the process:
+   * the sources are string literals above, and a splash that recompiled its
+   * expression every frame would be spending the one cost the map exists to
+   * avoid. */
+  static expr_prog_t *progs[NSPLASH_FX];
+  size_t idx = (size_t)a->splash_until % NSPLASH_FX;
+  if (!progs[idx]) {
+    char err[128] = {0};
+    progs[idx] = expr_compile(SPLASH_FX[idx].amount, err, sizeof err);
+  }
+  if (!progs[idx]) return; /* cannot happen; the bare logo still greets */
+
+  shader_t sh;
+  shader_make(&sh, SPLASH_FX[idx].kind,
+              SPLASH_FX[idx].on_fg ? CFG.default_fg : CFG.frame_focus, 128);
+  sh.amount_expr = progs[idx];
+  shade_ctx_t ctx = {
+      .now_ms = now,
+      .state_ms = now - (a->splash_until - CFG.splash_ms),
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  note_animation(a, &sh, 1);
+  shade_apply(s, &sh, 1, (rect_t){x0, y0, bw, bh}, NULL, &ctx);
+}

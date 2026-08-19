@@ -426,6 +426,12 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     json_obj_close(&j);
     return j.buf;
   }
+  if (strcmp(cmd, "splash") == 0) {
+    /* The attach greeting, on demand -- which is also what makes it testable
+     * from a scripted session, where nobody ever attaches. */
+    app_splash(a);
+    return jok_int(NULL, 0);
+  }
   if (strcmp(cmd, "reload") == 0) {
     char err[256] = {0};
     if (!app_reload_config(err, sizeof err)) {

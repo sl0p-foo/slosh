@@ -710,6 +710,15 @@ anim_ms 50
 // "config reloaded") stays in the bottom-right corner.
 toast_ms 2500
 
+// The logo, centered over everything for a moment when a client attaches,
+// wearing a different shader effect each time -- a greeting, and an
+// advertisement for the pass machinery that painted it (the effects are
+// ordinary amount-expressions over the logo's rect). Any key or click ends
+// it early and still does what it was going to do; a screen the logo does
+// not fit on gets no greeting rather than a cropped one; headless and
+// scripted sessions have nobody to greet. 0 for never.
+splash_ms 900
+
 // What a new pane runs. Unset means $SHELL.
 // shell "/bin/bash"
 
