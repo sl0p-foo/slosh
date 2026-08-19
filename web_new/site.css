@@ -1,0 +1,265 @@
+/* slosh.foo — one page, one stylesheet, no build step.
+ *
+ * The palette is contrib/themes/sl0p.kdl — hot pink on near-black — so the
+ * page and the thing it describes agree. Deliberately not a landing page:
+ * no gradients, no cards, no icons, nothing floats in on scroll. */
+
+:root {
+  --bg: #0b0b0e;
+  --panel: #141418;
+  --code-bg: #1c1c22;
+  --fg: #e8e8ea;
+  --dim: #8a8a95;
+  --faint: #45454a;
+  --pink: #ff5fd7;
+  --dead: #ff875f;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+          "DejaVu Sans Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--pink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, kbd, pre { font-family: var(--mono); }
+code { font-size: 0.9em; }
+
+kbd {
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--faint);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--pink);
+  font-size: 0.85em;
+}
+
+/* ---- the nav -------------------------------------------------------- */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 1.5em;
+  overflow-x: auto;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--panel);
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 2.6;
+  white-space: nowrap;
+}
+
+.nav a { color: var(--dim); }
+.nav a:hover { color: var(--pink); text-decoration: none; }
+.nav a[aria-current] { color: var(--fg); }
+.nav-fill { flex: 1; }
+
+/* ---- the hero ------------------------------------------------------- */
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0 1.25rem 4rem;
+}
+
+.hero { padding: 3.5rem 0 1rem; }
+
+.hero h1 {
+  margin: 0;
+  color: var(--pink);
+  font-family: var(--mono);
+  font-size: clamp(2.2rem, 6vw, 3.4rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tagline {
+  margin: 0.5rem 0 0;
+  max-width: 38rem;
+  color: var(--dim);
+  font-size: 1.05rem;
+}
+
+.hero-links { margin: 2rem 0 0; }
+
+.btn {
+  display: inline-block;
+  margin-right: 0.75rem;
+  padding: 0.35rem 1.1rem;
+  background: var(--pink);
+  color: var(--panel);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.btn:hover { background: #fff; text-decoration: none; }
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--faint);
+  color: var(--dim);
+}
+.btn.ghost:hover { border-color: var(--pink); color: var(--pink); background: transparent; }
+
+/* ---- sections ------------------------------------------------------- */
+
+section { margin: 3.5rem 0 0; }
+
+section h2 {
+  margin: 0 0 1rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--panel);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+section p { max-width: 44rem; }
+section > p:last-child { margin-bottom: 0; }
+
+.aside { color: var(--dim); font-size: 0.95rem; }
+
+/* ---- the video placeholder ------------------------------------------ */
+
+.video-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  aspect-ratio: 16 / 9;
+  border: 1px dashed var(--faint);
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(-45deg,
+      transparent 0 14px, rgba(255, 255, 255, 0.015) 14px 28px),
+    var(--panel);
+  text-align: center;
+}
+
+.video-placeholder .play {
+  color: var(--faint);
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.video-note {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.video-sub { max-width: 28rem; padding: 0 1rem; color: var(--faint); font-size: 13px; }
+
+#video video {  /* the eventual replacement inherits the frame */
+  width: 100%;
+  border-radius: 4px;
+}
+
+/* ---- command blocks ------------------------------------------------- */
+
+.cmd {
+  position: relative;
+  margin: 1rem 0;
+  border: 1px solid var(--code-bg);
+  border-radius: 4px;
+  background: var(--code-bg);
+}
+
+.cmd pre {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.cmd .prompt { color: var(--faint); user-select: none; }
+.cmd .c { color: var(--dim); }
+
+.copy {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  padding: 0.1rem 0.6rem;
+  border: 1px solid var(--faint);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.copy:hover { border-color: var(--pink); color: var(--pink); }
+
+/* ---- the points list ------------------------------------------------ */
+
+.points { margin: 0.5rem 0 1.25rem; }
+
+.points dt {
+  margin-top: 1.1rem;
+  color: var(--fg);
+  font-weight: 600;
+}
+.points dt:first-child { margin-top: 0; }
+
+.points dd {
+  margin: 0.15rem 0 0;
+  max-width: 44rem;
+  color: var(--dim);
+}
+
+/* ---- the docs list -------------------------------------------------- */
+
+.doclist {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  columns: 2;
+  column-gap: 2.5rem;
+}
+
+.doclist li {
+  margin: 0.35rem 0;
+  break-inside: avoid;
+  font-size: 0.95rem;
+}
+
+.doclist a { font-family: var(--mono); font-size: 14px; }
+.doclist span { color: var(--faint); }
+
+/* ---- the footer ----------------------------------------------------- */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.5rem;
+  padding: 0.4rem 1.25rem;
+  border-top: 1px solid var(--panel);
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 2;
+}
+
+.foot a { color: var(--dim); }
+
+/* ---- small screens -------------------------------------------------- */
+
+@media (max-width: 44rem) {
+  .doclist { columns: 1; }
+}

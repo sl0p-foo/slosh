@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>slosh — a terminal multiplexer</title>
+<meta name="description" content="slosh: panes, tabs, sessions you can detach from. One static binary, written in C on libghostty-vt.">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<nav class="nav" aria-label="Site">
+  <a href="./" aria-current="page">slosh</a>
+  <a href="demo/">demo</a>
+  <a href="docs/">docs</a>
+  <span class="nav-fill"></span>
+  <a href="https://slosh.foo/src">src</a>
+</nav>
+
+<main>
+
+<header class="hero">
+  <h1>slosh</h1>
+  <p class="tagline">A terminal multiplexer — panes, tabs, sessions you can
+  detach from — written in C on top of
+  <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a>.</p>
+
+  <p class="hero-links">
+    <a class="btn" href="#install">install</a>
+    <a class="btn ghost" href="demo/">try it in the browser</a>
+  </p>
+</header>
+
+<!-- ================================================================ -->
+
+<section id="video">
+  <h2>watch it</h2>
+
+  <!-- PLACEHOLDER: replace this whole <div> with
+       <video controls poster="demo-poster.png" src="demo.mp4"></video>
+       once the demo capture is rendered. -->
+  <div class="video-placeholder">
+    <span class="play" aria-hidden="true">▶</span>
+    <span class="video-note">demo video — being rendered</span>
+    <span class="video-sub">meanwhile, the <a href="demo/">live demo</a> boots
+    a real Linux in your tab and drops you into a session</span>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="install">
+  <h2>install</h2>
+
+  <div class="cmd" data-copy="curl -fsSL https://slosh.foo/install.sh | sudo sh">
+    <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | sudo sh</code></pre>
+    <button class="copy" type="button" aria-label="Copy command">copy</button>
+  </div>
+
+  <p class="aside">Piping a URL into a root shell should make you flinch —
+  <a href="install.sh">read it first</a>, it is short. Or skip it entirely:
+  building from source needs <a href="https://ziglang.org">zig</a> 0.16 and
+  nothing else. No cmake, no autotools, no libraries. The result is one static
+  binary.</p>
+
+  <div class="cmd">
+    <pre><code><span class="prompt">$</span> git clone https://slosh.foo/src slosh &amp;&amp; cd slosh
+<span class="prompt">$</span> make vendor    <span class="c"># the vendored terminal core, once</span>
+<span class="prompt">$</span> make           <span class="c"># about a second</span>
+<span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
+  </div>
+
+  <p>Then:</p>
+
+  <div class="cmd">
+    <pre><code><span class="prompt">$</span> slosh              <span class="c"># attach to session "main", creating it if needed</span>
+<span class="prompt">$</span> slosh -s work      <span class="c"># a named session</span>
+<span class="prompt">$</span> slosh ls           <span class="c"># what is running</span></code></pre>
+  </div>
+
+  <p>Sessions survive detaching, and your ssh connection dying. Then
+  <kbd>C-a</kbd> <kbd>\</kbd> to split, <kbd>C-a</kbd> <kbd>?</kbd> for the
+  keys, <kbd>C-a</kbd> <kbd>p</kbd> for every command by name.</p>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="different">
+  <h2>what is different about it</h2>
+
+  <dl class="points">
+    <dt>The mouse works properly.</dt>
+    <dd>Click the middle of a border to split toward it, drag a gap to move a
+    boundary, drag a pane by its title to swap it. Everything drawn registers
+    what it is as it is drawn, so a click and a preview cannot disagree.</dd>
+
+    <dt>The layout is recomputed, never stored.</dt>
+    <dd>Small terminal? The tab becomes a list of headers, and comes back to
+    exactly the arrangement you had. Nothing drifts, because there is nothing
+    stored to drift.</dd>
+
+    <dt>Dead panes keep their output.</dt>
+    <dd>A pane told to run something keeps what it printed when that thing
+    exits, with <code>[re-run]</code> and <code>[close]</code> in its
+    frame.</dd>
+
+    <dt>Configuration is one KDL file.</dt>
+    <dd>It reloads on save, can be built from <code>include</code>d pieces, and
+    refuses a broken file instead of half-applying it.</dd>
+
+    <dt>Colour passes over cells.</dt>
+    <dd>Dim, tint, rulers, spotlights, and a border that can flash when a pane
+    rings — with strengths written as expressions.</dd>
+
+    <dt>Scriptable to the same depth it is usable.</dt>
+    <dd>One JSON object per line over the session's socket, and a pane can draw
+    its own status bar and buttons with an escape sequence.</dd>
+  </dl>
+
+  <p class="aside">The multiplexers we have are crusty, and the things that
+  make them awkward follow from how the programs are built. So: start over, and
+  stand on the shoulders of the person who already solved the genuinely hard
+  part — the terminal core from <a href="https://ghostty.org">ghostty</a> does
+  the VT parsing, scrollback, selection, images and key encoding. What sits on
+  top is about 15k lines of C, and recomputes rather than remembers.
+  The twenty-one decisions behind it: <a href="docs/design.html">how it
+  works</a>.</p>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="try">
+  <h2>try it without installing anything</h2>
+
+  <p>The <a href="demo/">demo page</a> boots a riscv64 Linux —
+  Fabrice Bellard's TinyEMU compiled to WebAssembly — with slosh running as the
+  thing you land in. Nothing is installed, nothing is uploaded, and reloading
+  the page throws the machine away. It streams about 11&nbsp;MiB once, then
+  never touches the network again.</p>
+
+  <p class="aside">It is an emulator interpreting every instruction, so the
+  machine is honest but not fast. The real thing redraws in microseconds.</p>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="docs">
+  <h2>docs</h2>
+
+  <ul class="doclist">
+    <li><a href="docs/keys.html">keys</a><span> — the leader, the defaults, rebinding, the palette</span></li>
+    <li><a href="docs/panes.html">panes and tabs</a><span> — splitting, moving, zooming, the mouse</span></li>
+    <li><a href="docs/config.html">configuration</a><span> — one file, live reload, themes, include</span></li>
+    <li><a href="docs/shaders.html">shaders</a><span> — colour passes over a pane's contents</span></li>
+    <li><a href="docs/chrome.html">chrome</a><span> — the same passes over a pane's frame</span></li>
+    <li><a href="docs/layouts.html">layouts</a><span> — a session as a file you check in</span></li>
+    <li><a href="docs/scripting.html">scripting</a><span> — the control socket, and what a pane can draw</span></li>
+    <li><a href="docs/design.html">how it works</a><span> — the two decisions that shape the rest</span></li>
+  </ul>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>MIT</span>
+  <span>C on <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a></span>
+  <span>one static binary</span>
+</footer>
+
+<script>
+// The one script on the page: the copy buttons. No framework, no tracker,
+// nothing fetched from anywhere.
+for (const box of document.querySelectorAll(".cmd[data-copy]")) {
+  const btn = box.querySelector(".copy");
+  btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(box.dataset.copy);
+      btn.textContent = "copied";
+      setTimeout(() => (btn.textContent = "copy"), 1200);
+    } catch {
+      btn.textContent = "select it";
+    }
+  });
+}
+</script>
+
+</body>
+</html>

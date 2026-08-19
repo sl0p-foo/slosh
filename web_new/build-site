@@ -1,0 +1,41 @@
+#!/bin/sh
+# Assemble the whole website into build/www:
+#
+#     /            web_new/         the front page (this directory)
+#     /docs/       contrib/gen-docs the rendered documentation
+#     /demo/       contrib/webdemo  the in-browser machine, on its own page
+#
+#     web_new/build-site               everything
+#     NO_DEMO=1 web_new/build-site     skip the demo (it cross-compiles a
+#                                      guest and needs zig + e2fsprogs)
+#
+# The output is only static files. Serve it with anything that serves a
+# directory; the one condition is .wasm as application/wasm, which
+# `contrib/webdemo/serve --dir build/www` handles locally.
+
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd)"
+root="$(dirname "$here")"
+out="$root/build/www"
+
+rm -rf "$out"
+mkdir -p "$out"
+
+# The front page.
+cp "$here/index.html" "$here/site.css" "$here/install.sh" "$out/"
+
+# The docs, rendered by the same generator `make docs` uses.
+python3 "$root/contrib/gen-docs" "$out/docs"
+
+# The demo, assembled by its own Makefile, on its own page.
+if [ "${NO_DEMO:-0}" = 1 ]; then
+    echo "build-site: skipping demo (NO_DEMO=1)"
+else
+    make -C "$root/contrib/webdemo" site
+    mkdir -p "$out/demo"
+    cp -R "$root/contrib/webdemo/build/site/." "$out/demo/"
+fi
+
+echo "build-site: $out"
+echo "build-site: serve with: contrib/webdemo/serve --dir build/www"

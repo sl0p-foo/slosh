@@ -1,0 +1,56 @@
+#!/bin/sh
+# slosh installer -- https://slosh.foo
+#
+# You are reading this before running it, which is correct. What it does:
+#
+#   1. checks for zig 0.16 and git,
+#   2. clones the source into a temporary directory,
+#   3. `make vendor && make` -- the vendored terminal core, then one static
+#      binary, no other dependencies,
+#   4. installs build/slosh into /usr/local/bin (the sudo is for this step
+#      and nothing else).
+#
+# Nothing is downloaded except the git clone and what `make vendor` fetches
+# (the pinned libghostty-vt). No package manager, no config written, nothing
+# started. Uninstall is `rm /usr/local/bin/slosh`.
+
+set -eu
+
+REPO="${SLOSH_REPO:-https://slosh.foo/src}"   # TODO: pin to the public repo URL
+PREFIX="${PREFIX:-/usr/local}"
+ZIG="${ZIG:-zig}"
+
+say()  { printf '  %s\n' "$*"; }
+fail() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
+
+command -v git >/dev/null 2>&1 || fail "git is required"
+
+# zig 0.16, the one thing the build wants. Also try the location the
+# Makefile's own docs suggest.
+if ! command -v "$ZIG" >/dev/null 2>&1; then
+    if [ -x "$HOME/zig-0.16.0/zig" ]; then
+        ZIG="$HOME/zig-0.16.0/zig"
+    else
+        fail "zig 0.16 not found -- https://ziglang.org/download, or ZIG=/path/to/zig"
+    fi
+fi
+case "$("$ZIG" version 2>/dev/null)" in
+    0.16.*) ;;
+    *) fail "zig 0.16 is required, found $("$ZIG" version 2>/dev/null || echo nothing)" ;;
+esac
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+say "cloning $REPO"
+git clone --quiet --depth 1 "$REPO" "$tmp/slosh"
+
+say "building (make vendor, once; then make)"
+make -C "$tmp/slosh" ZIG="$ZIG" vendor
+make -C "$tmp/slosh" ZIG="$ZIG"
+
+say "installing to $PREFIX/bin/slosh"
+install -d "$PREFIX/bin"
+install -m 755 "$tmp/slosh/build/slosh" "$PREFIX/bin/slosh"
+
+say "done. run: slosh"
