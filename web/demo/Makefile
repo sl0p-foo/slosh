@@ -128,7 +128,11 @@ guest: $(GUEST) ## cross-compile slosh for riscv64
 # the image they use, not all of it.
 rootfs: $(IMAGE) ## build and split the guest filesystem
 
-$(IMAGE): $(GUEST) build-rootfs vendor/.stamp $(shell find overlay -type f 2>/dev/null)
+# find -L: overlay contains a symlink (the theme, pointing into contrib/themes)
+# and -type f without -L skips symlinks -- editing the theme would not rebuild
+# the image. With -L the prereq is the symlink path, and make stats through it,
+# so the target's mtime is the one compared.
+$(IMAGE): $(GUEST) build-rootfs vendor/.stamp $(shell find -L overlay -type f 2>/dev/null)
 	$(Q)./build-rootfs --base vendor/alpine-minirootfs-riscv64.tar.gz --slosh $(GUEST) \
 	    --apks vendor/apks --overlay overlay --out $@ --split $(SITE)/rootfs --size $(IMAGE_MB)M
 
