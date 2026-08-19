@@ -562,7 +562,7 @@ def test_every_surface_has_its_own_theme_name():
         p = s.pane()
         check(
             "the focused frame keeps its own colour",
-            (snap.style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#ff5fd7",
+            (snap.style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#7aa2f7",
             str(snap.style_at(p["x"], p["y"] + 1)),
         )
 
@@ -587,7 +587,7 @@ def test_an_unknown_theme_name_is_refused_not_ignored():
         p = s.pane()
         check(
             "and the compiled-in default is kept",
-            (s.snapshot().style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#ff5fd7",
+            (s.snapshot().style_at(p["x"], p["y"] + 1) or {}).get("fg") == "#7aa2f7",
             str(s.snapshot().style_at(p["x"], p["y"] + 1)),
         )
     os.unlink(conf)

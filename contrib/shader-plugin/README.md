@@ -30,7 +30,7 @@ a plugin, restart the session.
 
 ## Writing one
 
-Everything you need is in [`src/shader_abi.h`](../../src/shader_abi.h) — one
+Everything you need is in [`include/shader_abi.h`](../../include/shader_abi.h) — one
 header, no libghostty-vt, no other slosh types. `example.c` is a working
 plugin with two effects and comments about what each one demonstrates.
 

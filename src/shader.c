@@ -409,6 +409,8 @@ void shade_apply(screen_t *s, const shader_t *shaders, size_t n, rect_t r,
       env.focused = ctx.focused;
       env.t = ctx.now_ms;
       env.since = ctx.state_ms;
+      env.above = (int)ctx.above;
+      env.below = (int)ctx.below;
       if (expr_deps(sh->amount_expr) == 0) {
         local.amount = (uint8_t)clamp255(expr_constant(sh->amount_expr));
       } else {

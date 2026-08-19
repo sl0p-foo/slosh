@@ -15,6 +15,13 @@ Nothing else changes: same shaders, same `amount`, same
 [expressions](shaders.md#strength-as-an-expression), same chain order. One new
 word.
 
+You have already seen one: the default bell flash — blinks then a breathe on
+the frame of a pane that rang, in theme's `bell` colour — is exactly this, a
+chrome tint whose amount reads `since`. (The shimmer that crosses the pane's
+body at the same moment is the same idea without the new word: an ordinary
+content pass in the same chain.) Writing your own `bell { … }` replaces both;
+`bell_indicator false` silences them with the mark.
+
 ## Two rules
 
 **`channel="fg"`, almost always.** A border's *background* is the terminal's own

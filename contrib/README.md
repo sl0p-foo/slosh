@@ -4,13 +4,14 @@ Things that are useful but are not the multiplexer.
 
 ## themes/
 
-Six complete themes. Each sets **every** colour the config knows about, so
+Seven complete themes. Each sets **every** colour the config knows about, so
 nothing silently falls back to a compiled-in default that belongs to a
 different palette — there is a test that keeps them that way.
 
 | | |
 |---|---|
-| `sl0p` | the default: hot pink on near-black |
+| `default` | what no config gets you: muted blue on neutral dark |
+| `sl0p` | the house style: hot pink on near-black |
 | `phosphor` | a green CRT that never quite went away |
 | `amber` | the other CRT, for people who found green loud |
 | `slate` | muted blues, for looking at all day |
@@ -99,7 +100,7 @@ A skeleton for adding your own shaders as a shared library, with a Makefile
 and two worked examples (`checker`, `pulse`). Build it, drop the `.so` in
 `~/.config/slosh/shaders/`, and name it in your config like a built-in.
 
-The only header a plugin needs is `src/shader_abi.h`. What a shader may and
+The only header a plugin needs is `include/shader_abi.h`. What a shader may and
 may not do — and why a plugin is native code rather than a sandboxed one —
 is in that directory's README.
 
@@ -134,6 +135,21 @@ evaluates every preset over a whole pane at four points in time and fails any
 that computes zero everywhere, because an example that does nothing reads as
 a broken shader system rather than a bad example. It found its first bug on
 its first run.
+
+## webdemo/
+
+slosh in a browser tab, for people who want to try it without installing it:
+a riscv64 Linux booted by Bellard's TinyEMU compiled to WebAssembly, an Alpine
+userland we build into a disk image, and slosh as the thing you land in.
+
+```sh
+cd contrib/webdemo && make && make serve
+```
+
+The output is static files, so it can be served from anywhere that can serve a
+directory. `make check` boots the same image in a native emulator and asserts
+the session comes up, which is how a change to the guest is tested without
+opening a browser at all.
 
 ## coverage
 

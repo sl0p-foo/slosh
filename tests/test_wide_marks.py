@@ -39,7 +39,10 @@ def run(mark, cols=100, rows=14):
     cfg = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
     # An unmistakable bell colour: the assertion is "how many columns did the
     # mark claim", which means finding those columns without guessing.
-    cfg.write('bell_mark "%s"\ntheme { bell "#00ff00" }\n' % mark)
+    # ...and without the default bell flash: it paints the whole frame in
+    # that same colour at full strength, which would make "the first column
+    # that is not the bell colour" the far corner of the pane.
+    cfg.write('bell_mark "%s"\ntheme { bell "#00ff00" }\nstates { bell { } }\n' % mark)
     cfg.close()
     p = subprocess.run(
         [

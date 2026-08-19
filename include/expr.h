@@ -20,7 +20,7 @@
  * nothing in here has an effect. Evaluation is therefore O(program length),
  * a bad expression cannot hang a session, and there is nothing to sandbox.
  *
- *   variables   x y cols rows curx cury cursor focused t since
+ *   variables   x y cols rows curx cury cursor focused t since above below
  *   operators   + - * / %   < > <= >= == !=   && || !   ?:
  *   functions   min max abs clamp dist
  *
@@ -28,8 +28,10 @@
  * contents, or its frame for a chrome pass), `t` is a millisecond clock for
  * animation, `since` is how many milliseconds the pane has been in the state
  * it is in — which is what a one-shot effect needs, because `t` says what time
- * it is and not how long ago something happened. `dist` corrects for a cell
- * being about twice as tall as it is wide. Division and modulo by zero are 0
+ * it is and not how long ago something happened. `above`/`below` are the lines
+ * of scrollback hidden past the viewport's top and bottom edges, both 0 at
+ * the present — which is what lets an effect say "there is more this way".
+ * `dist` corrects for a cell being about twice as tall as it is wide. Division and modulo by zero are 0
  * rather than a trap: an expression that is wrong should look wrong, not take
  * the session with it.
  */
@@ -55,6 +57,7 @@ enum {
    * dependency, or a program reading only the size would look constant and be
    * folded at compile time, where the size is not known yet and is zero. */
   EXPR_DEP_SIZE = 1 << 4,
+  EXPR_DEP_SCROLL = 1 << 5, /* above, below */
 };
 
 /* Compile, or NULL with a reason in `err`. A program that reads nothing is
@@ -76,11 +79,19 @@ typedef struct {
   int64_t t;
   /* Milliseconds since the pane entered its current state, clamped at 0. */
   int64_t since;
+  /* Lines of scrollback hidden above and below the viewport, both 0 at the
+   * present (and for a pass over anything that is not a pane's contents). */
+  int above, below;
 } expr_env_t;
 
 /* Evaluate for one cell. Clamped to 0..255 by the caller, not here: the
  * language has no opinion about what its number is for. */
 int expr_eval(const expr_prog_t *p, const expr_env_t *env);
+
+/* The text this program was compiled from, owned by the program. For the
+ * config dump, which has to write back the line somebody wrote rather than
+ * pretend an expression was a number. */
+const char *expr_source(const expr_prog_t *p);
 
 /* Evaluate for every cell of a cols x rows rect into `out` (cols*rows bytes,
  * clamped to 0..255), reusing the last result when nothing it reads has

@@ -21,7 +21,7 @@ VERSION  := 0.1.0
 GITDESC  := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 
 CFLAGS   := -std=c23 -O1 -g -Wall -Wextra -Wno-unused-parameter -MMD -MP \
-            -I$(VT_INC) -Isrc -Ibuild
+            -I$(VT_INC) -Iinclude -Ibuild
 LDFLAGS  :=
 
 SRC      := $(wildcard src/*.c)
@@ -130,17 +130,17 @@ $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/exp
 # Shader plugins, for test_shader_plugin.py: a good one, one that announces an
 # ABI we do not speak, and the example we ship in contrib -- which is built
 # here so that a broken example is a failing test rather than a bug report.
-PLUGIN_CFLAGS := -std=c23 -O1 -fPIC -shared -Isrc
+PLUGIN_CFLAGS := -std=c23 -O1 -fPIC -shared -Iinclude
 
-build/testshader.so: tests/shader_plugin_test.c src/shader_abi.h | build
+build/testshader.so: tests/shader_plugin_test.c include/shader_abi.h | build
 	$(call say,[SO],$@)
 	$(Q)$(CC) $(PLUGIN_CFLAGS) $< -o $@
 
-build/badshader.so: tests/shader_plugin_test.c src/shader_abi.h | build
+build/badshader.so: tests/shader_plugin_test.c include/shader_abi.h | build
 	$(call say,[SO],$@)
 	$(Q)$(CC) $(PLUGIN_CFLAGS) -DBAD_ABI $< -o $@
 
-build/exampleshader.so: contrib/shader-plugin/example.c src/shader_abi.h | build
+build/exampleshader.so: contrib/shader-plugin/example.c include/shader_abi.h | build
 	$(call say,[SO],$@)
 	$(Q)$(CC) $(PLUGIN_CFLAGS) $< -o $@
 
@@ -196,7 +196,7 @@ COV_DIR  := build/cov
 COV_SRC  := $(wildcard src/*.c)
 COV_OBJ  := $(COV_SRC:src/%.c=$(COV_DIR)/%.o)
 COV_CC   ?= gcc
-COV_FLAGS := -std=c23 -O0 -g --coverage -I$(VT_INC) -Isrc -Ibuild
+COV_FLAGS := -std=c23 -O0 -g --coverage -I$(VT_INC) -Iinclude -Ibuild
 
 $(COV_DIR)/%.o: src/%.c build/version.h | $(COV_DIR)
 	$(call say,[COV],$<)
@@ -249,7 +249,8 @@ coverage: $(COV_DIR)/slosh $(COV_UNITS) ## how much of the code the tests run
 # scripts are Python with no extension, so they are named rather than globbed.
 CSRC  := $(shell git ls-files '*.c' '*.h' 2>/dev/null | grep -v '^vendor/')
 PYSRC := $(shell git ls-files '*.py' 2>/dev/null | grep -v '^vendor/') \
-         contrib/coverage contrib/gen-docs contrib/shader-repl
+         contrib/coverage contrib/gen-docs contrib/shader-repl \
+         contrib/webdemo/boot-check contrib/webdemo/build-rootfs contrib/webdemo/serve
 
 # clang-format is a system package. ruff usually is not, and `pip install --user`
 # is refused outright on a distro python (PEP 668), so `make tools` puts it in a

@@ -687,6 +687,120 @@ static void apply_dim_unfocused(config_t *c, bool declared) {
   c->state_n[PSTATE_UNFOCUSED] = 1;
 }
 
+/* One derived pass: a shader whose amount is a compiled-in expression,
+ * written into `sh` with its program registered on the config, which owns
+ * every program. The sources are string literals in this file, so a compile
+ * failure is a can't-happen guard rather than a path with a story -- the
+ * caller just stops deriving and ships what it has. */
+static bool derived_pass(config_t *c, shader_t *sh, const char *kind,
+                         color_t color, uint8_t channels, const char *src) {
+  shader_make(sh, kind, color, 128);
+  sh->channels = channels;
+  char eerr[128] = {0};
+  expr_prog_t *p = expr_compile(src, eerr, sizeof eerr);
+  if (!p) return false;
+  sh->amount_expr = p;
+  c->exprs = realloc(c->exprs, (c->nexprs + 1) * sizeof *c->exprs);
+  c->exprs[c->nexprs++] = p;
+  return true;
+}
+
+/* The scrolled default, derived *after* the theme block is read rather than
+ * baked from the compiled palette a theme was about to replace. `declared` is
+ * whether the config named `scrolled` itself, in which case its chain --
+ * including an empty one -- stands.
+ *
+ * The wash: the scroll indicator's own colour (theme's scroll_bg), weak
+ * (about 9%) because scrollback is something you are reading through it.
+ *
+ * The edge fades: the viewport's top and bottom rows melt towards an edge
+ * while there is content past it -- `above`/`below` are the lines hidden past
+ * each edge, so `(above > 0)` snaps the top fade off at the top of the
+ * buffer: an edge you cannot scroll past renders solid, which is the whole
+ * message. (Reaching the bottom ends the state itself, same statement.) Up to
+ * three rows a side and never more than a quarter of the viewport each,
+ * because two three-row fades on a six-row viewport is every row faded and
+ * nothing said. They ride after the wash so they dim washed cells rather
+ * than racing it. */
+#define SCROLL_FADE_TOP "(above > 0) * max(0, (min(3, rows / 4) - y) * 45)"
+#define SCROLL_FADE_BOTTOM                                                     \
+  "(below > 0) * max(0, (y - rows + min(3, rows / 4) + 1) * 45)"
+
+static void apply_scrolled(config_t *c, bool declared) {
+  if (declared) return;
+  shader_t *chain = c->state_shaders[PSTATE_SCROLLED];
+  c->state_n[PSTATE_SCROLLED] = 0;
+  shader_make(&chain[0], "tint", c->scroll_bg, 22);
+  c->state_n[PSTATE_SCROLLED] = 1;
+  if (!derived_pass(c, &chain[1], "dim", (color_t){0}, 0, SCROLL_FADE_TOP))
+    return;
+  c->state_n[PSTATE_SCROLLED] = 2;
+  if (!derived_pass(c, &chain[2], "dim", (color_t){0}, 0, SCROLL_FADE_BOTTOM))
+    return;
+  c->state_n[PSTATE_SCROLLED] = 3;
+}
+
+/* What an unanswered bell does to the frame of the pane that rang: three
+ * full-strength blinks over the first 900ms -- the part that catches the eye
+ * the moment it rings -- then a slow breathe, so a bell nobody answered stays
+ * findable without nagging. The breathe's phase constant starts it at its
+ * dimmest (sin(since/8 + 158) is about -1 at since=900), so the hand-off from
+ * the last dark blink is a fade-in rather than a pop. */
+#define BELL_FLASH_AMOUNT                                                      \
+  "since < 900 ? (since / 150 % 2 == 0) * 255 : 120 + sin(since / 8 + 158) / " \
+  "3"
+
+/* ...and to its body, for those same 900ms and not a millisecond longer: a
+ * shimmer -- one soft diagonal sheen gliding across, the way light crosses
+ * something glossy. Deliberately quiet next to the frame: peak 95 where the
+ * blinks are 255, with a fade slow enough (since / 64) that the band keeps
+ * its strength across the whole sweep and the 900ms cut is what ends it. `x + 2 * y` keeps the band at a true diagonal on
+ * a terminal's 1:2 cells, and motion is the whole trick: the eye is pulled by
+ * something *moving* long before it is pulled by something bright. The band's
+ * width breathes on a sine while it travels -- the falloff slope swings 6±2
+ * over roughly one swell per lifetime (sin is -255..255, so /96 is ±2), about
+ * ±14 to ±27 columns -- which is what makes it read as a living gleam rather
+ * than a ruled stripe. The shimmer is the announcement, the frame the
+ * reminder. */
+#define BELL_SHIMMER_AMOUNT                                                    \
+  "(since < 900) * "                                                           \
+  "max(0, 95 - abs(x + 2 * y - since / 4) * (6 + sin(since / 2) / 96) - "      \
+  "since / 64)"
+
+/* The shimmer's colour: the bell colour softened halfway towards the theme's
+ * default_fg -- light crossing the pane rather than paint laid on it. Derived
+ * from both ends of the theme, so it follows either being changed. */
+static color_t bell_sheen(const config_t *c) {
+  return (color_t){.set = true,
+                   .r = (uint8_t)((c->bell.r + c->default_fg.r) / 2),
+                   .g = (uint8_t)((c->bell.g + c->default_fg.g) / 2),
+                   .b = (uint8_t)((c->bell.b + c->default_fg.b) / 2)};
+}
+
+/* Derived like the scrolled wash, and for the same reason: both passes are in
+ * theme's `bell` colour, so they are built after the theme is read and a
+ * theme moves the mark, the flash and the shimmer together. The frame pass is
+ * `channel="fg"`, because a frame's background is the terminal's own default
+ * and colouring glyphs is the whole job; the body pass keeps both channels,
+ * because most of a body is blank cells whose background is the only thing a
+ * shimmer can travel across. It follows `bell_indicator` off -- that knob's
+ * promise is "silent *and* invisible" -- and a `states { bell { } }` chain
+ * somebody wrote replaces it, like every state. The expressions read `since`,
+ * so the frame clock this costs runs only while a rung pane is on screen. */
+static void apply_bell(config_t *c, bool declared) {
+  if (declared) return;
+  c->state_n[PSTATE_BELL] = 0;
+  c->chrome_state_n[PSTATE_BELL] = 0;
+  if (!c->bell_indicator) return;
+
+  if (derived_pass(c, &c->chrome_state_shaders[PSTATE_BELL][0], "tint", c->bell,
+                   SHADE_FG, BELL_FLASH_AMOUNT))
+    c->chrome_state_n[PSTATE_BELL] = 1;
+  if (derived_pass(c, &c->state_shaders[PSTATE_BELL][0], "tint", bell_sheen(c),
+                   0, BELL_SHIMMER_AMOUNT))
+    c->state_n[PSTATE_BELL] = 1;
+}
+
 void config_defaults(config_t *c) {
   memset(c, 0, sizeof *c);
   c->gap = 1;
@@ -777,9 +891,8 @@ void config_defaults(config_t *c) {
   c->default_fg = rgb(0xff, 0xff, 0xff);
   c->default_bg = rgb(0x00, 0x00, 0x00);
 
-  /* The one state with an opinion out of the box: while a pane is being
-   * dragged, everything it could be dropped onto is pushed back so the pane in
-   * your hand stands out. Everything else is empty until asked for. */
+  /* While a pane is being dragged, everything it could be dropped onto is
+   * pushed back so the pane in your hand stands out. */
   shader_make(&c->state_shaders[PSTATE_DROP_TARGET][0], "grayscale",
               (color_t){0}, 200);
   shader_make(&c->state_shaders[PSTATE_DROP_TARGET][1], "dim", (color_t){0},
@@ -790,21 +903,12 @@ void config_defaults(config_t *c) {
   shader_make(&c->state_shaders[PSTATE_DROP_HOVER][1], "dim", (color_t){0},
               140);
   c->state_n[PSTATE_DROP_HOVER] = 2;
-  /* The states with an opinion, and the line between those and the ones
-   * without it:
-   *
-   *   a pane that is *not live* gets one — dead, suspended, scrolled. In all
-   *   three the cells are showing something other than a running program's
-   *   present: output from something that has exited, a pane that never
-   *   started, or the past. You cannot discover any of that by looking unless
-   *   something says so, and that is the whole argument for the feature;
-   *
-   *   a pane that is merely *not the one you are in* does not — unfocused,
-   *   dragging. That is ambient contrast, which is a taste, and shipping a
-   *   taste as a default is how a tool gets a reputation for fighting you.
-   *
-   * All three are gentle on purpose. A dead pane, a suspended one and
-   * scrollback are all things you still want to read. */
+  /* Which states ship a default, and why the line falls where it does, is
+   * argued in full in config/config.kdl (the states section) -- one copy of
+   * that essay is one that cannot drift. The short form: not-live states
+   * (dead, suspended, scrolled) and news (bell) get one; unfocused gets one
+   * through the dim_unfocused knob; dragging gets none. All gentle, because
+   * every one of them is a pane you still want to read. */
   shader_make(&c->state_shaders[PSTATE_DEAD][0], "grayscale", (color_t){0},
               200);
   shader_make(&c->state_shaders[PSTATE_DEAD][1], "dim", (color_t){0}, 90);
@@ -819,7 +923,13 @@ void config_defaults(config_t *c) {
 
   apply_dim_unfocused(c, false);
 
-  const color_t accent = rgb(0xff, 0x5f, 0xd7);
+  /* Muted blue on neutral dark: the accent has to say "this one" on the
+   * focused frame, the guide and the active tab without shouting over the
+   * text it frames, and blue is the one hue that reads as focus/selection
+   * everywhere else, sits apart from the red-orange reserved for `dead`, and
+   * survives the common colour-vision deficiencies doing it. The house pink
+   * lives on as contrib/themes/sl0p.kdl, one include away. */
+  const color_t accent = rgb(0x7a, 0xa2, 0xf7);
   const color_t ink = rgb(0x14, 0x14, 0x18);
   const color_t dim = rgb(0x45, 0x45, 0x4a);
   const color_t bright = rgb(0xff, 0xff, 0xff);
@@ -840,13 +950,9 @@ void config_defaults(config_t *c) {
   c->scroll_fg = ink;
   c->scroll_bg = accent;
 
-  /* Looking at the past, said in colour as well as in the ▲ count: a wash of
-   * the same accent the scroll indicator uses, so a theme moves both together
-   * rather than leaving a hardcoded hue nobody can reach. Weak (about 9%) —
-   * it has to survive being read through. Attached here rather than beside
-   * the other states because it is the one that needs the palette. */
-  shader_make(&c->state_shaders[PSTATE_SCROLLED][0], "tint", c->scroll_bg, 22);
-  c->state_n[PSTATE_SCROLLED] = 1;
+  /* After scroll_bg above, and re-derived after a config's theme block: the
+   * rationale lives at apply_scrolled. */
+  apply_scrolled(c, false);
 
   c->header = dim;
   c->header_hover = accent;
@@ -871,8 +977,16 @@ void config_defaults(config_t *c) {
   c->finder_sel_fg = ink;
   c->finder_sel_bg = accent;
 
-  c->bell = accent;
+  /* The two colours that mean something rather than match something: a bell
+   * is attention, so amber, not the accent -- painted in the focus colour it
+   * said nothing -- and a dead pane is warm red-orange. Both sit apart from
+   * the blue accent and from each other. */
+  c->bell = rgb(0xe0, 0xaf, 0x68);
   c->dead = rgb(0xff, 0x87, 0x5f);
+
+  /* After c->bell above, and re-derived after a config's theme block: the
+   * rationale lives at apply_bell. */
+  apply_bell(c, false);
 
   /* A surface, not a hole: lighter than the dimmed screen behind it, with a
    * border in the accent so the edge is never in doubt. The button is a grey
@@ -1307,7 +1421,15 @@ static void cb_chain(cfgbuf_t *b, const char *indent, const shader_t *sh,
                      size_t n, bool chrome) {
   for (size_t i = 0; i < n; i++) {
     if (!sh[i].kind) continue;
-    cb_add(b, "%s%s amount=%u", indent, sh[i].kind, sh[i].amount);
+    /* An expression is written back as the line somebody wrote; only a
+     * numeric amount is a number. Pretending otherwise is how a dumped
+     * config used to lose every expression it contained. */
+    if (sh[i].amount_expr && expr_source(sh[i].amount_expr)) {
+      cb_add(b, "%s%s amount=", indent, sh[i].kind);
+      cb_qval(b, expr_source(sh[i].amount_expr));
+    } else {
+      cb_add(b, "%s%s amount=%u", indent, sh[i].kind, sh[i].amount);
+    }
     if (sh[i].color.set)
       cb_add(b, " color=\"#%02x%02x%02x\"", sh[i].color.r, sh[i].color.g,
              sh[i].color.b);
@@ -1318,6 +1440,33 @@ static void cb_chain(cfgbuf_t *b, const char *indent, const shader_t *sh,
     else if (sh[i].channels == SHADE_BG)
       cb_add(b, " channel=\"bg\"");
     cb_add(b, "\n");
+  }
+}
+
+/* Whether a state's chain is still the one the loader derives rather than one
+ * somebody wrote: `unfocused` from the dim_unfocused knob, `scrolled` from
+ * theme's scroll_bg. Field-wise rather than memcmp, because a struct copy
+ * carries padding nobody initialised. */
+static bool state_is_derived(const config_t *c, int st) {
+  switch (st) {
+  /* bell and scrolled carry compiled expressions, which cannot be compared
+   * structurally -- but they also cannot be written by a config, so the
+   * declared flags (persisted across an include chain) are the whole test. */
+  case PSTATE_BELL: return !c->bell_declared;
+  case PSTATE_SCROLLED: return !c->scrolled_declared;
+  /* unfocused has no flag -- the knob is re-applied per file -- so it is
+   * compared against what the knob would build: exactly one plain dim at the
+   * knob's strength, or nothing when the knob is 0. */
+  case PSTATE_UNFOCUSED: {
+    if (c->chrome_state_n[st]) return false;
+    if (!c->dim_unfocused) return c->state_n[st] == 0;
+    if (c->state_n[st] != 1) return false;
+    const shader_t *got = &c->state_shaders[st][0];
+    return got->kind && strcmp(got->kind, "dim") == 0 && !got->amount_expr &&
+           got->amount == c->dim_unfocused && !got->color.set && !got->param &&
+           !got->channels;
+  }
+  default: return false;
   }
 }
 
@@ -1462,6 +1611,32 @@ char *config_render(const config_t *c) {
   cb_add(&b,
          "\n// ---- what a pane looks like in a given state ----\nstates {\n");
   for (int st = 0; st < PSTATE_COUNT; st++) {
+    /* The derived states are written as comments while they still match
+     * their derivation: declaring a state replaces its default outright, so a
+     * dump that declared these would pin what is meant to keep following the
+     * dim_unfocused knob and the theme -- and `C-a e` seeds a fresh config
+     * with exactly this text, which is the moment nobody has declared
+     * anything yet. The round trip is unharmed, because loading the comment
+     * derives the identical chain. A chain somebody replaced no longer
+     * matches, and is written out declared, as it must be. */
+    if (state_is_derived(c, st)) {
+      const char *why =
+          st == PSTATE_BELL       ? "a body shimmer, and a frame "
+                                    "blink-then-breathe, in theme's bell "
+                                    "colour"
+          : st == PSTATE_SCROLLED ? "a wash of theme's scroll_bg, and edge "
+                                    "fades where more content is"
+                                  : "the dim_unfocused knob above";
+      cb_add(&b, "    // %s {   // derived: %s\n",
+             pane_state_name((pane_state_t)st), why);
+      cb_chain(&b, "    //     ", c->state_shaders[st], c->state_n[st], false);
+      cb_chain(&b, "    //     ", c->chrome_state_shaders[st],
+               c->chrome_state_n[st], true);
+      if (st == PSTATE_BELL && !c->state_n[st] && !c->chrome_state_n[st])
+        cb_add(&b, "    //     // nothing: bell_indicator is false\n");
+      cb_add(&b, "    // }\n");
+      continue;
+    }
     cb_add(&b, "    %s {\n", pane_state_name((pane_state_t)st));
     cb_chain(&b, "        ", c->state_shaders[st], c->state_n[st], false);
     cb_chain(&b, "        ", c->chrome_state_shaders[st], c->chrome_state_n[st],
@@ -2036,6 +2211,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
         continue;
       }
       if (st == PSTATE_UNFOCUSED) unfocused_declared = true;
+      if (st == PSTATE_SCROLLED) c->scrolled_declared = true;
+      if (st == PSTATE_BELL) c->bell_declared = true;
       parse_shader_list(c, k, c->state_shaders[st], &c->state_n[st],
                         c->chrome_state_shaders[st], &c->chrome_state_n[st],
                         err, errcap);
@@ -2055,6 +2232,11 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                  "bad colour for %s: %s", THEME_COLORS[i].name, v);
     }
   }
+  /* After the theme, so the wash follows whatever scroll_bg the theme just
+   * chose -- a config that wrote its own `scrolled` chain keeps it, whether
+   * the chain was written here or in a file this one included. */
+  apply_scrolled(c, c->scrolled_declared);
+  apply_bell(c, c->bell_declared);
 
   const kdl_node_t *keys = kdl_child(root, "keys");
   if (keys) {

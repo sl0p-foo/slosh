@@ -39,7 +39,7 @@
 //
 // A config can be made of files:
 //
-//     include "themes/amber.kdl"        // contrib/themes has six
+//     include "themes/amber.kdl"        // contrib/themes has seven
 //     include "keys/vim.kdl" "shaders/crt.kdl"
 //
 // which is how you switch a theme by editing one line instead of pasting one.
@@ -115,10 +115,27 @@ title_inset 2
 // is what puts it out. Off makes a bell silent *and* invisible, which is a
 // real choice rather than an oversight.
 //
-// The mark is the quiet default. A louder one is a shader rather than a knob:
-// `bell` is a pane state, so `states { bell { ... } }` colours or flashes a
-// rung pane's frame for as long as the bell is unanswered. See the chrome
-// passes further down.
+// The mark is one cell wide, which is not news you can see from the corner of
+// your eye -- so by default the pane says it too, in theme's `bell` colour.
+// The *frame*: three sharp blinks the moment it rings, then a slow breathe
+// until it is answered. The *body*: a shimmer -- one soft diagonal sheen
+// gliding across, the way light crosses something glossy, gone within the
+// same 900ms the blinks take. It is quiet on purpose: peak 95 where the
+// blinks are 255, its colour softened halfway towards default_fg so it reads
+// as light rather than paint, and its width breathing on a sine as it
+// travels. Motion is what pulls the eye, not brightness, so it draws you to
+// the pane without shouting over what it says. Both are derived, like
+// the scrolled wash: built from the theme after the theme is read, so a theme
+// moves the mark, the flash and the shimmer together, and they are commented
+// out in the states block below for the same reason scrolled is. Both read
+// `since`, so the frame clock they cost runs only while a rung pane is
+// actually on screen.
+//
+// Turning it off is either of the things it hangs from: `bell_indicator
+// false` silences the bell everywhere (mark and flash -- that is what
+// invisible means), and `states { bell { } }` removes just the flash. A
+// `bell { ... }` chain of your own replaces it outright, like every state --
+// the chrome passes further down have a few worth stealing.
 // ── the frame's own buttons ─────────────────────────────────────────────────
 //
 // Minimise, zoom and close, in the top-right of every pane's frame: the mark
@@ -254,7 +271,7 @@ focus_follows_mouse true
 // Whether the program running in a pane may set that pane's shader chains, by
 // printing an escape sequence:
 //
-//   printf '\033]5577;1;shader;chrome;tint color="#ff5fd7" amount=255\033\\'
+//   printf '\033]5577;1;shader;chrome;tint color="#7aa2f7" amount=255\033\\'
 //
 // The payload after `chrome` (or `content`) is a chain in exactly the syntax the
 // `shaders` block below uses, so a chain you arrive at this way is a line you can
@@ -414,10 +431,12 @@ modal_scrim 120
 
 // ── shaders ─────────────────────────────────────────────────────────────────
 //
-// Colour passes over a pane's contents (never the frame, title or tab strip).
-// Both are strengths from 0 to 255, where 0 is off and 255 is fully applied.
-// Both resolve default-coloured text through theme's default_fg/default_bg,
-// so set those to your terminal's real colours or a shaded pane will shift.
+// Colour passes over a pane's contents by default; `where="chrome"` aims one
+// at the frame instead (see the chrome passes further down), and the tab
+// strip and status line are never shaded. Strengths run 0 to 255, where 0 is
+// off and 255 is fully applied, and a pass resolves default-coloured text
+// through theme's default_fg/default_bg -- set those to your terminal's real
+// colours or a shaded pane will shift.
 
 // What a pane looks like while it is in a particular state. Each state takes
 // the same chain of passes `shaders` does.
@@ -452,6 +471,12 @@ modal_scrim 120
 //   the past. None of that is discoverable by looking unless something says
 //   so, which is the entire argument for colouring it.
 //
+//   a pane that is *news* gets one too -- bell. A ring is an event rather
+//   than a condition, so its default moves: a shimmer across the body that is
+//   gone within a second, and blinks then a breathe on the frame -- the one
+//   chrome pass in this table -- in theme's bell colour (see the bell section
+//   above, and `bell_indicator false` to silence it with the mark).
+//
 //   a pane that is merely *not the one you are in* is a taste rather than a
 //   fact, and gets a default anyway -- but through `dim_unfocused` above,
 //   which is one number to change or zero out. The objection to shipping a
@@ -460,19 +485,33 @@ modal_scrim 120
 //   your hand keeping its colour is what makes it lift off the page.
 //
 // All the defaults are gentle: a dead pane, a suspended one and scrollback are
-// all things you still want to read. The compiled-in scrolled tint uses the
-// scrollback indicator's own colour (theme's scroll_bg) so a theme moves both
-// together; written here it is spelled out, because a `color=` you do not give
-// falls back to theme's frame_focus, which is a different setting that happens
-// to hold the same value in every theme we ship.
+// all things you still want to read. The scrolled default is *derived*, not
+// stored, and has two parts. The wash: the scrollback indicator's own colour
+// (theme's scroll_bg), worked out after the theme is read, so a theme moves
+// the wash and the indicator together. The edge fades: the viewport's top and
+// bottom rows melt towards the edge, the way a scrollable list fades where it
+// continues -- and each fade exists only while there is content past that
+// edge, so hitting the top of the buffer turns the top edge solid, and
+// returning to the present ends the state and everything is opaque again. Up
+// to three rows a side, never more than a quarter of the viewport each. All
+// of it is commented below because naming a state replaces its default
+// outright -- a declared copy would pin the wash to one theme's colour and
+// quietly stop following the next.
 states {
     drop_hover { grayscale amount=200; dim amount=140 }
     drop_target { grayscale amount=200; dim amount=140 }
     dead { grayscale amount=200; dim amount=90 }
     suspended { grayscale amount=170; dim amount=60 }
-    scrolled { tint amount=22 color="#ff5fd7" }   // = theme's scroll_bg
+    // scrolled {   // derived: a wash of theme's scroll_bg, and edge fades where more content is
+    //     tint amount=22 color="#7aa2f7"
+    //     dim amount="(above > 0) * max(0, (min(3, rows / 4) - y) * 45)"
+    //     dim amount="(below > 0) * max(0, (y - rows + min(3, rows / 4) + 1) * 45)"
+    // }
     // dragging { }
-    // bell { }    // see the chrome passes below for a border flash
+    // bell {   // derived: a body shimmer, and a frame blink-then-breathe, in theme's bell colour
+    //     tint color="#efd7b3" amount="(since < 900) * max(0, 95 - abs(x + 2 * y - since / 4) * (6 + sin(since / 2) / 96) - since / 64)"
+    //     tint where="chrome" channel="fg" color="#e0af68" amount="since < 900 ? (since / 150 % 2 == 0) * 255 : 120 + sin(since / 8 + 158) / 3"
+    // }
     // unfocused { dim amount=60 }    // = dim_unfocused above; yours replaces it
 }
 
@@ -513,7 +552,7 @@ states {
 //     shaders {
 //         dim  amount="(y % 2) * 40"                       // scanlines
 //         dim  amount="(x > cols - 10) * 120"              // the right margin
-//         tint amount="255 - dist(x, y, curx, cury) * 12" color="#ff5fd7"
+//         tint amount="255 - dist(x, y, curx, cury) * 12" color="#7aa2f7"
 //     }
 //
 // The expression produces the *strength*, never the colour: the mixing stays
@@ -529,6 +568,12 @@ states {
 //                              this pane has it
 //               focused        0 or 1
 //               t              milliseconds, for animation
+//               since          milliseconds the pane has been in its current
+//                              state -- what a one-shot effect needs, because
+//                              `t` is the time, not how long ago
+//               above below    lines of scrollback hidden past the viewport's
+//                              top and bottom edges, both 0 at the present --
+//                              what lets an effect say "there is more this way"
 //   operators   + - * / %      integer only; division by zero is 0, not a crash
 //               < > <= >= == != and && || !, which give 0 or 1 -- so
 //                              `(x < 10) * 200` is how you write a rule
@@ -569,7 +614,7 @@ states {
 // shaders {
 //     vignette amount=70
 //     zebra amount=22
-//     ruler amount=60 at=80 color="#ff5fd7"
+//     ruler amount=60 at=80 color="#7aa2f7"
 //     spotlight amount=90 radius=14
 // }
 
@@ -599,7 +644,7 @@ states {
 //
 //     shaders {
 //         // the top rule only, where the title is
-//         tint where="chrome" channel="fg" color="#ff5fd7" amount="(y==0)*255"
+//         tint where="chrome" channel="fg" color="#7aa2f7" amount="(y==0)*255"
 //         // a corner glow. One node per line: a newline ends a node, so a
 //         // pass split over two lines is two broken nodes, not one pass.
 //         tint where="chrome" channel="fg" color="#00ffd7" amount="255-dist(x,y,0,0)*20"
@@ -618,9 +663,9 @@ states {
 // `(p - head + P) % P` is "how far ahead of the head", which makes an arc
 // rotate rather than a blob slide. There is no way to name a subexpression, so
 // it has to be written out in full -- which is why a small effect is a long
-// line. contrib/chrome has seven of them ready to paste (a shine running round
-// the border, sparkles, ripples from a corner, a rotating arc, a static
-// gradient, corner glints, a sheen across the title rule).
+// line. contrib/chrome has a dozen-odd ready to paste -- a shine running
+// round the border, ripples from a corner, a rotating comet, corner glints, a
+// sheen across the title rule, and more; the directory is the list.
 //
 // Hung off a state, this is a border that says what a pane is doing -- which
 // is what chrome is for, and it costs no room and no text:
@@ -632,7 +677,8 @@ states {
 //         // a bell nobody has answered yet: `since` is how long the pane has
 //         // been in this state, so this is a real *flash* -- full strength for
 //         // a quarter second and then gone, without the bell being answered.
-//         // `t` could not say that: it is the time, not how long ago.
+//         // `t` could not say that: it is the time, not how long ago. (The
+//         // default bell flash is this idea grown up: blinks, then a breathe.)
 //         bell { tint where="chrome" channel="fg" color="#ffcc00" amount="(since<250)*255" }
 //         // one that has not started yet is outlined, not filled
 //         suspended { tint where="chrome" channel="fg" color="#8a8a95" amount=160 }
@@ -648,10 +694,13 @@ states {
 // all the way through, so a chrome pass is the only kind that can still colour
 // it -- which is the state where a colour is worth the most.
 //
-// Empty by default, like the content passes: yours to ask for.
+// The global chain is empty by default, like the content passes: yours to ask
+// for. One chrome pass does ship, hung off a state rather than here: the bell
+// flash (see the bell section, and the states table above).
 
 // How often to repaint while a shader is animated, in milliseconds -- which
-// means one whose `amount` reads `t`. Nothing else needs a frame clock: every
+// means one whose `amount` reads `t` or `since`. Nothing else needs a frame
+// clock: every
 // other repaint has an event behind it, and this one is only asked for while
 // such a shader is actually on screen. 0 turns it off, which leaves an
 // animated shader advancing only when something else causes a frame.
@@ -678,28 +727,28 @@ theme {
     default_bg "#000000"
 
     // ── panes ───────────────────────────────────────────────────────────────
-    frame_focus "#ff5fd7"      // border of the focused pane
+    frame_focus "#7aa2f7"      // border of the focused pane
     frame_idle "#45454a"       // border of every other pane
     title "#ffffff"            // its title, and its OSC 5577 status text
     title_idle "#45454a"       // the same, on a pane that is not focused
 
     // A pane's own OSC 5577 buttons.
     button_fg "#141418"
-    button_bg "#ff5fd7"
+    button_bg "#7aa2f7"
     button_bg_idle "#55555c"   // buttons on a pane that is not focused
 
     // ── things that appear under the pointer ────────────────────────────────
-    guide "#ff5fd7"            // split guide: armed edge, handle, its arrow, boundary
-    resize "#ff5fd7"           // the handle in the gap between two panes
-    drop_target "#ff5fd7"      // frame of a pane a drag could land on
+    guide "#7aa2f7"            // split guide: armed edge, handle, its arrow, boundary
+    resize "#7aa2f7"           // the handle in the gap between two panes
+    drop_target "#7aa2f7"      // frame of a pane a drag could land on
 
     // ── a pane's scrollback indicator ───────────────────────────────────────
     scroll_fg "#141418"
-    scroll_bg "#ff5fd7"
+    scroll_bg "#7aa2f7"
 
     // ── rows of a tab that has collapsed into a list ────────────────────────
     header "#45454a"
-    header_hover "#ff5fd7"          // the rule, under the pointer
+    header_hover "#7aa2f7"          // the rule, under the pointer
     header_hover_title "#ffffff"    // the name, under the pointer
 
     // ── the strip along the top ─────────────────────────────────────────────
@@ -708,12 +757,12 @@ theme {
     // is on it -- it is still the tab you are in -- so its hover lands on the
     // text instead.
     tab_active_fg "#141418"
-    tab_active_bg "#ff5fd7"
+    tab_active_bg "#7aa2f7"
     tab_active_hover_fg "#ffffff"
     tab_idle "#45454a"
-    tab_hover "#ff5fd7"
+    tab_hover "#7aa2f7"
     prefix_fg "#141418"        // the "C-a" badge, while the prefix is pending
-    prefix_bg "#ff5fd7"
+    prefix_bg "#7aa2f7"
     tab_count "#45454a"        // panes in the whole session
 
     // ── the line along the bottom ───────────────────────────────────────────
@@ -722,15 +771,16 @@ theme {
     hint "#ffffff"             // what the pointer is on, in the middle
 
     // ── marks on a pane's frame ─────────────────────────────────────────────
-    bell "#ff5fd7"             // a pane rang and has not been looked at
+    bell "#e0af68"             // a pane rang and has not been looked at:
+                               // amber, not the accent -- attention, not focus
     dead "#ff875f"             // its program exited: the line in its backlog,
                                // and the words in its frame and the status line
     pane_button "#45454a"      // the frame's own close/zoom/minimise marks
-    pane_button_hover "#ff5fd7"
+    pane_button_hover "#7aa2f7"
 
     // ── the row of minimised panes ──────────────────────────────────────────
     minbar "#45454a"
-    minbar_hover "#ff5fd7"
+    minbar_hover "#7aa2f7"
 
     // ── modals: a surface that floats over the layout ───────────────────────
     // Named apart from the pane colours they resemble because a modal is a
@@ -740,10 +790,10 @@ theme {
     // which are the same value — an invisible button until you hovered it.)
     modal_bg "#1c1c22"          // a shade lighter than the dimmed screen
     modal_fg "#e8e8ea"
-    modal_border "#ff5fd7"
+    modal_border "#7aa2f7"
     modal_title "#ffffff"
     modal_button "#8a8a95"      // visible *without* the pointer on it
-    modal_button_hover "#ff5fd7"
+    modal_button_hover "#7aa2f7"
 
     // ── the pane finder ─────────────────────────────────────────────────────
     // The finder is a modal, so its box is the modal colours above; these are
@@ -753,15 +803,15 @@ theme {
     finder_fg "#ffffff"
     finder_bg "#45454a"
     finder_sel_fg "#141418"
-    finder_sel_bg "#ff5fd7"      // the row enter would take
+    finder_sel_bg "#7aa2f7"      // the row enter would take
 
     // ── the in-place editor a double-click opens on a pane title ────────────
     rename_fg "#141418"
-    rename_bg "#ff5fd7"
+    rename_bg "#7aa2f7"
 
     // ── announcements ───────────────────────────────────────────────────────
     toast_fg "#141418"
-    toast_bg "#ff5fd7"
+    toast_bg "#7aa2f7"
 }
 
 // ── keys ────────────────────────────────────────────────────────────────────

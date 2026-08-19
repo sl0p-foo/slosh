@@ -1,45 +1,51 @@
-// sl0p -- the house style: hot pink on near-black
+// default -- what no config gets you: muted blue on neutral dark
 //
-// Drop into ~/.config/slosh/config.kdl, or point $SLOSH_CONFIG at a file
-// that contains it. A running session re-reads it the moment you save.
+// This file exists so the tour can show the starting point and so another
+// theme is one include-swap away from coming back. It matches the compiled-in
+// palette exactly (`slosh --dump-config` is the authority if they ever drift).
+//
+// Two colours mean something rather than match something: `bell` is amber
+// (attention, not focus) and `dead` is warm red-orange. Everything else that
+// says "this one" -- the focused frame, the guide, the active tab -- is one
+// muted blue, calm enough to frame text without shouting over it.
 theme {
     // what a shader takes "terminal default" to mean
     default_fg "#ffffff"
     default_bg "#000000"
 
     // panes
-    frame_focus "#ff5fd7"
+    frame_focus "#7aa2f7"
     frame_idle "#45454a"
     title "#ffffff"
     title_idle "#45454a"
 
     // a pane's own OSC 5577 buttons
     button_fg "#141418"
-    button_bg "#ff5fd7"
+    button_bg "#7aa2f7"
     button_bg_idle "#55555c"
 
     // affordances under the pointer
-    guide "#ff5fd7"
-    resize "#ff5fd7"
-    drop_target "#ff5fd7"
+    guide "#7aa2f7"
+    resize "#7aa2f7"
+    drop_target "#7aa2f7"
 
     // scrollback indicator
     scroll_fg "#141418"
-    scroll_bg "#ff5fd7"
+    scroll_bg "#7aa2f7"
 
     // rows of a tab collapsed into a list
     header "#45454a"
-    header_hover "#ff5fd7"
+    header_hover "#7aa2f7"
     header_hover_title "#ffffff"
 
     // the strip along the top
     tab_active_fg "#141418"
-    tab_active_bg "#ff5fd7"
+    tab_active_bg "#7aa2f7"
     tab_active_hover_fg "#ffffff"
     tab_idle "#45454a"
-    tab_hover "#ff5fd7"
+    tab_hover "#7aa2f7"
     prefix_fg "#141418"
-    prefix_bg "#ff5fd7"
+    prefix_bg "#7aa2f7"
     tab_count "#45454a"
 
     // the line along the bottom
@@ -51,25 +57,25 @@ theme {
     finder_fg "#ffffff"
     finder_bg "#45454a"
     finder_sel_fg "#141418"
-    finder_sel_bg "#ff5fd7"
+    finder_sel_bg "#7aa2f7"
 
     // rename editor, bell, dead panes, frame buttons, the minimised bar
     rename_fg "#141418"
-    rename_bg "#ff5fd7"
+    rename_bg "#7aa2f7"
     toast_fg "#141418"
-    toast_bg "#ff5fd7"
-    bell "#ff5fd7"
+    toast_bg "#7aa2f7"
+    bell "#e0af68"
     dead "#ff875f"
     pane_button "#45454a"
-    pane_button_hover "#ff5fd7"
+    pane_button_hover "#7aa2f7"
     minbar "#45454a"
-    minbar_hover "#ff5fd7"
+    minbar_hover "#7aa2f7"
 
     // a modal floating over the layout (the cheatsheet, C-a ?)
     modal_bg "#1c1c22"
     modal_fg "#e8e8ea"
-    modal_border "#ff5fd7"
+    modal_border "#7aa2f7"
     modal_title "#ffffff"
     modal_button "#8a8a95"
-    modal_button_hover "#ff5fd7"
+    modal_button_hover "#7aa2f7"
 }

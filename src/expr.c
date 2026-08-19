@@ -57,7 +57,9 @@ enum {
   V_CURSOR,
   V_FOCUSED,
   V_T,
-  V_SINCE
+  V_SINCE,
+  V_ABOVE,
+  V_BELOW
 };
 
 /* Angles are counted in degrees here (see `isin`), and pi is not a number in an
@@ -99,6 +101,12 @@ static const struct {
     /* Also a clock, so it carries the same dependency: never cached, and the
      * session keeps painting while something reads it. */
     {"since", V_SINCE, EXPR_DEP_TIME},
+    /* Scrollback, as the viewport sees it: lines hidden above its top edge,
+     * and below its bottom one. Both 0 at the present. A dependency of their
+     * own rather than a clock: they change per scroll event, not per frame,
+     * so the map is reused while the position holds still. */
+    {"above", V_ABOVE, EXPR_DEP_SCROLL},
+    {"below", V_BELOW, EXPR_DEP_SCROLL},
 };
 
 /* cols/rows are a dependency even though the map's key always carries the
@@ -127,10 +135,12 @@ struct expr_prog {
    * one place that outlives a frame. The key is every input the compiler says
    * the program reads, which is what makes a stale map unrepresentable rather
    * than merely unlikely. */
+  char *src; /* what was compiled, for the dump to render back out */
   uint8_t *map;
   size_t map_cap;
   bool map_valid;
   int k_cols, k_rows, k_curx, k_cury, k_cursor, k_focused;
+  int k_above, k_below;
 };
 
 /* ---- lexer -------------------------------------------------------------- */
@@ -511,6 +521,8 @@ static int vm_run(const expr_prog_t *pr, const expr_env_t *env) {
       [V_SINCE] = (int32_t)(env->since < 0            ? 0
                             : env->since > 0x7fffffff ? 0x7fffffff
                                                       : env->since),
+      [V_ABOVE] = env->above,
+      [V_BELOW] = env->below,
   };
 
   for (size_t i = 0; i < pr->n; i++) {
@@ -735,14 +747,20 @@ expr_prog_t *expr_compile(const char *src, char *err, size_t errcap) {
     pr->value = vm_run(pr, &zero);
     pr->constant = true;
   }
+  /* The source, kept: a program lives in configs that are dumped back out,
+   * and bytecode cannot be un-compiled into the line somebody wrote. */
+  pr->src = strdup(src);
   return pr;
 }
 
 void expr_free(expr_prog_t *p) {
   if (!p) return;
+  free(p->src);
   free(p->map);
   free(p);
 }
+
+const char *expr_source(const expr_prog_t *p) { return p ? p->src : NULL; }
 
 unsigned expr_deps(const expr_prog_t *p) { return p ? p->deps : 0; }
 int expr_constant(const expr_prog_t *p) { return p ? p->value : 0; }
@@ -769,6 +787,8 @@ bool expr_amount_map(expr_prog_t *p, const expr_env_t *env, uint8_t **out) {
     same = p->k_curx == env->curx && p->k_cury == env->cury &&
            p->k_cursor == env->cursor;
   if (same && (p->deps & EXPR_DEP_FOCUS)) same = p->k_focused == env->focused;
+  if (same && (p->deps & EXPR_DEP_SCROLL))
+    same = p->k_above == env->above && p->k_below == env->below;
 
   if (!same) {
     if (p->map_cap < cells) {
@@ -792,6 +812,8 @@ bool expr_amount_map(expr_prog_t *p, const expr_env_t *env, uint8_t **out) {
     p->k_cury = env->cury;
     p->k_cursor = env->cursor;
     p->k_focused = env->focused;
+    p->k_above = env->above;
+    p->k_below = env->below;
   }
   *out = p->map;
   return true;

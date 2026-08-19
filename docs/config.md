@@ -182,8 +182,15 @@ dim_unfocused 60          // the one knob most people want
 states {                  // ...and the whole table underneath it
     dead { grayscale amount=200; dim amount=90 }
     suspended { grayscale amount=170; dim amount=60 }
-    scrolled { tint amount=22 color="#ff5fd7" }
+    scrolled { tint amount=22 color="#7aa2f7" }   // follows theme's scroll_bg;
+    // plus derived edge fades: the top and bottom rows melt towards an edge
+    // while there is more content past it (`above` / `below` in expressions),
+    // and turn solid at the end of the buffer -- nothing more to scroll to
     unfocused { dim amount=60 }    // writing this replaces dim_unfocused
+    // bell: a shimmer across the body (a soft sheen, gone within a second)
+    // and a chrome pass on the frame -- blinks, then a breathe -- in theme's
+    // bell colour, until the pane is looked at. See the chrome shaders page;
+    // an empty bell { } removes it, bell_indicator false silences bell + mark.
 }
 ```
 

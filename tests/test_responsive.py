@@ -361,7 +361,7 @@ def test_a_tab_is_laid_out_or_it_is_a_list_never_both():
 
 # ---- hovering a row in the stack -------------------------------------------
 
-FRAME_FOCUS = "#ff5fd7"  # the rule, while hovered
+FRAME_FOCUS = "#7aa2f7"  # the rule, while hovered
 TITLE_FOCUS = "#ffffff"  # the title, while hovered
 FRAME_IDLE = "#45454a"
 

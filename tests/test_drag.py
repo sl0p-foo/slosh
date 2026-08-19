@@ -282,7 +282,7 @@ def test_drop_target_is_visible():
         run = snap.style_at(right["x"], right["y"])
         check(
             "the drop target is highlighted while dragging",
-            run and run["fg"] == "#ff5fd7" and "bold" in run["attrs"],
+            run and run["fg"] == "#7aa2f7" and "bold" in run["attrs"],
             str(run),
         )
         s.send(rf"\e[<0;{right['x'] + 5};{right['y'] + 3}m")

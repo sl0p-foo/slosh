@@ -286,6 +286,25 @@ int main(void) {
   refused("a ternary without its colon", "1 ? 2");
   refused("something that is not an expression at all", "@@@");
 
+  printf("\n-- the source survives compilation\n");
+  {
+    /* The dump has to write back the line somebody wrote: bytecode cannot be
+     * un-compiled, so the program keeps its text. Byte for byte, including a
+     * constant expression -- folding must not eat the spelling. */
+    const char *src = "(y % 2) * 40";
+    char err[128] = {0};
+    expr_prog_t *p = expr_compile(src, err, sizeof err);
+    ok("a program remembers its source",
+       p && expr_source(p) && strcmp(expr_source(p), src) == 0,
+       p ? expr_source(p) : err);
+    if (p) expr_free(p);
+    p = expr_compile("1 + 2", err, sizeof err);
+    ok("even one that folded to a constant",
+       p && expr_source(p) && strcmp(expr_source(p), "1 + 2") == 0,
+       p ? expr_source(p) : err);
+    if (p) expr_free(p);
+  }
+
   printf("\n-- totality: there is no loop to write\n");
   {
     /* The language has no way to express unbounded work, so this is a

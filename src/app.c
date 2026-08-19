@@ -4249,6 +4249,19 @@ static void note_animation(app_t *a, const shader_t *chain, size_t n) {
     }
 }
 
+/* Scrollback as the viewport sees it, for content and chrome passes alike, so
+ * an expression can say "there is more this way": lines hidden above the top
+ * edge, and below the bottom. `total` from pane_scroll_pos is already the
+ * scrollable overhang (history minus the viewport), so the split needs no
+ * geometry of its own. */
+static void ctx_scroll(shade_ctx_t *base, const node_t *n) {
+  if (!n->pane) return;
+  uint32_t off = 0, total = 0;
+  pane_scroll_pos(n->pane, &off, &total);
+  base->above = off;
+  base->below = total > off ? total - off : 0;
+}
+
 /* A pane with nothing to apply costs nothing: no context is built and no cell
  * is visited, so an unshaded session emits the same bytes it did before. */
 static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
@@ -4276,6 +4289,7 @@ static void shade_leaf(app_t *a, screen_t *s, node_t *n) {
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };
+  ctx_scroll(&base, n);
   /* The screen's cursor belongs to whichever pane is focused, so it is only
    * this pane's cursor when this pane is the focused one. Handing it to any
    * other pane would have its spotlight chasing a cursor somewhere else. */
@@ -4328,6 +4342,7 @@ static void shade_chrome(app_t *a, screen_t *s, node_t *n, rect_t r,
       .default_fg = CFG.default_fg,
       .default_bg = CFG.default_bg,
   };
+  ctx_scroll(&base, n);
   note_animation(a, chain, nc);
   shade_apply(s, chain, nc, r, hole, &base);
 }

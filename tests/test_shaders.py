@@ -407,7 +407,7 @@ def test_the_hovered_target_is_still_highlighted_over_the_dashes():
         run = snap.style_at(right["x"], right["y"])
         check(
             "the pane under the pointer keeps its drop highlight",
-            run and run["fg"] == "#ff5fd7" and "bold" in run["attrs"],
+            run and run["fg"] == "#7aa2f7" and "bold" in run["attrs"],
             str(run),
         )
         release(s, right["x"] + 5, right["y"] + 3)
@@ -503,7 +503,7 @@ def test_positional_shaders_stay_off_the_chrome():
         snap = s.snapshot()
         check(
             "a full-strength positional stack still leaves the frame alone",
-            frame_fg(snap, p) == "#ff5fd7",
+            frame_fg(snap, p) == "#7aa2f7",
             str(frame_fg(snap, p)),
         )
 

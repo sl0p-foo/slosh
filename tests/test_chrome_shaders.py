@@ -23,7 +23,7 @@ from harness import Session, check, report
 
 # A pane that paints a known, non-default colour into its own content.
 GREEN = "#00ff00"
-FRAME = "#ff5fd7"  # the default focused frame colour
+FRAME = "#7aa2f7"  # the default focused frame colour
 DIM_FRAME = "#45454a"  # ...and the colour of a frame you are not in
 SH = [
     "/bin/sh",

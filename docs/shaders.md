@@ -12,7 +12,7 @@ touched, because rewriting text would desync selection and copy.
 ```kdl
 shaders {                       // every pane gets these, in the order written
     vignette amount=70
-    ruler amount=60 at=80 color="#ff5fd7"
+    ruler amount=60 at=80 color="#7aa2f7"
 }
 ```
 
@@ -47,7 +47,7 @@ That is how you get an effect nobody built in, without building anything:
 shaders {
     dim  amount="(y % 2) * 40"                        // scanlines
     dim  amount="(x > cols - 10) * 120"               // a right margin
-    tint amount="255 - dist(x, y, curx, cury) * 12" color="#ff5fd7"
+    tint amount="255 - dist(x, y, curx, cury) * 12" color="#7aa2f7"
 }
 ```
 
@@ -59,6 +59,7 @@ shaders {
 | | `focused` — 0 or 1 |
 | | `t` — milliseconds, for animation |
 | | `since` — milliseconds the pane has been in its current state |
+| | `above` `below` — lines of scrollback hidden past the viewport's top and bottom edges, both 0 at the present |
 | operators | `+ - * / %` (integer; division by zero is 0, not a crash) |
 | | `< > <= >= == != && \|\| !` give 0 or 1, so `(x < 10) * 200` is a rule |
 | | `& \| ^ ~ << >>` on the 32-bit value, binding **tighter** than comparison — so `x & 7 == 0` asks what it looks like, unlike C |
@@ -105,7 +106,7 @@ Edit, save, look, guess again is a slow way to arrive at a colour. A program can
 set the chains for the pane it is running in, in the same syntax the config uses:
 
 ```bash
-printf '\033]5577;1;shader;chrome;tint color="#ff5fd7" amount="abs(t / 8 %% 510 - 255)"\033\\'
+printf '\033]5577;1;shader;chrome;tint color="#7aa2f7" amount="abs(t / 8 %% 510 - 255)"\033\\'
 printf '\033]5577;1;shader;content;dim amount=90\033\\'
 printf '\033]5577;1;shader;chrome;\033\\'   # that rect: back to normal
 printf '\033]5577;1;shader;\033\\'          # no rect named, so both of them

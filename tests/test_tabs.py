@@ -309,7 +309,7 @@ def test_json_api():
 
 # ---- hovering the strip ----------------------------------------------------
 
-ACCENT = "#ff5fd7"  # the fill of the tab you are in, and hover on the rest
+ACCENT = "#7aa2f7"  # the fill of the tab you are in, and hover on the rest
 INK = "#141418"  # text on that fill
 BRIGHT = "#ffffff"  # that text while the pointer is on it
 DIM = "#45454a"  # a tab you are not in

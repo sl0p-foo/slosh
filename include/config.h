@@ -237,6 +237,16 @@ typedef struct {
   shader_t state_shaders[PSTATE_COUNT][SHADE_MAX];
   size_t state_n[PSTATE_COUNT];
 
+  /* Whether any file in this load named `scrolled` (or `bell`) itself. The
+   * default wash over scrollback and the default bell flash are derived from
+   * the theme *after* each file's theme block -- scroll_bg and bell
+   * respectively -- so a theme moves them with their indicators. But a chain
+   * somebody wrote, in this file or in one it included, must stand. A local
+   * flag cannot say that across an include chain, so they live here and are
+   * cleared with the rest of the defaults. */
+  bool scrolled_declared;
+  bool bell_declared;
+
   /* The same two things again, over a pane's *frame* rather than its contents:
    * any entry in `shaders` or in a state's block carrying `where="chrome"`
    * lands here instead. Separate chains rather than a flag on each shader,

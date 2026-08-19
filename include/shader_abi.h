@@ -21,7 +21,7 @@
 /* 3: shade_ctx_t gained `state_ms`, so an effect can know how long the pane has
  *    been as it is and not only what time it is; struct shader gained
  *    `channels`, which is the pass's business rather than a shader's. */
-#define SLOSH_SHADER_ABI 3
+#define SLOSH_SHADER_ABI 4
 
 /* Which of a cell's two colours a pass is allowed to keep. Enforced by the
  * pass, not by the shader: every shader writes whatever it writes, and the
@@ -87,6 +87,11 @@ typedef struct {
    * not chase another pane's. */
   bool has_cursor;
   uint16_t cursor_x, cursor_y;
+
+  /* Scrollback, as the viewport sees it: lines hidden above its top edge and
+   * below its bottom one. Both 0 when the pane is showing the present, and
+   * for a pass over anything that is not a pane's contents. */
+  uint32_t above, below;
 
   /* What "terminal default" means while shading. A cell whose colour is unset
    * is drawn in whatever the client's terminal calls default, and we never

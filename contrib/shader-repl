@@ -123,7 +123,20 @@ PROPS = [
 ]
 # Values worth offering: the two rects, the three channels.
 VALUES = ['"chrome"', '"content"', '"fg"', '"bg"', '"both"']
-VARS = ["x", "y", "cols", "rows", "curx", "cury", "cursor", "focused", "t", "since"]
+VARS = [
+    "x",
+    "y",
+    "cols",
+    "rows",
+    "curx",
+    "cury",
+    "cursor",
+    "focused",
+    "t",
+    "since",
+    "above",
+    "below",
+]
 # Angles are degrees, so pi is a half turn: `PI` is 180 and `TAU` is 360.
 CONSTS = ["PI", "TAU"]
 FUNCS = ["min(", "max(", "abs(", "clamp(", "dist(", "sin(", "cos("]
