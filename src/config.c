@@ -739,13 +739,15 @@ static bool derived_pass(config_t *c, shader_t *sh, const char *kind,
  * each edge, so `(above > 0)` snaps the top fade off at the top of the
  * buffer: an edge you cannot scroll past renders solid, which is the whole
  * message. (Reaching the bottom ends the state itself, same statement.) Up to
- * three rows a side and never more than a quarter of the viewport each,
- * because two three-row fades on a six-row viewport is every row faded and
- * nothing said. They ride after the wash so they dim washed cells rather
- * than racing it. */
-#define SCROLL_FADE_TOP "(above > 0) * max(0, (min(3, rows / 4) - y) * 45)"
+ * four rows a side and never more than a quarter of the viewport each,
+ * because two deep fades on a short viewport is every row faded and nothing
+ * said. They ride after the wash so they dim washed cells rather than racing
+ * it. 60 a row, so the edge row is nearly gone (240) and the melt is a
+ * statement rather than a suspicion -- it shipped at three rows of 45 and
+ * read as a rendering artefact more than as "there is more this way". */
+#define SCROLL_FADE_TOP "(above > 0) * max(0, (min(4, rows / 4) - y) * 60)"
 #define SCROLL_FADE_BOTTOM                                                     \
-  "(below > 0) * max(0, (y - rows + min(3, rows / 4) + 1) * 45)"
+  "(below > 0) * max(0, (y - rows + min(4, rows / 4) + 1) * 60)"
 
 static void apply_scrolled(config_t *c, bool declared) {
   if (declared) return;

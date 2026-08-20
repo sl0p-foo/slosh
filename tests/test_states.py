@@ -254,7 +254,7 @@ def test_the_scrolled_wash_follows_the_theme():
             pane = s.pane()
             s.send(r"\x01\x1b[5~")  # C-a PgUp: into the scrollback
             s.settle(20)
-            # Mid-viewport, clear of the derived edge fades (three rows a
+            # Mid-viewport, clear of the derived edge fades (four rows a
             # side): this test is about the wash, and the wash alone.
             got = fg(s.snapshot(), pane, row=pane["content_h"] // 2)
         return got

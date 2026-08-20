@@ -506,7 +506,9 @@ modal_scrim 120
 // continues -- and each fade exists only while there is content past that
 // edge, so hitting the top of the buffer turns the top edge solid, and
 // returning to the present ends the state and everything is opaque again. Up
-// to three rows a side, never more than a quarter of the viewport each. All
+// to four rows a side, never more than a quarter of the viewport each --
+// the edge row nearly gone, so the melt is a statement rather than a
+// suspicion. All
 // of it is commented below because naming a state replaces its default
 // outright -- a declared copy would pin the wash to one theme's colour and
 // quietly stop following the next.
@@ -517,8 +519,8 @@ states {
     suspended { grayscale amount=170; dim amount=60 }
     // scrolled {   // derived: a wash of theme's scroll_bg, and edge fades where more content is
     //     tint amount=22 color="#7aa2f7"
-    //     dim amount="(above > 0) * max(0, (min(3, rows / 4) - y) * 45)"
-    //     dim amount="(below > 0) * max(0, (y - rows + min(3, rows / 4) + 1) * 45)"
+    //     dim amount="(above > 0) * max(0, (min(4, rows / 4) - y) * 60)"
+    //     dim amount="(below > 0) * max(0, (y - rows + min(4, rows / 4) + 1) * 60)"
     // }
     // dragging { }
     // floating { }
