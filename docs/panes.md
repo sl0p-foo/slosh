@@ -28,7 +28,9 @@ looking at is drawn.
   stack is the pane on the right once you turn it. Four turns come back exactly.
   A turn that would squeeze a pane under the floor is refused with a word.
 - **`C-a z`** fills the tab with one pane and back; **`C-a m`** puts one away
-  into a strip along the bottom, still running. Click its row to bring it back.
+  into a strip along the bottom, still running. Each put-away pane is a
+  button there — `[▬ name]`, the brackets meaning what they mean everywhere
+  else here — and clicking it brings the pane back.
 
 ## The mouse
 

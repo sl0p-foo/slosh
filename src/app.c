@@ -395,34 +395,38 @@ void draw_min_bar(app_t *a, screen_t *s) {
   uint16_t x = bar.x;
   uint16_t right = (uint16_t)(bar.x + bar.w);
 
-  /* A legend, so a row of bare names is not a mystery. */
-  x = (uint16_t)(x +
-                 screen_text(s, x, bar.y, CFG.min_mark, MINBAR, NO_COLOR, 0));
-  x = (uint16_t)(x + 1);
-
   for (size_t i = 0; i < nmin && x < right; i++) {
     const char *nm = pane_title(mins[i]->pane);
     /* A pane you cannot see is exactly the one a bell is for, so the mark
      * comes along and keeps its own colour rather than the row's. */
     bool rang = CFG.bell_indicator && pane_bell(mins[i]->pane);
 
-    char label[64];
-    snprintf(label, sizeof label, " %s", nm && *nm ? nm : "pane");
+    /* Each entry wears square brackets, because that is what *clickable*
+     * already looks like in this program -- [re-run], [close], the buttons a
+     * pane's own row offers. A row of dim bare names read as a caption, and
+     * nobody clicks a caption. The put-away mark rides inside each entry
+     * rather than standing at the head of the row as a legend: a legend
+     * explains the row once, a mark per entry says what each button *is*. */
+    char label[96];
+    snprintf(label, sizeof label, "[%s %s", CFG.min_mark,
+             nm && *nm ? nm : "pane");
     uint16_t lw = cells(label);
     uint16_t bw = rang ? (uint16_t)(1 + cells(CFG.bell_mark)) : 0;
-    uint16_t total = (uint16_t)(lw + bw + 1); /* and the gap to the next one */
+    /* label, the bell when there is one, the closing bracket, and the gap. */
+    uint16_t total = (uint16_t)(lw + bw + 2);
     if ((uint16_t)(x + total) > right) break;
 
-    screen_text(s, x, bar.y, label, MINBAR, NO_COLOR, 0);
-    /* Lit as one target, since the whole entry is one target. */
-    if (ptr_on(a, x, bar.y, total, 1))
-      screen_text(s, x, bar.y, label, MINBAR_HOVER, NO_COLOR, ATTR_BOLD);
+    bool hot = ptr_on(a, x, bar.y, total, 1);
+    color_t fg = hot ? MINBAR_HOVER : MINBAR;
+    uint16_t attrs = hot ? ATTR_BOLD : 0;
+    uint16_t w = screen_text(s, x, bar.y, label, fg, NO_COLOR, attrs);
     if (rang) {
-      char mark[24];
+      char mark[40];
       snprintf(mark, sizeof mark, " %s", CFG.bell_mark);
-      screen_text(s, (uint16_t)(x + lw), bar.y, mark, BELL_C, NO_COLOR,
-                  ATTR_BOLD);
+      w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), bar.y, mark, BELL_C,
+                                     NO_COLOR, ATTR_BOLD));
     }
+    screen_text(s, (uint16_t)(x + w), bar.y, "]", fg, NO_COLOR, attrs);
     char action[48];
     snprintf(action, sizeof action, "focus:%u", mins[i]->id);
     hit_add(&s->hits, x, bar.y, total, 1, action);
