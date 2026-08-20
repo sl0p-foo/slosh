@@ -127,9 +127,18 @@ like any shell, and un-floating lands it beside the pane it was opened over.
   it comes back floating; zooming fills the tab and returns it on the way
   out. The last tiled pane cannot float — an overlay needs something to be
   over — and closing the last tiled pane lands the float in its place.
-- Its rect is not yet written by `dump-layout` (coming with the layout-file
-  support); `{"cmd":"float","id":N}` toggles one and `{"cmd":"new-float"}`
-  opens one from a [script](scripting.md).
+- **It survives being written down.** `dump-layout` and
+  [`save-workspace`](workspaces.md) record `floating=true x= y= w= h=` — the
+  *wanted* rect, which the next screen's layout clamps like any frame — and a
+  [layout file](layouts.md) can declare the same. From a
+  [script](scripting.md), `{"cmd":"float","id":N}` toggles,
+  `{"cmd":"float","id":N,"x":10,"y":5,"w":40,"h":12}` places (floats first
+  if tiled, re-places if floating; omitted fields mean "keep"), and
+  `{"cmd":"new-float"}` opens one.
+- **Images know their place.** A kitty-graphics picture in a pane a float
+  covers is cropped at the float's edge, or not drawn while the float sits
+  across its middle — a placement is one rectangle, and it must not paint
+  over what covers it.
 
 ## Links
 

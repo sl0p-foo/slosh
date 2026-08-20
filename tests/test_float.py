@@ -793,6 +793,80 @@ def test_the_grabbed_edge_stays_lit_through_the_drag():
         s.send(rf"\e[<0;{x1 - 5};{ey + 1}m")
 
 
+def test_the_api_places_a_float():
+    """The script's version of the drag: with x/y/w/h the verb places —
+    floats first when tiled, re-places when floating, never un-floats. The
+    intent is kept as asked; the layout clamps the drawn rect per frame."""
+    with Session(SH, cols=100, rows=28) as s:
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        r = s.api("float", x=10, y=5, w=30, h=12)
+        s.settle(20)
+        check("placing floats the pane", r.get("ok") and r.get("floating") == 1, str(r))
+        check(
+            "exactly where asked",
+            rect(floats(s)[0]) == (10, 5, 30, 12),
+            str(rect(floats(s)[0])),
+        )
+        s.api("float", x=40)  # move only: w/h/y mean "keep"
+        s.settle(20)
+        check(
+            "a partial placement moves without unfloating or resizing",
+            rect(floats(s)[0]) == (40, 5, 30, 12),
+            str(rect(floats(s)[0])),
+        )
+
+
+def test_a_float_survives_dump_and_apply():
+    """The memory: a dumped session used to quietly re-tile its floats — the
+    one data-loss gap. The dump writes the wanted rect (intent is what
+    survives a session; the next screen's layout clamps it), and apply
+    restores the pane floating, placed, focused."""
+    with Session(SH, cols=100, rows=28) as s:
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        s.api("float", x=12, y=6, w=34, h=14)
+        s.settle(20)
+        d = s.api("dump-layout")
+        check(
+            "the dump writes the float and its wanted rect",
+            "floating=true x=12 y=6 w=34 h=14" in d["kdl"],
+            d["kdl"],
+        )
+        r = s.api("apply-layout", kdl=d["kdl"], replace=True)
+        s.settle(30)
+        check("apply accepts it", r.get("ok"), str(r))
+        fl = floats(s)
+        check(
+            "and the float is back, placed exactly",
+            len(fl) == 1 and rect(fl[0]) == (12, 6, 34, 14),
+            str(here(s)),
+        )
+        check("still focused", fl[0]["focused"], str(fl))
+
+
+def test_a_layout_of_only_floats_self_heals():
+    """An overlay needs a backdrop: a file whose every pane floats lands its
+    top float through ensure_tiled, the same rule closing the last tiled
+    pane follows — no lint required, the invariant holds itself."""
+    kdl = (
+        "layout { tab { pane floating=true x=5 y=5 w=30 h=10\n"
+        " pane floating=true x=40 y=5 w=30 h=10 } }"
+    )
+    with Session(SH, cols=100, rows=28) as s:
+        s.settle(20)
+        r = s.api("apply-layout", kdl=kdl, replace=True)
+        s.settle(30)
+        check("the layout applies", r.get("ok"), str(r))
+        check(
+            "one float landed as the backdrop, one still floats",
+            len(tiled(s)) == 1 and len(floats(s)) == 1,
+            str(here(s)),
+        )
+
+
 def test_a_float_is_not_a_drop_target():
     """Swapping tree seats with a pane that is not in its seat would
     rearrange something invisible, so a title drag promises nothing over a
@@ -867,6 +941,9 @@ if __name__ == "__main__":
     test_hovering_a_float_edge_shows_the_resize()
     test_a_float_title_promises_no_split()
     test_the_grabbed_edge_stays_lit_through_the_drag()
+    test_the_api_places_a_float()
+    test_a_float_survives_dump_and_apply()
+    test_a_layout_of_only_floats_self_heals()
     test_a_float_is_not_a_drop_target()
     test_the_key_and_the_palette_both_run_it()
     sys.exit(report())

@@ -110,6 +110,21 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
   if (!leaf) return NULL;
   leaf->weight = (int)kdl_prop_int(node, "weight", WEIGHT_UNIT);
   if (leaf->weight < WEIGHT_MIN) leaf->weight = WEIGHT_UNIT;
+  /* A float restores as a float (D22): the wanted rect is the intent that
+   * was dumped, and the layout clamps it into whatever screen this session
+   * has — absent, or nonsense, the centred default answers. A file whose
+   * every pane floats self-heals through ensure_tiled: the top float lands,
+   * which is the same rule closing the last tiled pane follows. */
+  if (kdl_prop_bool(node, "floating", false)) {
+    leaf->floating = true;
+    leaf->raised = ++a->raise_seq;
+    long fx = kdl_prop_int(node, "x", 0), fy = kdl_prop_int(node, "y", 0);
+    long fw = kdl_prop_int(node, "w", 0), fh = kdl_prop_int(node, "h", 0);
+    if (fw > 0 && fh > 0)
+      leaf->float_rect =
+          (rect_t){(uint16_t)(fx < 0 ? 0 : fx), (uint16_t)(fy < 0 ? 0 : fy),
+                   (uint16_t)fw, (uint16_t)fh};
+  }
   /* `focus=true` restores which pane you were in. Recorded on the node and
    * resolved once the tab exists, because focus belongs to the tab. */
   if (kdl_prop_bool(node, "focus", false)) a->restore_focus = leaf;
@@ -257,7 +272,8 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
 
 /* Read by build_pane, on a `pane` node or on a tab acting as its own root. */
 static const char *const PANE_PROPS[] = {
-    "split", "weight", "cwd", "command", "focus", "purpose", "suspended"};
+    "split",     "weight",   "cwd", "command", "focus", "purpose",
+    "suspended", "floating", "x",   "y",       "w",     "h"};
 /* Read by app_apply_layout off the tab itself. */
 static const char *const TAB_PROPS[] = {"name", "active"};
 
@@ -314,13 +330,22 @@ static void lc_props(lcheck_t *c, const kdl_node_t *n, bool is_tab) {
      * comes to tag nothing at all. A tab reads its own name and purpose either
      * way, so those are never the ignored ones. */
     bool leaf_only = strcmp(k, "command") == 0 || strcmp(k, "suspended") == 0 ||
-                     strcmp(k, "focus") == 0 ||
+                     strcmp(k, "focus") == 0 || strcmp(k, "floating") == 0 ||
+                     strcmp(k, "x") == 0 || strcmp(k, "y") == 0 ||
+                     strcmp(k, "w") == 0 || strcmp(k, "h") == 0 ||
                      (!is_tab && strcmp(k, "purpose") == 0);
     if (kids && leaf_only)
       lc_say(c, n->line, "%s is ignored on a %s with panes in it", k,
              is_tab ? "tab" : "pane");
     if (!kids && strcmp(k, "split") == 0)
       lc_say(c, n->line, "split is ignored on a pane with nothing to split");
+    /* The wanted rect belongs to a float; on a tiled pane it would be read
+     * and mean nothing, which is the quiet kind of wrong this pass exists
+     * to say out loud. */
+    bool rectp = strcmp(k, "x") == 0 || strcmp(k, "y") == 0 ||
+                 strcmp(k, "w") == 0 || strcmp(k, "h") == 0;
+    if (rectp && !kids && !kdl_prop_bool(n, "floating", false))
+      lc_say(c, n->line, "%s is ignored without floating=true", k);
   }
 
   const char *dir = kdl_prop(n, "split", NULL);
@@ -338,6 +363,7 @@ static void lc_props(lcheck_t *c, const kdl_node_t *n, bool is_tab) {
 
   lc_bool(c, n, "suspended");
   lc_bool(c, n, "focus");
+  lc_bool(c, n, "floating");
   if (is_tab) lc_bool(c, n, "active");
 
   for (size_t i = 0; i < n->nkids; i++) {
@@ -835,6 +861,17 @@ static void dump_node(node_t *n, strbuf_t *b, int depth, dumpctx_t *ctx) {
   if (dump_suspended(command, n, ctx->suspend)) {
     sb_add(b, " suspended=true");
     ctx->suspended++;
+  }
+  /* The wanted rect, not the drawn one: intent is what survives a session,
+   * and the layout of whatever screen this file is opened on will clamp it
+   * the way it clamps every frame. Written in tree order; the raise order is
+   * not kept, because focus re-raises and a stack of floats worth restoring
+   * exactly is a session, not a shape. */
+  if (n->floating) {
+    sb_add(b, " floating=true");
+    if (n->float_rect.w)
+      sb_add(b, " x=%u y=%u w=%u h=%u", n->float_rect.x, n->float_rect.y,
+             n->float_rect.w, n->float_rect.h);
   }
   if (n == ctx->tab->focus) sb_add(b, " focus=true");
   sb_add(b, "\n");

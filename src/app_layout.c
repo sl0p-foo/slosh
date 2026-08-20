@@ -1083,6 +1083,27 @@ bool app_pane_floating(app_t *a, uint32_t id) {
   return n && n->floating;
 }
 
+/* Float a pane *at* a rect: the script's version of the drag. Already
+ * floating, it is re-placed without a toggle — a placement is a statement
+ * about where, not about whether — and the intent is kept exactly as asked
+ * rather than written back clamped: a script that places at 500,500 on an
+ * 80-column session means "the far corner", and the layout clamps the drawn
+ * rect every frame the way it always does. Zero width or height means "keep
+ * what it has", so a caller can move without resizing. */
+bool app_float_place(app_t *a, uint32_t id, long x, long y, long w, long h) {
+  node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
+  if (!n || n->kind != NODE_LEAF) return false;
+  if (!n->floating && !app_toggle_float(a, id)) return false;
+  rect_t want = n->float_rect;
+  if (w > 0) want.w = (uint16_t)w;
+  if (h > 0) want.h = (uint16_t)h;
+  if (x >= 0) want.x = (uint16_t)x;
+  if (y >= 0) want.y = (uint16_t)y;
+  n->float_rect = want;
+  layout(a);
+  return true;
+}
+
 /* An explicit move or resize is the user authoring the intent, so unlike a
  * terminal resize it *does* write back: the delta is applied to the rect as
  * drawn — what you grabbed is what moves, even when an older intent is

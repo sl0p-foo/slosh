@@ -1873,6 +1873,13 @@ void draw_floats(app_t *a, screen_t *s) {
 struct gfx_ctx {
   app_t *a;
   node_t *leaf;
+  /* The float rects drawn over this leaf's cells: every visible float for a
+   * tiled pane, the higher-raised ones for a float. A placement is clipped
+   * against them below, because kitty images are drawn by the client's
+   * terminal *after* the cell diff — left alone, a picture in a tiled pane
+   * paints straight over the float covering it. */
+  const rect_t *occ;
+  size_t nocc;
 };
 
 static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
@@ -1922,6 +1929,90 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
   }
   if (!cols || !rows) return;
 
+  /* The floats above this pane. The cell compositor gets occlusion free from
+   * paint order; placements are sent after the diff and get it from this:
+   * what one clean edge can express is cropped — the same source-rectangle
+   * arithmetic as the pane-edge clipping, aimed at another clipper — and a
+   * float in the *middle* of an image is a shape one placement cannot
+   * express, so that placement is suppressed for the frame and returns when
+   * the float moves. A corner overlap leaves an L, which is two rects, which
+   * is the same refusal. */
+  uint16_t col = g->col, row = g->row;
+  uint32_t sx = g->sx, sy = g->sy;
+  uint32_t xo = g->x_off, yo = g->y_off;
+  for (size_t i = 0; i < c->nocc; i++) {
+    int px0 = leaf->content.x + col, py0 = leaf->content.y + row;
+    int px1 = px0 + cols, py1 = py0 + rows;
+    int ox0 = c->occ[i].x, oy0 = c->occ[i].y;
+    int ox1 = ox0 + c->occ[i].w, oy1 = oy0 + c->occ[i].h;
+    if (ox1 <= px0 || ox0 >= px1 || oy1 <= py0 || oy0 >= py1) continue;
+    bool spans_x = ox0 <= px0 && ox1 >= px1;
+    bool spans_y = oy0 <= py0 && oy1 >= py1;
+    if (spans_x && spans_y) return; /* fully covered */
+    if (spans_x) {
+      if (oy0 <= py0) { /* trimmed from the top: the source origin moves */
+        uint16_t cut = (uint16_t)(oy1 - py0);
+        if (g->req_rows) {
+          uint32_t drop = rows ? (uint32_t)((uint64_t)sh * cut / rows) : 0;
+          sy += drop;
+          sh -= drop;
+        } else {
+          uint32_t px = (uint32_t)cut * g->cell_px_h;
+          px = px > yo ? px - yo : 0;
+          yo = 0;
+          sy += px < sh ? px : sh;
+          sh = px < sh ? sh - px : 0;
+        }
+        row = (uint16_t)(row + cut);
+        rows = (uint16_t)(rows - cut);
+      } else if (oy1 >= py1) { /* trimmed from the bottom, like the edge */
+        uint16_t keep = (uint16_t)(oy0 - py0);
+        if (g->req_rows) {
+          sh = rows ? (uint32_t)((uint64_t)sh * keep / rows) : sh;
+        } else {
+          uint32_t px = (uint32_t)keep * g->cell_px_h;
+          px = px > yo ? px - yo : 0;
+          if (sh > px) sh = px;
+        }
+        rows = keep;
+      } else {
+        return; /* a strip across the middle */
+      }
+    } else if (spans_y) {
+      if (ox0 <= px0) {
+        uint16_t cut = (uint16_t)(ox1 - px0);
+        if (g->req_cols) {
+          uint32_t drop = cols ? (uint32_t)((uint64_t)sw * cut / cols) : 0;
+          sx += drop;
+          sw -= drop;
+        } else {
+          uint32_t px = (uint32_t)cut * g->cell_px_w;
+          px = px > xo ? px - xo : 0;
+          xo = 0;
+          sx += px < sw ? px : sw;
+          sw = px < sw ? sw - px : 0;
+        }
+        col = (uint16_t)(col + cut);
+        cols = (uint16_t)(cols - cut);
+      } else if (ox1 >= px1) {
+        uint16_t keep = (uint16_t)(ox0 - px0);
+        if (g->req_cols) {
+          sw = cols ? (uint32_t)((uint64_t)sw * keep / cols) : sw;
+        } else {
+          uint32_t px = (uint32_t)keep * g->cell_px_w;
+          px = px > xo ? px - xo : 0;
+          if (sw > px) sw = px;
+        }
+        cols = keep;
+      } else {
+        return;
+      }
+    } else {
+      return; /* a corner: the remainder is an L, not a rect */
+    }
+    if (!cols || !rows || !sw || !sh) return;
+  }
+
   gfx_place(
       c->a->gfx,
       &(gfx_req_t){
@@ -1929,20 +2020,20 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
           .src_id = g->image_id,
           .gen = g->generation,
           .place_id = g->place_id,
-          .col = (uint16_t)(leaf->content.x + g->col),
-          .row = (uint16_t)(leaf->content.y + g->row),
+          .col = (uint16_t)(leaf->content.x + col),
+          .row = (uint16_t)(leaf->content.y + row),
           .cols = cols,
           .rows = rows,
-          /* Carried through untouched: the pane's own clipping already dealt with
-       * it, and the offset is relative to the first cell either way. */
-          .x_off = g->x_off,
-          .y_off = g->y_off,
+          /* The offsets survive the pane's own clipping untouched; an
+       * occlusion trim from the left or top zeroes the one it consumed. */
+          .x_off = xo,
+          .y_off = yo,
           /* Clipped the same way the cell counts were, and zero when the program
        * never asked to scale. */
           .scale_cols = g->req_cols ? cols : 0,
           .scale_rows = g->req_rows ? rows : 0,
-          .sx = g->sx,
-          .sy = g->sy,
+          .sx = sx,
+          .sy = sy,
           .sw = sw,
           .sh = sh,
           .px_w = g->src_w,
@@ -1954,10 +2045,26 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
       });
 }
 
+/* One frame's worth of "what covers what": the visible floats, so every
+ * leaf's placements can be clipped by the ones above it. */
+struct gfx_walk {
+  app_t *a;
+  rect_t occ[64];
+  uint32_t raised[64];
+  size_t n;
+};
+
 static void gfx_leaf_cb(node_t *n, void *ud) {
-  app_t *a = ud;
-  if (n->hidden) return; /* a collapsed pane draws nothing, images included */
-  struct gfx_ctx ctx = {a, n};
+  struct gfx_walk *w = ud;
+  if (n->hidden || n->collapsed) return; /* not drawn: images included */
+  /* Above this leaf: every float for a tiled pane, the higher-raised for a
+   * float — the same order draw_floats paints in, so an image is clipped by
+   * exactly what its cells are covered by. */
+  rect_t occ[64];
+  size_t k = 0;
+  for (size_t i = 0; i < w->n; i++)
+    if (!n->floating || w->raised[i] > n->raised) occ[k++] = w->occ[i];
+  struct gfx_ctx ctx = {w->a, n, occ, k};
   pane_graphics(n->pane, gfx_from_pane, &ctx);
 }
 
@@ -1965,7 +2072,17 @@ static void gfx_leaf_cb(node_t *n, void *ud) {
  * needs this frame. Borrowed until the next call. */
 const char *app_graphics(app_t *a, size_t *len) {
   gfx_begin(a->gfx);
-  if (a->ntabs && cur(a)->root) walk(cur(a)->root, gfx_leaf_cb, a);
+  if (a->ntabs && cur(a)->root) {
+    struct gfx_walk w = {.a = a};
+    node_t *fl[64];
+    size_t nf = collect_floating(cur(a)->root, fl, 64, 0);
+    for (size_t i = 0; i < nf && w.n < 64; i++) {
+      if (fl[i]->hidden || fl[i]->collapsed) continue;
+      w.occ[w.n] = fl[i]->rect;
+      w.raised[w.n++] = fl[i]->raised;
+    }
+    walk(cur(a)->root, gfx_leaf_cb, &w);
+  }
   return gfx_flush(a->gfx, len);
 }
 

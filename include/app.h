@@ -229,6 +229,10 @@ bool app_pane_zoomed(app_t *a, uint32_t id);
 bool app_toggle_float(app_t *a, uint32_t id);
 bool app_pane_floating(app_t *a, uint32_t id);
 
+/* Float a pane at a wanted rect: floats it first when it is tiled, re-places
+ * it when it already floats. Negative x/y and zero w/h mean "keep". */
+bool app_float_place(app_t *a, uint32_t id, long x, long y, long w, long h);
+
 /* A new floating shell over the current tab, centred: the throwaway
  * terminal. It holds a real seat in the tree beside the focused pane, so
  * un-floating lands it there. Returns its id, or 0. */

@@ -191,13 +191,20 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     if (!id) return jerr("cannot open a pane");
     return jok_int("id", id);
   }
-  /* Toggle, like the button and the palette entry: M10c grows placement
-   * arguments here, this is the same one verb everything else runs. */
+  /* Bare, a toggle — the same one verb the key and the palette run. With
+   * any of x/y/w/h it *places*: floats the pane first when it is tiled,
+   * re-places it when it already floats, and never un-floats — a placement
+   * is a statement about where, not about whether. */
   if (strcmp(cmd, "float") == 0) {
     uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    long x = jv_geti(req, "x", -1), y = jv_geti(req, "y", -1);
+    long w = jv_geti(req, "w", 0), h = jv_geti(req, "h", 0);
+    bool place = x >= 0 || y >= 0 || w > 0 || h > 0;
     /* Two refusals share the word: no such pane, and no tiled pane left to
      * float over. */
-    if (!app_toggle_float(a, id)) return jerr("cannot float that");
+    bool ok =
+        place ? app_float_place(a, id, x, y, w, h) : app_toggle_float(a, id);
+    if (!ok) return jerr("cannot float that");
     return jok_int("floating", app_pane_floating(a, id) ? 1 : 0);
   }
   if (strcmp(cmd, "edit-config") == 0) {

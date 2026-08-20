@@ -547,6 +547,64 @@ def test_scrolled_away_placements_are_dropped():
         )
 
 
+def test_a_float_occludes_a_placement():
+    """The cell compositor gets occlusion free from paint order; placements
+    are sent after the diff and get it from clipping (D22): a clean edge
+    crops -- the pane-edge arithmetic aimed at another clipper -- and a
+    float in the middle is a shape one placement cannot express, so that
+    placement is suppressed for the frame and returns when the float moves.
+
+    Every pane here runs the same command, so the float shows the image too;
+    the tiled pane's placement is told apart by the image id it had before
+    the split."""
+    with Session(sends_image(cols=60, rows=6, after="cat"), cols=100, rows=28) as s:
+        s.settle(120)
+        base = places(s)
+        check("one placement to start", len(base) == 1, str(base))
+        if not base:
+            return
+        img = base[0]
+        mine = lambda: [p for p in places(s) if p["image"] == img["image"]]
+
+        s.api("split", dir="rows")
+        s.settle(40)
+
+        # A float over the image's right side: cropped at the float's edge.
+        s.api("float", x=img["x"] + 20, y=0, w=60, h=28)
+        s.settle(20)
+        got = mine()
+        check(
+            "a clean edge crops the placement",
+            len(got) == 1 and got[0]["cols"] == 20 and got[0]["x"] == img["x"],
+            str(got),
+        )
+
+        # Across the middle: no single rect can say what remains.
+        s.api("float", x=img["x"] + 10, y=0, w=30, h=28)
+        s.settle(20)
+        check("a middle strip suppresses it", mine() == [], str(places(s)))
+
+        # Moved clear: the placement returns whole.
+        s.api("float", x=img["x"], y=14, w=30, h=12)
+        s.settle(20)
+        got = mine()
+        check(
+            "and it returns whole when the float moves off",
+            len(got) == 1 and got[0]["cols"] == img["cols"],
+            str(got),
+        )
+
+        # Over the top rows: cropped from the top, the source origin moving.
+        s.api("float", x=0, y=0, w=100, h=img["y"] + 3)
+        s.settle(20)
+        got = mine()
+        check(
+            "a top cover crops from the top",
+            len(got) == 1 and got[0]["y"] > img["y"] and got[0]["rows"] < img["rows"],
+            str(got),
+        )
+
+
 if __name__ == "__main__":
     test_a_pane_image_reaches_the_screen()
     test_a_png_is_decoded_and_placed()
@@ -571,5 +629,5 @@ if __name__ == "__main__":
     test_partial_visibility_crops_rather_than_squashes()
     test_hidden_panes_place_nothing()
     test_placement_goes_away_with_its_pane()
-    test_scrolled_away_placements_are_dropped()
+    test_a_float_occludes_a_placement()
     sys.exit(report())

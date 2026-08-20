@@ -96,6 +96,12 @@ which file is which.
   checked-out projects are not twelve running dev servers. The pane shows what it
   *would* run.
 - `focus=true` — the pane you start in, within its tab.
+- `floating=true` — the pane starts [floating](panes.md#floating-a-pane), with
+  `x=` `y=` `w=` `h=` as its wanted rect in cells (absent, it takes the centred
+  default). The rect is intent: a smaller screen clamps it, and the place you
+  asked for survives. It still holds a seat in the tree — its `weight=` and
+  position are where un-floating lands it. A file whose every pane floats
+  lands one as the backdrop, because an overlay needs something to be over.
 - `purpose=` — a label for tooling; see below.
 
 **A relative `cwd=` in a layout *file* resolves against that file's own
