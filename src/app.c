@@ -395,42 +395,63 @@ void draw_min_bar(app_t *a, screen_t *s) {
   uint16_t x = bar.x;
   uint16_t right = (uint16_t)(bar.x + bar.w);
 
+  /* Each entry is a miniature pane frame: three rows, the same corners a
+   * real pane wears. A frame is what a pane *looks like* in this program,
+   * so a put-away pane wearing one reads as a pane you can click — a row of
+   * dim bare names read as a caption, and nobody clicks a caption; brackets
+   * were tried and still read as text. The put-away mark rides inside each
+   * chip, saying what kind of pane this is, and a rung pane's bell mark
+   * keeps its own colour inside the frame: a pane you cannot see is exactly
+   * the one a bell is for. The whole chip is the hit. */
+  const char *tl = CFG.rounded ? "\u256d" : "\u250c",
+             *tr = CFG.rounded ? "\u256e" : "\u2510";
+  const char *bl = CFG.rounded ? "\u2570" : "\u2514",
+             *br = CFG.rounded ? "\u256f" : "\u2518";
+
   for (size_t i = 0; i < nmin && x < right; i++) {
     const char *nm = pane_title(mins[i]->pane);
-    /* A pane you cannot see is exactly the one a bell is for, so the mark
-     * comes along and keeps its own colour rather than the row's. */
     bool rang = CFG.bell_indicator && pane_bell(mins[i]->pane);
 
-    /* Each entry wears square brackets, because that is what *clickable*
-     * already looks like in this program -- [re-run], [close], the buttons a
-     * pane's own row offers. A row of dim bare names read as a caption, and
-     * nobody clicks a caption. The put-away mark rides inside each entry
-     * rather than standing at the head of the row as a legend: a legend
-     * explains the row once, a mark per entry says what each button *is*. */
     char label[96];
-    snprintf(label, sizeof label, "[%s %s", CFG.min_mark,
+    snprintf(label, sizeof label, " %s %s", CFG.min_mark,
              nm && *nm ? nm : "pane");
     uint16_t lw = cells(label);
     uint16_t bw = rang ? (uint16_t)(1 + cells(CFG.bell_mark)) : 0;
-    /* label, the bell when there is one, the closing bracket, and the gap. */
-    uint16_t total = (uint16_t)(lw + bw + 2);
-    if ((uint16_t)(x + total) > right) break;
+    uint16_t inner = (uint16_t)(lw + bw + 1); /* and a breath before the wall */
+    uint16_t chip = (uint16_t)(inner + 2);    /* the frame's two columns */
+    if ((uint16_t)(x + chip) > right) break;
 
-    bool hot = ptr_on(a, x, bar.y, total, 1);
+    bool hot = ptr_on(a, x, bar.y, chip, 3);
     color_t fg = hot ? MINBAR_HOVER : MINBAR;
     uint16_t attrs = hot ? ATTR_BOLD : 0;
-    uint16_t w = screen_text(s, x, bar.y, label, fg, NO_COLOR, attrs);
+    uint16_t x1 = (uint16_t)(x + chip - 1);
+    uint16_t ymid = (uint16_t)(bar.y + 1), ybot = (uint16_t)(bar.y + 2);
+
+    screen_text(s, x, bar.y, tl, fg, NO_COLOR, attrs);
+    screen_text(s, x1, bar.y, tr, fg, NO_COLOR, attrs);
+    screen_text(s, x, ybot, bl, fg, NO_COLOR, attrs);
+    screen_text(s, x1, ybot, br, fg, NO_COLOR, attrs);
+    for (uint16_t cx = (uint16_t)(x + 1); cx < x1; cx++) {
+      screen_text(s, cx, bar.y, "\u2500", fg, NO_COLOR, attrs);
+      screen_text(s, cx, ybot, "\u2500", fg, NO_COLOR, attrs);
+    }
+    screen_text(s, x, ymid, "\u2502", fg, NO_COLOR, attrs);
+    screen_text(s, x1, ymid, "\u2502", fg, NO_COLOR, attrs);
+    uint16_t w =
+        screen_text(s, (uint16_t)(x + 1), ymid, label, fg, NO_COLOR, attrs);
     if (rang) {
       char mark[40];
       snprintf(mark, sizeof mark, " %s", CFG.bell_mark);
-      w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), bar.y, mark, BELL_C,
-                                     NO_COLOR, ATTR_BOLD));
+      w = (uint16_t)(w + screen_text(s, (uint16_t)(x + 1 + w), ymid, mark,
+                                     BELL_C, NO_COLOR, ATTR_BOLD));
     }
-    screen_text(s, (uint16_t)(x + w), bar.y, "]", fg, NO_COLOR, attrs);
+    for (uint16_t cx = (uint16_t)(x + 1 + w); cx < x1; cx++)
+      screen_text(s, cx, ymid, " ", fg, NO_COLOR, 0);
+
     char action[48];
     snprintf(action, sizeof action, "focus:%u", mins[i]->id);
-    hit_add(&s->hits, x, bar.y, total, 1, action);
-    x = (uint16_t)(x + total);
+    hit_add(&s->hits, x, bar.y, chip, 3, action);
+    x = (uint16_t)(x + chip + 1);
   }
 }
 

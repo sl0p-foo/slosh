@@ -426,20 +426,23 @@ void layout(app_t *a) {
    * the same arithmetic — two copies of "does this fit" is exactly how the
    * guide and the layout would start disagreeing. */
   /* Minimised panes come out of the layout and sit in a strip along the
-   * bottom, one row each. The tree is then laid out in what is left, so a
-   * minimised pane costs a row rather than a share. */
-  /* Minimised panes are listed on one row along the bottom, however many there
-   * are. A row each would let putting things away cost more room than having
-   * them out, which is the opposite of the point. */
+   * bottom: one bar, however many there are — a row each would let putting
+   * things away cost more room than having them out, which is the opposite
+   * of the point. The bar is three rows, because each entry is drawn as a
+   * miniature pane frame (draw_min_bar): a frame is what a pane looks like
+   * in this program, so a put-away pane wearing one reads as a pane you can
+   * click rather than as a caption — which a row of dim names turned out to
+   * be mistaken for. Fixed cost while anything is minimised, zero when
+   * nothing is. */
   node_t *mins[64];
   size_t nmin = collect_minimized(root, mins, 64, 0);
   rect_t tree_r = r;
   bool no_room = false;
   cur(a)->min_bar = (rect_t){0, 0, 0, 0};
   if (nmin) {
-    if (r.h >= (uint16_t)(MIN_PANE_ROWS + 3)) {
-      tree_r.h = (uint16_t)(r.h - 1);
-      cur(a)->min_bar = (rect_t){r.x, (uint16_t)(r.y + r.h - 1), r.w, 1};
+    if (r.h >= (uint16_t)(MIN_PANE_ROWS + 5)) {
+      tree_r.h = (uint16_t)(r.h - 3);
+      cur(a)->min_bar = (rect_t){r.x, (uint16_t)(r.y + r.h - 3), r.w, 3};
     } else {
       no_room = true;
     }

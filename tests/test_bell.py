@@ -340,8 +340,10 @@ RINGER = [
 
 
 def bar_row(s):
+    """The bar's middle row — each entry is a three-row pane-frame chip now,
+    and the label (mark included) lives between the borders."""
     open_panes = [p for p in s.panes() if p["w"] > 1]
-    return max(p["y"] + p["h"] for p in open_panes)
+    return max(p["y"] + p["h"] for p in open_panes) + 1
 
 
 def test_a_minimised_pane_rings_on_the_bar():
@@ -382,9 +384,9 @@ def test_a_minimised_pane_rings_on_the_bar():
         entry = [
             h
             for h in s.snapshot().hits
-            if h["action"] == f"focus:{gone}" and h["h"] == 1
+            if h["action"] == f"focus:{gone}" and h["h"] == 3
         ]
-        check("the entry is still one target", len(entry) == 1, str(entry))
+        check("the whole chip is one target", len(entry) == 1, str(entry))
         if not entry:
             return
         s.click(entry[0]["x"] + 1, entry[0]["y"])

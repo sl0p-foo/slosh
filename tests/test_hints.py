@@ -131,7 +131,7 @@ def test_the_gap_and_the_strip_and_the_bar():
         e = [
             h
             for h in s.snapshot().hits
-            if h["action"] == f"focus:{gone}" and h["h"] == 1
+            if h["action"] == f"focus:{gone}" and h["h"] == 3
         ][0]
         hover(s, e["x"] + 1, e["y"])
         check(
