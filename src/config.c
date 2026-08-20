@@ -22,7 +22,13 @@ static const struct {
     {"rerun", ACT_RERUN},
     {"zoom", ACT_ZOOM},
     {"minimize", ACT_MINIMIZE},
+    {"float", ACT_FLOAT},
+    {"new-float", ACT_NEW_FLOAT},
+    {"float-grow", ACT_FLOAT_GROW},
+    {"float-shrink", ACT_FLOAT_SHRINK},
     {"set-purpose", ACT_SET_PURPOSE},
+    {"rename-pane", ACT_RENAME_PANE},
+    {"rename-tab", ACT_RENAME_TAB},
     {"focus-left", ACT_FOCUS_LEFT},
     {"focus-right", ACT_FOCUS_RIGHT},
     {"focus-up", ACT_FOCUS_UP},
@@ -83,6 +89,21 @@ static const struct {
     {"slash", GHOSTTY_KEY_SLASH},
     {"comma", GHOSTTY_KEY_COMMA},
     {"period", GHOSTTY_KEY_PERIOD},
+    /* The function row. The decoder has always understood these (legacy
+     * CSI ~-forms, SS3 and kitty alike); the config simply had no name for
+     * them, so nothing could be bound there. */
+    {"f1", GHOSTTY_KEY_F1},
+    {"f2", GHOSTTY_KEY_F2},
+    {"f3", GHOSTTY_KEY_F3},
+    {"f4", GHOSTTY_KEY_F4},
+    {"f5", GHOSTTY_KEY_F5},
+    {"f6", GHOSTTY_KEY_F6},
+    {"f7", GHOSTTY_KEY_F7},
+    {"f8", GHOSTTY_KEY_F8},
+    {"f9", GHOSTTY_KEY_F9},
+    {"f10", GHOSTTY_KEY_F10},
+    {"f11", GHOSTTY_KEY_F11},
+    {"f12", GHOSTTY_KEY_F12},
 };
 
 /* A character to a key, and whether typing it needs shift.
@@ -277,8 +298,8 @@ size_t config_messages(const config_t *c, const char **out, size_t max) {
 }
 
 static const char *const PSTATE_NAMES[PSTATE_COUNT] = {
-    "dragging",  "drop_hover", "drop_target", "dead",
-    "suspended", "bell",       "scrolled",    "unfocused",
+    "dragging", "drop_hover", "drop_target", "dead",      "suspended",
+    "bell",     "scrolled",   "floating",    "unfocused",
 };
 
 const char *pane_state_name(pane_state_t s) {
@@ -846,6 +867,7 @@ void config_defaults(config_t *c) {
    * At 60 white text lands on #c3c3c3, which reads as "not this one" without
    * reading as "not available". */
   c->dim_unfocused = 60;
+  c->float_shadow = 110;
   c->min_pane_cols = 24;
   c->min_pane_rows = 6;
   c->min_split_cols = 32;
@@ -1033,6 +1055,11 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM, false);
   bind_add(c, GHOSTTY_KEY_E, 0, ACT_EDIT_CONFIG, false);
   bind_add(c, GHOSTTY_KEY_M, 0, ACT_MINIMIZE, false);
+  /* `f` is float, not finder. Both wanted the letter; the tie went to the
+   * verb -- f is what "float" sounds like, a float toggle is pressed in a
+   * flow (lift, look, put back) where a reach hurts, and the finder reads
+   * just as naturally as *search* on `s`. */
+  bind_add(c, GHOSTTY_KEY_F, 0, ACT_FLOAT, false);
   bind_add(c, GHOSTTY_KEY_H, 0, ACT_FOCUS_LEFT, false);
   bind_add(c, GHOSTTY_KEY_L, 0, ACT_FOCUS_RIGHT, false);
   bind_add(c, GHOSTTY_KEY_K, 0, ACT_FOCUS_UP, false);
@@ -1050,7 +1077,23 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_ARROW_RIGHT, MOD_SHIFT, ACT_RESIZE_RIGHT, false);
   bind_add(c, GHOSTTY_KEY_ARROW_UP, MOD_SHIFT, ACT_RESIZE_UP, false);
   bind_add(c, GHOSTTY_KEY_ARROW_DOWN, MOD_SHIFT, ACT_RESIZE_DOWN, false);
-  bind_add(c, GHOSTTY_KEY_EQUAL, 0, ACT_EQUALIZE, false);
+  /* The =/+ key grows a focused float and `-` shrinks one (through the
+   * split-rows case, where a float's split is a refusal anyway). Grow is
+   * bound with and without shift, because whether `+` arrives shifted
+   * depends on the outer terminal -- the same deal `?` has with `/` -- and
+   * that ambiguity is also why equalize moved instead of sharing the key:
+   * two verbs on one key survive only until a terminal drops the shift.
+   * Equalize lands on `0`, the digit row it already lives on: 1..9 pick a
+   * tab, 0 resets the shares. */
+  bind_add(c, GHOSTTY_KEY_EQUAL, 0, ACT_FLOAT_GROW, false);
+  bind_add(c, GHOSTTY_KEY_EQUAL, MOD_SHIFT, ACT_FLOAT_GROW, false);
+  bind_add(c, GHOSTTY_KEY_DIGIT_0, 0, ACT_EQUALIZE, false);
+  /* Shifted beside `f`, the same verb on a fresh thing: `f` floats this
+   * pane, `F` opens a new floating shell -- the throwaway terminal. (It
+   * spent a day on F12, the IDE key for the same idea, and came back: a
+   * chord of the leader and a letter is what every other verb here costs,
+   * and the function row is a reach the home row is not.) */
+  bind_add(c, GHOSTTY_KEY_F, MOD_SHIFT, ACT_NEW_FLOAT, false);
   /* The leader and the space bar: the biggest key on the keyboard, no modifier,
    * and the one tmux already spends on cycling layouts — so the hand that knows
    * that reaches for the right thing here. Four presses come back round, which
@@ -1088,7 +1131,7 @@ void config_defaults(config_t *c) {
    * same shifted-pair shape as `p`/`P`, on the letter people reach for. */
   bind_add(c, GHOSTTY_KEY_W, 0, ACT_WORKSPACES, false);
   bind_add(c, GHOSTTY_KEY_W, MOD_SHIFT, ACT_SAVE_WORKSPACE, false);
-  bind_add(c, GHOSTTY_KEY_F, 0, ACT_FINDER, false);
+  bind_add(c, GHOSTTY_KEY_S, 0, ACT_FINDER, false);
   bind_add(c, GHOSTTY_KEY_P, 0, ACT_PALETTE, false);
   /* Shifted, beside the palette on the same letter: `p` runs a command, `P`
    * tags this pane. A purpose was reachable only from a layout or the socket,
@@ -1137,10 +1180,17 @@ static const struct {
     {ACT_RERUN, "panes", "run a finished pane again"},
     {ACT_ZOOM, "panes", "fill the tab with it"},
     {ACT_MINIMIZE, "panes", "put it away in the strip"},
+    {ACT_FLOAT, "panes", "float it above the layout"},
+    {ACT_NEW_FLOAT, "panes", "a new floating shell"},
     /* Under `panes` because a purpose is a fact about this pane, and the label
      * says "tag" rather than "set purpose": the word people arrive with is the
      * one for what it is *for*, which is finding the pane again later. */
     {ACT_SET_PURPOSE, "panes", "tag it with a purpose"},
+    /* Renaming was a double-click and nothing else, which made it the one
+     * verb the palette could not reach — exactly what the palette exists to
+     * prevent. Unbound by default: the double-click is the fast path, and an
+     * action with no key is the palette's whole reason to list it. */
+    {ACT_RENAME_PANE, "panes", "rename this pane"},
 
     {ACT_FOCUS_LEFT, "focus", "go left"},
     {ACT_FOCUS_RIGHT, "focus", "go right"},
@@ -1156,6 +1206,8 @@ static const struct {
     /* Short enough to fit the palette's label column, which truncates at 26 —
      * "give every pane an even share" read as "give every pane an even sh". */
     {ACT_EQUALIZE, "size", "even out every split"},
+    {ACT_FLOAT_GROW, "size", "grow a floating pane"},
+    {ACT_FLOAT_SHRINK, "size", "shrink a floating pane"},
     /* Under `panes`, not `size`: it undoes what the program in the pane did to
      * the pane, which is a fact about that pane and not about the layout. */
     {ACT_CLEAR_SHADERS, "panes", "clear this pane's shaders"},
@@ -1168,6 +1220,7 @@ static const struct {
     {ACT_ROTATE_LAYOUT, "size", "turn the layout a quarter"},
 
     {ACT_NEW_TAB, "tabs", "new tab"},
+    {ACT_RENAME_TAB, "tabs", "rename this tab"},
     {ACT_CLOSE_TAB, "tabs", "close this tab"},
     {ACT_NEXT_TAB, "tabs", "next tab"},
     {ACT_PREV_TAB, "tabs", "previous tab"},
@@ -1562,6 +1615,10 @@ char *config_render(const config_t *c) {
          "dim_unfocused %u       // ...and how far the panes you are not in\n",
          c->dim_unfocused);
   cb_add(&b,
+         "float_shadow %u       // the shade a floating pane casts; 0 for "
+         "none\n",
+         c->float_shadow);
+  cb_add(&b,
          "keep_dead \"%s\"  // which dead panes stay: commands, all, none\n",
          c->keep_dead == KEEP_DEAD_ALL    ? "all"
          : c->keep_dead == KEEP_DEAD_NONE ? "none"
@@ -1772,6 +1829,7 @@ static const char *const KNOWN_TOP[] = {
     "double_click_ms",
     "word_separators",
     "editor",
+    "float_shadow",
     "focus_follows_mouse",
     "gap",
     "gap_aspect",
@@ -2113,6 +2171,10 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   {
     long v = kdl_arg_int(kdl_child(root, "modal_scrim"), 0, c->modal_scrim);
     c->modal_scrim = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+  }
+  {
+    long v = kdl_arg_int(kdl_child(root, "float_shadow"), 0, c->float_shadow);
+    c->float_shadow = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
   }
 
   const char *sh = kdl_arg(kdl_child(root, "shell"), 0, NULL);

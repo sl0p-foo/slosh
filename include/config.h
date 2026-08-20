@@ -33,6 +33,12 @@ typedef enum {
    * which is what answering a bell is. */
   PSTATE_BELL,
   PSTATE_SCROLLED, /* looking at scrollback rather than the present */
+  /* Lifted out of the layout, drawn on top. Above `unfocused`, so a float is
+   * never dimmed by dim_unfocused: full strength is what keeps the thing on
+   * top reading as lifted off the page — the same reason `dragging` keeps no
+   * default. Ships no chain of its own either; the shadow does the telling
+   * apart, and a config that wants colour writes `states { floating { } }`. */
+  PSTATE_FLOATING,
   PSTATE_UNFOCUSED,
   PSTATE_COUNT,
 } pane_state_t;
@@ -49,7 +55,13 @@ typedef enum {
   ACT_RERUN,
   ACT_ZOOM,
   ACT_MINIMIZE,
+  ACT_FLOAT,
+  ACT_NEW_FLOAT,
+  ACT_FLOAT_GROW,
+  ACT_FLOAT_SHRINK,
   ACT_SET_PURPOSE,
+  ACT_RENAME_PANE,
+  ACT_RENAME_TAB,
   ACT_ROTATE_LAYOUT,
   ACT_FOCUS_LEFT,
   ACT_FOCUS_RIGHT,
@@ -219,6 +231,12 @@ typedef struct {
    * Writing the state chain by hand still wins: the knob only fills it in
    * when the config has not. */
   uint8_t dim_unfocused;
+  /* How dark the cell of shade a floating pane casts on what it covers,
+   * 0..255 and 0 for no shadow. The shadow is what tells a float from a tile
+   * at a glance — the frame is the same frame — which is why it ships on and
+   * why it is a number rather than a state chain: turning it off should not
+   * require knowing the states block exists (the dim_unfocused argument). */
+  uint8_t float_shadow;
 
   /* Colour passes every pane gets, in the order they were written. Ordinary
    * shaders rather than policy: the session has no opinion about these, you

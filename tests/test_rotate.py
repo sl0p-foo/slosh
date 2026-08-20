@@ -164,7 +164,7 @@ def test_a_turn_that_would_not_fit_is_refused():
             repr(s.snapshot().screen()[-200:]),
         )
 
-        s.key("=")  # even shares fit either way round
+        s.key("0")  # even shares fit either way round
         s.settle()
         turn(s)
         cols = sorted(rects(s), key=lambda r: r[1])

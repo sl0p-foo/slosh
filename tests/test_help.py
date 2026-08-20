@@ -96,7 +96,7 @@ def test_sections_are_separated_by_a_blank_line():
     # Narrow, so one column and easy to read -- and tall enough for all of it,
     # because this is about the spacing between groups and not about what a short
     # terminal does with the overflow (which is checked below).
-    with Session(SH, cols=56, rows=56) as s:
+    with Session(SH, cols=56, rows=60) as s:
         s.settle()
         snap = open_help(s)
         text = [l for l in snap.text if "│" in l]
@@ -129,7 +129,7 @@ def test_the_box_is_not_taller_than_its_contents():
     """The fold falls on a heading, which strands the blank row above it at the
     bottom of the first column -- a row that draws nothing and made the box a
     line taller than it needed to be."""
-    with Session(SH, cols=92, rows=36) as s:
+    with Session(SH, cols=92, rows=38) as s:
         s.settle()
         snap = open_help(s)
         bottom = None

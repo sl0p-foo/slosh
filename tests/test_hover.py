@@ -76,7 +76,7 @@ def test_guards():
         s.send("g")  # release the prefix harmlessly
 
         # with the finder open, the pane underneath must not take focus
-        s.key("f")
+        s.key("s")
         s.settle(60)
         hover(s, left["content_x"] + 2, left["content_y"] + 1)
         s.settle(60)

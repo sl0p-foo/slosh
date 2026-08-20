@@ -950,6 +950,17 @@ bool rename_key(app_t *a, const input_event_t *ev) {
   if (!a->renaming) return false;
   if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
 
+  /* The same C-u the picker's query field has: these are the program's two
+   * places you type into, and a key that clears one and is swallowed by the
+   * other is a key you cannot trust. It earns its place here twice over,
+   * because a rename seeds with the current label — an edit, usually — and
+   * "replace it outright" is otherwise a backspace per character. */
+  if ((ev->mods & MOD_CTRL) &&
+      (ev->key == GHOSTTY_KEY_U || ev->unshifted == 'u')) {
+    a->rename_buf[0] = 0;
+    return true;
+  }
+
   switch (ev->key) {
   case GHOSTTY_KEY_ESCAPE: rename_end(a, false); return true;
   case GHOSTTY_KEY_ENTER: rename_end(a, true); return true;
@@ -996,6 +1007,15 @@ void app_compose(app_t *a, screen_t *s) {
   draw_node(a, s, cur(a)->root);
   draw_corners(a, s);
   draw_min_bar(a, s);
+  /* The floats, over everything tiled and under the modals below: painted
+   * later is on top, and the hit list resolves clicks the same way, so the
+   * z-order and the click order cannot disagree. Before the status line,
+   * which cannot overlap them (the clamp keeps floats off it) but reads the
+   * hit list for its hover hint — drawn first, it would ask about a frame
+   * whose hits did not exist yet, and a float's border would hint as the
+   * pane underneath. The order also keeps a float's shadow off the status
+   * row on a gap-less config, since the row is painted after the shade. */
+  draw_floats(a, s);
   draw_status_line(a, s);
   /* The modals, on top of everything: each is the only thing that can be
    * interacted with while it is up, so it owns the topmost hits. The scrim

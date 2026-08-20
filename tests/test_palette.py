@@ -151,6 +151,47 @@ def test_enter_runs_the_command():
         check("and the palette closed behind it", not is_open(s))
 
 
+def test_rename_is_reachable_from_the_palette():
+    """Renaming was a double-click and nothing else, which made it the one
+    verb the palette could not reach -- exactly what the palette exists to
+    prevent. The editor it opens is the same in-place one the gesture uses,
+    seeded with the current label."""
+    with Session(SH, cols=80, rows=22) as s:
+        s.settle()
+        s.send(OPEN)
+        s.send("rename this tab")
+        s.settle(80)
+        s.send(r"\r")
+        s.settle(80)
+        s.send("deploys")
+        s.settle(40)
+        s.send(r"\r")
+        s.settle(40)
+        check(
+            "rename-tab renames the tab in place",
+            [t["name"] for t in s.tabs()] == ["deploys"],
+            str(s.tabs()),
+        )
+
+        s.send(OPEN)
+        s.send("rename this pane")
+        s.settle(80)
+        s.send(r"\r")
+        s.settle(80)
+        # The editor seeds with the current title (a rename is an edit);
+        # clear it first so the name is what was typed.
+        s.send(r"\x15")  # C-u: clear the field
+        s.send("agent")
+        s.settle(40)
+        s.send(r"\r")
+        s.settle(40)
+        check(
+            "rename-pane renames the pane in place",
+            [p["title"] for p in s.panes()] == ["agent"],
+            str([p["title"] for p in s.panes()]),
+        )
+
+
 def test_clicking_a_row_runs_it():
     with Session(SH, cols=80, rows=22) as s:
         s.settle()
@@ -234,7 +275,7 @@ def test_the_finder_is_still_its_own_thing():
     """They share a box; they must not share a list."""
     with Session(SH, cols=80, rows=22) as s:
         s.settle()
-        s.send(r"\x01f")
+        s.send(r"\x01s")
         s.settle(100)
         check(
             "the finder lists panes, not commands",
@@ -269,6 +310,7 @@ def test_every_label_fits_the_column():
 
 if __name__ == "__main__":
     test_every_label_fits_the_column()
+    test_rename_is_reachable_from_the_palette()
     test_it_opens_and_lists_commands()
     test_it_lists_actions_that_have_no_key()
     test_typing_filters_it()

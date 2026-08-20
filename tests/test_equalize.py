@@ -45,7 +45,7 @@ def test_a_nudged_row_of_columns_goes_back_to_even():
             str(nudged),
         )
 
-        s.key("=")
+        s.key("0")
         s.settle()
         back = widths(s)
         check("equalize puts them back to even", max(back) - min(back) <= 1, str(back))
@@ -66,7 +66,7 @@ def test_it_divides_a_split_between_the_panes_behind_it():
             f"{left['w']} vs {top['w']}",
         )
 
-        s.key("=")
+        s.key("0")
         s.settle()
         left, top, bottom = by_pos(s)
         check(
@@ -105,7 +105,7 @@ def test_a_minimised_pane_is_not_counted():
         s.settle()
         check("one pane is away in the strip", len(widths(s)) == 2, str(widths(s)))
 
-        s.key("=")
+        s.key("0")
         s.settle()
         seen = widths(s)
         check(
@@ -119,7 +119,7 @@ def test_one_pane_has_nothing_to_even_out():
     with Session(SH, cols=80, rows=24) as s:
         s.settle()
         before = s.pane()
-        s.key("=")
+        s.key("0")
         s.settle()
         snap = s.snapshot()
         check(
@@ -146,7 +146,7 @@ def test_it_is_in_the_palette_and_the_cheatsheet():
         sheet = s.snapshot().screen()
         check(
             "the cheatsheet lists it under size, with its key",
-            "=      even out every split" in sheet,
+            "0      even out every split" in sheet,
             repr(sheet[:400]),
         )
         s.send("q")  # any key closes the sheet
@@ -162,7 +162,7 @@ def test_it_is_in_the_palette_and_the_cheatsheet():
         )
         check(
             "with the key it would have skipped",
-            "C-a =" in pal.screen(),
+            "C-a 0" in pal.screen(),
             repr(pal.screen()[:400]),
         )
         check(

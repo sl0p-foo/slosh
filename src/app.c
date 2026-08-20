@@ -327,14 +327,31 @@ static const char *hint_for(app_t *a, const char *action) {
   if (strncmp(action, "scrollbottom:", 13) == 0) return "back to the bottom";
   if (strncmp(action, "panetitle:", 10) == 0)
     return "double-click to rename \u00b7 drag to move";
-  if (strncmp(action, "title:", 6) == 0)
+  if (strncmp(action, "title:", 6) == 0) {
+    /* A float's top row only moves it; the click-to-split half of the
+     * handle's promise is exactly what a float does not offer. */
+    node_t *n = pane_by_id(a, id);
+    if (n && n->floating) return "drag to move";
     /* The handle says both things it can do; the rest of the row only drags. */
     return strchr(action + 6, ':') ? "drag to move \u00b7 click to split up"
                                    : "drag to move";
-  /* The rim gets no caption on purpose: it is the part of the edge that does
-   * nothing, and the guide it arms is already pointing at the part that does. */
-  if (strncmp(action, "brim:", 5) == 0) return NULL;
-  if (strncmp(action, "border:", 7) == 0) {
+  }
+  if (strncmp(action, "brim:", 5) == 0 || strncmp(action, "border:", 7) == 0) {
+    /* On a float the whole border is the resize grab, corners both ways —
+     * read from the same derivation the press uses, so the caption and the
+     * drag cannot disagree. */
+    node_t *n = pane_by_id(a, id);
+    if (n && n->floating) {
+      if (!a->ptr_valid) return "drag to resize";
+      uint8_t e = float_edges_at(n, a->ptr_x, a->ptr_y);
+      return (e & (FEDGE_L | FEDGE_R)) && (e & (FEDGE_T | FEDGE_B))
+                 ? "drag to resize both ways"
+                 : "drag to resize";
+    }
+    /* The rim gets no caption on purpose: it is the part of the edge that
+     * does nothing, and the guide it arms is already pointing at the part
+     * that does. */
+    if (action[1] == 'r') return NULL; /* brim: */
     const char *side = strrchr(action, ':');
     switch (side && side[1] ? side[1] : 0) {
     case 'l': return "click to split left";
@@ -902,6 +919,34 @@ static bool hover_focus_allowed(const app_t *a) {
          a->drag.kind == DRAG_NONE;
 }
 
+/* Grab a float's edge: which edges follow the pointer is derived from where
+ * the press landed on the rect painted this frame, so a bottom corner is two
+ * edges and resizes on both axes — no corner target to register, because the
+ * geometry that was just painted already says which corner it is. The same
+ * derivation the hint and the guide read (float_edges_at), so the promise
+ * and the grab cannot disagree. */
+static void float_resize_press(app_t *a, node_t *n, const input_event_t *ev) {
+  uint8_t e = float_edges_at(n, ev->mx, ev->my);
+  if (!e) return;
+  a->drag.kind = DRAG_FLOAT_RESIZE;
+  a->drag.src = n->id;
+  a->drag.fedges = e;
+  a->drag.moved = false;
+  a->drag.x = ev->mx;
+  a->drag.y = ev->my;
+  /* Grabbing a float raises it, like every window you have ever held. */
+  app_focus_pane(a, n->id);
+}
+
+/* During a title drag, is this pane somewhere the drop could land? A float
+ * is not: swapping tree seats with a pane that is not *in* its seat would
+ * rearrange something invisible. 0 clears the highlight as well as the drop,
+ * so hovering a float mid-drag promises nothing. */
+static uint32_t swap_target(app_t *a, uint32_t id) {
+  node_t *n = pane_by_id(a, id);
+  return n && n->floating ? 0 : id;
+}
+
 static void do_action(app_t *a, const char *action, const input_event_t *ev) {
   bool on_name = strncmp(action, "panetitle:", 10) == 0;
   if (on_name || strncmp(action, "title:", 6) == 0) {
@@ -925,6 +970,20 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
         a->name_click_id = id;
         a->name_click_kind = RENAME_PANE;
       }
+      /* A float's top row moves it — its own verb, because everything a
+       * title drag means on release (swap, split up) is what a float must
+       * not do. The rename double-click above still wins, so a float's name
+       * is still a name. */
+      node_t *fn = pane_by_id(a, id);
+      if (fn && fn->floating) {
+        a->drag.kind = DRAG_FLOAT_MOVE;
+        a->drag.src = id;
+        a->drag.moved = false;
+        a->drag.x = ev->mx;
+        a->drag.y = ev->my;
+        app_focus_pane(a, id);
+        return;
+      }
       /* The top border is both a drag handle and an edge, and whether this is a
        * move or a split-upward is decided by whether the pointer moves. Which
        * side it takes is decided by *where* on the row it was pressed: only the
@@ -934,6 +993,7 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
       a->drag.kind = DRAG_TITLE;
       a->drag.src = id;
       a->drag.target = id;
+      a->drag.drop_side = 0;
       a->drag.x = ev->mx;
       a->drag.y = ev->my;
       a->drag.moved = false;
@@ -947,13 +1007,29 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
    * Deliberately inert and deliberately explicit -- this is the whole point of
    * the handle, and a silent fall-through to whatever comes next would be a
    * thin place for it to live. Starting no drag also means the release path
-   * finds nothing to split, which is what stops the accidents. */
-  if (strncmp(action, "brim:", 5) == 0) return;
+   * finds nothing to split, which is what stops the accidents.
+   *
+   * On a float the whole border is a resize grab instead: a float has no
+   * guide to arm and no split to guard, and the rim being inert was about
+   * accidents that rearrange a layout — resizing the thing you grabbed is
+   * the accident-free reading of the same gesture. */
+  if (strncmp(action, "brim:", 5) == 0) {
+    uint32_t id = (uint32_t)strtoul(action + 5, NULL, 10);
+    node_t *fn = pane_by_id(a, id);
+    if (fn && fn->floating && ev->maction == MOUSE_PRESS)
+      float_resize_press(a, fn, ev);
+    return;
+  }
   if (strncmp(action, "border:", 7) == 0) {
     uint32_t id = (uint32_t)strtoul(action + 7, NULL, 10);
     const char *colon = strchr(action + 7, ':');
     char side = colon && colon[1] ? colon[1] : 'r';
     if (ev->maction == MOUSE_PRESS) {
+      node_t *fn = pane_by_id(a, id);
+      if (fn && fn->floating) {
+        float_resize_press(a, fn, ev);
+        return;
+      }
       a->drag.kind = DRAG_BORDER;
       a->drag.src = id;
       a->drag.side = side;
@@ -1168,10 +1244,30 @@ bool run_action(app_t *a, action_t act) {
   switch (act) {
   case ACT_SPLIT: split_focus_auto(a); return true;
   case ACT_SPLIT_COLS: split_focus_ui(a, SPLIT_COLS); return true;
-  case ACT_SPLIT_ROWS: split_focus_ui(a, SPLIT_ROWS); return true;
+  case ACT_SPLIT_ROWS:
+    /* On a focused float, `-` shrinks it: the split it usually means is a
+       * refusal there, and minus meaning smaller is the reading the hand
+       * expects. The pair's other half, grow, has the =/+ key to itself. */
+    if (focus_float_grow(a, -1)) return true;
+    split_focus_ui(a, SPLIT_ROWS);
+    return true;
   case ACT_ZOOM: app_toggle_zoom(a, 0); return true;
   case ACT_MINIMIZE:
     if (!app_minimize(a, 0)) app_toast(a, "nothing else to show");
+    return true;
+  case ACT_FLOAT:
+    /* The refusal is the guard: floating the last tiled pane would leave
+       * the overlay nothing to be over. */
+    if (!app_toggle_float(a, 0)) app_toast(a, "nothing to float over");
+    return true;
+  case ACT_NEW_FLOAT:
+    if (!app_new_float(a)) app_toast(a, "cannot open a pane");
+    return true;
+  case ACT_FLOAT_GROW:
+    if (!focus_float_grow(a, 1)) app_toast(a, "nothing floating to grow");
+    return true;
+  case ACT_FLOAT_SHRINK:
+    if (!focus_float_grow(a, -1)) app_toast(a, "nothing floating to shrink");
     return true;
   case ACT_CLOSE_PANE:
     if (cur(a)->focus) close_leaf(a, cur(a)->focus);
@@ -1180,6 +1276,19 @@ bool run_action(app_t *a, action_t act) {
     /* Nothing to tag in an empty tab, and a purpose belongs to a pane rather
        * than to the space one would occupy. */
     if (cur(a)->focus) purpose_begin(a, cur(a)->focus->id);
+    return true;
+  case ACT_RENAME_PANE:
+    if (cur(a)->focus) rename_begin(a, cur(a)->focus->id);
+    return true;
+  case ACT_RENAME_TAB:
+    /* The editor draws in the tab's own cell in the strip; with the strip
+       * off there is nowhere to type, and an invisible editor holding the
+       * keyboard is the wedged state this program does not do. */
+    if (!CFG.status_bar) {
+      app_toast(a, "no tab strip to rename in");
+      return true;
+    }
+    rename_tab_begin(a, cur(a)->id);
     return true;
   case ACT_RERUN:
     /* The keyboard's half of a dead pane's [re-run] button. Refused on a
@@ -1220,10 +1329,21 @@ bool run_action(app_t *a, action_t act) {
   }
   case ACT_NEXT_TAB: app_cycle_tab(a, 1); return true;
   case ACT_PREV_TAB: app_cycle_tab(a, -1); return true;
-  case ACT_RESIZE_LEFT: resize_focus(a, -1, 0); return true;
-  case ACT_RESIZE_RIGHT: resize_focus(a, 1, 0); return true;
-  case ACT_RESIZE_UP: resize_focus(a, 0, -1); return true;
-  case ACT_RESIZE_DOWN: resize_focus(a, 0, 1); return true;
+  /* On a focused float the same keys move the float: it has no boundary to
+     * move, and moving the thing itself is the same verb aimed at what is
+     * there. */
+  case ACT_RESIZE_LEFT:
+    if (!focus_float_move(a, -1, 0)) resize_focus(a, -1, 0);
+    return true;
+  case ACT_RESIZE_RIGHT:
+    if (!focus_float_move(a, 1, 0)) resize_focus(a, 1, 0);
+    return true;
+  case ACT_RESIZE_UP:
+    if (!focus_float_move(a, 0, -1)) resize_focus(a, 0, -1);
+    return true;
+  case ACT_RESIZE_DOWN:
+    if (!focus_float_move(a, 0, 1)) resize_focus(a, 0, 1);
+    return true;
   case ACT_CLEAR_SHADERS:
     /* Says which of the two happened. "Nothing to undo" and "undone" look
        * identical on a pane that was never painted, and a key that might have
@@ -1366,6 +1486,7 @@ void app_event(app_t *a, const input_event_t *ev) {
     }
     a->drag.kind = DRAG_NONE;
     a->drag.src = a->drag.target = 0;
+    a->drag.drop_side = 0;
   }
 
   if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
@@ -1465,6 +1586,16 @@ void app_event(app_t *a, const input_event_t *ev) {
                           ? (int)ev->mx - (int)a->drag.x
                           : (int)ev->my - (int)a->drag.y;
           drag_edge(a, sp, a->drag.edge, cells);
+        } else if (a->drag.kind == DRAG_FLOAT_MOVE) {
+          node_t *n = pane_by_id(a, a->drag.src);
+          if (n)
+            float_move(a, n, (int)ev->mx - (int)a->drag.x,
+                       (int)ev->my - (int)a->drag.y);
+        } else if (a->drag.kind == DRAG_FLOAT_RESIZE) {
+          node_t *n = pane_by_id(a, a->drag.src);
+          if (n)
+            float_resize(a, n, a->drag.fedges, (int)ev->mx - (int)a->drag.x,
+                         (int)ev->my - (int)a->drag.y);
         } else if (a->drag.kind == DRAG_TAB) {
           /* Reordered as you drag, rather than dropped at the end: the
              * strip is the only thing that could show an insertion point, and
@@ -1486,25 +1617,43 @@ void app_event(app_t *a, const input_event_t *ev) {
           a->drag.tab_target = (uint32_t)strtoul(action + 4, NULL, 10);
           a->drag.new_tab_target = false;
           a->drag.target = 0;
+          a->drag.drop_side = 0;
         } else if (a->drag.kind == DRAG_TITLE && action &&
                    strcmp(action, "newtab") == 0) {
           /* The button that makes a tab, used as somewhere to put one pane. */
           a->drag.new_tab_target = true;
           a->drag.tab_target = 0;
           a->drag.target = 0;
-        } else if (action && strncmp(action, "title:", 6) == 0) {
-          a->drag.target = (uint32_t)strtoul(action + 6, NULL, 10);
+          a->drag.drop_side = 0;
+        } else if (a->drag.kind == DRAG_TITLE && action &&
+                   strncmp(action, "drop:", 5) == 0) {
+          /* A drop zone: insert beside that pane, on that side. The zone
+             * was registered by the paint the pointer is over, so it exists
+             * exactly where the fill said it would. */
+          a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
+          const char *sep = strrchr(action, ':');
+          a->drag.drop_side = sep && sep[1] ? sep[1] : 0;
           a->drag.tab_target = 0;
           a->drag.new_tab_target = false;
+        } else if (action && strncmp(action, "title:", 6) == 0) {
+          a->drag.target =
+              swap_target(a, (uint32_t)strtoul(action + 6, NULL, 10));
+          a->drag.tab_target = 0;
+          a->drag.new_tab_target = false;
+          a->drag.drop_side = 0;
         } else if (action && strncmp(action, "panetitle:", 10) == 0) {
           /* Dropping onto a pane's name is dropping onto that pane. */
-          a->drag.target = (uint32_t)strtoul(action + 10, NULL, 10);
+          a->drag.target =
+              swap_target(a, (uint32_t)strtoul(action + 10, NULL, 10));
           a->drag.tab_target = 0;
           a->drag.new_tab_target = false;
+          a->drag.drop_side = 0;
         } else if (action && strncmp(action, "pane:", 5) == 0) {
-          a->drag.target = (uint32_t)strtoul(action + 5, NULL, 10);
+          a->drag.target =
+              swap_target(a, (uint32_t)strtoul(action + 5, NULL, 10));
           a->drag.tab_target = 0;
           a->drag.new_tab_target = false;
+          a->drag.drop_side = 0;
         }
         a->drag.x = ev->mx;
         a->drag.y = ev->my;
@@ -1521,7 +1670,9 @@ void app_event(app_t *a, const input_event_t *ev) {
             /* The guide already declined to offer this, so the click that
                * the guide would have explained must decline too — otherwise
                * the border silently does something it just said it would not. */
-            if (!split_fits(n, dir)) {
+            if (n->floating) { /* its own words: the room is not the problem */
+              app_toast(a, "a floating pane cannot be split");
+            } else if (!split_fits(n, dir)) {
               app_toast(a, dir == SPLIT_COLS ? "no room to split across"
                                              : "no room to split down");
             } else {
@@ -1549,13 +1700,27 @@ void app_event(app_t *a, const input_event_t *ev) {
             (a->drag.tab_target || a->drag.new_tab_target)) {
           /* Dropped on the strip: the pane changes tab rather than places. */
           drop_pane_on_strip(a);
+        } else if (a->drag.kind == DRAG_TITLE && a->drag.moved && action &&
+                   strncmp(action, "drop:", 5) == 0) {
+          /* A zone inserts beside its pane, on its side: the drop grammar.
+             * Resolved from the painted frame's hits at the moment of
+             * release, not from a side remembered off the last motion —
+             * the zones are painted one frame behind the pointer, and a
+             * remembered answer could disagree with the fill on screen.
+             * Derive from what the user saw; same lesson as the guide. */
+          uint32_t dst = (uint32_t)strtoul(action + 5, NULL, 10);
+          const char *sep = strrchr(action, ':');
+          if (dst != a->drag.src && sep && sep[1])
+            insert_pane_beside(a, a->drag.src, dst, sep[1]);
         } else if (a->drag.kind == DRAG_TITLE &&
                    a->drag.target != a->drag.src) {
+          /* The centre is the swap it always was. */
           swap_panes(a, a->drag.src, a->drag.target);
         }
         a->drag.kind = DRAG_NONE;
         a->drag.src = a->drag.target = a->drag.tab_target = 0;
         a->drag.new_tab_target = false;
+        a->drag.drop_side = 0;
       }
       break; /* a drag owns the mouse until the button comes up */
     }
@@ -1618,6 +1783,7 @@ static void panes_cb(node_t *n, void *ud) {
   json_int(j, "content_h", n->content.h);
   json_bool(j, "focused", n == cur(pj->a)->focus);
   json_bool(j, "hidden", n->hidden);
+  json_bool(j, "floating", n->floating);
   json_bool(j, "suspended", pane_suspended(n->pane));
   /* A dead pane is still a pane, so tooling has to be able to tell: `alive`
    * false with a status is one whose program is over and which is waiting to

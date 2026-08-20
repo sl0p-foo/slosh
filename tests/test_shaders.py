@@ -90,6 +90,11 @@ def press(s, x, y):
     s.send(rf"\e[<0;{x + 1};{y + 1}M")
 
 
+# Drop-state hovers aim at the target's *centre*: since the drop zones (the
+# edge bands that mean "insert beside") arrived, only the centre means the
+# swap, and only there is the pane the drop_hover state -- a band hover is an
+# ordinary candidate plus the zone's own fill, which would contaminate the
+# colours these tests sample.
 def motion(s, x, y):
     s.send(rf"\e[<32;{x + 1};{y + 1}M")
 
@@ -211,7 +216,7 @@ def test_dragging_greys_the_other_panes():
         left, right = split(s)
 
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         snap = s.snapshot()
         check(
             "the pane being dragged keeps its colour",
@@ -249,7 +254,7 @@ def test_full_strength_is_a_true_grey():
         left, right = split(s)
 
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         s.settle(120)
         grey = content_fg(s.snapshot(), right)
         check(
@@ -282,7 +287,7 @@ def test_the_drag_greying_outranks_the_focus_dimming():
         # Drag the *unfocused* pane, so focus policy would dim it if it applied.
         focused, other = by_focus(s)
         press(s, other["x"] + 4, other["y"])
-        motion(s, focused["x"] + 5, focused["y"] + 3)
+        motion(s, focused["x"] + focused["w"] // 2, focused["y"] + focused["h"] // 2)
         snap = s.snapshot()
         check(
             "the dragged pane lifts off the page, dimming or not",
@@ -299,7 +304,7 @@ def drag_and_sample(conf):
         s.until_text("BLOCK")
         left, right = split(s)
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         got = content_fg(s.snapshot(), right)
         release(s, right["x"] + 5, right["y"] + 3)
         s.settle(120)
@@ -364,7 +369,7 @@ def test_non_dragged_panes_get_a_dashed_border():
         )
 
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         snap = s.snapshot()
         top = snap.line(right["y"])[right["x"] : right["x"] + right["w"]]
         dragged_top = snap.line(left["y"])[left["x"] : left["x"] + left["w"]]
@@ -402,7 +407,7 @@ def test_the_hovered_target_is_still_highlighted_over_the_dashes():
         s.until_text("BLOCK")
         left, right = split(s)
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         snap = s.snapshot()
         run = snap.style_at(right["x"], right["y"])
         check(
@@ -421,7 +426,7 @@ def test_a_drag_that_ends_off_a_pane_still_clears():
         left, right = split(s)
 
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         s.settle(120)
         motion(s, 0, 0)  # out into the margin
         release(s, 0, 0)
@@ -435,7 +440,7 @@ def test_a_keystroke_mid_drag_clears_the_greying():
         left, right = split(s)
 
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         s.settle(120)
         s.send("x")
         check_at_rest(s, "a keystroke mid-drag")
@@ -524,7 +529,7 @@ def test_the_dragged_pane_can_have_a_state_of_its_own():
         s.until_text("BLOCK")
         left, right = split(s)
         press(s, left["x"] + 4, left["y"])
-        motion(s, right["x"] + 5, right["y"] + 3)
+        motion(s, right["x"] + right["w"] // 2, right["y"] + right["h"] // 2)
         snap = s.snapshot()
         check(
             "the pane in your hand takes the dragging state",
@@ -554,7 +559,7 @@ def test_the_hovered_pane_is_a_different_state_from_the_rest():
             return
         a, b, c = panes
         press(s, a["x"] + 4, a["y"])
-        motion(s, b["x"] + 3, b["y"] + 3)
+        motion(s, b["x"] + b["w"] // 2, b["y"] + b["h"] // 2)
         snap = s.snapshot()
         check(
             "the pane under the pointer is the hover state",

@@ -111,7 +111,7 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 |---|---|
 | geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
 | chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` `bell_indicator` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
-| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `hover_delay_ms` `double_click_ms` `word_separators` `anim_ms` `modal_scrim` `dim_unfocused` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
+| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `hover_delay_ms` `double_click_ms` `word_separators` `anim_ms` `modal_scrim` `dim_unfocused` `float_shadow` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
 | colour | `theme { }` |
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |
@@ -178,6 +178,7 @@ by looking:
 
 ```kdl
 dim_unfocused 60          // the one knob most people want
+float_shadow 110          // the shade a floating pane casts; 0 for none
 
 states {                  // ...and the whole table underneath it
     dead { grayscale amount=200; dim amount=90 }
@@ -187,6 +188,7 @@ states {                  // ...and the whole table underneath it
     // while there is more content past it (`above` / `below` in expressions),
     // and turn solid at the end of the buffer -- nothing more to scroll to
     unfocused { dim amount=60 }    // writing this replaces dim_unfocused
+    // floating { }   // a float; above unfocused, so floats are never dimmed
     // bell: a shimmer across the body (a soft sheen, gone within a second)
     // and a chrome pass on the frame -- blinks, then a breathe -- in theme's
     // bell colour, until the pane is looked at. See the chrome shaders page;

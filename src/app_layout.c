@@ -33,10 +33,11 @@ size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k) {
   return k;
 }
 
-/* Does anything under here still want space in the layout? */
+/* Does anything under here still want space in the layout? A floating pane
+ * does not: it is placed over the layout, not by it. */
 static bool subtree_live(node_t *n) {
   if (!n) return false;
-  if (n->kind == NODE_LEAF) return !n->minimized;
+  if (n->kind == NODE_LEAF) return !n->minimized && !n->floating;
   for (size_t i = 0; i < n->nkids; i++)
     if (subtree_live(n->kids[i])) return true;
   return false;
@@ -50,6 +51,19 @@ size_t collect_minimized(node_t *n, node_t **out, size_t cap, size_t k) {
   }
   for (size_t i = 0; i < n->nkids; i++)
     k = collect_minimized(n->kids[i], out, cap, k);
+  return k;
+}
+
+/* The floats, in tree order; the draw pass sorts them by raise stamp. A
+ * minimised float is in the strip, not on screen, so it is not collected. */
+size_t collect_floating(node_t *n, node_t **out, size_t cap, size_t k) {
+  if (!n || k >= cap) return k;
+  if (n->kind == NODE_LEAF) {
+    if (n->floating && !n->minimized) out[k++] = n;
+    return k;
+  }
+  for (size_t i = 0; i < n->nkids; i++)
+    k = collect_floating(n->kids[i], out, cap, k);
   return k;
 }
 
@@ -98,6 +112,11 @@ typedef struct {
   node_t *focus;
   bool apply;    /* false during the probe */
   bool overflow; /* some node could not give its children their floor */
+  /* Lay out leaves the tree normally skips. The flatten paths set it because
+   * down there every pane is a row and being minimised or floating is not a
+   * different thing to be; the float placement sets it because placing a
+   * float *is* laying out a leaf the tree skipped. */
+  bool place_hidden;
 } layout_ctx_t;
 
 static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx);
@@ -126,6 +145,7 @@ static void layout_stack(node_t *n, rect_t r, layout_ctx_t *ctx) {
   node_t *leaves[64];
   size_t nl = collect_leaves(n, leaves, 64, 0);
   if (!nl) return;
+  ctx->place_hidden = true; /* a list holds every pane, floats included */
 
   size_t expanded = 0;
   for (size_t i = 0; i < nl; i++)
@@ -152,6 +172,7 @@ static void layout_solo(node_t *n, rect_t r, layout_ctx_t *ctx) {
   node_t *leaves[64];
   size_t nl = collect_leaves(n, leaves, 64, 0);
   if (!nl) return;
+  ctx->place_hidden = true; /* the shown pane may be a float (zoomed, say) */
 
   size_t expanded = 0;
   for (size_t i = 0; i < nl; i++)
@@ -164,11 +185,13 @@ static void layout_solo(node_t *n, rect_t r, layout_ctx_t *ctx) {
 }
 
 static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
-  /* Minimised panes are placed by the strip, not by the tree. Returning before
-   * touching the rect leaves the strip's placement standing, and returning
-   * before the floor check is right too: a pane that is one row by request is
-   * not a pane that failed to fit. */
-  if (n->kind == NODE_LEAF && n->minimized) return;
+  /* Minimised panes are placed by the strip and floating ones by the float
+   * pass, not by the tree. Returning before touching the rect leaves that
+   * placement standing, and returning before the floor check is right too: a
+   * pane that is one row by request is not a pane that failed to fit. */
+  if (n->kind == NODE_LEAF && (n->minimized || n->floating) &&
+      !ctx->place_hidden)
+    return;
 
   n->rect = r;
   n->collapsed = false;
@@ -281,6 +304,76 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
 node_t *pane_by_id(app_t *a, uint32_t id); /* defined below */
 size_t tab_of(app_t *a, node_t *n);
 
+/* Clamp a wanted rect into the tab's area. Derived every frame from the
+ * intent and the area, never written back: a float squeezed by a small
+ * terminal is exactly where you put it when the room comes back — the same
+ * property the weights promise across a collapse/expand cycle. */
+static rect_t float_clamp(rect_t want, rect_t area) {
+  rect_t r = want;
+  if (!r.w || !r.h) { /* never placed: centred, two thirds of the area */
+    r.w = (uint16_t)(area.w * 2 / 3);
+    r.h = (uint16_t)(area.h * 2 / 3);
+    r.x = (uint16_t)(area.x + (area.w - r.w) / 2);
+    r.y = (uint16_t)(area.y + (area.h - r.h) / 2);
+  }
+  /* The same floor the tree holds a leaf's whole rect to. */
+  if (r.w < MIN_PANE_COLS) r.w = MIN_PANE_COLS;
+  if (r.h < MIN_PANE_ROWS) r.h = MIN_PANE_ROWS;
+  if (r.w > area.w) r.w = area.w;
+  if (r.h > area.h) r.h = area.h;
+  if (r.x < area.x) r.x = area.x;
+  if (r.y < area.y) r.y = area.y;
+  if (r.x + r.w > area.x + area.w) r.x = (uint16_t)(area.x + area.w - r.w);
+  if (r.y + r.h > area.y + area.h) r.y = (uint16_t)(area.y + area.h - r.h);
+  return r;
+}
+
+/* Give every float its rect for this frame. Reuses the leaf branch of
+ * layout_node — frame, padding, content, resize — rather than a second copy
+ * of that arithmetic, with a ctx of its own so a float below the floor
+ * cannot flatten the tab: the clamp is the answer down here, not the list. */
+static void place_floats(app_t *a, rect_t area) {
+  node_t *fl[64];
+  size_t nf = collect_floating(cur(a)->root, fl, 64, 0);
+  layout_ctx_t ctx = {
+      .focus = cur(a)->focus, .apply = true, .place_hidden = true};
+  for (size_t i = 0; i < nf; i++)
+    layout_node(fl[i], float_clamp(fl[i]->float_rect, area), &ctx);
+}
+
+/* No live tiled pane under this root? The float guard refuses to *make* that
+ * state, but closing the last tiled pane, or moving it to another tab, can
+ * still reach it — and a tab that is only overlays is overlays over nothing.
+ * So the top float lands. Same shape as the minimised-focus rule below:
+ * checked once, here, rather than at each place the tree can lose a leaf. */
+static void ensure_tiled(app_t *a) {
+  node_t *leaves[64];
+  size_t nl = collect_leaves(cur(a)->root, leaves, 64, 0);
+  node_t *top = NULL;
+  for (size_t i = 0; i < nl; i++) {
+    if (!leaves[i]->minimized && !leaves[i]->floating) return; /* all is well */
+    if (leaves[i]->floating && !leaves[i]->minimized &&
+        (!top || leaves[i]->raised > top->raised))
+      top = leaves[i];
+  }
+  if (top) top->floating = false;
+}
+
+/* The rect a tab lays out into: the screen minus the strip, the status line
+ * and the outer gap. Factored so the float edits can ask the same question
+ * the layout answers, rather than a second copy of this arithmetic. */
+static rect_t tab_area(app_t *a) {
+  uint16_t gx = (uint16_t)(CFG.gap * CFG.gap_aspect), gy = CFG.gap;
+  uint16_t top = (uint16_t)(gy + STRIP_ROWS);
+  return (rect_t){.x = gx,
+                  .y = top,
+                  .w =
+                      (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
+                  .h = (uint16_t)(a->rows > top + gy + LINE_ROWS
+                                      ? a->rows - top - gy - LINE_ROWS
+                                      : 1)};
+}
+
 void layout(app_t *a) {
   if (!a->ntabs) return;
   /* Re-derived below, like everything else about a layout pass: whether this
@@ -288,22 +381,24 @@ void layout(app_t *a) {
    * able to ask what its edit did — a turn that flattens the tab is a turn
    * nobody asked for. */
   a->flattened = false;
-  uint16_t gx = (uint16_t)(CFG.gap * CFG.gap_aspect), gy = CFG.gap;
-  uint16_t top = (uint16_t)(gy + STRIP_ROWS);
-  rect_t r = {.x = gx,
-              .y = top,
-              .w = (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
-              .h = (uint16_t)(a->rows > top + gy + LINE_ROWS
-                                  ? a->rows - top - gy - LINE_ROWS
-                                  : 1)};
+  rect_t r = tab_area(a);
   node_t *root = cur(a)->root;
   if (!root) return;
+
+  ensure_tiled(a);
 
   /* Focusing a minimised pane is how you get it back, and it is checked here
    * rather than in the several places focus can move: any route that ends with
    * this pane focused restores it, including ones that do not exist yet. */
   if (cur(a)->focus && cur(a)->focus->minimized)
     cur(a)->focus->minimized = false;
+
+  /* Focusing a float raises it. Stamped here for the same reason the rule
+   * above lives here: every route to "this float is focused" raises it, and
+   * the guard keeps the counter still while it is already on top. */
+  if (cur(a)->focus && cur(a)->focus->floating &&
+      cur(a)->focus->raised != a->raise_seq)
+    cur(a)->focus->raised = ++a->raise_seq;
 
   /* A zoomed pane is the whole tab. Reuses the solo path rather than adding a
    * third arrangement: "show this one and nothing else" is a thing the layout
@@ -362,6 +457,9 @@ void layout(app_t *a) {
     /* They are drawn by the bar, not as panes: no rect of their own. */
     for (size_t i = 0; i < nmin; i++)
       collapse_leaf(mins[i], (rect_t){r.x, r.y, 0, 0});
+    /* Floats go over the whole tab area, min bar included: the bar owns no
+     * global verbs, and a float can be moved off it. */
+    place_floats(a, r);
     return;
   }
   a->flattened = true;
@@ -473,7 +571,7 @@ static void place_beside(app_t *a, tab_t *t, node_t *leaf, node_t *node,
 static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
                                bool before, const char *const *argv,
                                const char *label) {
-  if (!leaf) return NULL;
+  if (!leaf || leaf->floating) return NULL; /* nowhere beside a float to be */
   /* A new pane opens where the pane it came out of *is*, not where the session
    * was started. Splitting inside a project and landing in whatever directory
    * the server happened to be launched from is wrong on its own, and it made a
@@ -499,6 +597,11 @@ static node_t *split_node_with(app_t *a, node_t *leaf, split_dir_t dir,
  * that immediately collapsed, and the guide's whole claim is that drawing and
  * the layout cannot disagree. */
 bool split_fits(node_t *leaf, split_dir_t dir) {
+  /* A split is a statement about the tree's arrangement, and a float is
+   * precisely not arranged. False here reaches everything that offers a
+   * split — the guide, the handle's click, the keyboard's floor check — so
+   * a float's border never promises what the tree cannot deliver. */
+  if (leaf->floating) return false;
   /* Two different questions, and the larger answer wins: min_pane is where the
    * layout gives up, min_split is where splitting stopped being worth
    * offering. A pane can clear the first and still be too small to be worth
@@ -552,6 +655,10 @@ void split_focus(app_t *a, split_dir_t dir) {
 void split_focus_ui(app_t *a, split_dir_t dir) {
   node_t *n = cur(a)->focus;
   if (!n) return;
+  if (n->floating) { /* its own words: the room is not the problem */
+    app_toast(a, "a floating pane cannot be split");
+    return;
+  }
   if (!split_fits(n, dir)) {
     app_toast(a, dir == SPLIT_COLS ? "no room to split across"
                                    : "no room to split down");
@@ -585,6 +692,10 @@ static split_dir_t preferred_dir(const node_t *leaf) {
 void split_focus_auto(app_t *a) {
   node_t *n = cur(a)->focus;
   if (!n) return;
+  if (n->floating) {
+    app_toast(a, "a floating pane cannot be split");
+    return;
+  }
   split_dir_t want = preferred_dir(n);
   split_dir_t other = want == SPLIT_COLS ? SPLIT_ROWS : SPLIT_COLS;
   split_dir_t dir;
@@ -872,12 +983,14 @@ bool app_minimize(app_t *a, uint32_t id) {
 
   /* Refused if it would leave nothing on screen. A tab showing no panes at all
    * has no way back that is discoverable from the tab, and "everything is put
-   * away" is not a state worth being able to reach by accident. */
+   * away" is not a state worth being able to reach by accident. A float does
+   * not count as something to show: it needs a tiled backdrop under it, the
+   * same invariant app_toggle_float holds. */
   node_t *next = NULL;
   node_t *leaves[64];
   size_t nl = collect_leaves(a->tabs[ti].root, leaves, 64, 0);
   for (size_t i = 0; i < nl; i++)
-    if (leaves[i] != n && !leaves[i]->minimized) {
+    if (leaves[i] != n && !leaves[i]->minimized && !leaves[i]->floating) {
       next = leaves[i];
       break;
     }
@@ -911,6 +1024,209 @@ bool app_pane_zoomed(app_t *a, uint32_t id) {
   return a->ntabs && cur(a)->zoom == id && id != 0;
 }
 
+/* Lift a pane out of the layout, or put it back in the seat it kept.
+ *
+ * Floating on puts it in the centre of the tab, always: the pop to the
+ * middle is what says the float *happened* — a pane lifted in place looks
+ * like a pane whose neighbours flinched. The size is the one remembered
+ * from the last time a hand shaped it, or the pane's own, a cell in from
+ * where it stood; only the position is opinionated, because the position is
+ * the announcement. Floating off keeps the size for next time. */
+bool app_toggle_float(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
+  if (!n || n->kind != NODE_LEAF) return false;
+  size_t ti = tab_of(a, n);
+  if (ti == (size_t)-1) return false;
+
+  if (n->floating) {
+    n->floating = false;
+  } else {
+    /* The backdrop must keep a pane: a tab that is only an overlay is an
+     * overlay over nothing. Same guard as minimising, tightened to tiled
+     * panes — another float is not something to float over. */
+    node_t *leaves[64];
+    size_t nl = collect_leaves(a->tabs[ti].root, leaves, 64, 0);
+    bool backed = false;
+    for (size_t i = 0; i < nl; i++)
+      if (leaves[i] != n && !leaves[i]->minimized && !leaves[i]->floating)
+        backed = true;
+    if (!backed) return false;
+
+    n->minimized = false; /* a minimised pane floated is a pane brought back */
+    n->floating = true;
+    n->raised = ++a->raise_seq;
+    uint16_t w = n->float_rect.w, h = n->float_rect.h;
+    if (!w && n->rect.w > 4 && n->rect.h > 4) {
+      w = (uint16_t)(n->rect.w - 2);
+      h = (uint16_t)(n->rect.h - 2);
+    }
+    if (w) {
+      rect_t area = tab_area(a);
+      if (w > area.w) w = area.w;
+      if (h > area.h) h = area.h;
+      n->float_rect = (rect_t){(uint16_t)(area.x + (area.w - w) / 2),
+                               (uint16_t)(area.y + (area.h - h) / 2), w, h};
+    }
+    /* w == 0 (a pane too small to measure): float_clamp's own centred
+     * default answers the same question at two thirds of the area. */
+  }
+  /* Either way you are now looking at it, and it holds the keyboard: the
+   * pane that just changed planes is the one the verb was about. */
+  a->cur = ti;
+  a->tabs[ti].focus = n;
+  layout(a);
+  return true;
+}
+
+bool app_pane_floating(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
+  return n && n->floating;
+}
+
+/* An explicit move or resize is the user authoring the intent, so unlike a
+ * terminal resize it *does* write back: the delta is applied to the rect as
+ * drawn — what you grabbed is what moves, even when an older intent is
+ * currently clamped — and after the layout has clamped the result, the
+ * clamped answer becomes the intent. Where you see it is where it stays.
+ *
+ * Refused while the float is not being drawn as a float: a flattened tab
+ * shows it as a row and a zoomed tab hides it, and writing either of those
+ * rects back as intent would destroy the place it returns to. */
+static bool float_editable(app_t *a, node_t *n) {
+  return n && n->floating && !n->minimized && !n->hidden && !n->collapsed &&
+         !a->flattened && !cur(a)->zoom;
+}
+
+void float_move(app_t *a, node_t *n, int dx, int dy) {
+  if (!float_editable(a, n) || (!dx && !dy)) return;
+  int x = (int)n->rect.x + dx, y = (int)n->rect.y + dy;
+  n->float_rect = (rect_t){(uint16_t)(x < 0 ? 0 : x), (uint16_t)(y < 0 ? 0 : y),
+                           n->rect.w, n->rect.h};
+  layout(a);
+  if (float_editable(a, n)) n->float_rect = n->rect;
+}
+
+/* Only the grabbed edges move. Each one stops at the area's wall and at the
+ * floor, and the opposite edge stays exactly where it is — the general
+ * clamp would keep the *size* by sliding the rect, which turns "drag the
+ * right edge past the wall" into the whole window walking left. An edge you
+ * are holding pinning at the wall is what a hand expects. */
+void float_resize(app_t *a, node_t *n, unsigned edges, int dx, int dy) {
+  if (!float_editable(a, n) || !edges || (!dx && !dy)) return;
+  rect_t area = tab_area(a);
+  int left = n->rect.x, top = n->rect.y;
+  int right = n->rect.x + n->rect.w, bottom = n->rect.y + n->rect.h;
+  int ax1 = area.x + area.w, ay1 = area.y + area.h;
+  if (edges & FEDGE_L) {
+    left += dx;
+    if (left < area.x) left = area.x;
+    if (left > right - MIN_PANE_COLS) left = right - MIN_PANE_COLS;
+  }
+  if (edges & FEDGE_R) {
+    right += dx;
+    if (right > ax1) right = ax1;
+    if (right < left + MIN_PANE_COLS) right = left + MIN_PANE_COLS;
+  }
+  if (edges & FEDGE_T) {
+    top += dy;
+    if (top < area.y) top = area.y;
+    if (top > bottom - MIN_PANE_ROWS) top = bottom - MIN_PANE_ROWS;
+  }
+  if (edges & FEDGE_B) {
+    bottom += dy;
+    if (bottom > ay1) bottom = ay1;
+    if (bottom < top + MIN_PANE_ROWS) bottom = top + MIN_PANE_ROWS;
+  }
+  if (left < 0) left = 0;
+  if (top < 0) top = 0;
+  n->float_rect = (rect_t){(uint16_t)left, (uint16_t)top,
+                           (uint16_t)(right - left), (uint16_t)(bottom - top)};
+  layout(a);
+  if (float_editable(a, n)) n->float_rect = n->rect;
+}
+
+/* Which edges of a float a grab at (mx, my) would move: the cell on the
+ * left border is the left edge, a bottom corner is two edges at once. One
+ * derivation shared by the press, the hover hint and the guide, so what is
+ * promised, what is painted and what the drag does cannot disagree — the
+ * hit-list rule, applied to geometry. */
+uint8_t float_edges_at(const node_t *n, uint16_t mx, uint16_t my) {
+  rect_t r = n->rect;
+  uint8_t e = 0;
+  if (mx <= r.x)
+    e |= FEDGE_L;
+  else if (mx >= (uint16_t)(r.x + r.w - 1))
+    e |= FEDGE_R;
+  if (my <= r.y)
+    e |= FEDGE_T;
+  else if (my >= (uint16_t)(r.y + r.h - 1))
+    e |= FEDGE_B;
+  return e;
+}
+
+/* The keyboard's move, one gap-aspect-square step per press, so a nudge
+ * looks the same distance on both axes. False when the focus is not a
+ * float, which hands the keys back to the boundary they usually move. */
+bool focus_float_move(app_t *a, int dx, int dy) {
+  node_t *n = a->ntabs ? cur(a)->focus : NULL;
+  if (!n || !n->floating) return false;
+  int aspect = CFG.gap_aspect ? CFG.gap_aspect : 2;
+  float_move(a, n, dx * aspect, dy);
+  return true;
+}
+
+/* Grow or shrink a focused float about its own centre, one gap-aspect
+ * square per side per press: `+` makes it bigger in every direction, `-`
+ * smaller, and the pane stays where you were looking. Pinned by the area
+ * and floored like every other float edit; the centre only drifts when a
+ * wall or the floor stops one side and not the other. False when the focus
+ * is not a float. */
+bool focus_float_grow(app_t *a, int sign) {
+  node_t *n = a->ntabs ? cur(a)->focus : NULL;
+  if (!n || !n->floating) return false;
+  if (!float_editable(a, n)) return true; /* a float, just not editable now */
+  rect_t area = tab_area(a);
+  int aspect = CFG.gap_aspect ? CFG.gap_aspect : 2;
+  int w = (int)n->rect.w + sign * 2 * aspect;
+  int h = (int)n->rect.h + sign * 2;
+  if (w < MIN_PANE_COLS) w = MIN_PANE_COLS;
+  if (w > area.w) w = area.w;
+  if (h < MIN_PANE_ROWS) h = MIN_PANE_ROWS;
+  if (h > area.h) h = area.h;
+  int x = (int)n->rect.x + ((int)n->rect.w - w) / 2;
+  int y = (int)n->rect.y + ((int)n->rect.h - h) / 2;
+  if (x < area.x) x = area.x;
+  if (y < area.y) y = area.y;
+  if (x + w > area.x + area.w) x = area.x + area.w - w;
+  if (y + h > area.y + area.h) y = area.y + area.h - h;
+  n->float_rect = (rect_t){(uint16_t)x, (uint16_t)y, (uint16_t)w, (uint16_t)h};
+  layout(a);
+  if (float_editable(a, n)) n->float_rect = n->rect;
+  return true;
+}
+
+/* A new floating shell: the throwaway terminal. The pane is real — it has a
+ * seat in the tree beside the focused pane, so un-floating it lands
+ * somewhere sensible and closing it is `close_leaf` like anyone — it simply
+ * starts life lifted, centred at the never-placed default size. A shell
+ * closes when you type `exit` (D14), which is what makes it throwaway
+ * without any new machinery saying so. */
+uint32_t app_new_float(app_t *a) {
+  node_t *beside = a->ntabs ? cur(a)->focus : NULL;
+  if (!beside || beside->kind != NODE_LEAF) return 0;
+  char cwdbuf[4096];
+  const char *cwd = live_cwd(beside->pane, cwdbuf, sizeof cwdbuf);
+  node_t *fresh = leaf_new_ex(a, default_argv(a), cwd, false, "");
+  if (!fresh) return 0;
+  place_beside(a, cur(a), beside, fresh, preferred_dir(beside), false);
+  fresh->floating = true;
+  fresh->raised = ++a->raise_seq;
+  /* float_rect stays zero: the centred two-thirds default. */
+  cur(a)->focus = fresh;
+  layout(a);
+  return fresh->id;
+}
+
 void app_set_session(app_t *a, const char *name) {
   snprintf(a->session, sizeof a->session, "%s", name ? name : "");
 }
@@ -928,6 +1244,9 @@ bool app_focus_pane(app_t *a, uint32_t id) {
 
 bool app_split_pane(app_t *a, uint32_t id, bool rows) {
   if (id && !app_focus_pane(a, id)) return false;
+  /* Refused, not quietly ignored: a script declaring it wants a pane beside
+   * a float would otherwise get an ok and no pane. */
+  if (cur(a)->focus && cur(a)->focus->floating) return false;
   split_focus(a, rows ? SPLIT_ROWS : SPLIT_COLS);
   return true;
 }
@@ -950,9 +1269,11 @@ static bool detach_leaf(app_t *a, node_t *leaf, size_t *from, bool *emptied) {
   /* Nothing about this pane should still say where it used to be. A zoom is the
    * tab's opinion about one of its panes, and a minimised pane is one this tab put
    * away; carried across, the first would zoom a pane that has left and the second
-   * would land the arrival in a strip nobody asked for. */
+   * would land the arrival in a strip nobody asked for. A float is one this tab
+   * lifted, and it would arrive hovering over a layout that never saw it. */
   if (t->zoom == leaf->id) t->zoom = 0;
   leaf->minimized = false;
+  leaf->floating = false;
 
   node_t *p = leaf->parent;
   if (!p) {
@@ -1258,7 +1579,10 @@ void resize_focus(app_t *a, int dx, int dy) {
 static size_t equalize_node(node_t *n) {
   if (n->kind == NODE_LEAF) {
     n->weight = WEIGHT_UNIT;
-    return n->minimized ? 0 : 1;
+    /* A float is out of the layout like a minimised pane: counting one would
+     * hand its share to a pane the tree is not showing. Its own weight is
+     * still evened, because that is the share it lands back into. */
+    return n->minimized || n->floating ? 0 : 1;
   }
   size_t vis = 0;
   for (size_t i = 0; i < n->nkids; i++) vis += equalize_node(n->kids[i]);
@@ -1363,6 +1687,32 @@ void rotate_layout_ui(app_t *a) {
   bool one_pane = cur(a)->root && cur(a)->root->kind == NODE_LEAF;
   if (!app_rotate_layout(a))
     app_toast(a, one_pane ? "nothing to turn" : "no room to turn it");
+}
+
+/* Land a dragged pane beside the target, on the side its drop zone named:
+ * the same detach-and-place surgery moving a pane to another tab does,
+ * aimed within the tab. A flat join through place_beside, exactly like a
+ * border-click split — three drops into a row are three even columns, not a
+ * bisection cascade — and `0` evens the shares as ever. Both panes must be
+ * in the same tab, which is the only place a drop zone can be painted: only
+ * the current tab is composed. */
+bool insert_pane_beside(app_t *a, uint32_t src_id, uint32_t dst_id, char side) {
+  node_t *src = pane_by_id(a, src_id), *dst = pane_by_id(a, dst_id);
+  if (!src || !dst || src == dst || dst->floating) return false;
+  size_t ti = tab_of(a, src);
+  if (ti == (size_t)-1 || tab_of(a, dst) != ti) return false;
+
+  size_t from;
+  bool emptied = false;
+  if (!detach_leaf(a, src, &from, &emptied)) return false;
+  /* Two leaves in one tree share a root split, so detaching one cannot
+   * empty the tab; the guard is here for the day that stops being true. */
+  if (emptied) return false;
+  place_beside(a, &a->tabs[ti], dst, src, side_dir(side),
+               side == 'l' || side == 't');
+  a->tabs[ti].focus = src; /* your hand was on it; it keeps the keyboard */
+  layout(a);
+  return true;
 }
 
 /* Reordering is a swap of two leaves, in place: their positions, weights and

@@ -20,7 +20,7 @@ looking at is drawn.
 - **Resize** with `C-a H J K L`: the boundary moves the way you press, whichever
   side of it you are on. Sizes are *weights*, so a resized layout survives the
   window changing size.
-- **`C-a =`** gives every visible pane an even share again — each split divided
+- **`C-a 0`** gives every visible pane an even share again — each split divided
   between the panes behind it, so one pane beside a stack of three is a quarter
   of the width rather than half of it.
 - **`C-a Space`** turns the whole tab a quarter turn clockwise. Every split
@@ -52,8 +52,16 @@ nothing you click can disagree with what is on screen.
   dead pane's epitaph legible — the heavy rule goes round them.
 - **Drag the gap between panes** to move that boundary. Where two gaps cross,
   drag the crossing to move both at once.
-- **Drag a pane by its title** onto another to swap them. Everything it could
-  land on greys out; the pane in your hand keeps its colour.
+- **Drag a pane by its title** onto another to swap them — or to *place* it:
+  the pane under the pointer subdivides into a centre and four edge bands,
+  and where you let go is what the drop means. The centre trades places, as
+  it always has; a band means "insert me beside this pane, on this side",
+  and fills the half of the pane the drop would hand over, so what you see
+  is where it lands. A side there is no room for offers no band — the same
+  floor a border click's split honours — except between neighbours along the
+  same row or column, where a drop is a reorder and always fits. Everything it could land on greys
+  out; the pane in your hand keeps its colour. Between the bands and the
+  strip, the whole layout can be rebuilt without touching the keyboard.
 - **...or onto a tab in the strip** to move it into that tab, or onto the `+` for a
   tab of its own. The tabs light up as destinations while you carry a pane and the
   one under the pointer fills; the tab it already lives in does not offer itself. A
@@ -65,7 +73,10 @@ nothing you click can disagree with what is on screen.
   `slosh cmd '{"cmd":"set-name","target":"pane","id":3,"name":"agent: gbos"}'`.
   An empty name hands the label back.
 - **Double-click a name to rename it in place** — a pane's title or a tab in the
-  strip. Enter keeps it, Escape abandons it, empty gives it back to the program.
+  strip. Enter keeps it, Escape abandons it, `C-u` clears the field (a rename
+  seeds with the current label, since it is usually an edit), empty gives it
+  back to the program. The same two verbs are in the palette as `rename-pane`
+  and `rename-tab`, for hands that are on the keyboard.
   A name is not a [purpose](layouts.md#purposes): the purpose is a separate label
   with a key of its own, `C-a P`, so a rename and a tag cannot be confused with
   each other. The purpose editor draws in the same title cell but labels itself
@@ -81,9 +92,68 @@ nothing you click can disagree with what is on screen.
   looking.
 - Hovering anything says what it does, in a word, in the status line.
 
+## Floating a pane
+
+`C-a f` lifts a pane out of the layout and draws it on top of the tiled ones
+— below the modals — where it can be moved and shaped freely. It **pops to
+the centre of the tab**, because the jump is what says the float happened; a
+pane lifted in place would look like a pane whose neighbours flinched.
+Pressing `f` again puts it back in the seat it kept, with the layout exactly
+as it was. (`f` is what "float" sounds like; finding a pane is `C-a s`,
+search.) `C-a F` opens a **new floating shell** over whatever you are doing
+— the throwaway terminal — in the focused pane's directory; `exit` closes it
+like any shell, and un-floating lands it beside the pane it was opened over.
+
+- **Drag its title to move it, any other border to resize it** — a bottom
+  corner resizes on both axes. Hovering says so: the edge a grab would move
+  goes heavy in the resize colour with a double arrow at the grab point (a
+  corner lights both edges), and the held edges stay lit through the drag.
+  A float's border never splits: a split is a statement about the
+  arrangement, and a float is precisely not arranged.
+- **`C-a H J K L` move a focused float** instead of moving a boundary, since
+  a float has no boundary to move. **`=` (or `+`) grows it and `-` shrinks
+  it** about its own centre, so it stays under your eyes; on a tiled pane
+  `-` still splits. Equalize lives on `0` for this reason: `+` arrives as a
+  bare `=` on terminals that do not report shift for punctuation, and two
+  verbs on one key survive only until that happens.
+- **It casts a shadow** on what it covers, which is how you tell a float from
+  a tile at a glance. `float_shadow 0` in the config turns it off, and a
+  `states { floating { … } }` chain colours floats on top of that.
+- **Where you put it is where it stays.** Squeezed by a small window it is
+  clamped in; grow the window back and it is exactly where you left it. On a
+  window too small to lay out at all it becomes a row in the flat list like
+  every other pane.
+- Focusing a float raises it above other floats; minimising works as ever and
+  it comes back floating; zooming fills the tab and returns it on the way
+  out. The last tiled pane cannot float — an overlay needs something to be
+  over — and closing the last tiled pane lands the float in its place.
+- Its rect is not yet written by `dump-layout` (coming with the layout-file
+  support); `{"cmd":"float","id":N}` toggles one and `{"cmd":"new-float"}`
+  opens one from a [script](scripting.md).
+
+## Links
+
+**OSC 8 hyperlinks pass through.** A program that emits real hyperlinks —
+`ls --hyperlink`, gcc's diagnostics, delta — keeps them: the compositor
+carries the link beside each cell and re-emits it to your terminal, which
+offers it with its own gesture. Anything painted over a link (a frame, a
+modal, a floating pane) takes the link with it, so chrome is never clickable
+with a pane's URL. Links survive scrollback with the text that carries them.
+
+**Plain-text URLs are your terminal's own matcher**, running over what slosh
+paints — with one catch worth knowing. While any program owns the mouse (a
+multiplexer does), Ghostty only offers links when **shift** is added to the
+usual gesture: shift is its mouse-capture escape, and it is stripped before
+the link's own modifier is checked. So the gesture inside slosh — or tmux,
+or zellij — is **shift+cmd+hover** to highlight and **shift+cmd+click** to
+open (shift+ctrl on Linux). A URL that *wraps* onto a second row cannot be
+matched this way through any multiplexer — the screen is repainted row by
+row, so the terminal sees two hard lines — which is exactly what OSC 8
+links, which pass through whole, are for.
+
 ## Finding a pane
 
-Tabs stop being navigation somewhere around six projects. `C-a f` opens a picker
+Tabs stop being navigation somewhere around six projects. `C-a s` opens a picker
 over the whole session — every tab, including panes a small window has collapsed
 out of sight. Type to narrow it by pane title, tab name or
 [purpose](layouts.md#purposes); arrows, `C-n`/`C-p` or tab to move, `C-u` to clear

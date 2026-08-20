@@ -18,11 +18,14 @@ it did not — `+7 more, in docs/keys.md`, which is the table below.
 | `\` `-` | split into columns / rows, when you mean one |
 | `h` `j` `k` `l`, or arrows | move focus |
 | `o` | the next pane |
-| `H` `J` `K` `L`, or shift+arrows | move the boundary between panes |
-| `=` | give every visible pane an even share |
+| `H` `J` `K` `L`, or shift+arrows | move the boundary between panes — or the pane itself, when it is [floating](panes.md#floating-a-pane) |
+| `0` | give every visible pane an even share |
 | `Space` | turn the layout a quarter turn (four brings it back) |
 | `z` | zoom this pane to fill the tab, and back |
 | `m` | minimise it into the strip along the bottom |
+| `f` | [float](panes.md#floating-a-pane) it above the layout, and back |
+| `F` | a new floating shell — the throwaway terminal |
+| `=` (`+`) `-` | grow / shrink a focused float about its centre (`-` splits, when the pane is tiled) |
 | `x` | close this pane |
 | `X` | close this tab, and everything in it |
 | `r` | run a finished pane's command again |
@@ -32,7 +35,7 @@ it did not — `+7 more, in docs/keys.md`, which is the table below.
 | `c` | new tab |
 | `Tab` `shift+Tab` | next / previous tab |
 | `1`…`9` | go to that tab |
-| `f` | find a pane by name |
+| `s` | search: find a pane by name |
 | `w` | the projects picker — every project under your roots, open or not ([workspaces](workspaces.md)) |
 | `W` | write this tab out as this project's layout ([workspaces](workspaces.md)) |
 | `p` | the command palette |
@@ -43,11 +46,12 @@ it did not — `+7 more, in docs/keys.md`, which is the table below.
 | `q` | quit the session |
 | `C-a` | send a literal `C-a` |
 
-**`x`/`X`, `p`/`P` and `w`/`W` are deliberately shifted pairs on one letter.**
-Close this pane / close this tab; run a command / tag this pane; go to a project /
-write this project down. The shifted half is the same verb on a bigger thing, or
-the thing you reach for within a moment of the other, so the shift is less to
-remember than a second letter would have been.
+**`x`/`X`, `p`/`P`, `w`/`W` and `f`/`F` are deliberately shifted pairs on one
+letter.** Close this pane / close this tab; run a command / tag this pane; go
+to a project / write this project down; float this pane / float a fresh one.
+The shifted half is the same verb on a bigger thing, or the thing you reach
+for within a moment of the other, so the shift is less to remember than a
+second letter would have been.
 
 `X` says how many panes went with the tab, since most of them were not the one you
 were looking at. On the **last** tab it refuses and points at `q` instead: a key
@@ -79,8 +83,8 @@ keys {
 Modifiers are `ctrl+ alt+ shift+ super+`, or the shorthand the cheatsheet
 prints: `C-` `M-` `S-`. Named keys are `left right up down enter tab escape
 space backspace home end pageup pagedown delete insert backslash minus slash
-comma period`, and the arrows can be written as `←` `→` `↑` `↓` too — so a chord
-copied off the cheatsheet is a chord you can paste into a config.
+comma period f1`…`f12`, and the arrows can be written as `←` `→` `↑` `↓` too —
+so a chord copied off the cheatsheet is a chord you can paste into a config.
 
 Anything else is the character you press. That includes the shifted ones, which
 carry their own shift: `"?"` is `"shift+slash"`, `"H"` is `"shift+h"`, `"|"` is
@@ -116,10 +120,10 @@ being bound at all.
 
 | group | actions |
 |---|---|
-| panes | `split` `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` `set-purpose` |
+| panes | `split` `split-cols` `split-rows` `close-pane` `rerun` `zoom` `minimize` `float` `new-float` `rotate-layout` `clear-shaders` `pane-to-next-tab` `pane-to-prev-tab` `pane-to-new-tab` `set-purpose` `rename-pane` |
 | focus | `focus-left` `focus-right` `focus-up` `focus-down` `focus-next` `finder` |
-| size | `resize-left` `resize-right` `resize-up` `resize-down` `equalize` |
-| tabs | `new-tab` `close-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |
+| size | `resize-left` `resize-right` `resize-up` `resize-down` `equalize` `float-grow` `float-shrink` |
+| tabs | `new-tab` `rename-tab` `close-tab` `next-tab` `prev-tab` `select-tab-1` … `select-tab-9` |
 | projects | `workspaces` `save-workspace` |
 | scroll | `scroll-up` `scroll-down` `scroll-page-up` `scroll-page-down` `scroll-top` `scroll-bottom` |
 | session | `palette` `help` `edit-config` `detach` `quit` `literal-prefix` |

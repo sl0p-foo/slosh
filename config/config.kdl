@@ -238,6 +238,14 @@ keep_dead "commands"
 // replaces it, and `states { unfocused { } }` means nothing at all.
 dim_unfocused 60
 
+// How dark the cell of shade a floating pane casts on what it covers,
+// 0..255, and 0 for no shadow. A float wears the same frame as a tile, so
+// the shadow is what tells the two apart at a glance -- which is why it
+// ships on, and why it is a number rather than a `states { floating { } }`
+// chain: turning it off should not require knowing the states block exists.
+// (The floating *state* exists too, empty by default, for colour on top.)
+float_shadow 110
+
 bell_indicator true
 
 // What to draw. A short string rather than a fixed glyph, because the obvious
@@ -452,6 +460,7 @@ modal_scrim 120
 //   suspended    laid out, never started (its label is its contents)
 //   bell         a BEL arrived and nobody has looked since; ends when you do
 //   scrolled     looking at scrollback rather than at the present
+//   floating     lifted out of the layout, drawn on top (see float_shadow)
 //   unfocused    the weakest thing that can be true of a pane
 //
 // The order is fixed rather than read from this block, because it is a ranking
@@ -483,6 +492,10 @@ modal_scrim 120
 //   taste was never the taste, it was that turning it off should not require
 //   knowing this block exists. `dragging` still has no default: the pane in
 //   your hand keeping its colour is what makes it lift off the page.
+//   `floating` has none for the same reason -- full strength is what keeps
+//   the thing on top reading as lifted -- and because it ranks above
+//   unfocused, a float is never dimmed as merely-unfocused. Its telling-apart
+//   is the shadow, which is `float_shadow` above, one number.
 //
 // All the defaults are gentle: a dead pane, a suspended one and scrollback are
 // all things you still want to read. The scrolled default is *derived*, not
@@ -508,6 +521,7 @@ states {
     //     dim amount="(below > 0) * max(0, (y - rows + min(3, rows / 4) + 1) * 45)"
     // }
     // dragging { }
+    // floating { }
     // bell {   // derived: a body shimmer, and a frame blink-then-breathe, in theme's bell colour
     //     tint color="#efd7b3" amount="(since < 900) * max(0, 95 - abs(x + 2 * y - since / 4) * (6 + sin(since / 2) / 96) - since / 64)"
     //     tint where="chrome" channel="fg" color="#e0af68" amount="since < 900 ? (since / 150 % 2 == 0) * 255 : 120 + sin(since / 8 + 158) / 3"
@@ -828,7 +842,7 @@ theme {
 // Everything is `prefix` then a key. Pressing the prefix twice sends the
 // prefix itself to the pane. Modifiers are ctrl+ alt+ shift+ super+, and named
 // keys are left/right/up/down/enter/tab/escape/space/backspace/home/end/
-// pageup/pagedown/delete/insert/backslash/minus/slash/comma/period.
+// pageup/pagedown/delete/insert/backslash/minus/slash/comma/period/f1..f12.
 //
 // The cheatsheet's shorthand also parses -- C- M- S-, and ← → ↑ ↓ -- so a chord
 // copied off C-a ? is a chord you can paste in here. Anything else is the
@@ -840,8 +854,9 @@ theme {
 // focus-down focus-next resize-left resize-right resize-up resize-down equalize
 // rotate-layout clear-shaders pane-to-next-tab pane-to-prev-tab pane-to-new-tab
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
-// scroll-bottom zoom minimize rerun new-tab next-tab prev-tab select-tab-1..9 finder
-// palette help detach quit
+// scroll-bottom zoom minimize float new-float float-grow float-shrink rerun
+// set-purpose rename-pane rename-tab new-tab next-tab prev-tab
+// select-tab-1..9 finder palette help detach quit
 // literal-prefix none
 
 // What C-a e opens this file with. Empty means $EDITOR, and then vi -- the
@@ -875,6 +890,20 @@ keys {
     bind "r" "rerun"
     bind "z" "zoom"
     bind "m" "minimize"
+    // Lift the pane out of the layout (it pops to the centre) and drop it
+    // back in: f is what "float" sounds like. The finder lives on `s`,
+    // where it reads as *search*. `F` is the same verb on a fresh thing --
+    // a new floating shell, the throwaway terminal.
+    bind "f" "float"
+    bind "F" "new-float"
+    // The =/+ key grows a focused float about its centre and `-` shrinks it
+    // (through split-rows, whose split is a refusal on a float anyway).
+    // Bound both ways because whether `+` arrives shifted depends on the
+    // outer terminal -- the same deal `?` has with `/` -- which is also why
+    // equalize moved to `0` rather than sharing the key: two verbs on one
+    // key survive only until a terminal drops the shift.
+    bind "=" "float-grow"
+    bind "+" "float-grow"
 
     bind "h" "focus-left"
     bind "l" "focus-right"
@@ -895,8 +924,9 @@ keys {
 
     // Undo every drag and nudge at once: each split divided between the panes
     // behind it, so every visible pane gets an even share of the rows and
-    // columns it competes for.
-    bind "=" "equalize"
+    // columns it competes for. On the digit row it already lives on: 1..9
+    // pick a tab, 0 resets the shares.
+    bind "0" "equalize"
 
     // A quarter turn of the whole tab, clockwise: every split changes axis and
     // a row split's children reverse, because the pane on top of a stack is the
@@ -925,7 +955,7 @@ keys {
     bind "2" "select-tab-2"
     bind "3" "select-tab-3"
 
-    bind "f" "finder"
+    bind "s" "finder"
 
     // Every action by name, including the ones nothing is bound to -- which
     // is the whole point of it, since an unbound action has no other way in.

@@ -102,7 +102,7 @@ def test_finder_keyboard():
     with Session(SH, cols=70, rows=16) as s:
         a, b = setup_panes(s)
 
-        s.key("f")
+        s.key("s")
         s.settle(80)
         snap = s.snapshot()
         check("the finder opens", is_open(s), repr(snap.screen()[:200]))
@@ -135,7 +135,7 @@ def test_finder_keyboard():
 
     with Session(SH, cols=70, rows=16) as s:
         setup_panes(s)
-        s.key("f")
+        s.key("s")
         s.send("zzzz")
         s.settle(80)
         check("a query matching nothing is not fatal", is_open(s))
@@ -162,7 +162,7 @@ def test_finder_navigation():
     reached for by hands that already know one."""
     with Session(SH, cols=70, rows=16) as s:
         setup_panes(s)
-        s.key("f")
+        s.key("s")
         s.settle(80)
         check("it starts on the first row", counter(s) == (1, 2), str(counter(s)))
 
@@ -205,7 +205,7 @@ def test_finder_navigation():
 def test_finder_query_editing():
     with Session(SH, cols=70, rows=16) as s:
         setup_panes(s)
-        s.key("f")
+        s.key("s")
         s.send("web")
         s.settle(80)
         check("the query narrows to one", counter(s) == (1, 1), str(counter(s)))
@@ -238,7 +238,7 @@ def test_finder_mouse():
         a, b = setup_panes(s)
         s.api("select-tab", index=1)
         s.settle()
-        s.key("f")
+        s.key("s")
         s.settle(80)
         snap = s.snapshot()
         pos = snap.find("service:web")
@@ -268,7 +268,7 @@ def test_finder_dismissal_by_mouse():
         s.api("focus", id=b)
         s.settle()
 
-        s.key("f")
+        s.key("s")
         s.settle(80)
         close = [h for h in s.snapshot().hits if h["action"] == "closefind"]
         check(
@@ -284,7 +284,7 @@ def test_finder_dismissal_by_mouse():
                 "without changing the focus", s.focused()["id"] == b, str(s.focused())
             )
 
-        s.key("f")
+        s.key("s")
         s.settle(80)
         check("it is open again", is_open(s))
         s.click(1, 15)  # the corner of the screen, well outside the box
@@ -302,7 +302,7 @@ def test_finder_marks_where_you_are():
         a, b = setup_panes(s)
         s.api("focus", id=b)
         s.settle()
-        s.key("f")
+        s.key("s")
         s.settle(80)
         marked = [r for r in rows(s) if "\u2022" in r[2]]
         check(
@@ -340,7 +340,7 @@ def test_finder_over_a_collapsed_layout():
             [p for p in s.panes() if p["id"] == target][0]["hidden"],
         )
 
-        s.key("f")
+        s.key("s")
         s.send("findme")
         s.settle(80)
         s.send(r"\r")

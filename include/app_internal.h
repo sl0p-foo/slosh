@@ -36,6 +36,25 @@ struct node {
    * every pane on every frame. */
   bool minimized;
 
+  /* Floating: out of the layout, drawn on top of the tiled panes and below
+   * the modals. Same pattern as `minimized` — the leaf keeps its seat in the
+   * tree, layout skips it, the siblings absorb its share, and un-floating
+   * returns it home: same id, same place, nothing that referred to it has to
+   * be told anything.
+   *
+   * `float_rect` is where it *wants* to be, in cells. Intent: what is drawn
+   * each frame is this clamped to the tab's area, and the clamp never writes
+   * back — shrink the terminal and the float is squeezed in, grow it again
+   * and it is exactly where you put it. Zero-width means "never placed",
+   * which the placement answers with a centred default.
+   *
+   * `raised` orders overlapping floats: highest paints last, so it is on
+   * top. Stamped when a float is made and when a focused float is not the
+   * top one — in layout(), once, rather than at each place focus can move. */
+  bool floating;
+  rect_t float_rect;
+  uint32_t raised;
+
   /* leaf */
   pane_t *pane;
   uint32_t id;
@@ -112,6 +131,10 @@ struct app {
   size_t ntabs, tabcap, cur;
   uint32_t next_tab_id;
   uint32_t next_id;
+  /* The last raise stamp handed out. A float whose `raised` equals this is
+   * the top one, which is what lets the focus rule stamp without spinning
+   * the counter every frame. */
+  uint32_t raise_seq;
   uint16_t cols, rows;
   /* The client's cell size in pixels, as reported when it attached. Panes are
    * told so that a program can size an image, and so lib-vt can work out how
@@ -134,6 +157,12 @@ struct app {
       DRAG_SELECT,
       DRAG_BORDER,
       DRAG_TAB,
+      /* The float verbs: the title row moves it, any other border cell
+       * resizes from the edges under the grab. Their own kinds rather than
+       * flags on DRAG_TITLE/DRAG_BORDER, because everything those two mean
+       * on release — swap, split — is exactly what a float must not do. */
+      DRAG_FLOAT_MOVE,
+      DRAG_FLOAT_RESIZE,
     } kind;
     uint32_t src;    /* pane being dragged, or the split being resized */
     uint32_t target; /* pane under the pointer, for the drop highlight */
@@ -146,6 +175,15 @@ struct app {
     uint16_t x, y;       /* where the pointer was at the last event */
     bool moved;          /* a press that never moves is a click */
     char side;           /* border press: 'l' 'r' 't' 'b' */
+    /* Which of the target's drop zones the pointer is in, or 0 for the
+     * centre. The centre is the swap; a side means "insert me beside the
+     * target, on this side" — the drop grammar that turns dragging into
+     * re-layout. */
+    char drop_side;
+    /* Which edges a float resize is holding (FEDGE_*): derived from where
+     * the press landed on the frame, so a bottom corner is two edges and
+     * follows the pointer on both axes. */
+    uint8_t fedges;
     /* A corner drag carries the boundaries it is moving, not an index into
      * the corner list: that list is rebuilt from the layout every frame, and
      * the layout is the thing being changed. Halfway through a drag the
@@ -281,6 +319,12 @@ extern config_t CFG;
 #define WEIGHT_MIN 150  /* a pane can be squeezed, not squeezed out */
 #define WEIGHT_STEP 120 /* one keyboard nudge */
 
+/* Which edges of a float a resize is moving. */
+#define FEDGE_L 1u
+#define FEDGE_R 2u
+#define FEDGE_T 4u
+#define FEDGE_B 8u
+
 #define MIN_PANE_COLS (CFG.min_pane_cols)
 #define MIN_PANE_ROWS (CFG.min_pane_rows)
 #define FRAME_FOCUS (CFG.frame_focus)
@@ -368,6 +412,11 @@ void split_focus(app_t *a, split_dir_t dir);
 void split_focus_auto(app_t *a);
 void split_focus_ui(app_t *a, split_dir_t dir);
 void transfer_weight(node_t *from, node_t *to, int amount);
+void float_move(app_t *a, node_t *n, int dx, int dy);
+void float_resize(app_t *a, node_t *n, unsigned edges, int dx, int dy);
+bool focus_float_move(app_t *a, int dx, int dy);
+bool focus_float_grow(app_t *a, int sign);
+uint8_t float_edges_at(const node_t *n, uint16_t mx, uint16_t my);
 
 /* src/app_ui.c */
 void picker_accept(app_t *a, const char *action);
@@ -393,6 +442,7 @@ tab_t *tab_by_id(app_t *a, uint32_t id);
 size_t tab_index(app_t *a, uint32_t id);
 
 bool swap_panes(app_t *a, uint32_t id_a, uint32_t id_b);
+bool insert_pane_beside(app_t *a, uint32_t src_id, uint32_t dst_id, char side);
 struct byid {
   uint32_t id;
   node_t *found;
@@ -410,9 +460,11 @@ void draw_status_line(app_t *a, screen_t *s);
 void draw_node(app_t *a, screen_t *s, node_t *n);
 void draw_min_bar(app_t *a, screen_t *s);
 void draw_corners(app_t *a, screen_t *s);
+void draw_floats(app_t *a, screen_t *s);
 
 size_t count_leaves(node_t *n);
 size_t collect_minimized(node_t *n, node_t **out, size_t cap, size_t k);
+size_t collect_floating(node_t *n, node_t **out, size_t cap, size_t k);
 size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k);
 
 #endif /* SLOSH_APP_INTERNAL_H */

@@ -120,6 +120,22 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
       free(txt);
       return j.buf;
     }
+    /* The emitter's own output: what a client's terminal would be sent for
+     * this frame. The model and the bytes are two different things, and
+     * asserting on the model while the bytes are wrong is a lesson this
+     * session has already paid for once (the graphics cmd says the same).
+     * Rendering updates the diff state, so a second call is the delta —
+     * which is itself worth testing. */
+    if (strcmp(fmt, "bytes") == 0) {
+      screen_render(s);
+      json_t j;
+      json_init(&j);
+      json_obj_open(&j, NULL);
+      json_bool(&j, "ok", true);
+      json_str(&j, "bytes", s->out ? s->out : "", s->out_len);
+      json_obj_close(&j);
+      return j.buf;
+    }
     return jok_raw("screen", screen_dump_json(s));
   }
   if (strcmp(cmd, "deadline") == 0) {
@@ -156,15 +172,33 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     return jok_int(NULL, 0);
   }
   if (strcmp(cmd, "split") == 0) {
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
     bool rows = strcmp(jv_gets(req, "dir", "cols"), "rows") == 0;
-    if (!app_split_pane(a, (uint32_t)jv_geti(req, "id", 0), rows))
-      return jerr("no such pane");
+    if (!app_split_pane(a, id, rows))
+      return jerr(app_pane_floating(a, id) ? "cannot split a floating pane"
+                                           : "no such pane");
     return jok_int("id", app_focused_pane_id(a));
   }
   if (strcmp(cmd, "focus") == 0) {
     if (!app_focus_pane(a, (uint32_t)jv_geti(req, "id", 0)))
       return jerr("no such pane");
     return jok_int("id", app_focused_pane_id(a));
+  }
+  /* The throwaway terminal, scripted: a fresh shell floating over the
+   * current tab. */
+  if (strcmp(cmd, "new-float") == 0) {
+    uint32_t id = app_new_float(a);
+    if (!id) return jerr("cannot open a pane");
+    return jok_int("id", id);
+  }
+  /* Toggle, like the button and the palette entry: M10c grows placement
+   * arguments here, this is the same one verb everything else runs. */
+  if (strcmp(cmd, "float") == 0) {
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    /* Two refusals share the word: no such pane, and no tiled pane left to
+     * float over. */
+    if (!app_toggle_float(a, id)) return jerr("cannot float that");
+    return jok_int("floating", app_pane_floating(a, id) ? 1 : 0);
   }
   if (strcmp(cmd, "edit-config") == 0) {
     return app_edit_config(a) ? jok_int("id", app_focused_pane_id(a))

@@ -362,6 +362,179 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   }
 }
 
+/* The drop zones: while a pane is being carried, the pane under the pointer
+ * subdivides into a centre — today's swap, keeping the biggest target — and
+ * four edge bands that mean "insert me beside this pane, on this side",
+ * which is what turns dragging into re-layout. Bands are rects registered in
+ * the hit list as they are painted, so the promise on screen and the drop on
+ * release are the same rects; the corners go to the upright bands because
+ * they are registered last, and the centre needs no entry at all — a
+ * pointer that lands in no band falls through to the pane's own hit, which
+ * is the swap it always was.
+ *
+ * Zones materialise only under the pointer: four bands of chrome on every
+ * candidate during every drag would be noise, and the drop highlight has
+ * always been a fact about the pane you are on. A side whose insert would
+ * not fit (the same floor split_fits holds a border click to) simply never
+ * registers, so the preview cannot promise what the drop cannot deliver.
+ * The hovered band fills the half of the pane the drop would hand over —
+ * where the pane will *be*, not where the button is. */
+static void draw_drop_zones(app_t *a, screen_t *s, node_t *n) {
+  if (a->drag.kind != DRAG_TITLE || !a->drag.moved) return;
+  if (n->id == a->drag.src || n->floating) return;
+  if (!a->ptr_valid) return;
+  rect_t r = n->rect;
+  if (r.w < 3 || r.h < 3) return;
+  if (a->ptr_x < r.x || a->ptr_x >= r.x + r.w || a->ptr_y < r.y ||
+      a->ptr_y >= r.y + r.h)
+    return;
+
+  /* A third of each dimension per band, so the centre is the remaining
+   * third: big enough to hit without aiming, small enough that the bands —
+   * the half of this feature you steer by — own most of the pane. It began
+   * as quarters, and the first map of the result showed the swap owning
+   * half of each axis: a target that big reads as dead space when you are
+   * mid-drag hunting for a band. */
+  uint16_t bw = r.w / 3 ? (uint16_t)(r.w / 3) : 1;
+  uint16_t bh = r.h / 3 ? (uint16_t)(r.h / 3) : 1;
+
+  /* Whether a side is offered. A drop beside a *sibling along that axis* is
+   * a reorder — the dragged pane leaves the split it would rejoin, so the
+   * child count never changes and there is nothing to fit; refusing it was
+   * refusing the most ordinary drag there is, rearranging a row. Everything
+   * else is a real insert and answers to the same floor a border click
+   * does. (Still conservative across splits: a drop whose *source* leaving
+   * would have made the room is not offered, because the offer would need
+   * the speculative layout to prove.) */
+  node_t *src = pane_by_id(a, a->drag.src);
+  bool sib = src && src->parent && src->parent == n->parent;
+  bool rows_ok =
+      (sib && n->parent->dir == SPLIT_ROWS) || split_fits(n, SPLIT_ROWS);
+  bool cols_ok =
+      (sib && n->parent->dir == SPLIT_COLS) || split_fits(n, SPLIT_COLS);
+
+  char action[48];
+  /* Horizontal bands first, upright bands after: the corners resolve to a
+   * column split, which is the axis a cell's shape makes roomier. */
+  if (rows_ok) {
+    snprintf(action, sizeof action, "drop:%u:t", n->id);
+    hit_add(&s->hits, r.x, r.y, r.w, bh, action);
+    snprintf(action, sizeof action, "drop:%u:b", n->id);
+    hit_add(&s->hits, r.x, (uint16_t)(r.y + r.h - bh), r.w, bh, action);
+  }
+  if (cols_ok) {
+    snprintf(action, sizeof action, "drop:%u:l", n->id);
+    hit_add(&s->hits, r.x, r.y, bw, r.h, action);
+    snprintf(action, sizeof action, "drop:%u:r", n->id);
+    hit_add(&s->hits, (uint16_t)(r.x + r.w - bw), r.y, bw, r.h, action);
+  }
+
+  /* The fill, read back off the hits just registered so it cannot disagree
+   * with what a release here would do. */
+  const char *over = hit_test(&s->hits, a->ptr_x, a->ptr_y);
+  char want[16];
+  snprintf(want, sizeof want, "drop:%u:", n->id);
+  if (!over || strncmp(over, want, strlen(want)) != 0) return;
+  char side = over[strlen(want)];
+  rect_t half = r;
+  switch (side) {
+  case 'l': half.w = (uint16_t)(r.w / 2); break;
+  case 'r':
+    half.w = (uint16_t)(r.w / 2);
+    half.x = (uint16_t)(r.x + r.w - half.w);
+    break;
+  case 't': half.h = (uint16_t)(r.h / 2); break;
+  default:
+    half.h = (uint16_t)(r.h / 2);
+    half.y = (uint16_t)(r.y + r.h - half.h);
+    break;
+  }
+  shader_t fill;
+  if (!shader_make(&fill, "tint", DROP_C, 110)) return;
+  shade_ctx_t base = {
+      .now_ms = now_ms_(),
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  shade_apply(s, &fill, 1, half, NULL, &base);
+}
+
+/* The float's answer to the split guide: hovering its border shows, in the
+ * resize colour, which edges a grab there would move — one lit edge for a
+ * side, two meeting at the pointer for a corner — and the pair stays lit
+ * while the drag holds them. Without this the border was a working handle
+ * that never said so, which is a control you have to already know about.
+ *
+ * The edges are read from float_edges_at, the same derivation the press and
+ * the hint use, and each cell is painted only if the hit list says the
+ * border still owns it — so the buttons and the epitaph on the bottom row
+ * stay legible, the same question the split guide asks. Armed on the same
+ * dwell, for the same reason: a pointer crossing a float on its way
+ * somewhere else should not make the frame flash. */
+static void draw_float_guide(app_t *a, screen_t *s, node_t *leaf) {
+  if (!leaf->floating || leaf->collapsed || leaf->hidden) return;
+  rect_t r = leaf->rect;
+  if (r.w < 3 || r.h < 3) return;
+
+  uint8_t e = 0;
+  bool active = a->drag.kind == DRAG_FLOAT_RESIZE && a->drag.src == leaf->id;
+  if (active) {
+    e = a->drag.fedges;
+  } else if (a->drag.kind == DRAG_NONE && a->ptr_valid) {
+    if (now_ms_() - a->ptr_still_since < CFG.hover_delay_ms) return;
+    const char *action = hit_test(&s->hits, a->ptr_x, a->ptr_y);
+    if (!action) return;
+    char want[24];
+    snprintf(want, sizeof want, "border:%u:", leaf->id);
+    bool mine = strncmp(action, want, strlen(want)) == 0;
+    if (!mine) {
+      snprintf(want, sizeof want, "brim:%u:", leaf->id);
+      mine = strncmp(action, want, strlen(want)) == 0;
+    }
+    if (!mine) return;
+    e = float_edges_at(leaf, a->ptr_x, a->ptr_y);
+  }
+  if (!e) return;
+
+  uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
+  uint16_t attrs = ATTR_BOLD;
+
+  /* A cell is painted only if the border owns it: brim or handle, either
+   * name is the edge. */
+  char rim[24], handle[24];
+  for (int side = 0; side < 3; side++) {
+    char c = "lrb"[side];
+    uint8_t bit = c == 'l' ? FEDGE_L : c == 'r' ? FEDGE_R : FEDGE_B;
+    if (!(e & bit)) continue;
+    snprintf(rim, sizeof rim, "brim:%u:%c", leaf->id, c);
+    snprintf(handle, sizeof handle, "border:%u:%c", leaf->id, c);
+    if (c == 'b') {
+      for (uint16_t x = r.x; x <= x1; x++) {
+        const char *own = hit_test(&s->hits, x, y1);
+        if (own && (strcmp(own, rim) == 0 || strcmp(own, handle) == 0))
+          screen_text(s, x, y1, "\u2501", RESIZE_C, NO_COLOR, attrs);
+      }
+    } else {
+      uint16_t bx = c == 'l' ? r.x : x1;
+      for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+        const char *own = hit_test(&s->hits, bx, y);
+        if (own && (strcmp(own, rim) == 0 || strcmp(own, handle) == 0))
+          screen_text(s, bx, y, "\u2503", RESIZE_C, NO_COLOR, attrs);
+      }
+    }
+  }
+
+  /* The double arrow at the grab point, hover only — mid-drag the pointer
+   * has left the edge, and the lit edges following the hand are the
+   * feedback. A corner gets none: two edges meeting at the pointer already
+   * say "both ways", and no single glyph does. */
+  bool corner = (e & (FEDGE_L | FEDGE_R)) && (e & (FEDGE_T | FEDGE_B));
+  if (!active && !corner)
+    screen_text(s, a->ptr_x, a->ptr_y,
+                (e & (FEDGE_L | FEDGE_R)) ? "\u21d4" : "\u21d5", RESIZE_C,
+                NO_COLOR, ATTR_BOLD);
+}
+
 static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
   if (r.w < 3 || r.h < 3) return;
@@ -378,8 +551,8 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
    * the greying subtle. The pane actually under the pointer still takes the
    * drop_target highlight on top of the dashes: these are all targets, that is
    * the one you are on. */
-  bool drag_target =
-      a->drag.kind == DRAG_TITLE && a->drag.moved && a->drag.src != leaf->id;
+  bool drag_target = a->drag.kind == DRAG_TITLE && a->drag.moved &&
+                     a->drag.src != leaf->id && !leaf->floating;
   const char *hbar = drag_target ? "\u2504" : "\u2500";
   const char *vbar = drag_target ? "\u2506" : "\u2502";
 
@@ -967,7 +1140,11 @@ static pane_state_t pane_state_of(app_t *a, node_t *n) {
    * click would otherwise flash the whole session on its way to nothing. */
   if (a->drag.kind == DRAG_TITLE && a->drag.moved) {
     if (n->id == a->drag.src) return PSTATE_DRAGGING;
-    if (n->id == a->drag.target) return PSTATE_DROP_HOVER;
+    /* drop_hover is the swap's promise — the whole pane trades places. A
+     * pointer in one of its drop *zones* promises something narrower, and
+     * the zone's own fill says it; the pane stays an ordinary candidate so
+     * the two promises cannot show at once. */
+    if (n->id == a->drag.target && !a->drag.drop_side) return PSTATE_DROP_HOVER;
     return PSTATE_DROP_TARGET;
   }
   if (!pane_alive(n->pane) && !pane_suspended(n->pane)) return PSTATE_DEAD;
@@ -979,6 +1156,12 @@ static pane_state_t pane_state_of(app_t *a, node_t *n) {
    * at it answers the bell before anything is drawn. */
   if (pane_bell(n->pane)) return PSTATE_BELL;
   if (pane_scrolled(n->pane)) return PSTATE_SCROLLED;
+  /* Above `unfocused`, deliberately: a float is never dimmed by
+   * dim_unfocused. The thing on top of the stack reading at full strength is
+   * what keeps it lifted off the page — the same reason `dragging` keeps no
+   * default — and the frame colour still tells focus. Ships no chain; the
+   * shadow does the telling apart. */
+  if (n->floating) return PSTATE_FLOATING;
   if (n != cur(a)->focus) return PSTATE_UNFOCUSED;
   return PSTATE_COUNT;
 }
@@ -1216,6 +1399,8 @@ static void draw_cb(node_t *n, void *ud) {
   shade_leaf(d->a, d->s, n);
   shade_chrome(d->a, d->s, n, n->rect, &n->content);
   draw_split_guide(d->a, d->s, n);
+  draw_float_guide(d->a, d->s, n);
+  draw_drop_zones(d->a, d->s, n);
 }
 
 struct bellsearch {
@@ -1592,6 +1777,10 @@ void draw_node(app_t *a, screen_t *s, node_t *n) {
     return;
   }
   if (n->kind == NODE_LEAF) {
+    /* A float is painted by draw_floats, after everything tiled, so its
+     * cells and its hits go on top. A *collapsed* float took the branch
+     * above: in a flattened tab it is a row like everyone else. */
+    if (n->floating) return;
     struct draw d = {a, s};
     draw_cb(n, &d);
     return;
@@ -1610,6 +1799,73 @@ void draw_node(app_t *a, screen_t *s, node_t *n) {
   }
 
   for (size_t i = 0; i < n->nkids; i++) draw_node(a, s, n->kids[i]);
+}
+
+/* The cell of shade a float casts on whatever it covers: `gap_aspect`
+ * columns beside and one row below, offset so the light reads as coming from
+ * the top left. The same dim pass the scrim is — a shadow is a colour pass
+ * with everything in its rects — run before the float itself is painted, so
+ * it falls on the composited cells underneath, lower floats included. The
+ * two rects meet without overlapping, because a corner dimmed twice reads as
+ * a stain rather than a shadow. */
+static void cast_shadow(app_t *a, screen_t *s, rect_t r) {
+  if (!CFG.float_shadow) return;
+  shader_t dim;
+  if (!shader_make(&dim, "dim", (color_t){0}, CFG.float_shadow)) return;
+  shade_ctx_t base = {
+      .now_ms = now_ms_(),
+      .default_fg = CFG.default_fg,
+      .default_bg = CFG.default_bg,
+  };
+  uint16_t off = CFG.gap_aspect ? CFG.gap_aspect : 2;
+  shade_apply(s, &dim, 1,
+              (rect_t){(uint16_t)(r.x + r.w), (uint16_t)(r.y + 1), off,
+                       (uint16_t)(r.h - 1)},
+              NULL, &base);
+  shade_apply(s, &dim, 1,
+              (rect_t){(uint16_t)(r.x + off), (uint16_t)(r.y + r.h), r.w, 1},
+              NULL, &base);
+}
+
+/* The floating panes, over everything tiled and under the modals.
+ *
+ * Painted in ascending raise order, so the hit list — searched backwards —
+ * resolves an overlap to the float you can see. The z-order and the click
+ * order are the same list, which is the "one geometry" rule doing the work:
+ * there is no routing code to disagree with the paint.
+ *
+ * Each float is drawn by the same draw_cb as a tiled pane: same frame, same
+ * buttons, same shader passes. What differs is when, which is the whole
+ * feature. */
+void draw_floats(app_t *a, screen_t *s) {
+  node_t *fl[64];
+  size_t nf = collect_floating(cur(a)->root, fl, 64, 0);
+  /* Insertion sort by raise stamp: n is small and the order is nearly
+   * stable frame to frame. */
+  for (size_t i = 1; i < nf; i++) {
+    node_t *k = fl[i];
+    size_t j = i;
+    while (j > 0 && fl[j - 1]->raised > k->raised) {
+      fl[j] = fl[j - 1];
+      j--;
+    }
+    fl[j] = k;
+  }
+  for (size_t i = 0; i < nf; i++) {
+    node_t *n = fl[i];
+    /* A flattened tab listed it as a row, and a zoomed tab hid it: either
+     * way this pass has nothing to add. */
+    if (n->collapsed || n->hidden) continue;
+    /* The cursor a tiled pane parked under this float must not glow through
+     * it. Its own cursor is set by its own compose below, when focused. */
+    if (s->cursor_visible && s->cursor_x >= n->rect.x &&
+        s->cursor_x < n->rect.x + n->rect.w && s->cursor_y >= n->rect.y &&
+        s->cursor_y < n->rect.y + n->rect.h)
+      s->cursor_visible = false;
+    cast_shadow(a, s, n->rect);
+    struct draw d = {a, s};
+    draw_cb(n, &d);
+  }
 }
 
 /* ---- kitty graphics ------------------------------------------------------ */

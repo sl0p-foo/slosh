@@ -223,6 +223,17 @@ uint32_t app_move_pane_to_new_tab(app_t *a, uint32_t pane_id, const char *name);
 bool app_toggle_zoom(app_t *a, uint32_t id);
 bool app_pane_zoomed(app_t *a, uint32_t id);
 
+/* Lift a pane out of the layout and draw it on top, or put it back in the
+ * seat it kept. 0 means the focused one. False when it would leave the tab
+ * with no tiled pane to float over. */
+bool app_toggle_float(app_t *a, uint32_t id);
+bool app_pane_floating(app_t *a, uint32_t id);
+
+/* A new floating shell over the current tab, centred: the throwaway
+ * terminal. It holds a real seat in the tree beside the focused pane, so
+ * un-floating lands it there. Returns its id, or 0. */
+uint32_t app_new_float(app_t *a);
+
 /* Give every visible pane in the current tab an even share of the rows and
  * columns it competes for: each split's children weighted by how many visible
  * panes are behind them, so "even" means the same thing at every depth. False
