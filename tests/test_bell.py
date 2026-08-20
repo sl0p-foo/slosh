@@ -13,7 +13,7 @@ import tempfile
 from harness import Session, check, report
 
 SH = ["/bin/sh", "-c", 'printf "\\033]2;p\\007"; stty raw -echo; cat']
-MARK = "\u2022"
+MARK = "[!]"
 
 
 def cfg(text):

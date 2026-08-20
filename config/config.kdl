@@ -250,10 +250,11 @@ bell_indicator true
 
 // What to draw. A short string rather than a fixed glyph, because the obvious
 // choice is an emoji bell and emoji are drawn two columns wide by many
-// terminals while chrome here is booked as one -- so the default is narrow and
-// anyone who knows their own terminal can say otherwise. (This file has no
-// \u escape, so put the character itself here.)
-bell_mark "•"
+// terminals while chrome here is booked per glyph -- so the default is plain
+// ASCII that says what it means, and anyone who knows their own terminal can
+// say otherwise (a "•" if you like it quiet, a "🔔" if yours draws it well;
+// this file has no \u escape, so put the character itself here).
+bell_mark "[!]"
 
 // The one-row bar with tabs, the new-tab button and the pane count.
 status_bar true

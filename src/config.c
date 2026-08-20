@@ -863,7 +863,7 @@ void config_defaults(config_t *c) {
   snprintf(c->min_mark, sizeof c->min_mark, "\u25ac"); /* ▬ into the strip */
   snprintf(c->newtab_mark, sizeof c->newtab_mark, "+");
   c->bell_indicator = true;
-  snprintf(c->bell_mark, sizeof c->bell_mark, "\u2022");
+  snprintf(c->bell_mark, sizeof c->bell_mark, "[!]");
   c->keep_dead = KEEP_DEAD_COMMANDS;
   /* Gentle: an unfocused pane is one you are still reading half the time.
    * At 60 white text lands on #c3c3c3, which reads as "not this one" without
