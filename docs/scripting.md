@@ -21,7 +21,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | verb | |
 |---|---|
 | `panes` `tabs` | what exists, with ids, rects, titles, purposes, state. A pane's `tab_id` is what `move-pane` and `select-tab` want; its `tab` is where that tab sits in the strip |
-| `snapshot` | the composited screen, as JSON or `format:"text"` |
+| `snapshot` | the composited screen, as JSON, `format:"text"`, or `format:"bytes"` — the emitter's own output for this frame (a second call is the delta) |
 | `deadline` | when the session wants its next frame, in ms, or -1 |
 | `send` | bytes as if typed, decoded like input (`"data":"\\x01\\\\"`) |
 | `raw` | bytes straight into the focused pane's pty |

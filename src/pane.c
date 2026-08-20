@@ -1145,6 +1145,30 @@ static color_t to_color(const GhosttyColorRgb *c, bool ok) {
   return out;
 }
 
+/* The hyperlink on a cell, as this screen's interned id. The raw cell only
+ * says *whether* there is one; the URI takes a grid-ref lookup, so the flag
+ * gates it and a run of cells sharing one link costs one lookup — the last
+ * answer is remembered for exactly as long as the flag keeps being true with
+ * the same URI, which is what a link is. */
+static uint16_t cell_link_id(pane_t *p, screen_t *s, uint16_t x, uint16_t y,
+                             char *last_uri, size_t *last_len,
+                             uint16_t *last_id) {
+  GhosttyGridRef ref;
+  if (!grid_ref_at(p, x, y, &ref)) return 0;
+  uint8_t uri[1024];
+  size_t len = 0;
+  if (ghostty_grid_ref_hyperlink_uri(&ref, uri, sizeof uri, &len) !=
+          GHOSTTY_SUCCESS ||
+      !len)
+    return 0;
+  if (len == *last_len && memcmp(uri, last_uri, len) == 0) return *last_id;
+  uint16_t id = screen_link_id(s, (const char *)uri, len);
+  memcpy(last_uri, uri, len);
+  *last_len = len;
+  *last_id = id;
+  return id;
+}
+
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused) {
   if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS)
@@ -1154,6 +1178,10 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                                GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
                                &p->rows) != GHOSTTY_SUCCESS)
     return;
+
+  char last_uri[1024];
+  size_t last_len = 0;
+  uint16_t last_id = 0;
 
   uint16_t y = 0;
   while (ghostty_render_state_row_iterator_next(p->rows)) {
@@ -1179,17 +1207,27 @@ void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
 
       GhosttyCell raw = {0};
       GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+      bool linked = false;
       if (ghostty_render_state_row_cells_get(
               p->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw) ==
-          GHOSTTY_SUCCESS)
+          GHOSTTY_SUCCESS) {
         ghostty_cell_get(raw, GHOSTTY_CELL_DATA_WIDE, &wide);
+        ghostty_cell_get(raw, GHOSTTY_CELL_DATA_HAS_HYPERLINK, &linked);
+      }
 
       if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL) {
         dst->width = 0;
         dst->len = 0;
+        screen_set_link(s, (uint16_t)(x0 + x), (uint16_t)(y0 + y), 0);
         x++;
         continue;
       }
+
+      /* OSC 8 hyperlinks ride beside the cell, or they would be lost: the
+       * client's terminal can only offer a link it was sent. */
+      screen_set_link(
+          s, (uint16_t)(x0 + x), (uint16_t)(y0 + y),
+          linked ? cell_link_id(p, s, x, y, last_uri, &last_len, &last_id) : 0);
 
       char utf8[16] = {0};
       GhosttyBuffer gb = {.ptr = (uint8_t *)utf8, .cap = sizeof utf8, .len = 0};

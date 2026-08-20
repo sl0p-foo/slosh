@@ -82,6 +82,8 @@ static cell_t blank_cell(void) {
   return c;
 }
 
+#define LINKS_MAX 4096 /* unique URIs a screen will carry; then they drop */
+
 void screen_init(screen_t *s, uint16_t cols, uint16_t rows) {
   memset(s, 0, sizeof *s);
   s->cols = cols;
@@ -89,6 +91,8 @@ void screen_init(screen_t *s, uint16_t cols, uint16_t rows) {
   size_t n = (size_t)cols * rows;
   s->cur = calloc(n, sizeof(cell_t));
   s->prev = calloc(n, sizeof(cell_t));
+  s->cur_link = calloc(n, sizeof(uint16_t));
+  s->prev_link = calloc(n, sizeof(uint16_t));
   s->force_full = true;
   screen_clear(s);
 }
@@ -96,6 +100,10 @@ void screen_init(screen_t *s, uint16_t cols, uint16_t rows) {
 void screen_free(screen_t *s) {
   free(s->cur);
   free(s->prev);
+  free(s->cur_link);
+  free(s->prev_link);
+  for (size_t i = 0; i < s->nlinks; i++) free(s->links[i]);
+  free(s->links);
   free(s->out);
   free(s->hits.items);
   memset(s, 0, sizeof *s);
@@ -105,11 +113,17 @@ void screen_resize(screen_t *s, uint16_t cols, uint16_t rows) {
   if (cols == s->cols && rows == s->rows) return;
   free(s->cur);
   free(s->prev);
+  free(s->cur_link);
+  free(s->prev_link);
   s->cols = cols;
   s->rows = rows;
   size_t n = (size_t)cols * rows;
   s->cur = calloc(n, sizeof(cell_t));
   s->prev = calloc(n, sizeof(cell_t));
+  s->cur_link = calloc(n, sizeof(uint16_t));
+  s->prev_link = calloc(n, sizeof(uint16_t));
+  /* The URI table survives a resize on purpose: ids in flight stay
+   * meaningful, and a resize is not a reason to forget what a link was. */
   s->force_full = true;
   screen_clear(s);
 }
@@ -118,6 +132,33 @@ void screen_clear(screen_t *s) {
   size_t n = (size_t)s->cols * s->rows;
   cell_t b = blank_cell();
   for (size_t i = 0; i < n; i++) s->cur[i] = b;
+  memset(s->cur_link, 0, n * sizeof(uint16_t));
+}
+
+uint16_t screen_link_id(screen_t *s, const char *uri, size_t len) {
+  if (!uri || !len || len > 1024) return 0;
+  /* A URI is emitted verbatim inside an OSC, so a control byte in one is a
+   * way to write escape sequences into the client's terminal. lib-vt cannot
+   * hand us its own terminators, but the rest of C0 is cheap to refuse and
+   * free to never think about again. */
+  for (size_t i = 0; i < len; i++)
+    if ((unsigned char)uri[i] < 0x20 || uri[i] == 0x7f) return 0;
+  for (size_t i = 0; i < s->nlinks; i++)
+    if (strlen(s->links[i]) == len && memcmp(s->links[i], uri, len) == 0)
+      return (uint16_t)(i + 1);
+  if (s->nlinks >= LINKS_MAX) return 0;
+  char *copy = malloc(len + 1);
+  if (!copy) return 0;
+  memcpy(copy, uri, len);
+  copy[len] = 0;
+  s->links = realloc(s->links, (s->nlinks + 1) * sizeof *s->links);
+  s->links[s->nlinks++] = copy;
+  return (uint16_t)s->nlinks;
+}
+
+void screen_set_link(screen_t *s, uint16_t x, uint16_t y, uint16_t id) {
+  if (x >= s->cols || y >= s->rows) return;
+  s->cur_link[(size_t)y * s->cols + x] = id;
 }
 
 cell_t *screen_at(screen_t *s, uint16_t x, uint16_t y) {
@@ -228,6 +269,10 @@ void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
   memcpy(c->text, txt, len);
   c->len = (uint8_t)len;
   c->width = screen_width_of(txt, len);
+  /* Chrome over a link is chrome: writing a cell through here takes any
+   * hyperlink a pane left on it, or a frame drawn across a URL would be
+   * clickable. */
+  screen_set_link(s, x, y, 0);
   /* The second half of a wide cell is a tail: never painted, and skipped by
    * the diff. Without claiming it, the cell to the right keeps whatever was
    * there and the terminal draws both. */
@@ -237,6 +282,7 @@ void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
       memset(tail, 0, sizeof *tail);
       tail->fg = fg;
       tail->bg = bg;
+      screen_set_link(s, (uint16_t)(x + 1), y, 0);
     } else {
       c->width = 1; /* no room for the tail: do not claim what is not there */
     }
@@ -305,19 +351,30 @@ void screen_render(screen_t *s) {
   if (s->force_full) {
     out_str(s, "\x1b[?25l\x1b[0m\x1b[H\x1b[2J");
     memset(s->prev, 0, (size_t)s->cols * s->rows * sizeof(cell_t));
+    memset(s->prev_link, 0, (size_t)s->cols * s->rows * sizeof(uint16_t));
     painted = true;
   }
 
   bool have_pos = false, have_style = false;
   uint16_t cx = 0, cy = 0;
   cell_t style = {0};
+  /* Which hyperlink the output stream currently has open (OSC 8). Only the
+   * cells this frame emits pass through it — an unchanged cell keeps the
+   * link the terminal already holds for it — and it is closed before the
+   * frame ends, so link state never leaks into the cursor restore or the
+   * next frame's first cell. */
+  uint16_t open_link = 0;
 
   for (uint16_t y = 0; y < s->rows; y++) {
     for (uint16_t x = 0; x < s->cols; x++) {
-      cell_t *c = &s->cur[(size_t)y * s->cols + x];
-      cell_t *p = &s->prev[(size_t)y * s->cols + x];
+      size_t idx = (size_t)y * s->cols + x;
+      cell_t *c = &s->cur[idx];
+      cell_t *p = &s->prev[idx];
       if (c->width == 0) continue; /* tail of a wide cell: never painted */
-      if (cell_eq(c, p)) continue;
+      /* A cell whose only change is its link is still a change: the glyph
+       * has to be re-sent inside (or outside) the OSC 8 wrapper for the
+       * terminal to move it between links. */
+      if (cell_eq(c, p) && s->cur_link[idx] == s->prev_link[idx]) continue;
 
       if (!painted) {
         out_str(s, "\x1b[?25l");
@@ -334,16 +391,27 @@ void screen_render(screen_t *s) {
         style = *c;
         have_style = true;
       }
+      if (s->cur_link[idx] != open_link) {
+        if (open_link) out_str(s, "\x1b]8;;\x1b\\");
+        open_link = s->cur_link[idx];
+        if (open_link) {
+          out_str(s, "\x1b]8;;");
+          out_str(s, s->links[open_link - 1]);
+          out_str(s, "\x1b\\");
+        }
+      }
       if (c->len)
         out_bytes(s, c->text, c->len);
       else
         out_str(s, " ");
 
       *p = *c;
+      s->prev_link[idx] = s->cur_link[idx];
       cx += c->width ? c->width : 1;
       if (cx >= s->cols) have_pos = false; /* wrap is terminal-dependent */
     }
   }
+  if (open_link) out_str(s, "\x1b]8;;\x1b\\");
 
   bool cursor_moved = s->cursor_visible != s->shown_cursor_visible ||
                       s->cursor_x != s->shown_cursor_x ||
@@ -458,6 +526,29 @@ char *screen_dump_json(screen_t *s) {
   json_arr_close(&j);
 
   dump_style_runs(s, &j);
+
+  /* Hyperlinks as runs, like the styles: a test wants "these six cells are
+   * this URI", not one object per cell. */
+  json_arr_open(&j, "links");
+  for (uint16_t y = 0; y < s->rows; y++) {
+    uint16_t x = 0;
+    while (x < s->cols) {
+      uint16_t id = s->cur_link[(size_t)y * s->cols + x];
+      if (!id) {
+        x++;
+        continue;
+      }
+      uint16_t x0 = x;
+      while (x < s->cols && s->cur_link[(size_t)y * s->cols + x] == id) x++;
+      json_obj_open(&j, NULL);
+      json_int(&j, "x", x0);
+      json_int(&j, "y", y);
+      json_int(&j, "w", (uint16_t)(x - x0));
+      json_str(&j, "uri", s->links[id - 1], strlen(s->links[id - 1]));
+      json_obj_close(&j);
+    }
+  }
+  json_arr_close(&j);
 
   json_obj_open(&j, "cursor");
   json_bool(&j, "visible", s->cursor_visible);

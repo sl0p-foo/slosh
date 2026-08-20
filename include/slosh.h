@@ -47,6 +47,16 @@ typedef struct {
   uint16_t cols, rows;
   cell_t *cur;  /* what we want on screen */
   cell_t *prev; /* what the terminal last received */
+  /* OSC 8 hyperlinks, carried beside the cells rather than in them: cell_t
+   * is the shader ABI and a link is not a colour. 0 is no link; anything
+   * else is 1+index into `links`. The table is append-only for the screen's
+   * lifetime, so an id in `prev_link` still means the same URI next frame —
+   * which is what lets the diff compare ids instead of strings — and it is
+   * capped, because a hostile pane must not be able to grow it forever: a
+   * link past the cap is dropped, which costs a click and nothing else. */
+  uint16_t *cur_link, *prev_link;
+  char **links;
+  size_t nlinks;
   bool force_full;
   hitlist_t hits;
 
@@ -77,6 +87,12 @@ uint16_t screen_cells(const char *txt);
  * of characters when any of them is wide. */
 uint16_t screen_text(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      color_t fg, color_t bg, uint16_t attrs);
+/* Intern a hyperlink URI into this screen's table: an id for screen_set_link,
+ * or 0 for none — an empty URI, one with control bytes in it, or a full
+ * table all answer 0, because a link that cannot be emitted safely is a link
+ * the frame does not carry. */
+uint16_t screen_link_id(screen_t *s, const char *uri, size_t len);
+void screen_set_link(screen_t *s, uint16_t x, uint16_t y, uint16_t id);
 /* Diff cur against prev into s->out (the minimal byte stream for a terminal). */
 void screen_render(screen_t *s);
 /* screen_render, then write it to fd. */
