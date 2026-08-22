@@ -249,6 +249,26 @@ int main(int argc, char **argv) {
   if (isatty(STDOUT_FILENO)) term_size(&cols, &rows);
   if (server) return server_run(name, cmd_argv, cols, rows, layout, watch);
 
+  /* Not to the session this process is already inside. A new client
+   * displaces the current display (EXIT_REPLACED), so `slosh` typed into a
+   * pane of "main" attaches to main, displaces the very client showing that
+   * pane, and the user watches their own session detach from inside it.
+   * SLOSH_SESSION names the pane's own session; asking for any *other* name
+   * is deliberate nesting and none of our business. The one legitimate shape
+   * this refuses — a fresh terminal launched from a pane, inheriting the
+   * variables, attaching to take over as the display — gets its escape hatch
+   * named in the message rather than a flag: it is exactly what unsetting
+   * the variable means. */
+  const char *inside = getenv("SLOSH") ? getenv("SLOSH_SESSION") : NULL;
+  if (inside && *inside && strcmp(inside, name) == 0) {
+    fprintf(stderr,
+            "slosh: this pane is already inside session %s\n"
+            "  (C-a d detaches; `slosh -s NAME` nests another session;\n"
+            "   unset SLOSH_SESSION to attach anyway, displacing this view)\n",
+            name);
+    return 1;
+  }
+
   /* attach, creating the session if nobody is home */
   int fd = server_connect(name);
   if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows, layout, watch);
