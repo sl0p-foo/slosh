@@ -912,6 +912,32 @@ def test_the_key_and_the_palette_both_run_it():
         check("running it floats the pane", len(floats(s)) == 1, str(here(s)))
 
 
+def test_the_padding_ring_hides_what_is_under_it():
+    """A float's padding is painted blank, not left unpainted. A tiled pane
+    sits on a cleared screen, so an unpainted ring looked fine by accident —
+    a float sits on whatever was composited below it, and every unpainted
+    cell let that show through."""
+    conf = cfg("padding 2\n")
+    filler = ["/bin/sh", "-c", 'printf "X%.0s" $(seq 1 4000); stty raw -echo; cat']
+    with Session(filler, cols=90, rows=24, config=conf) as s:
+        s.settle(50)
+        s.api("split", dir="cols")
+        s.settle(50)
+        s.api("float")
+        s.settle(100)
+        fl = floats(s)[0]
+        snap = s.snapshot()
+        # the ring between the border and the content, on a content row and
+        # on a padding row: all of it over the X-filled backdrop, all blank
+        row = snap.line(fl["content_y"])
+        left = row[fl["x"] + 1 : fl["content_x"]]
+        right = row[fl["content_x"] + fl["content_w"] : fl["x"] + fl["w"] - 1]
+        top = snap.line(fl["y"] + 1)[fl["x"] + 1 : fl["x"] + fl["w"] - 1]
+        check("the left padding is blank", set(left) <= {" "}, repr(left))
+        check("the right padding is blank", set(right) <= {" "}, repr(right))
+        check("a full padding row is blank", set(top) <= {" "}, repr(top))
+
+
 if __name__ == "__main__":
     test_floating_lifts_a_pane_out_of_the_layout()
     test_the_overlap_belongs_to_the_float()
@@ -946,4 +972,5 @@ if __name__ == "__main__":
     test_a_layout_of_only_floats_self_heals()
     test_a_float_is_not_a_drop_target()
     test_the_key_and_the_palette_both_run_it()
+    test_the_padding_ring_hides_what_is_under_it()
     sys.exit(report())

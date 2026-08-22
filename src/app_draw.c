@@ -573,6 +573,25 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     screen_text(s, x1, y, vbar, fg, NO_COLOR, attrs);
   }
 
+  /* The padding ring between the border and the contents, painted blank
+   * rather than left alone. A tiled pane sits on a cleared screen, so leaving
+   * it unpainted used to look the same by accident — but a float sits on
+   * whatever was composited under it, and every unpainted cell lets that show
+   * through. Blank-with-no-colour is exactly what screen_clear leaves, so a
+   * tiled pane looks as it always did, and with no padding configured the
+   * ring is empty and this writes nothing. */
+  {
+    rect_t c = leaf->content;
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
+      for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+        if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) {
+          x = (uint16_t)(c.x + c.w - 1); /* jump past the contents */
+          continue;
+        }
+        screen_text(s, x, y, " ", NO_COLOR, NO_COLOR, 0);
+      }
+  }
+
   /* A pane that rang, marked just inside its corner: the same place on every
    * pane, whatever its title is doing. */
   if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4)
@@ -1360,6 +1379,12 @@ static void draw_cb(node_t *n, void *ud) {
     /* Falls through to the shader pass rather than returning: a pane that has
      * not started is a state you can want to colour, and its label is the only
      * content it has. */
+    /* Nothing has ever composed into this content rect, so paint it blank
+     * first — for the same reason draw_frame paints the padding ring: a
+     * floating suspended pane must not show what is under it. */
+    for (uint16_t y = n->content.y; y < n->content.y + n->content.h; y++)
+      for (uint16_t x = n->content.x; x < n->content.x + n->content.w; x++)
+        screen_text(d->s, x, y, " ", NO_COLOR, NO_COLOR, 0);
     /* The pane exists, is laid out, and has run nothing. Say what it would. */
     const char *label = pane_label(n->pane);
     char line[256];
