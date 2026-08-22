@@ -52,6 +52,7 @@ by name.
 - **[Shaders](shaders.md)** — colour passes over a pane's contents.
 - **[Chrome shaders](chrome.md)** — the same passes over a pane's frame.
 - **[Layouts](layouts.md)** — a session as a file you check in.
+- **[Workspaces](workspaces.md)** — projects on disk, opened by name.
 - **[Scripting](scripting.md)** — the control socket, and what a pane can draw.
 - **[How it works](design.md)** — the two decisions that shape the rest.
 

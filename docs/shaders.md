@@ -34,7 +34,9 @@ a word and skipped, never guessed at.
 | `margin` | `amount` `at=100` | everything past a column recedes |
 | `spotlight` | `amount` `radius=12` | brightness falls away from the cursor |
 
-`amount` is 0..255 and defaults to 128. Two props belong to the *pass* rather
+`amount` is 0..255 and defaults to 128. The numbers beside the other properties
+are examples rather than defaults: left out, `band` is 1, `radius` is 10, and
+`at` and `direction` are 0. Two props belong to the *pass* rather
 than the shader and work on any of them: `where="content"|"chrome"` and
 `channel="both"|"fg"|"bg"`.
 

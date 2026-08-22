@@ -15,10 +15,11 @@ smaller than that — an unknown shader, a binding that does not parse, an
 [`include`](#include) that is not there — applies the rest of the file and says
 which line it could not honour.
 
-Three settings are read later than the rest, because of *when* they are needed:
-`shell` and `scrollback` apply to the next pane you open — shrinking a pane's
-history retroactively would throw away output somebody is reading — and a shader
-plugin that replaced one already loaded needs a new session.
+Three things are read later than the rest, because of *when* they are needed:
+`shell` and the two `scrollback` limits apply to the next pane you open —
+shrinking a pane's history retroactively would throw away output somebody is
+reading — and a shader plugin that replaced one already loaded needs a new
+session.
 
 ## Two files worth knowing
 
@@ -95,15 +96,16 @@ recoloured without also recolouring the focused frame.
 
 Six ready-made themes are in
 `contrib/themes`:
-`amber`, `mono`, `paper`, `phosphor`, `sl0p`, `slate`. Include one and put your
-own two lines on top:
+`amber`, `mono`, `paper`, `phosphor`, `sl0p`, `slate` — plus `default`, the
+compiled-in palette written out, so another theme is one include-swap away from
+coming back. Include one and put your own two lines on top:
 
 ```kdl
 include "~/.config/slosh/themes/phosphor.kdl"
 theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 ```
 
-`contrib/theme-tour` cycles a running session through all six.
+`contrib/theme-tour` cycles a running session through all of them.
 
 ## The knobs, briefly
 
@@ -111,7 +113,8 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 |---|---|
 | geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
 | chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` `bell_indicator` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
-| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `hover_delay_ms` `double_click_ms` `word_separators` `anim_ms` `modal_scrim` `dim_unfocused` `float_shadow` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
+| behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `splash_ms` `hover_delay_ms` `double_click_ms` `word_separators` `anim_ms` `modal_scrim` `dim_unfocused` `float_shadow` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
+| projects | `project_roots` `project_layout` — see [workspaces](workspaces.md) |
 | colour | `theme { }` |
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |
@@ -197,7 +200,7 @@ states {                  // ...and the whole table underneath it
 ```
 
 The full ranking, most urgent first: `dragging`, `drop_hover`, `drop_target`,
-`dead`, `suspended`, `bell`, `scrolled`, `unfocused`. Exactly one wins — the
+`dead`, `suspended`, `bell`, `scrolled`, `floating`, `unfocused`. Exactly one wins — the
 first that matches — because two reasons to be grey compound into one muddy grey
 that reads as neither. Naming a state replaces its default outright, including
 with nothing, which is how you turn one off.

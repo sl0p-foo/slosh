@@ -46,6 +46,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `graphics` | the kitty placements on screen, or the bytes sent for them |
 | `clipboard` | what the session has copied |
 | `reload` | re-read the config; answers `{"ok":true,"warning":...}` if it had a complaint |
+| `splash` | replay the attach greeting; `fx` and `motion` pick the colour effect and the assembly by index, for a deterministic one |
 | `edit-config` | open the config in a pane |
 | `alive` | is it running, and how many panes and tabs |
 | `quit` | end the session |
