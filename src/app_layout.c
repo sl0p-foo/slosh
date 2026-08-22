@@ -536,6 +536,12 @@ void split_node(app_t *a, node_t *leaf, split_dir_t dir, bool before) {
  * splitting the pane you were looking at. */
 static void place_beside(app_t *a, tab_t *t, node_t *leaf, node_t *node,
                          split_dir_t dir, bool before) {
+  /* A zoomed tab shows one pane and nothing else, so a pane arriving in it
+   * would be hidden behind the pane filling it — which looks exactly like the
+   * split, the move or the editor having failed. Whoever asked for a new pane
+   * asked to see it, so the zoom yields. Here rather than in each caller,
+   * because every way a pane lands beside another funnels through this. */
+  t->zoom = 0;
   /* Growing an existing split in the same direction keeps the tree flat, so
    * three vertical splits are three equal columns rather than 1/2 + 1/4 + 1/4. */
   if (leaf->parent && leaf->parent->dir == dir) {
@@ -1001,6 +1007,9 @@ bool app_minimize(app_t *a, uint32_t id) {
 
   n->minimized = true;
   a->cur = ti;
+  /* A zoom naming this pane must end with it: left standing, the layout would
+   * solo a pane the strip now holds — filling the tab and put away at once. */
+  if (a->tabs[ti].zoom == n->id) a->tabs[ti].zoom = 0;
   /* Focus has to leave, or the rule that a focused pane is never minimised
    * would undo this on the next frame. */
   if (a->tabs[ti].focus == n) a->tabs[ti].focus = next;
@@ -1362,9 +1371,6 @@ bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id,
   node_t *beside = dest->focus ? dest->focus : first_leaf(dest->root);
   place_beside(a, dest, beside, leaf, rows ? SPLIT_ROWS : SPLIT_COLS, false);
   dest->focus = leaf;
-  /* A zoomed destination would hide the arrival behind the pane filling it, which
-   * looks exactly like the move having failed. */
-  dest->zoom = 0;
 
   /* Stay where we were looking, unless that tab is the one that just went. */
   for (size_t i = 0; i < a->ntabs; i++)

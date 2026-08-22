@@ -225,6 +225,77 @@ def test_the_buttons_can_be_turned_off():
     os.unlink(conf)
 
 
+def test_a_new_pane_unzooms():
+    """A pane arriving in a zoomed tab would land behind the pane filling it,
+    which looks exactly like the split having failed — so asking for a new
+    pane implicitly asks for the layout back."""
+    with Session(SH, cols=90, rows=24) as s:
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        s.send(r"\x01z")
+        s.settle(20)
+        check("zoomed: one pane on screen", len(visible(s)) == 1, str(visible(s)))
+        s.send(r"\x01-")
+        s.settle(30)
+        vis = visible(s)
+        check("a split unzooms", len(vis) == 3, str(vis))
+        check(
+            "and the status stops saying so",
+            "zoomed" not in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
+        check(
+            "the new pane holds focus",
+            [p for p in vis if p["focused"]] != [],
+            str(vis),
+        )
+
+
+def test_a_new_float_unzooms():
+    """Floats are hidden while a tab is zoomed, so a new float opened over a
+    zoomed tab would be invisible on arrival. Same rule, same fix."""
+    with Session(SH, cols=90, rows=24) as s:
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        s.send(r"\x01z")
+        s.settle(20)
+        r = s.api("new-float")
+        s.settle(30)
+        check("the float opened", r.get("ok") and r.get("id"), str(r))
+        fl = [p for p in visible(s) if p["floating"] and p["w"] > 1]
+        check("and is on screen, not behind a zoom", len(fl) == 1, str(visible(s)))
+        check(
+            "the zoom is gone",
+            "zoomed" not in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
+
+
+def test_minimising_the_zoomed_pane_unzooms():
+    """A zoom naming a minimised pane would solo a pane the strip holds —
+    filling the tab and put away at once. Minimising it ends the zoom."""
+    with Session(SH, cols=90, rows=24) as s:
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        s.api("split", dir="cols")
+        s.settle(20)
+        s.send(r"\x01z")
+        s.settle(20)
+        check("zoomed over three panes", len(visible(s)) == 1, str(visible(s)))
+        s.send(r"\x01m")
+        s.settle(30)
+        vis = [p for p in visible(s) if p["w"] > 1]
+        check("the two others lay out again", len(vis) == 2, str(visible(s)))
+        check(
+            "and the status stops saying zoomed",
+            "zoomed" not in s.snapshot().text[-2],
+            repr(s.snapshot().text[-2]),
+        )
+
+
 if __name__ == "__main__":
     test_zoom_fills_the_tab_and_puts_it_back()
     test_the_button_toggles_and_says_which_way()
@@ -233,4 +304,7 @@ if __name__ == "__main__":
     test_zoom_is_per_tab()
     test_the_status_line_says_zoomed()
     test_the_buttons_can_be_turned_off()
+    test_a_new_pane_unzooms()
+    test_a_new_float_unzooms()
+    test_minimising_the_zoomed_pane_unzooms()
     sys.exit(report())
