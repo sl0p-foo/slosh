@@ -1,4 +1,8 @@
-build/
+# Anchored to the repo root: this is slosh's own build output. An unanchored
+# `build/` also matches nested dirs like vendor/libghostty-vt/src/build/, which
+# silently dropped the vendored library's build tooling from git and broke
+# `make vendor` on fresh clones.
+/build/
 .scratch/
 vendor/libghostty-vt/zig-out/
 vendor/libghostty-vt/.zig-cache/
