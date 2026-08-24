@@ -25,6 +25,9 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
+a { color: var(--pink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
 body {
   display: flex;
   flex-direction: column;
@@ -63,6 +66,19 @@ main {
   padding: 2.4rem 2.2rem 2.1rem;
   border: 1px solid var(--pink);
   border-radius: 4px;
+}
+
+/* The pane wears two of slosh's shaders, drawn in CSS: zebra band=1 (a
+ * scanline) and vignette. The copy below points at it. */
+.pane::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(transparent 0 2px, rgba(0, 0, 0, 0.14) 2px 4px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.42));
 }
 
 .pane-title {
@@ -104,6 +120,8 @@ h1 {
 }
 
 .soon { margin: 2.2rem 0 0; }
+
+.by { margin: 1.4rem 0 0; color: var(--faint); font-size: 13px; }
 
 .cursor {
   display: inline-block;
@@ -153,7 +171,13 @@ h1 {
       <h1>slosh</h1>
       <p class="tagline">A terminal multiplexer — panes, tabs, sessions you
       can detach from. Written in C on libghostty-vt.</p>
+      <p class="tagline">Panes wear <b>shaders</b> — vignette, scanlines,
+      CRT phosphor, spotlight — colour passes over live terminal cells.
+      This pane is wearing two.</p>
       <p class="soon">coming soon<span class="cursor"></span></p>
+      <p class="by">slosh is a <a href="https://sl0p.foo">sl0p.foo</a>
+      product — join us on
+      <a href="https://discord.gg/9rmHTNsnKY">Discord</a>.</p>
     </div>
   </section>
 </main>
