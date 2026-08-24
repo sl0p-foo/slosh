@@ -6,7 +6,15 @@
 
 #include "config.h"
 
+/* The config-file watcher speaks the OS's native change-notification API:
+ * inotify on Linux, kqueue's EVFILT_VNODE on macOS. Both feed one fd that
+ * server_run() adds to its poll set (a kqueue descriptor is pollable), so the
+ * only platform-specific code is registering directories and draining events. */
+#ifdef __APPLE__
+#include <sys/event.h>
+#else
 #include <sys/inotify.h>
+#endif
 
 #include <errno.h>
 #include <fcntl.h>
@@ -186,7 +194,9 @@ static void drop_display(server_t *s, uint8_t reason) {
 #define WATCH_MAX CONFIG_FILES_MAX
 typedef struct {
   int fd;
-  int wds[WATCH_MAX];
+  /* Two slots per file: on macOS each config file is watched twice, once via
+   * its directory and once via the file itself (see watch_config). */
+  int wds[WATCH_MAX * 2];
   size_t nwds;
   char names[WATCH_MAX][128];
   size_t nnames;
@@ -194,7 +204,12 @@ typedef struct {
 
 static void watch_config(watchset_t *w) {
   if (w->fd < 0) return;
+#ifdef __APPLE__
+  /* kqueue drops a vnode filter when its fd closes, so closing is the unwatch. */
+  for (size_t i = 0; i < w->nwds; i++) close(w->wds[i]);
+#else
   for (size_t i = 0; i < w->nwds; i++) inotify_rm_watch(w->fd, w->wds[i]);
+#endif
   w->nwds = 0;
   w->nnames = 0;
 
@@ -216,6 +231,32 @@ static void watch_config(watchset_t *w) {
      * a mistyped path should not leave a directory behind. */
     if (i == 0) path_mkdirs(dir);
 
+#ifdef __APPLE__
+    /* kqueue's EVFILT_VNODE reports events per *vnode*, so unlike inotify a
+     * directory watch sees entries created, renamed or deleted but NOT a write
+     * into a file that already exists. So we watch two things: the directory
+     * (which catches the temp-file-then-rename most editors do, and a file
+     * appearing for the first time) and the file itself when it exists (which
+     * catches an in-place rewrite). A rename swaps the inode out from under the
+     * file watch, but the directory watch fires, we reload, and watch_config
+     * re-opens the new inode -- so the pair survives both save styles.
+     * O_EVTONLY opens for notification only and never pins a volume. It reports
+     * no filename, so any event triggers the debounced re-read, which decides
+     * for itself whether anything we care about changed. */
+    const unsigned vnflags =
+        NOTE_WRITE | NOTE_EXTEND | NOTE_RENAME | NOTE_DELETE | NOTE_ATTRIB;
+    const char *targets[2] = {dir, files[i]};
+    for (size_t t = 0; t < 2; t++) {
+      int vfd = open(targets[t], O_EVTONLY);
+      if (vfd < 0) continue;
+      struct kevent ev;
+      EV_SET(&ev, vfd, EVFILT_VNODE, EV_ADD | EV_CLEAR, vnflags, 0, NULL);
+      if (kevent(w->fd, &ev, 1, NULL, 0, NULL) == 0 && w->nwds < WATCH_MAX * 2)
+        w->wds[w->nwds++] = vfd;
+      else
+        close(vfd);
+    }
+#else
     int wd =
         inotify_add_watch(w->fd, dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
     if (wd >= 0) {
@@ -224,6 +265,7 @@ static void watch_config(watchset_t *w) {
         if (w->wds[k] == wd) have = true; /* same directory, same descriptor */
       if (!have && w->nwds < WATCH_MAX) w->wds[w->nwds++] = wd;
     }
+#endif
     if (w->nnames < WATCH_MAX) {
       snprintf(w->names[w->nnames], sizeof w->names[0], "%s", base);
       w->nnames++;
@@ -231,10 +273,41 @@ static void watch_config(watchset_t *w) {
   }
 }
 
+#ifndef __APPLE__
 static bool watch_hit(const watchset_t *w, const char *name) {
   for (size_t i = 0; i < w->nnames; i++)
     if (strcmp(w->names[i], name) == 0) return true;
   return false;
+}
+#endif
+
+/* Drain everything the watch fd has queued and report whether any of it touched
+ * a config file. Called when poll() marks the watch fd readable; the caller
+ * debounces, because one save is not always one event. */
+static bool watch_drain(watchset_t *w) {
+  bool touched = false;
+#ifdef __APPLE__
+  struct kevent evs[16];
+  struct timespec zero = {0, 0};
+  for (;;) {
+    int n = kevent(w->fd, NULL, 0, evs, 16, &zero);
+    if (n <= 0) break;
+    touched = true; /* any vnode event means a watched directory changed */
+    if (n < 16) break;
+  }
+#else
+  char buf[4096];
+  for (;;) {
+    ssize_t got = read(w->fd, buf, sizeof buf);
+    if (got <= 0) break;
+    for (char *q = buf; q < buf + got;) {
+      struct inotify_event *ev = (struct inotify_event *)q;
+      if (ev->len && watch_hit(w, ev->name)) touched = true;
+      q += sizeof *ev + ev->len;
+    }
+  }
+#endif
+  return touched;
 }
 
 /* What every pane is told about the session around it. Panes inherit this
@@ -336,7 +409,12 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   int inofd = -1;
   watchset_t watches = {.fd = -1};
   if (watch) {
+#ifdef __APPLE__
+    inofd = kqueue();
+    if (inofd >= 0) fcntl(inofd, F_SETFD, FD_CLOEXEC);
+#else
     inofd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+#endif
     watches.fd = inofd;
     watch_config(&watches);
   }
@@ -502,18 +580,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
      * here than there because an editor saving halfway through a change is a
      * normal thing to see rather than an operator mistake. */
     if (inofd >= 0 && (pfds[ino_slot].revents & POLLIN)) {
-      char buf[4096];
-      bool touched = false;
-      for (;;) {
-        ssize_t got = read(inofd, buf, sizeof buf);
-        if (got <= 0) break;
-        for (char *q = buf; q < buf + got;) {
-          struct inotify_event *ev = (struct inotify_event *)q;
-          if (ev->len && watch_hit(&watches, ev->name)) touched = true;
-          q += sizeof *ev + ev->len;
-        }
-      }
-      if (touched) reload_due = now_ms() + RELOAD_DEBOUNCE_MS;
+      if (watch_drain(&watches)) reload_due = now_ms() + RELOAD_DEBOUNCE_MS;
     }
 
     if (reload_due >= 0 && now_ms() >= reload_due) {
