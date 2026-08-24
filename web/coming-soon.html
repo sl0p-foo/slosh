@@ -68,6 +68,32 @@ main {
   border-radius: 4px;
 }
 
+/* Every eight seconds the pane rings its bell: a soft sheen crosses the
+ * body and is gone within a second, which is the pass slosh runs over a
+ * pane when a bell goes unheard. Painted as a background so the pane's own
+ * box clips it; nothing overflows, the frame title stays where it is. */
+.pane::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  background: linear-gradient(105deg,
+      transparent 42%,
+      rgba(255, 95, 215, 0.05) 47%,
+      rgba(255, 255, 255, 0.10) 50%,
+      rgba(255, 95, 215, 0.05) 53%,
+      transparent 58%) no-repeat;
+  background-size: 300% 100%;
+  background-position: -15% 0;
+  animation: shimmer 8s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 115% 0; }
+  16%, 100% { background-position: -15% 0; }
+}
+
 /* The pane wears two of slosh's shaders, drawn in CSS: zebra band=1 (a
  * scanline) and vignette. The copy below points at it. */
 .pane::after {
@@ -138,7 +164,7 @@ h1 {
 @keyframes blink { 50% { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .cmdline, .out, .cursor { animation: none; }
+  .cmdline, .out, .cursor, .pane::before { animation: none; }
 }
 
 /* ---- the status line ------------------------------------------------ */
@@ -171,9 +197,11 @@ h1 {
       <h1>slosh</h1>
       <p class="tagline">A terminal multiplexer. Panes, tabs, sessions you
       can detach from. Written in C on libghostty-vt.</p>
-      <p class="tagline">Panes wear <b>shaders</b>: vignette, scanlines,
-      CRT phosphor, spotlight. Colour passes over live terminal cells.
-      This pane is wearing two.</p>
+      <p class="tagline">Panes wear <b>shaders</b>: colour passes over live
+      terminal cells. Not decoration: an unfocused pane dims, a dead shell
+      greys out, scrollback tints, a bell shimmers until it is seen. Also
+      scanlines and CRT phosphor, because they can. This pane is wearing
+      two.</p>
       <p class="soon">coming soon<span class="cursor"></span></p>
       <p class="by">slosh is a <a href="https://sl0p.foo">sl0p.foo</a>
       product. Join us on
