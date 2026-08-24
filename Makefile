@@ -101,8 +101,13 @@ build:
 $(VT_LIB):
 	@$(MAKE) vendor
 
+# -Demit-xcframework=false: we only need libghostty-vt.a. In lib-vt mode the
+# upstream build.zig auto-enables an xcframework whenever `xcodebuild` is on
+# PATH -- but on a machine with only the Command Line Tools (no full Xcode)
+# that xcodebuild is a stub that fails, so the auto-detect turns a working
+# build into a broken one. We never consume the xcframework, so disable it.
 vendor: ## build the vendored libghostty-vt (needs zig 0.16)
-	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build -Demit-lib-vt -Doptimize=ReleaseFast
+	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build -Demit-lib-vt -Demit-xcframework=false -Doptimize=ReleaseFast
 
 TEST_BIN := build/input_test
 
