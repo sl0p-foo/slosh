@@ -79,19 +79,22 @@ main {
   border-radius: 4px;
   pointer-events: none;
   background: linear-gradient(105deg,
-      transparent 42%,
-      rgba(255, 95, 215, 0.05) 47%,
-      rgba(255, 255, 255, 0.10) 50%,
-      rgba(255, 95, 215, 0.05) 53%,
-      transparent 58%) no-repeat;
+      transparent 40%,
+      rgba(255, 95, 215, 0.10) 46%,
+      rgba(255, 255, 255, 0.18) 50%,
+      rgba(255, 95, 215, 0.10) 54%,
+      transparent 60%) no-repeat;
   background-size: 300% 100%;
-  background-position: -15% 0;
-  animation: shimmer 8s infinite;
+  background-position: 8% 0;
+  animation: shimmer 8s linear infinite;
 }
 
+/* 90% -> 8% is exactly the stretch where the band crosses the pane (the
+ * band lives in the middle of an image three panes wide), so the whole
+ * 1.6s segment is spent on screen rather than mostly off it. */
 @keyframes shimmer {
-  0% { background-position: 115% 0; }
-  16%, 100% { background-position: -15% 0; }
+  0% { background-position: 90% 0; }
+  20%, 100% { background-position: 8% 0; }
 }
 
 /* The pane wears two of slosh's shaders, drawn in CSS: zebra band=1 (a
