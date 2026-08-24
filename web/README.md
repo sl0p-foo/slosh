@@ -14,10 +14,16 @@ demo, assembled into a single static site:
 ## Build
 
 ```sh
-make www                    # everything -> build/www (same as web/build-site)
-NO_DEMO=1 web/build-site    # without the demo (it cross-compiles a guest)
+make www                    # for now: the coming-soon page -> build/www
+FULL=1 web/build-site       # the real site (front page + docs + demo)
+NO_DEMO=1 FULL=1 web/build-site  # ...without the demo (it cross-compiles a guest)
 web/demo/serve --dir build/www
 ```
+
+Until the site is finished, the default build is `coming-soon.html` alone
+(one self-contained file, same session-drawn look). Deploying is copying
+`build/www` to `/opt/slosh` on the box; drop the gate in `build-site` when
+the real thing ships.
 
 The output is only static files. Any host that serves a directory works, with
 the one condition the webdemo README already states: `.wasm` must be served as
