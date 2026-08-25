@@ -32,6 +32,7 @@ fi
 
 # The front page.
 cp "$here/index.html" "$here/site.css" "$here/install.sh" "$out/"
+cp "$here/slosh-preview.mp4" "$out/"
 
 # The docs, rendered by the same generator `make docs` uses.
 python3 "$root/contrib/gen-docs" "$out/docs"

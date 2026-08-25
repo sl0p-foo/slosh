@@ -15,3 +15,6 @@ __pycache__/
 # the formatter venv (make tools). Modern python writes .venv/.gitignore too,
 # but not every version does, and the intent belongs in our file.
 .venv/
+
+# the landing-page preview video (large binary, lives outside git)
+web/slosh-preview.mp4
