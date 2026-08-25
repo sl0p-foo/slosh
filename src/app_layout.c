@@ -21,6 +21,16 @@
 
 /* ---- layout: a pure function of the tree and the rect ------------------- */
 
+/* The space between two siblings, which every piece of gap arithmetic — the
+ * layout, the fit check, the resize clamp — must agree on. Compact packs
+ * panes against 1-cell divider lines, so the "gap" is exactly the divider,
+ * whichever axis: `gap` and `gap_aspect` are about air, and compact has
+ * none. */
+uint16_t eff_gap(split_dir_t dir) {
+  if (CFG.compact) return 1;
+  return dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
+}
+
 /* Every leaf under a node, in tree order. */
 size_t collect_leaves(node_t *n, node_t **out, size_t cap, size_t k) {
   if (!n || k >= cap) return k;
@@ -201,12 +211,24 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
      * rect too small for a frame gets neither, and the pane takes the whole
      * thing. Horizontal padding is aspect-corrected, like the gap: the config's
      * numbers are rows, so a square-looking ring is one number rather than an
-     * arithmetic problem. */
-    bool framed = r.w >= 3 && r.h >= 3;
-    uint16_t left = framed ? 1 + CFG.pad_left * CFG.gap_aspect : 0;
-    uint16_t right = framed ? 1 + CFG.pad_right * CFG.gap_aspect : 0;
-    uint16_t top = framed ? 1 + CFG.pad_top : 0;
-    uint16_t bottom = framed ? 1 + CFG.pad_bottom : 0;
+     * arithmetic problem.
+     *
+     * A compact tiled pane spends no border cells at all: the lines live
+     * outside its rect, between the rects, so content is the rect minus
+     * padding only. Floats keep the classic frame — they are overlays, and an
+     * overlay needs its own edge — and so does everything laid out through
+     * the flatten/zoom paths (`place_hidden`), where the pane on show is not
+     * packed against anything. */
+    bool classic = !CFG.compact || n->floating || ctx->place_hidden;
+    bool framed = classic && r.w >= 3 && r.h >= 3;
+    uint16_t bord = framed ? 1 : 0;
+    bool pads = framed || !classic;
+    uint16_t left =
+        (uint16_t)(bord + (pads ? CFG.pad_left * CFG.gap_aspect : 0));
+    uint16_t right =
+        (uint16_t)(bord + (pads ? CFG.pad_right * CFG.gap_aspect : 0));
+    uint16_t top = (uint16_t)(bord + (pads ? CFG.pad_top : 0));
+    uint16_t bottom = (uint16_t)(bord + (pads ? CFG.pad_bottom : 0));
     n->content = (rect_t){
         .x = (uint16_t)(r.x + left),
         .y = (uint16_t)(r.y + top),
@@ -238,8 +260,7 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
     return;
   }
 
-  uint16_t gap =
-      n->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
+  uint16_t gap = eff_gap(n->dir);
   uint16_t total = n->dir == SPLIT_COLS ? r.w : r.h;
 
   /* Does every child clear the floor? If not, this node collapses — a local
@@ -363,7 +384,18 @@ static void ensure_tiled(app_t *a) {
  * and the outer gap. Factored so the float edits can ask the same question
  * the layout answers, rather than a second copy of this arithmetic. */
 static rect_t tab_area(app_t *a) {
-  uint16_t gx = (uint16_t)(CFG.gap * CFG.gap_aspect), gy = CFG.gap;
+  /* Compact reserves exactly the outer frame: one cell a side, drawn as one
+   * ring around the whole tab rather than a border per pane. The ring is
+   * also where the top row of panes put their titles, so it is not optional
+   * air the way the gap is. */
+  uint16_t gx, gy;
+  if (CFG.compact) {
+    gx = a->cols >= 3 ? 1 : 0;
+    gy = a->rows >= 3 ? 1 : 0;
+  } else {
+    gx = (uint16_t)(CFG.gap * CFG.gap_aspect);
+    gy = CFG.gap;
+  }
   uint16_t top = (uint16_t)(gy + STRIP_ROWS);
   return (rect_t){.x = gx,
                   .y = top,
@@ -373,6 +405,11 @@ static rect_t tab_area(app_t *a) {
                                       ? a->rows - top - gy - LINE_ROWS
                                       : 1)};
 }
+
+/* The same rect for the draw passes: the compact frame ring and the outer
+ * split affordances are drawn against it, and recomputing it there would be a
+ * second opinion about where the layout put everything. */
+rect_t app_tab_area(app_t *a) { return tab_area(a); }
 
 void layout(app_t *a) {
   if (!a->ntabs) return;
@@ -618,8 +655,7 @@ bool split_fits(node_t *leaf, split_dir_t dir) {
   uint16_t floor_ = dir == SPLIT_COLS ? CFG.min_split_cols : CFG.min_split_rows;
   uint16_t hard = dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
   if (floor_ < hard) floor_ = hard;
-  uint16_t gap =
-      dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
+  uint16_t gap = eff_gap(dir);
 
   size_t k;
   uint16_t total;
@@ -1531,8 +1567,7 @@ void transfer_weight(node_t *from, node_t *to, int amount) {
   node_t *sp = from->parent;
   if (sp && sp->nkids >= 2) {
     uint16_t floor_ = sp->dir == SPLIT_COLS ? MIN_PANE_COLS : MIN_PANE_ROWS;
-    uint16_t gap =
-        sp->dir == SPLIT_COLS ? (uint16_t)(CFG.gap * CFG.gap_aspect) : CFG.gap;
+    uint16_t gap = eff_gap(sp->dir);
     uint16_t span = sp->dir == SPLIT_COLS ? sp->rect.w : sp->rect.h;
     uint16_t gaps = (uint16_t)(gap * (sp->nkids - 1));
     uint16_t avail = span > gaps ? (uint16_t)(span - gaps) : span;

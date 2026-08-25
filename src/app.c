@@ -457,7 +457,9 @@ void draw_min_bar(app_t *a, screen_t *s) {
 
 void draw_status_line(app_t *a, screen_t *s) {
   if (!CFG.status_line || s->rows < 3) return;
-  uint16_t y = (uint16_t)(s->rows - CFG.gap - 1);
+  /* Compact rides the very bottom row: the gap it floats on is air, and
+   * compact has none. */
+  uint16_t y = (uint16_t)(s->rows - (CFG.compact ? 0 : CFG.gap) - 1);
   uint16_t x = CFG.status_pad;
   uint16_t right =
       (uint16_t)(s->cols > CFG.status_pad ? s->cols - CFG.status_pad : 0);
@@ -933,6 +935,37 @@ static void drag_edge(app_t *a, node_t *sp, size_t i, int cells) {
   layout(a);
 }
 
+/* The split boundary a pane's side sits on, walking up as far as it takes:
+ * the pane's parent may divide the other way, and the boundary to the right
+ * of a pane can belong to a split any number of levels up. False for a side
+ * on the outer edge, where there is nothing to drag against.
+ *
+ * This is what lets a *border* drag resize. With `gap 0` the panes are flush
+ * and there is no gap cell to grab — gap_rect answers false, so no resize
+ * handle is ever registered — and the border is all there is. The border was
+ * already a button (a click splits toward it); motion turning the same press
+ * into a boundary drag gives the two gestures one target, and a press that
+ * never moves still splits exactly as it did. */
+static bool boundary_for_side(node_t *leaf, char side, node_t **sp_out,
+                              size_t *edge_out) {
+  split_dir_t dir = side_dir(side);
+  bool before = side == 'l' || side == 't';
+  for (node_t *n = leaf; n && n->parent; n = n->parent) {
+    node_t *p = n->parent;
+    if (p->dir != dir) continue; /* divides the other way: keep climbing */
+    size_t i = 0;
+    while (i < p->nkids && p->kids[i] != n) i++;
+    if (i >= p->nkids) return false;
+    if (before ? i > 0 : i + 1 < p->nkids) {
+      *sp_out = p;
+      *edge_out = before ? i - 1 : i;
+      return true;
+    }
+    /* At this split's extreme edge: the boundary, if any, is further up. */
+  }
+  return false;
+}
+
 /* Focus follows the mouse, but never at the cost of what you were doing.
  *
  * Hovering may not: steal focus mid-chord (the prefix is held), reach past an
@@ -1024,30 +1057,31 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
       a->drag.moved = false;
       const char *sep = on_name ? NULL : strchr(action + 6, ':');
       a->drag.side = sep && sep[1] ? sep[1] : 0;
+      a->drag.rim = false; /* the top row's handle really does split */
       app_focus_pane(a, id);
     }
     return;
   }
-  /* The rim of an edge: hover arms the guide, and a press does nothing at all.
-   * Deliberately inert and deliberately explicit -- this is the whole point of
-   * the handle, and a silent fall-through to whatever comes next would be a
-   * thin place for it to live. Starting no drag also means the release path
-   * finds nothing to split, which is what stops the accidents.
+  /* The rim of an edge: hover arms the guide, and a *click* does nothing at
+   * all. Deliberately inert and deliberately explicit -- this is the whole
+   * point of the handle, and a silent fall-through to whatever comes next
+   * would be a thin place for it to live.
+   *
+   * A press that then moves is a different gesture: the rim arms the same
+   * border drag the handle does, marked as the rim's, so motion can turn it
+   * into a boundary drag while its release stays the click that splits
+   * nothing. Grabbing anywhere on a border and pulling moves the boundary,
+   * which is the only way to move one when `gap 0` leaves no gap to grab.
    *
    * On a float the whole border is a resize grab instead: a float has no
    * guide to arm and no split to guard, and the rim being inert was about
    * accidents that rearrange a layout — resizing the thing you grabbed is
    * the accident-free reading of the same gesture. */
-  if (strncmp(action, "brim:", 5) == 0) {
-    uint32_t id = (uint32_t)strtoul(action + 5, NULL, 10);
-    node_t *fn = pane_by_id(a, id);
-    if (fn && fn->floating && ev->maction == MOUSE_PRESS)
-      float_resize_press(a, fn, ev);
-    return;
-  }
-  if (strncmp(action, "border:", 7) == 0) {
-    uint32_t id = (uint32_t)strtoul(action + 7, NULL, 10);
-    const char *colon = strchr(action + 7, ':');
+  if (strncmp(action, "brim:", 5) == 0 || strncmp(action, "border:", 7) == 0) {
+    bool rim = action[1] == 'r'; /* brim */
+    const char *rest = action + (rim ? 5 : 7);
+    uint32_t id = (uint32_t)strtoul(rest, NULL, 10);
+    const char *colon = strchr(rest, ':');
     char side = colon && colon[1] ? colon[1] : 'r';
     if (ev->maction == MOUSE_PRESS) {
       node_t *fn = pane_by_id(a, id);
@@ -1058,6 +1092,7 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
       a->drag.kind = DRAG_BORDER;
       a->drag.src = id;
       a->drag.side = side;
+      a->drag.rim = rim;
       a->drag.moved = false;
       a->drag.x = ev->mx;
       a->drag.y = ev->my;
@@ -1586,6 +1621,21 @@ void app_event(app_t *a, const input_event_t *ev) {
     if (a->drag.kind != DRAG_NONE) {
       if (ev->maction == MOUSE_MOTION) {
         a->drag.moved = true;
+        /* A border press that moves is a boundary drag, when the side has a
+         * boundary. Converted on the first motion rather than at the press,
+         * so a press that never moves is still the click that splits. */
+        if (a->drag.kind == DRAG_BORDER) {
+          node_t *bn = pane_by_id(a, a->drag.src);
+          node_t *bsp = NULL;
+          size_t bedge = 0;
+          if (bn && !bn->floating &&
+              boundary_for_side(bn, a->drag.side, &bsp, &bedge)) {
+            a->drag.kind = DRAG_EDGE;
+            a->drag.c_nv = a->drag.c_nh = 0;
+            a->drag.src = bsp->id;
+            a->drag.edge = bedge;
+          }
+        }
         if (a->drag.kind == DRAG_SELECT) {
           node_t *n = pane_by_id(a, a->drag.src);
           if (n)
@@ -1685,7 +1735,7 @@ void app_event(app_t *a, const input_event_t *ev) {
       } else if (ev->maction == MOUSE_RELEASE) {
         /* A press that never moved is a click, and a click on an edge
            * splits toward it. */
-        if (!a->drag.moved && a->drag.side &&
+        if (!a->drag.moved && a->drag.side && !a->drag.rim &&
             (a->drag.kind == DRAG_BORDER || a->drag.kind == DRAG_TITLE)) {
           node_t *n = pane_by_id(a, a->drag.src);
           if (n) {

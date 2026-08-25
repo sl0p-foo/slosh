@@ -21,6 +21,159 @@
 
 /* ---- drawing ------------------------------------------------------------ */
 
+/* ---- compact: shared borders -------------------------------------------
+ *
+ * Compact packs panes flush against 1-cell divider lines and rings the tab
+ * with one outer frame, instead of giving every pane its own border across a
+ * gap. The lines are drawn as *strokes*: each write says which of the cell's
+ * four edges it needs (up/down/left/right), reads what is already there, and
+ * writes the union — so a divider running into the outer frame makes a ├ and
+ * two dividers crossing make a ┼ without anyone computing junctions. A cell
+ * holding anything that is not a line (a title, a button) is left alone, so
+ * a re-stroke — the focused pane's ring in the frame colour — can run over a
+ * finished row and recolour exactly the lines. */
+
+enum { BX_U = 1, BX_D = 2, BX_L = 4, BX_R = 8 };
+
+/* The glyph for a set of edge bits. Corners — exactly one arm each way —
+ * follow `rounded`, the same choice the classic frame makes; a tee or a
+ * cross has no rounded form. */
+static const char *box_glyph(uint8_t bits) {
+  switch (bits) {
+  case BX_L | BX_R: return "\u2500";                          /* ─ */
+  case BX_U | BX_D: return "\u2502";                          /* │ */
+  case BX_D | BX_R: return CFG.rounded ? "\u256d" : "\u250c"; /* ┌ */
+  case BX_D | BX_L: return CFG.rounded ? "\u256e" : "\u2510"; /* ┐ */
+  case BX_U | BX_R: return CFG.rounded ? "\u2570" : "\u2514"; /* └ */
+  case BX_U | BX_L: return CFG.rounded ? "\u256f" : "\u2518"; /* ┘ */
+  case BX_U | BX_D | BX_R: return "\u251c";                   /* ├ */
+  case BX_U | BX_D | BX_L: return "\u2524";                   /* ┤ */
+  case BX_D | BX_L | BX_R: return "\u252c";                   /* ┬ */
+  case BX_U | BX_L | BX_R: return "\u2534";                   /* ┴ */
+  case BX_U | BX_D | BX_L | BX_R: return "\u253c";            /* ┼ */
+  case BX_U: return "\u2575";                                 /* ╵ */
+  case BX_D: return "\u2577";                                 /* ╷ */
+  case BX_L: return "\u2574";                                 /* ╴ */
+  case BX_R: return "\u2576";                                 /* ╶ */
+  default: return " ";
+  }
+}
+
+/* And back: the edge bits of what a cell already holds, or 0 for anything
+ * that is not one of our lines. The dashed variants count — a drop-target's
+ * dashes are still the boundary they replaced — and both corner styles do,
+ * so `rounded` cannot confuse the union. */
+static uint8_t box_bits_of(const cell_t *c) {
+  if (!c || c->len != 3) return 0;
+  static const struct {
+    const char *g;
+    uint8_t bits;
+  } tab[] = {
+      {"\u2500", BX_L | BX_R},
+      {"\u2502", BX_U | BX_D},
+      {"\u2504", BX_L | BX_R},
+      {"\u2506", BX_U | BX_D},
+      {"\u250c", BX_D | BX_R},
+      {"\u256d", BX_D | BX_R},
+      {"\u2510", BX_D | BX_L},
+      {"\u256e", BX_D | BX_L},
+      {"\u2514", BX_U | BX_R},
+      {"\u2570", BX_U | BX_R},
+      {"\u2518", BX_U | BX_L},
+      {"\u256f", BX_U | BX_L},
+      {"\u251c", BX_U | BX_D | BX_R},
+      {"\u2524", BX_U | BX_D | BX_L},
+      {"\u252c", BX_D | BX_L | BX_R},
+      {"\u2534", BX_U | BX_L | BX_R},
+      {"\u253c", BX_U | BX_D | BX_L | BX_R},
+      {"\u2575", BX_U},
+      {"\u2577", BX_D},
+      {"\u2574", BX_L},
+      {"\u2576", BX_R},
+  };
+  for (size_t i = 0; i < sizeof tab / sizeof *tab; i++)
+    if (memcmp(c->text, tab[i].g, 3) == 0) return tab[i].bits;
+  return 0;
+}
+
+/* One stroke into one cell: union with whatever line is there, and never
+ * clobber anything that is not a line — which is what lets a focus re-stroke
+ * run over a row that already carries a title. `create` false additionally
+ * refuses blank cells: a junction extension and a focus ring only ever join
+ * or recolour lines this pass drew, and must not leave stray stumps where
+ * there is no line to meet — the rows the minimised bar owns, say. */
+static void stroke(screen_t *s, uint16_t x, uint16_t y, uint8_t bits,
+                   color_t fg, uint16_t attrs, bool create) {
+  cell_t *c = screen_at(s, x, y);
+  if (!c) return;
+  uint8_t have = box_bits_of(c);
+  if (!have && !(create && c->len == 1 && c->text[0] == ' ')) return;
+  screen_text(s, x, y, box_glyph((uint8_t)(have | bits)), fg, NO_COLOR, attrs);
+}
+
+/* The ring one cell outside `r`: the four lines a compact pane sits inside.
+ * Drawn (`create`) for the tab area it is the outer frame; re-stroked for
+ * the focused pane it *recolours* its stretch of the shared lines — junction
+ * glyphs included — and adds no arms of its own: any bit the ring would add
+ * is an arm pointing at a line that is not there, which is exactly the state
+ * (a pane sitting on the minimised bar's rows) where nothing should be
+ * drawn. */
+static void stroke_ring(screen_t *s, rect_t r, color_t fg, uint16_t attrs,
+                        bool create) {
+  if (!r.x || !r.y || !r.w || !r.h) return;
+  uint16_t x0 = (uint16_t)(r.x - 1), x1 = (uint16_t)(r.x + r.w);
+  uint16_t y0 = (uint16_t)(r.y - 1), y1 = (uint16_t)(r.y + r.h);
+  for (uint16_t x = x0; x <= x1; x++) {
+    uint8_t h =
+        create ? (uint8_t)((x > x0 ? BX_L : 0) | (x < x1 ? BX_R : 0)) : 0;
+    stroke(s, x, y0, h, fg, attrs, create);
+    stroke(s, x, y1, h, fg, attrs, create);
+  }
+  for (uint16_t y = y0; y <= y1; y++) {
+    uint8_t v =
+        create ? (uint8_t)((y > y0 ? BX_U : 0) | (y < y1 ? BX_D : 0)) : 0;
+    stroke(s, x0, y, v, fg, attrs, create);
+    stroke(s, x1, y, v, fg, attrs, create);
+  }
+}
+
+/* Is this pane drawn compact? The mode is global but the treatment is not:
+ * a float is an overlay and keeps the classic frame that lifts it off the
+ * page, and a flattened or zoomed tab is showing one pane on its own —
+ * nothing is packed against anything, so the pane keeps its own edges. */
+static bool compact_pane(app_t *a, const node_t *leaf) {
+  return CFG.compact && !leaf->floating && !leaf->collapsed && !a->flattened &&
+         a->ntabs && !cur(a)->zoom;
+}
+
+/* Does this side of the rect sit on the tab's outer frame? Interior sides
+ * are shared dividers — resize handles their whole length — and only the
+ * outer frame keeps the click-to-split border verbs. Geometric on purpose:
+ * when the minimised bar eats the bottom rows, the panes above it touch no
+ * line, and offering a split target on the bar's cells would be a lie. */
+static bool edge_outer(app_t *a, rect_t r, char side) {
+  rect_t ar = app_tab_area(a);
+  switch (side) {
+  case 'l': return r.x == ar.x;
+  case 'r': return (uint16_t)(r.x + r.w) == (uint16_t)(ar.x + ar.w);
+  case 't': return r.y == ar.y;
+  default: return (uint16_t)(r.y + r.h) == (uint16_t)(ar.y + ar.h);
+  }
+}
+
+/* A plain rule goes dashed, and anything else — a junction, a title, a blank
+ * — stays: how a compact pane's stretch of the shared lines says "you could
+ * drop here" without redrawing glyphs its neighbours also own. */
+static void dash_rule(screen_t *s, uint16_t x, uint16_t y, color_t fg,
+                      uint16_t attrs) {
+  cell_t *c = screen_at(s, x, y);
+  if (!c || c->len != 3) return;
+  if (memcmp(c->text, "\u2500", 3) == 0)
+    screen_text(s, x, y, "\u2504", fg, NO_COLOR, attrs);
+  else if (memcmp(c->text, "\u2502", 3) == 0)
+    screen_text(s, x, y, "\u2506", fg, NO_COLOR, attrs);
+}
+
 /* A pane's own status line and buttons, drawn in its bottom frame row.
  *
  * Two things end up here, because they are the same thing: what a *live* pane
@@ -139,23 +292,32 @@ static uint16_t split_handle_len(uint16_t span) {
 /* One side's handle. False when the side is too short to hold one, which is a
  * pane `split_fits` is about to refuse anyway. The top row is not here: its
  * placement depends on what the title and the buttons left, so draw_frame does
- * it once those are known. */
-static bool split_handle(const node_t *leaf, char side, rect_t *out) {
+ * it once those are known.
+ *
+ * A compact pane's edges are the shared lines one cell outside its rect, so
+ * `cf` moves the handle out there; the span is the pane's own stretch of the
+ * line, junction cells excluded by construction since they sit beyond it. */
+static bool split_handle(const node_t *leaf, char side, bool cf, rect_t *out) {
   rect_t r = leaf->rect;
-  if (r.w < 4 || r.h < 4) return false;
+  if (cf ? (r.w < 4 || r.h < 3 || !r.x || !r.y) : (r.w < 4 || r.h < 4))
+    return false;
   bool vert = side == 'l' || side == 'r';
   /* The span leaves the corners out: a corner is where two gaps cross and is a
    * resize target already. */
-  uint16_t span = vert ? (uint16_t)(r.h - 2) : (uint16_t)(r.w - 2);
+  uint16_t span =
+      vert ? (uint16_t)(r.h - (cf ? 0 : 2)) : (uint16_t)(r.w - (cf ? 0 : 2));
   if (span < 3) return false;
   uint16_t len = split_handle_len(span);
   uint16_t off = (uint16_t)((span - len) / 2);
-  if (vert)
-    *out = (rect_t){side == 'l' ? r.x : (uint16_t)(r.x + r.w - 1),
-                    (uint16_t)(r.y + 1 + off), 1, len};
-  else
-    *out =
-        (rect_t){(uint16_t)(r.x + 1 + off), (uint16_t)(r.y + r.h - 1), len, 1};
+  if (vert) {
+    uint16_t bx =
+        side == 'l' ? (cf ? (uint16_t)(r.x - 1) : r.x)
+                    : (cf ? (uint16_t)(r.x + r.w) : (uint16_t)(r.x + r.w - 1));
+    *out = (rect_t){bx, (uint16_t)(r.y + (cf ? 0 : 1) + off), 1, len};
+  } else {
+    uint16_t by = cf ? (uint16_t)(r.y + r.h) : (uint16_t)(r.y + r.h - 1);
+    *out = (rect_t){(uint16_t)(r.x + (cf ? 0 : 1) + off), by, len, 1};
+  }
   return true;
 }
 
@@ -242,7 +404,8 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   if (!split_fits(leaf, side_dir(side))) return;
 
   rect_t r = leaf->rect;
-  if (r.w < 4 || r.h < 4) return;
+  bool cf = compact_pane(a, leaf);
+  if (cf ? (r.w < 4 || r.h < 3) : (r.w < 4 || r.h < 4)) return;
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
   color_t hi = GUIDE;
 
@@ -262,15 +425,21 @@ static void draw_split_guide(app_t *a, screen_t *s, node_t *leaf) {
   split_rim_action(leaf, side, rim, sizeof rim);
   split_handle_action(leaf, side, act, sizeof act);
   if (side == 'l' || side == 'r') {
-    uint16_t bx = side == 'l' ? r.x : x1;
-    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+    uint16_t bx = side == 'l' ? (cf ? (uint16_t)(r.x - 1) : r.x)
+                              : (cf ? (uint16_t)(r.x + r.w) : x1);
+    uint16_t ylo = (uint16_t)(r.y + (cf ? 0 : 1));
+    uint16_t yhi = cf ? (uint16_t)(r.y + r.h) : y1;
+    for (uint16_t y = ylo; y < yhi; y++) {
       const char *own = hit_test(&s->hits, bx, y);
       if (own && (strcmp(own, rim) == 0 || strcmp(own, act) == 0))
         screen_text(s, bx, y, "\u2503", hi, NO_COLOR, ATTR_BOLD);
     }
   } else {
-    uint16_t by = side == 't' ? r.y : y1;
-    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+    uint16_t by = side == 't' ? (cf ? (uint16_t)(r.y - 1) : r.y)
+                              : (cf ? (uint16_t)(r.y + r.h) : y1);
+    uint16_t xlo = (uint16_t)(r.x + (cf ? 0 : 1));
+    uint16_t xhi = cf ? (uint16_t)(r.x + r.w) : x1;
+    for (uint16_t x = xlo; x < xhi; x++) {
       const char *own = hit_test(&s->hits, x, by);
       if (own && (strcmp(own, rim) == 0 || strcmp(own, act) == 0))
         screen_text(s, x, by, "\u2501", hi, NO_COLOR, ATTR_BOLD);
@@ -537,7 +706,14 @@ static void draw_float_guide(app_t *a, screen_t *s, node_t *leaf) {
 
 static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   rect_t r = leaf->rect;
-  if (r.w < 3 || r.h < 3) return;
+  /* Compact wears no frame of its own: the lines were drawn by
+   * draw_compact_lines and this function only dresses them — the title, the
+   * buttons and the hits go on the shared line *above* the rect, which is
+   * why a compact pane needs a row and a column to its left to exist. */
+  bool cf = compact_pane(a, leaf);
+  if (cf ? (r.w < 3 || !r.h || !r.x || !r.y) : (r.w < 3 || r.h < 3)) return;
+  uint16_t ty = cf ? (uint16_t)(r.y - 1) : r.y; /* the row the title rides */
+  bool top_outer = !cf || edge_outer(a, r, 't');
   bool focused = leaf == cur(a)->focus;
   bool drop_target = a->drag.kind == DRAG_TITLE && a->drag.target == leaf->id &&
                      a->drag.src != leaf->id;
@@ -560,27 +736,27 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
   const char *bl = CFG.rounded ? "╰" : "└", *br = CFG.rounded ? "╯" : "┘";
 
   uint16_t x1 = (uint16_t)(r.x + r.w - 1), y1 = (uint16_t)(r.y + r.h - 1);
-  screen_text(s, r.x, r.y, tl, fg, NO_COLOR, attrs);
-  screen_text(s, x1, r.y, tr, fg, NO_COLOR, attrs);
-  screen_text(s, r.x, y1, bl, fg, NO_COLOR, attrs);
-  screen_text(s, x1, y1, br, fg, NO_COLOR, attrs);
-  for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
-    screen_text(s, x, r.y, hbar, fg, NO_COLOR, attrs);
-    screen_text(s, x, y1, hbar, fg, NO_COLOR, attrs);
-  }
-  for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
-    screen_text(s, r.x, y, vbar, fg, NO_COLOR, attrs);
-    screen_text(s, x1, y, vbar, fg, NO_COLOR, attrs);
-  }
+  if (!cf) {
+    screen_text(s, r.x, r.y, tl, fg, NO_COLOR, attrs);
+    screen_text(s, x1, r.y, tr, fg, NO_COLOR, attrs);
+    screen_text(s, r.x, y1, bl, fg, NO_COLOR, attrs);
+    screen_text(s, x1, y1, br, fg, NO_COLOR, attrs);
+    for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
+      screen_text(s, x, r.y, hbar, fg, NO_COLOR, attrs);
+      screen_text(s, x, y1, hbar, fg, NO_COLOR, attrs);
+    }
+    for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++) {
+      screen_text(s, r.x, y, vbar, fg, NO_COLOR, attrs);
+      screen_text(s, x1, y, vbar, fg, NO_COLOR, attrs);
+    }
 
-  /* The padding ring between the border and the contents, painted blank
-   * rather than left alone. A tiled pane sits on a cleared screen, so leaving
-   * it unpainted used to look the same by accident — but a float sits on
-   * whatever was composited under it, and every unpainted cell lets that show
-   * through. Blank-with-no-colour is exactly what screen_clear leaves, so a
-   * tiled pane looks as it always did, and with no padding configured the
-   * ring is empty and this writes nothing. */
-  {
+    /* The padding ring between the border and the contents, painted blank
+     * rather than left alone. A tiled pane sits on a cleared screen, so
+     * leaving it unpainted used to look the same by accident — but a float
+     * sits on whatever was composited under it, and every unpainted cell lets
+     * that show through. Blank-with-no-colour is exactly what screen_clear
+     * leaves, so a tiled pane looks as it always did, and with no padding
+     * configured the ring is empty and this writes nothing. */
     rect_t c = leaf->content;
     for (uint16_t y = (uint16_t)(r.y + 1); y < y1; y++)
       for (uint16_t x = (uint16_t)(r.x + 1); x < x1; x++) {
@@ -590,12 +766,27 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
         }
         screen_text(s, x, y, " ", NO_COLOR, NO_COLOR, 0);
       }
+  } else if (drag_target || drop_target) {
+    /* The dashed drop-candidate border, said on shared lines: each cell of
+     * this pane's ring that is still a plain rule goes dashed (in DROP_C for
+     * the pane under the pointer). Junctions are left alone — they belong to
+     * the neighbours too, and a dashed tee is not a glyph. */
+    uint16_t rx0 = (uint16_t)(r.x - 1), rx1 = (uint16_t)(r.x + r.w);
+    uint16_t ry0 = ty, ry1 = (uint16_t)(r.y + r.h);
+    for (uint16_t x = rx0; x <= rx1; x++) {
+      dash_rule(s, x, ry0, fg, attrs);
+      dash_rule(s, x, ry1, fg, attrs);
+    }
+    for (uint16_t y = ry0; y <= ry1; y++) {
+      dash_rule(s, rx0, y, fg, attrs);
+      dash_rule(s, rx1, y, fg, attrs);
+    }
   }
 
   /* A pane that rang, marked just inside its corner: the same place on every
    * pane, whatever its title is doing. */
   if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4)
-    screen_text(s, (uint16_t)(r.x + 1), r.y, CFG.bell_mark, BELL_C, NO_COLOR,
+    screen_text(s, (uint16_t)(r.x + 1), ty, CFG.bell_mark, BELL_C, NO_COLOR,
                 ATTR_BOLD);
 
   /* The frame's top row is the drag handle, all of it. Its *split* is a handle
@@ -603,11 +794,16 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
    * than here: the title, the buttons and the scroll indicator all anchor
    * wherever the config puts them, a centred title lands exactly where a
    * centred handle would want to be, and this row's rule is that the title
-   * wins. So the handle is put where they are not, once they are all placed. */
-  {
+   * wins. So the handle is put where they are not, once they are all placed.
+   *
+   * Not when the row is a shared divider (compact, interior top edge): that
+   * line is the boundary between this pane and the one above, and its free
+   * cells stay the resize handle they are. The pane is still dragged — by
+   * its name, which registers its own hit below. */
+  if (top_outer) {
     char action[48];
     snprintf(action, sizeof action, "title:%u", leaf->id);
-    hit_add(&s->hits, r.x, r.y, r.w, 1, action);
+    hit_add(&s->hits, r.x, ty, r.w, 1, action);
   }
 
   /* No split button. The border *is* the button -- or the middle of it is:
@@ -657,12 +853,12 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
       uint16_t bw = (uint16_t)(mw + 1);
       if (bx < r.x + 4 + bw) break;
       uint16_t px = (uint16_t)(bx - bw + 1);
-      bool hot = ptr_on(a, px, r.y, bw, 1);
-      screen_text(s, px, r.y, cell, hot ? PANE_BTN_HOVER : PANE_BTN, NO_COLOR,
+      bool hot = ptr_on(a, px, ty, bw, 1);
+      screen_text(s, px, ty, cell, hot ? PANE_BTN_HOVER : PANE_BTN, NO_COLOR,
                   hot ? ATTR_BOLD : 0);
       char action[48];
       snprintf(action, sizeof action, "%s:%u", btns[i].verb, leaf->id);
-      hit_add(&s->hits, px, r.y, bw, 1, action);
+      hit_add(&s->hits, px, ty, bw, 1, action);
       bx = (uint16_t)(px - 1);
       has_btn = true;
       btn_x = px;
@@ -671,7 +867,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     /* One blank between the rule and the first button, so the group is not
      * welded to the frame the way a title without its space would be. */
     if (has_btn && btn_x > (uint16_t)(r.x + 1)) {
-      screen_text(s, (uint16_t)(btn_x - 1), r.y, " ", PANE_BTN, NO_COLOR, 0);
+      screen_text(s, (uint16_t)(btn_x - 1), ty, " ", PANE_BTN, NO_COLOR, 0);
       btn_x = (uint16_t)(btn_x - 1);
       avail = (uint16_t)(avail > 1 ? avail - 1 : 0);
     }
@@ -685,7 +881,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
    * The rim is a target rather than nothing so that hovering anywhere on an
    * edge can still show you where the button is. Take it away and the handle
    * becomes a thing you have to already know about. */
-  {
+  if (!cf) {
     char action[48];
     snprintf(action, sizeof action, "brim:%u:l", leaf->id);
     hit_add(&s->hits, r.x, (uint16_t)(r.y + 1), 1, (uint16_t)(r.h - 2), action);
@@ -695,13 +891,42 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     hit_add(&s->hits, r.x, y1, r.w, 1, action);
     for (const char *side = "lrb"; *side; side++) {
       rect_t h;
-      if (!split_handle(leaf, *side, &h)) continue;
+      if (!split_handle(leaf, *side, false, &h)) continue;
+      split_handle_action(leaf, *side, action, sizeof action);
+      hit_add(&s->hits, h.x, h.y, h.w, h.h, action);
+    }
+  } else {
+    /* Only the outer frame keeps the border verbs. An interior side is a
+     * shared divider: its whole length is already the resize handle the gap
+     * used to be, and a one-cell line cannot honestly hold two verbs — the
+     * keyboard still splits anything. */
+    char action[48];
+    uint16_t xl = (uint16_t)(r.x - 1), xr = (uint16_t)(r.x + r.w);
+    uint16_t yb = (uint16_t)(r.y + r.h);
+    if (edge_outer(a, r, 'l')) {
+      snprintf(action, sizeof action, "brim:%u:l", leaf->id);
+      hit_add(&s->hits, xl, r.y, 1, r.h, action);
+    }
+    if (edge_outer(a, r, 'r')) {
+      snprintf(action, sizeof action, "brim:%u:r", leaf->id);
+      hit_add(&s->hits, xr, r.y, 1, r.h, action);
+    }
+    if (edge_outer(a, r, 'b')) {
+      snprintf(action, sizeof action, "brim:%u:b", leaf->id);
+      hit_add(&s->hits, r.x, yb, r.w, 1, action);
+    }
+    for (const char *side = "lrb"; *side; side++) {
+      rect_t h;
+      if (!edge_outer(a, r, *side)) continue;
+      if (!split_handle(leaf, *side, true, &h)) continue;
       split_handle_action(leaf, *side, action, sizeof action);
       hit_add(&s->hits, h.x, h.y, h.w, h.h, action);
     }
   }
 
-  draw_pane_status(a, s, leaf, fg, focused);
+  /* A compact pane's status rides its bottom content row and must go over
+   * the composed contents, so draw_cb calls it after the pane does. */
+  if (!cf) draw_pane_status(a, s, leaf, fg, focused);
 
   /* Scroll position, when there is one: compact, right-aligned, and clickable
    * to get back to the bottom. Budgeted after the button and before the title,
@@ -723,10 +948,10 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     if (iw + 2 < avail) {
       uint16_t ix = (uint16_t)((has_btn ? btn_x : x1) - iw);
       uint16_t drawn =
-          screen_text(s, ix, r.y, ind, SCROLL_FG, SCROLL_BG, ATTR_BOLD);
+          screen_text(s, ix, ty, ind, SCROLL_FG, SCROLL_BG, ATTR_BOLD);
       char action[48];
       snprintf(action, sizeof action, "scrollbottom:%u", leaf->id);
-      hit_add(&s->hits, ix, r.y, drawn, 1, action);
+      hit_add(&s->hits, ix, ty, drawn, 1, action);
       right_lo = ix;
       avail = (uint16_t)(avail - iw);
     }
@@ -775,7 +1000,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
      * is being typed, so a half-finished rename can never be mistaken for what
      * the pane is actually called. */
     uint16_t drawn = screen_text(
-        s, tx, r.y, buf,
+        s, tx, ty, buf,
         editing ? RENAME_FG : (focused ? TITLE_FOCUS : TITLE_IDLE),
         editing ? RENAME_BG : NO_COLOR, editing || focused ? ATTR_BOLD : 0);
 
@@ -792,7 +1017,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     if (drawn) {
       char action[48];
       snprintf(action, sizeof action, "panetitle:%u", leaf->id);
-      hit_add(&s->hits, tx, r.y, drawn, 1, action);
+      hit_add(&s->hits, tx, ty, drawn, 1, action);
       has_title = true;
       title_lo = tx;
       title_hi = (uint16_t)(tx + drawn - 1);
@@ -809,7 +1034,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
    * the widest run the row still owns and, between equals, the one nearest the
    * middle. A row with nothing left offers no upward split, and its other three
    * edges are unaffected. */
-  {
+  if (top_outer) {
     uint16_t lo = (uint16_t)(r.x + 1);
     if (CFG.bell_indicator && pane_bell(leaf->pane) && r.w > 4) lo++;
     struct run {
@@ -863,7 +1088,7 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
     if (found) {
       char action[48];
       split_handle_action(leaf, 't', action, sizeof action);
-      hit_add(&s->hits, best_x, r.y, best_w, 1, action);
+      hit_add(&s->hits, best_x, ty, best_w, 1, action);
     }
   }
 }
@@ -1422,7 +1647,28 @@ static void draw_cb(node_t *n, void *ud) {
    * is not decoration and must not be dimmed along with the thing it is
    * offered on. */
   shade_leaf(d->a, d->s, n);
-  shade_chrome(d->a, d->s, n, n->rect, &n->content);
+  /* A compact pane's chrome is the ring of shared line it sits inside — one
+   * cell out on every side — rather than the rect's own edge; the state
+   * passes (a bell's flash, a theme's chrome chain) land there instead. The
+   * shared cells belong to the neighbours too, so a chain that recolours an
+   * *unfocused* frame will also touch the focused pane's stretch of a shared
+   * line: two owners is what sharing means. */
+  rect_t chrome_r = n->rect;
+  if (compact_pane(d->a, n) && chrome_r.x && chrome_r.y) {
+    chrome_r.x--;
+    chrome_r.y--;
+    chrome_r.w = (uint16_t)(chrome_r.w + 2);
+    chrome_r.h = (uint16_t)(chrome_r.h + 2);
+  }
+  shade_chrome(d->a, d->s, n, chrome_r, &n->content);
+  /* Over the contents and under the guides: the status row of a compact pane
+   * overlays its last content row — there is no bottom border to carry it —
+   * so it has to go on after the pane composed and shaded. */
+  if (compact_pane(d->a, n)) {
+    bool focused = n == cur(d->a)->focus;
+    draw_pane_status(d->a, d->s, n, focused ? FRAME_FOCUS : FRAME_IDLE,
+                     focused);
+  }
   draw_split_guide(d->a, d->s, n);
   draw_float_guide(d->a, d->s, n);
   draw_drop_zones(d->a, d->s, n);
@@ -1446,7 +1692,7 @@ void draw_tab_strip(app_t *a, screen_t *s) {
    * that is true. Worked out once rather than per tab. */
   bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
   uint16_t x = CFG.status_pad;
-  uint16_t y = CFG.gap;
+  uint16_t y = CFG.compact ? 0 : CFG.gap; /* compact spends no row on air */
 
   /* Right side first, so a long tab list can never eat the indicators — the
    * same budgeting rule as the split button and the OSC buttons. */
@@ -1718,6 +1964,15 @@ static bool corner_uses(const corner_t *c, uint32_t id, size_t edge) {
  * Dotted while available, doubled and bold while engaged: the same grammar the
  * split guide already uses, where dashes are a possibility and weight is a
  * commitment. */
+/* A hint cell is painted only if the boundary still owns it. In classic
+ * layouts a gap holds nothing else, so this refuses nothing; on a compact
+ * divider the pane below has its title and buttons on the same line, and
+ * ruling dots through a name would be the top-row mistake all over again. */
+static bool edge_owns(screen_t *s, uint16_t x, uint16_t y) {
+  const char *o = hit_test(&s->hits, x, y);
+  return o && strncmp(o, "edge:", 5) == 0;
+}
+
 static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
                              rect_t gapr) {
   bool active = a->drag.kind == DRAG_EDGE && a->drag.src == split->id &&
@@ -1744,11 +1999,13 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
       if (split->dir == SPLIT_COLS) {
         uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
         for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
-          screen_text(s, x, y, "\u250a", RESIZE_C, NO_COLOR, attrs0);
+          if (edge_owns(s, x, y))
+            screen_text(s, x, y, "\u250a", RESIZE_C, NO_COLOR, attrs0);
       } else {
         uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
         for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
-          screen_text(s, x, y, "\u2508", RESIZE_C, NO_COLOR, attrs0);
+          if (edge_owns(s, x, y))
+            screen_text(s, x, y, "\u2508", RESIZE_C, NO_COLOR, attrs0);
       }
       return;
     }
@@ -1782,17 +2039,21 @@ static void draw_resize_hint(app_t *a, screen_t *s, node_t *split, size_t idx,
   if (split->dir == SPLIT_COLS) {
     uint16_t x = (uint16_t)(gapr.x + gapr.w / 2);
     for (uint16_t y = gapr.y; y < gapr.y + gapr.h; y++)
-      screen_text(s, x, y, active ? "\u2551" : "\u250a", RESIZE_C, NO_COLOR,
-                  attrs);
-    screen_text(s, x, (uint16_t)(gapr.y + gapr.h / 2), "\u21d4", RESIZE_C,
-                NO_COLOR, ATTR_BOLD);
+      if (edge_owns(s, x, y))
+        screen_text(s, x, y, active ? "\u2551" : "\u250a", RESIZE_C, NO_COLOR,
+                    attrs);
+    uint16_t ay = (uint16_t)(gapr.y + gapr.h / 2);
+    if (edge_owns(s, x, ay))
+      screen_text(s, x, ay, "\u21d4", RESIZE_C, NO_COLOR, ATTR_BOLD);
   } else {
     uint16_t y = (uint16_t)(gapr.y + gapr.h / 2);
     for (uint16_t x = gapr.x; x < gapr.x + gapr.w; x++)
-      screen_text(s, x, y, active ? "\u2550" : "\u2508", RESIZE_C, NO_COLOR,
-                  attrs);
-    screen_text(s, (uint16_t)(gapr.x + gapr.w / 2), y, "\u21d5", RESIZE_C,
-                NO_COLOR, ATTR_BOLD);
+      if (edge_owns(s, x, y))
+        screen_text(s, x, y, active ? "\u2550" : "\u2508", RESIZE_C, NO_COLOR,
+                    attrs);
+    uint16_t ax = (uint16_t)(gapr.x + gapr.w / 2);
+    if (edge_owns(s, ax, y))
+      screen_text(s, ax, y, "\u21d5", RESIZE_C, NO_COLOR, ATTR_BOLD);
   }
 }
 
@@ -1811,19 +2072,80 @@ void draw_node(app_t *a, screen_t *s, node_t *n) {
     return;
   }
 
-  /* The gap between two children is the boundary you can drag. It is drawn as
-   * nothing, but it is a real target, derived from the rects the children were
-   * just given rather than recomputed from the config. */
+  /* The gap between two children is the boundary you can drag. In classic
+   * layouts it is drawn as nothing; compact draws the divider line through it
+   * (draw_compact_lines). Either way it is a real target, derived from the
+   * rects the children were just given rather than recomputed from the
+   * config, and registered *before* the children so that a compact pane's
+   * title and buttons — which live on this very line — win their own cells.
+   * The hover hint is painted by draw_resize_hints once every pane has
+   * claimed what is its. */
   for (size_t i = 0; i + 1 < n->nkids; i++) {
     rect_t gapr;
     if (!gap_rect(n, i, &gapr)) continue;
     char action[48];
     snprintf(action, sizeof action, "edge:%u:%zu", n->id, i);
     hit_add(&s->hits, gapr.x, gapr.y, gapr.w, gapr.h, action);
-    draw_resize_hint(a, s, n, i, gapr);
   }
 
   for (size_t i = 0; i < n->nkids; i++) draw_node(a, s, n->kids[i]);
+}
+
+/* The hover hints for every boundary, painted after the panes so the
+ * ownership question each cell asks (`edge_owns`) is answered by the
+ * finished hit list. */
+void draw_resize_hints(app_t *a, screen_t *s) {
+  if (!a->ntabs || !cur(a)->root) return;
+  struct gapinfo g[64];
+  size_t n = collect_gaps(cur(a)->root, g, 64, 0);
+  for (size_t i = 0; i < n; i++)
+    draw_resize_hint(a, s, g[i].sp, g[i].i, g[i].r);
+}
+
+/* The compact mode's lines, drawn before the panes so their titles land on
+ * top: one frame ring round the tab area, a divider through every gap — each
+ * extended one stroke into whatever perpendicular line it meets, which is
+ * what makes the junctions — and the focused pane's ring re-stroked in the
+ * frame colour, junction glyphs included, so focus reads off the lines the
+ * way it always has. */
+void draw_compact_lines(app_t *a, screen_t *s) {
+  if (!CFG.compact || !a->ntabs || !cur(a)->root) return;
+  if (a->flattened || cur(a)->zoom) return;
+  rect_t ar = app_tab_area(a);
+  if (!ar.x || !ar.y) return; /* no room for a ring: no lines to share */
+  stroke_ring(s, ar, FRAME_IDLE, 0, true);
+
+  /* The dividers' own cells first, their end-extensions after: an end only
+   * ever joins a line that is already there — the ring, or a perpendicular
+   * divider — which is what makes the junction glyphs, and what keeps a
+   * divider that stops short (at the minimised bar's rows) from leaving a
+   * stump in cells that hold no line. */
+  struct gapinfo g[64];
+  size_t n = collect_gaps(cur(a)->root, g, 64, 0);
+  for (size_t i = 0; i < n; i++) {
+    rect_t r = g[i].r;
+    if (g[i].sp->dir == SPLIT_COLS)
+      for (uint16_t y = r.y; y < r.y + r.h; y++)
+        stroke(s, r.x, y, BX_U | BX_D, FRAME_IDLE, 0, true);
+    else
+      for (uint16_t x = r.x; x < r.x + r.w; x++)
+        stroke(s, x, r.y, BX_L | BX_R, FRAME_IDLE, 0, true);
+  }
+  for (size_t i = 0; i < n; i++) {
+    rect_t r = g[i].r;
+    if (g[i].sp->dir == SPLIT_COLS) {
+      if (r.y) stroke(s, r.x, (uint16_t)(r.y - 1), BX_D, FRAME_IDLE, 0, false);
+      stroke(s, r.x, (uint16_t)(r.y + r.h), BX_U, FRAME_IDLE, 0, false);
+    } else {
+      if (r.x) stroke(s, (uint16_t)(r.x - 1), r.y, BX_R, FRAME_IDLE, 0, false);
+      stroke(s, (uint16_t)(r.x + r.w), r.y, BX_L, FRAME_IDLE, 0, false);
+    }
+  }
+
+  node_t *f = cur(a)->focus;
+  if (f && f->kind == NODE_LEAF && !f->floating && !f->minimized &&
+      !f->hidden && !f->collapsed && f->rect.x && f->rect.y)
+    stroke_ring(s, f->rect, FRAME_FOCUS, 0, false);
 }
 
 /* The cell of shade a float casts on whatever it covers: `gap_aspect`

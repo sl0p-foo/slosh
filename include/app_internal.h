@@ -175,6 +175,11 @@ struct app {
     uint16_t x, y;       /* where the pointer was at the last event */
     bool moved;          /* a press that never moves is a click */
     char side;           /* border press: 'l' 'r' 't' 'b' */
+    /* The press landed on the rim rather than the handle. The rim's click
+     * deliberately does nothing — only the handle splits — but a *drag* from
+     * anywhere on a border moves the boundary, so the rim arms the same drag
+     * and this is what keeps its click inert on release. */
+    bool rim;
     /* Which of the target's drop zones the pointer is in, or 0 for the
      * centre. The centre is the swap; a side means "insert me beside the
      * target, on this side" — the drop grammar that turns dragging into
@@ -401,6 +406,8 @@ size_t tab_of(app_t *a, node_t *n);
 void walk_all(app_t *a, leaf_fn fn, void *ud);
 
 /* src/app_layout.c */
+uint16_t eff_gap(split_dir_t dir);
+rect_t app_tab_area(app_t *a);
 void close_leaf(app_t *a, node_t *leaf);
 node_t *first_leaf_of(node_t *n);
 void focus_dir(app_t *a, int dx, int dy);
@@ -461,6 +468,8 @@ void draw_node(app_t *a, screen_t *s, node_t *n);
 void draw_min_bar(app_t *a, screen_t *s);
 void draw_corners(app_t *a, screen_t *s);
 void draw_floats(app_t *a, screen_t *s);
+void draw_compact_lines(app_t *a, screen_t *s);
+void draw_resize_hints(app_t *a, screen_t *s);
 
 size_t count_leaves(node_t *n);
 size_t collect_minimized(node_t *n, node_t **out, size_t cap, size_t k);

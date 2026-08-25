@@ -135,6 +135,13 @@ typedef struct {
    * and so a number means the same thing wherever it appears, however many of
    * them were written. Written as 1, 2 or 4 values, CSS order. */
   uint16_t pad_top, pad_right, pad_bottom, pad_left;
+  /* Shared borders instead of gaps: panes pack flush against 1-cell divider
+   * lines, one outer frame rings the tab, and each pane's title rides the
+   * line above it. `gap` and `gap_aspect` stop applying (the boundary *is*
+   * the divider); `padding` still does. The dividers carry the same resize
+   * drag the gaps did; interior edges give up their click-to-split — a
+   * one-cell line cannot be both verbs — and the outer frame keeps it. */
+  bool compact;
   bool rounded;
   align_t title_align;
   /* Cells between a frame's corner and the start of its title. The title

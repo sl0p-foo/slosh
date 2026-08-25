@@ -1004,7 +1004,12 @@ void app_compose(app_t *a, screen_t *s) {
   layout(a);
   find_corners(a);
   if (CFG.status_bar) draw_tab_strip(a, s);
+  /* Compact's shared lines go down first, so every pane's title and buttons
+   * land on top of them; the hover hints come after the panes, because each
+   * hint cell asks the finished hit list whether the boundary still owns it. */
+  draw_compact_lines(a, s);
   draw_node(a, s, cur(a)->root);
+  draw_resize_hints(a, s);
   draw_corners(a, s);
   draw_min_bar(a, s);
   /* The floats, over everything tiled and under the modals below: painted

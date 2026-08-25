@@ -111,7 +111,7 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 
 | group | what is in it |
 |---|---|
-| geometry | `gap` `gap_aspect` `padding` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
+| geometry | `gap` `gap_aspect` `padding` `compact` `rounded` `title_align` `title_inset` `min_pane` `min_split` |
 | chrome | `status_bar` `status_line` `status_pad` `hints` `version_banner` `pane_buttons` `bell_indicator` and the marks (`zoom_mark` `zoom_on_mark` `close_mark` `min_mark` `newtab_mark` `bell_mark`) |
 | behaviour | `focus_follows_mouse` `scroll_lines` `scrollback` `scrollback_bytes` `toast_ms` `splash_ms` `hover_delay_ms` `double_click_ms` `word_separators` `anim_ms` `modal_scrim` `dim_unfocused` `float_shadow` `keep_dead` `in_band_shaders` `shell` `editor` `shader_dir` |
 | projects | `project_roots` `project_layout` — see [workspaces](workspaces.md) |
@@ -137,6 +137,44 @@ A number means the same thing however many of them you write, so `padding 1`,
 `padding 1 1` and `padding 1 1 1 1` are one padding rather than three. Three
 values is refused — CSS reads it as top/horizontal/bottom, and a line whose
 meaning you have to look up is a line nobody can read.
+
+## Compact
+
+```kdl
+compact true
+```
+
+Shared borders instead of gaps. Panes pack flush against 1-cell divider lines
+that meet in real junctions — `├` `┬` `┼` — one frame rings the whole tab, and
+each pane's title rides the line above it, so a boundary costs one cell where
+the default look spends four (a border, a gap, a border):
+
+```
+╭────── nvim ───── ▬ □ ✕ ─┬─── npm run dev ── ▬ □ ✕ ─╮
+│                          │                          │
+│                          ├────── shell ──── ▬ □ ✕ ─┤
+│                          │                          │
+╰──────────────────────────┴──────────────────────────╯
+```
+
+What changes, and what does not:
+
+- `gap` and `gap_aspect` stop applying — the boundary *is* the divider.
+  `padding` still works, and `rounded` still picks the corners.
+- **Dividers drag exactly as gaps did**, corners included, and the same hover
+  hints appear on them. A pane whose title line is a shared divider is still
+  dragged — by its name.
+- **Interior edges give up click-to-split**: a one-cell line cannot honestly
+  hold both verbs, and the whole line is the resize handle. The outer frame
+  keeps its split handles, and the keyboard splits anything, as ever.
+- A pane's **status row** — a dead pane's epitaph and its `[re-run] [close]`,
+  a program's own OSC 5577 row — overlays the pane's last content row, there
+  being no bottom border left to carry it.
+- **Floats keep the classic frame** (an overlay needs its own edge), and so
+  does a zoomed pane or a flattened tab — nothing there is packed against
+  anything.
+- Chrome shaders run over the pane's stretch of the shared lines; a line
+  between two panes belongs to both, which is what sharing means.
 
 ## Scrollback
 

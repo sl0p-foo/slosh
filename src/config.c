@@ -829,6 +829,7 @@ void config_defaults(config_t *c) {
   c->gap = 1;
   c->gap_aspect = 2;
   c->pad_top = c->pad_right = c->pad_bottom = c->pad_left = 0;
+  c->compact = false;
   c->rounded = true;
   c->title_align = ALIGN_CENTER;
   c->title_inset = 2;
@@ -1558,6 +1559,8 @@ char *config_render(const config_t *c) {
     cb_add(&b, "padding %u %u %u %u   // top right bottom left\n", c->pad_top,
            c->pad_right, c->pad_bottom, c->pad_left);
   cb_add(&b, "rounded %s\n", yesno(c->rounded));
+  cb_add(&b, "compact %s            // shared 1-cell borders instead of gaps\n",
+         yesno(c->compact));
   cb_add(&b, "title_align \"%s\"\n",
          c->title_align == ALIGN_LEFT    ? "left"
          : c->title_align == ALIGN_RIGHT ? "right"
@@ -1827,6 +1830,7 @@ static const char *const KNOWN_TOP[] = {
     "bell_indicator",
     "bell_mark",
     "close_mark",
+    "compact",
     "dim_unfocused",
     "double_click_ms",
     "word_separators",
@@ -2060,6 +2064,7 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
     }
   }
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
+  c->compact = kdl_arg_bool(kdl_child(root, "compact"), 0, c->compact);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
   c->status_line =
       kdl_arg_bool(kdl_child(root, "status_line"), 0, c->status_line);

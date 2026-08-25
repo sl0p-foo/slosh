@@ -60,7 +60,14 @@ nothing you click can disagree with what is on screen.
   for the double-click rename. Arming an edge leaves the name, the buttons and a
   dead pane's epitaph legible — the heavy rule goes round them.
 - **Drag the gap between panes** to move that boundary. Where two gaps cross,
-  drag the crossing to move both at once.
+  drag the crossing to move both at once. With `gap 0` there is no gap to
+  grab, so grabbing the border itself and pulling does the same thing — a
+  border press that never moves is still the click that splits.
+- **[`compact true`](config.md#compact)** trades the gaps for shared 1-cell
+  divider lines — tmux-style density, same mouse: dividers drag, crossings
+  drag both ways, titles ride the line above their pane. Interior edges give
+  up click-to-split (the line is all resize handle); the outer frame keeps
+  it.
 - **Drag a pane by its title** onto another to swap them — or to *place* it:
   the pane under the pointer subdivides into a centre and four edge bands,
   and where you let go is what the drop means. The centre trades places, as
