@@ -327,16 +327,17 @@ hooks: ## install the pre-commit hook (formats staged C)
 # builder over ssh and brings back a signed, notarized zip. Works from Linux;
 # all it needs here is ssh, rsync and something that can hash a file.
 #
-# Everything specific to *you* -- which mac, which identity, which Apple team --
-# lives in Makefile.macos, which is not in the repo. The mechanism is:
-# contrib/macos-builder-setup sets a builder up, contrib/macos-remote-build
-# drives it. REF=<tag> builds a ref origin already has, which is what a release
-# is; without it you get this working tree, dirty and honestly labelled.
+# The pipeline is Makefile.macos and contrib/macos-{builder-setup,remote-build},
+# all in the repo. Everything specific to *you* -- which mac, whose certificate,
+# which Apple team -- is the handful of lines in macos-release.mk, which is not.
+# REF=<tag> builds a ref origin already has, which is what a release is;
+# without it you get this working tree, dirty and honestly labelled.
 macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a release)
-	@test -f Makefile.macos || { \
-	  echo "no Makefile.macos here -- it names your signing identity and your"; \
-	  echo "builder mac, so it is kept out of the repo. To set one up, see:"; \
-	  echo "  contrib/macos-builder-setup --help"; exit 1; }
+	@test -f macos-release.mk || { \
+	  echo "no macos-release.mk here -- it names your signing identity and your"; \
+	  echo "builder mac, so it is the one file kept out of the repo:"; \
+	  echo "  cp macos-release.mk.example macos-release.mk   # then fill it in"; \
+	  echo "To provision a builder mac: contrib/macos-builder-setup --help"; exit 1; }
 	$(Q)$(MAKE) -f Makefile.macos remote-dist REF=$(REF)
 
 # ── installation ────────────────────────────────────────────────────────────

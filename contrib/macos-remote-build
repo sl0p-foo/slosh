@@ -69,12 +69,18 @@ ssh "$BUILDER" "test -d '$DIR/.git'" \
     || fail "no checkout at $BUILDER:$DIR -- run contrib/macos-builder-setup $BUILDER"
 say "reachable, checkout present"
 
-# Makefile.macos is not in the repo, so a clean checkout on the builder does not
-# have one and it is pushed from here. Only that file: these scripts are tracked
-# and run on *this* side, so copying them over would do nothing except make a
-# release checkout dirty -- and a dirty release checkout is a failure below.
+# macos-release.mk is not in the repo -- it is the one file that is not -- so a
+# clean checkout on the builder does not have one and it is pushed from here.
+# Only that file: Makefile.macos and these scripts are tracked, so the reset
+# below brings the builder the versions belonging to the commit being released,
+# which is what should sign it. Copying ours over would override that with
+# whatever the laptop happens to have, and make a release checkout dirty --
+# which is a failure below.
 push_signing_flow() {
-    rsync -q "$root/Makefile.macos" "$BUILDER:$DIR/Makefile.macos"
+    [ -f "$root/macos-release.mk" ] \
+        || fail "no macos-release.mk here -- it names the identity and the builder:
+  cp macos-release.mk.example macos-release.mk"
+    rsync -q "$root/macos-release.mk" "$BUILDER:$DIR/macos-release.mk"
 }
 
 if [ -n "$REF" ]; then
@@ -106,7 +112,7 @@ if [ -n "$REF" ]; then
     # zig-out survive and a release build is a recompile, not a re-download.
     ssh "$BUILDER" "cd '$DIR' \
         && git reset -q --hard '$full' \
-        && git clean -qfd -e Makefile.macos -e dist \
+        && git clean -qfd -e macos-release.mk -e dist \
         && make -s clean" || fail "could not put the builder on $full"
     push_signing_flow
 

@@ -1,0 +1,262 @@
+# slosh — macOS code-signing & notarization
+#
+# The mechanism is the project's and lives here. Everything specific to *you* —
+# which team, whose certificate, which mac — is in macos-release.mk, which is
+# gitignored; copy macos-release.mk.example to it and fill it in.
+#
+# The signing happens on a dedicated mac (see docs/macos-release.md). From here you
+# normally never run the pipeline directly — you drive that machine, and this
+# end needs only ssh, rsync and make, so "here" may be a Linux box:
+#
+#     make macos-dist                      # the main Makefile forwards to here
+#     make macos-dist REF=v0.2.0           # ...for a pushed ref
+#
+# which is this file's remote-dist target, and can also be run directly:
+#
+#     make -f Makefile.macos remote-dist   # sync this tree → build → sign →
+#                                          # notarize there → fetch the zip back
+#     make -f Makefile.macos builder-check # is the builder still set up?
+#
+# The targets below (build/sign/zip/notarize/dist) are what actually runs *on*
+# the builder. They still work on any mac that holds the identity, which is how
+# this started; the difference is that they now name a keychain explicitly,
+# because a build machine nobody logs into has no unlocked login keychain.
+#
+# One-time setup of a new builder, from here:
+#
+#     contrib/macos-builder-setup m1       # toolchain, clone, keychain, notary
+#
+# ── your identity ───────────────────────────────────────────────────────────
+# Not in this file: TEAM_ID, SIGNER and BUILDER come from macos-release.mk, so
+# that the rest of this is the project's and can be shared. `-include` because
+# a checkout without one is normal -- most people never sign anything -- and
+# the targets that actually need it say so themselves (require-identity).
+# A command-line override still beats both.
+-include macos-release.mk
+
+IDENTITY  ?= Developer ID Application: $(SIGNER) ($(TEAM_ID))
+
+# The keychain profile name that `setup-notary` creates and `notarize` reads,
+# so the actual Apple ID / password / API key never live in this file.
+NOTARY_PROFILE ?= slosh-notary
+
+# ── the keychain ────────────────────────────────────────────────────────────
+# Both the signing key and the notary credential live in a keychain of their
+# own rather than in login.keychain. On the builder that is not a preference:
+# nobody ever logs in there, so the login keychain is never unlocked, and
+# codesign over ssh fails with a bare "User interaction is not allowed". A
+# separate keychain with a password we can read from a 0600 file is unlockable
+# from a non-interactive shell, and holds nothing but slosh's signing material.
+#
+# If that keychain is absent we fall back to the default search list, so this
+# file still behaves the old way on a machine where you sign by hand.
+KEYCHAIN      ?= $(HOME)/Library/Keychains/slosh-build.keychain-db
+KEYCHAIN_PASS ?= $(HOME)/.config/slosh/build-keychain.pass
+HAVE_KEYCHAIN := $(wildcard $(KEYCHAIN))
+KC_FLAG       := $(if $(HAVE_KEYCHAIN),--keychain "$(KEYCHAIN)",)
+
+# ── the builder ─────────────────────────────────────────────────────────────
+# An ssh host (see ~/.ssh/config) and the checkout on it. `remote` drives them.
+# BUILDER comes from macos-release.mk; the checkout path has a sane default
+# because macos-builder-setup is what creates it.
+BUILDER_DIR ?= src/slosh
+REF         ?=
+
+# ── what we sign ────────────────────────────────────────────────────────────
+# Reuse the real build. `make all` (the main Makefile) produces build/slosh.
+MAINMAKE  ?= $(MAKE) -f Makefile
+BIN       ?= build/slosh
+DIST      ?= dist
+
+# Version string for the artifact names. Matches the Makefile's scheme.
+VERSION   ?= $(shell git describe --always --dirty 2>/dev/null || echo 0.0.0)
+ARCH      ?= $(shell uname -m)
+STEM      := slosh-$(VERSION)-macos-$(ARCH)
+ZIP       := $(DIST)/$(STEM).zip
+
+# Hardened runtime is required for notarization. slosh is a static binary that
+# only forks shells/PTYs, so it needs no entitlements — leave this empty unless
+# notarization or a runtime failure tells you otherwise, then point it at a
+# .plist and it gets passed to codesign.
+ENTITLEMENTS ?=
+ENT_FLAG   := $(if $(ENTITLEMENTS),--entitlements $(ENTITLEMENTS),)
+
+# ── optional: a signed, stapled installer package ───────────────────────────
+# `pkg` needs a *second* certificate: "Developer ID Installer" (distinct from
+# the Application cert you already have). Create it the same way, then:
+#     make -f Makefile.macos pkg
+INSTALLER_IDENTITY ?= Developer ID Installer: $(SIGNER) ($(TEAM_ID))
+PKG_ID    ?= foo.sl0p.slosh
+PKG       := $(DIST)/$(STEM).pkg
+# Where the binary lands on the user's machine.
+INSTALL_LOC ?= /usr/local/bin
+
+.PHONY: help build sign verify zip notarize staple dist pkg setup-notary \
+        notary-status clean-dist unlock remote-dist remote-pkg \
+        builder-check builder-setup require-identity require-builder
+.DEFAULT_GOAL := help
+
+# What help prints for a value macos-release.mk was supposed to supply. Better
+# than the alternative: with SIGNER and TEAM_ID empty the identity composes as
+# "Developer ID Application:  ()", which looks like a real answer.
+UNSET = (unset — see macos-release.mk.example)
+
+help: ## show this
+	@grep -hE '^[a-z-]+:.*##' Makefile.macos | sed 's/:.*##/\t/' | expand -t18
+	@printf '\n  identity : %s\n  team     : %s\n  artifact : %s\n  builder  : %s\n  keychain : %s\n' \
+	  '$(if $(strip $(SIGNER))$(strip $(TEAM_ID)),$(IDENTITY),$(UNSET))' \
+	  '$(if $(strip $(TEAM_ID)),$(TEAM_ID),$(UNSET))' \
+	  '$(ZIP)' \
+	  '$(if $(strip $(BUILDER)),$(BUILDER):$(BUILDER_DIR),$(UNSET))' \
+	  '$(if $(HAVE_KEYCHAIN),$(KEYCHAIN),(none here — default search list))'
+
+# ── drive the builder ───────────────────────────────────────────────────────
+# Without macos-release.mk the identity string would come out as the plausible
+# and completely wrong "Developer ID Application:  ()", and codesign would
+# reject it a minute into a build with a message about no identity matching.
+# Say the useful thing first instead, and name the file to create.
+# One line each, echoed separately: a multi-line make variable would need the
+# indentation escaped (make eats whitespace after a continuation) and must
+# contain no '#', which make reads as a comment -- both of which this hint got
+# wrong before anyone read its output.
+CONFIG_HINT = macos-release.mk is missing or incomplete.
+CONFIG_FIX  = cp macos-release.mk.example macos-release.mk   (then fill it in)
+
+require-identity:
+	@test -n "$(strip $(SIGNER))" && test -n "$(strip $(TEAM_ID))" || { \
+	  echo "no signing identity: $(CONFIG_HINT)"; \
+	  echo "  $(CONFIG_FIX)"; \
+	  echo "  need SIGNER and TEAM_ID (have SIGNER='$(SIGNER)' TEAM_ID='$(TEAM_ID)')"; \
+	  exit 1; }
+
+require-builder:
+	@test -n "$(strip $(BUILDER))" || { \
+	  echo "no builder: $(CONFIG_HINT)"; \
+	  echo "  $(CONFIG_FIX)"; \
+	  echo "  need BUILDER (an ssh host that holds the signing key)"; \
+	  exit 1; }
+
+# The everyday command from a laptop. The work happens on $(BUILDER); the zip
+# comes back into ./dist so the rest of the release (contrib/brew-release, the
+# website) is unchanged.
+remote-dist: require-builder ## build+sign+notarize on $(BUILDER), fetch the artifacts into dist/
+	@contrib/macos-remote-build --builder '$(BUILDER)' --dir '$(BUILDER_DIR)' \
+	  $(if $(REF),--ref '$(REF)',) --target dist
+
+remote-pkg: require-builder ## same, but produce the stapled installer .pkg
+	@contrib/macos-remote-build --builder '$(BUILDER)' --dir '$(BUILDER_DIR)' \
+	  $(if $(REF),--ref '$(REF)',) --target pkg
+
+builder-check: require-builder ## verify the builder still has toolchain, identity and credentials
+	@contrib/macos-builder-setup --check '$(BUILDER)'
+
+builder-setup: require-builder ## provision (or repair) the builder from this machine
+	@contrib/macos-builder-setup '$(BUILDER)'
+
+# ── the keychain ────────────────────────────────────────────────────────────
+# Every target that needs the private key depends on this. It is a no-op on a
+# machine without the dedicated keychain, and it is cheap enough to repeat:
+# unlocking an already-unlocked keychain succeeds and says nothing.
+unlock:
+	@if [ -n "$(HAVE_KEYCHAIN)" ]; then \
+	  test -s "$(KEYCHAIN_PASS)" || { \
+	    echo "  no keychain password at $(KEYCHAIN_PASS)"; exit 1; }; \
+	  security unlock-keychain -p "$$(cat '$(KEYCHAIN_PASS)')" "$(KEYCHAIN)"; \
+	fi
+
+# ── build ───────────────────────────────────────────────────────────────────
+build: ## build the release binary via the main Makefile
+	$(MAINMAKE) all
+
+$(BIN): build
+
+# ── sign ────────────────────────────────────────────────────────────────────
+sign: require-identity $(BIN) unlock ## codesign the binary (hardened runtime + secure timestamp)
+	@echo "  [SIGN] $(BIN)  ($(IDENTITY))"
+	@codesign --force --timestamp --options runtime $(ENT_FLAG) $(KC_FLAG) \
+	  --sign "$(IDENTITY)" "$(BIN)"
+	@$(MAKE) -f Makefile.macos --no-print-directory verify
+
+verify: ## check the signature is valid and well-formed
+	@codesign --verify --strict --verbose=2 "$(BIN)"
+	@echo "  [OK]   signature valid"
+	@codesign --display --verbose=2 "$(BIN)" 2>&1 | \
+	  grep -E 'Authority|TeamIdentifier|Timestamp|Runtime' | sed 's/^/         /' || true
+
+# ── package for notarization ────────────────────────────────────────────────
+# A bare CLI binary can't be submitted to Apple; it must be inside a .zip,
+# .pkg, or .dmg. --keepParent preserves the filename inside the archive.
+# (The output dir is made in-recipe on purpose: a `$(DIST):` target would
+# collide with the phony `dist` command below and create a circular rule.)
+zip: sign ## zip the signed binary for submission / Homebrew
+	@mkdir -p $(DIST)
+	@rm -f "$(ZIP)" "$(DIST)/slosh"
+	@cp "$(BIN)" "$(DIST)/slosh"          # stage as a clean top-level name
+	@ditto -c -k "$(DIST)/slosh" "$(ZIP)"  # single file -> archive contains just 'slosh'
+	@rm -f "$(DIST)/slosh"
+	@echo "  [ZIP]  $(ZIP)"
+
+# ── notarize ────────────────────────────────────────────────────────────────
+# Submits and blocks until Apple's automated scan returns. On success the
+# ticket lives on Apple's servers; Gatekeeper verifies online on first run.
+# (You cannot staple a bare binary or a .zip — only .pkg/.dmg/.app. So this
+# zip flow is the Homebrew-friendly path; use `pkg` if you want offline.)
+notarize: zip ## submit the zip to Apple and wait for the verdict
+	@echo "  [NOTARIZE] submitting $(ZIP) ..."
+	@xcrun notarytool submit "$(ZIP)" \
+	  --keychain-profile "$(NOTARY_PROFILE)" $(KC_FLAG) --wait 2>&1 \
+	  | tee $(DIST)/notary.log
+	@grep -q 'status: Accepted' $(DIST)/notary.log || { \
+	  echo "  [FAIL] Apple did not accept this build:"; \
+	  sed -n 's/^ *status: */         status: /p' $(DIST)/notary.log; \
+	  id=$$(sed -n 's/^ *id: *//p' $(DIST)/notary.log | head -1); \
+	  [ -n "$$id" ] && xcrun notarytool log "$$id" \
+	    --keychain-profile "$(NOTARY_PROFILE)" $(KC_FLAG); \
+	  exit 1; }
+	@echo "  [OK]   notarized. Ship $(ZIP), or run 'make -f Makefile.macos pkg' for a stapled installer."
+
+# dist is the everyday command: build, sign, zip, notarize.
+dist: notarize ## full pipeline: build → sign → zip → notarize
+
+# ── optional signed .pkg (offline / double-click install) ───────────────────
+pkg: sign ## build a signed, notarized, stapled installer .pkg
+	@mkdir -p $(DIST)
+	@echo "  [PKG]  staging $(BIN) -> $(INSTALL_LOC)"
+	@rm -rf $(DIST)/pkgroot && mkdir -p "$(DIST)/pkgroot$(INSTALL_LOC)"
+	@cp "$(BIN)" "$(DIST)/pkgroot$(INSTALL_LOC)/"
+	@pkgbuild --root $(DIST)/pkgroot --identifier $(PKG_ID) \
+	  --version $(VERSION) --install-location / \
+	  $(if $(HAVE_KEYCHAIN),--keychain "$(KEYCHAIN)",) \
+	  --sign "$(INSTALLER_IDENTITY)" "$(PKG)"
+	@echo "  [NOTARIZE] $(PKG)"
+	@xcrun notarytool submit "$(PKG)" --keychain-profile "$(NOTARY_PROFILE)" $(KC_FLAG) --wait
+	@xcrun stapler staple "$(PKG)"
+	@spctl --assess --type install -vv "$(PKG)" || true
+	@echo "  [OK]   $(PKG)  (stapled, verifies offline)"
+
+# ── one-time credential setup ───────────────────────────────────────────────
+# Stores a notarization credential in the login keychain under NOTARY_PROFILE
+# so nothing secret lives in this file. Prefer an App Store Connect API key
+# (--key/--key-id/--issuer); an app-specific password also works. Run once.
+setup-notary: ## store notarization credentials in the keychain (interactive, once)
+	@echo "contrib/macos-builder-setup does this for the builder. By hand it is:"
+	@echo
+	@echo "  # A) App Store Connect API key (recommended):"
+	@echo "  xcrun notarytool store-credentials '$(NOTARY_PROFILE)' \\"
+	@echo "    --key /path/to/AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <issuer-uuid> \\"
+	@echo "    $(if $(HAVE_KEYCHAIN),--keychain '$(KEYCHAIN)',)"
+	@echo
+	@echo "  # B) Apple ID + app-specific password (from appleid.apple.com):"
+	@echo "  xcrun notarytool store-credentials '$(NOTARY_PROFILE)' \\"
+	@echo "    --apple-id $(if $(strip $(APPLE_ID)),$(APPLE_ID),<your-apple-id>) --team-id $(TEAM_ID)"
+	@echo
+	@echo "It'll prompt for the secret and save it to the keychain under '$(NOTARY_PROFILE)'."
+	@echo "Omit --keychain and it lands in the login keychain, which a headless"
+	@echo "builder cannot open: on the builder, always name the keychain."
+
+notary-status: unlock ## show recent notarization submissions
+	@xcrun notarytool history --keychain-profile "$(NOTARY_PROFILE)" $(KC_FLAG)
+
+clean-dist: ## remove the dist/ artifacts (leaves build/ alone)
+	@rm -rf $(DIST)
+	@echo "  removed $(DIST)/"

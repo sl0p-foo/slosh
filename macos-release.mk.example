@@ -1,0 +1,53 @@
+# slosh — who signs the macOS builds, and on which mac.
+#
+# Copy this file to `macos-release.mk` and fill it in. That copy is gitignored:
+# it is the *only* place the release flow keeps anything specific to you, which
+# is what lets Makefile.macos and the contrib/ scripts live in the repo.
+#
+#     cp macos-release.mk.example macos-release.mk
+#     $EDITOR macos-release.mk
+#     make macos-dist
+#
+# Nothing secret goes in here. The signing key lives in a keychain on the
+# builder and the notarization credential is a keychain profile; neither is a
+# value you could paste. This file only says *which* key and *which* mac.
+#
+# It is included by Makefile.macos, so it is make syntax: no quotes, and a
+# value runs to the end of the line (trailing spaces included — do not add
+# any after a name).
+
+# ── Apple ───────────────────────────────────────────────────────────────────
+# Your Developer Program Team ID: ten alphanumerics, shown at
+# developer.apple.com/account under Membership.
+TEAM_ID = XXXXXXXXXX
+
+# The name Apple issued the certificate to, exactly as it appears there. It is
+# the middle of the identity string, and this prints the whole thing:
+#
+#     security find-identity -v -p codesigning
+#     1) A1B2...  "Developer ID Application: Your Name (XXXXXXXXXX)"
+#                                            ^^^^^^^^^ this part
+#
+# A team certificate is issued to the organisation, so that name goes here
+# instead of a person's.
+SIGNER = Your Name
+
+# ── the builder ─────────────────────────────────────────────────────────────
+# The mac that holds the private key, as an ssh host — a `Host` entry in
+# ~/.ssh/config, or user@host. It does not have to be, and normally is not,
+# the machine you develop on. contrib/macos-builder-setup provisions it.
+BUILDER = m1
+
+# Where the checkout lives on the builder. The default suits what
+# macos-builder-setup creates; uncomment only to point somewhere else.
+#BUILDER_DIR = src/slosh
+
+# ── optional ────────────────────────────────────────────────────────────────
+# Only used to print a copy-pasteable command in `make -f Makefile.macos
+# setup-notary`. The credential itself is stored in the keychain, not here.
+#APPLE_ID = you@example.com
+
+# The identity strings are assembled from SIGNER and TEAM_ID. Set them
+# outright only if your certificate's common name is not the usual shape.
+#IDENTITY = Developer ID Application: Your Name (XXXXXXXXXX)
+#INSTALLER_IDENTITY = Developer ID Installer: Your Name (XXXXXXXXXX)

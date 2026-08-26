@@ -20,8 +20,9 @@ __pycache__/
 web/slosh-preview.mp4
 
 # the signed macOS artifacts, and the file that says who signs them.
-# Makefile.macos names a signing identity and a builder machine: that is a
-# property of whoever is releasing, not of the project. `make macos-dist`
-# tells you how to make one; contrib/macos-builder-setup sets the mac up.
+# The release *mechanism* is in the repo (Makefile.macos, contrib/macos-*).
+# macos-release.mk is the one file that is not: it names a team, a certificate
+# and a builder machine, which belong to whoever is releasing rather than to
+# the project. macos-release.mk.example is the template, and is tracked.
 /dist/
-Makefile.macos
+macos-release.mk
