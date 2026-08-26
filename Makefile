@@ -53,7 +53,7 @@ else
 endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
-        docs www fmt fmt-check hooks tools install uninstall
+        docs www fmt fmt-check hooks tools install uninstall macos-dist
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -318,6 +318,26 @@ fuzz-corpus: ## replay fuzz seed corpora (CI-friendly, no fuzzing)
 hooks: ## install the pre-commit hook (formats staged C)
 	$(Q)git config core.hooksPath .githooks
 	@echo "core.hooksPath -> .githooks   (git commit --no-verify to skip)"
+
+# ── macOS releases ──────────────────────────────────────────────────────────
+# A mac binary users can run without being told it is damaged has to be signed
+# with a Developer ID and notarized by Apple, and that needs a mac holding a
+# private key -- which is not necessarily this machine, and under `make all`
+# never is. So this target does not build anything: it hands the job to the
+# builder over ssh and brings back a signed, notarized zip. Works from Linux;
+# all it needs here is ssh, rsync and something that can hash a file.
+#
+# Everything specific to *you* -- which mac, which identity, which Apple team --
+# lives in Makefile.macos, which is not in the repo. The mechanism is:
+# contrib/macos-builder-setup sets a builder up, contrib/macos-remote-build
+# drives it. REF=<tag> builds a ref origin already has, which is what a release
+# is; without it you get this working tree, dirty and honestly labelled.
+macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a release)
+	@test -f Makefile.macos || { \
+	  echo "no Makefile.macos here -- it names your signing identity and your"; \
+	  echo "builder mac, so it is kept out of the repo. To set one up, see:"; \
+	  echo "  contrib/macos-builder-setup --help"; exit 1; }
+	$(Q)$(MAKE) -f Makefile.macos remote-dist REF=$(REF)
 
 # ── installation ────────────────────────────────────────────────────────────
 # For packagers (Homebrew's formula calls exactly this) and for anyone doing

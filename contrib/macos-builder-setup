@@ -1,0 +1,326 @@
+#!/bin/sh
+# macos-builder-setup -- turn a bare mac into slosh's signing/notarizing builder,
+# from the machine that currently holds the identity.
+#
+#   contrib/macos-builder-setup <ssh-host>          # provision (re-runnable)
+#   contrib/macos-builder-setup --check <ssh-host>  # report what is missing
+#
+# <ssh-host> is a host in ~/.ssh/config, or $SLOSH_BUILDER. This script holds no
+# identity: who you sign as, and which machine does it, live in Makefile.macos,
+# which is not in the repo.
+#
+# What a builder needs, and why each piece is here:
+#
+#   zig 0.16.0        the C compiler the main Makefile uses; it expects it at
+#                     ~/zig-0.16.0/zig, so that is where it goes.
+#   a checkout        of origin, in ~/src/slosh. contrib/macos-remote-build
+#                     drives it; the release mode resets it to a pushed ref.
+#   a keychain        of its own -- slosh-build.keychain -- holding the
+#                     Developer ID Application key and the notary credential.
+#                     NOT the login keychain: nobody logs into a build machine,
+#                     so its login keychain is never unlocked and codesign over
+#                     ssh dies with "User interaction is not allowed". This one
+#                     has its password in a 0600 file the build reads.
+#   a partition list  set to apple-tool:,apple:,codesign: -- without it macOS
+#                     asks for confirmation before letting codesign touch the
+#                     key, which over ssh means it just fails.
+#
+# The private key is moved by exporting exactly one identity from this machine's
+# login keychain. `security export` will hand over every identity it has, which
+# on a laptop is also localhost dev certs and whatever Compressor left behind;
+# we pick the Developer ID out of the bundle and rebuild a .p12 that contains
+# that one key, its certificate, and the Apple chain above it. Nothing else
+# should ever leave this machine.
+set -eu
+
+CHECK=0
+BUILDER=""
+IDENTITY_CN="${SLOSH_IDENTITY_CN:-Developer ID Application}"
+ZIG_VERSION="${SLOSH_ZIG_VERSION:-0.16.0}"
+REPO_URL="${SLOSH_REPO_URL:-https://git.sl0p.foo/slosh.git}"
+DIR="${SLOSH_BUILDER_DIR:-src/slosh}"
+# Overridable so this script can be rehearsed against a scratch keychain and
+# checkout on the real builder without touching the one that signs releases.
+KC_NAME="${SLOSH_KEYCHAIN_NAME:-slosh-build.keychain}"
+# Where this machine keeps its App Store Connect key. Kept out of the script so
+# the script itself holds no credentials.
+NOTARY_ENV="${SLOSH_NOTARY_ENV:-$HOME/.config/slosh/notary.env}"
+NOTARY_PROFILE="${SLOSH_NOTARY_PROFILE:-slosh-notary}"
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+fail() { printf 'macos-builder-setup: %s\n' "$*" >&2; exit 1; }
+say()  { printf '  %s\n' "$*"; }
+ok()   { printf '  ok   %s\n' "$*"; }
+bad()  { printf '  MISS %s\n' "$*"; }
+step() { printf '\n== %s\n' "$*"; }
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --check) CHECK=1; shift ;;
+        -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) fail "unknown option $1" ;;
+        *) BUILDER="$1"; shift ;;
+    esac
+done
+BUILDER="${BUILDER:-${SLOSH_BUILDER:-}}"
+[ -n "$BUILDER" ] || fail "which machine? give an ssh host: $0 <ssh-host>"
+
+rsh() { ssh -o BatchMode=yes -o ConnectTimeout=15 "$BUILDER" "$@"; }
+
+ssh -o BatchMode=yes -o ConnectTimeout=15 "$BUILDER" true 2>/dev/null \
+    || fail "cannot ssh to '$BUILDER' without a prompt -- fix that first"
+
+# ── check mode ──────────────────────────────────────────────────────────────
+if [ "$CHECK" = 1 ]; then
+    step "$BUILDER"
+    rc=0
+    rsh "test -x ~/zig-$ZIG_VERSION/zig" \
+        && ok "zig $(rsh "~/zig-$ZIG_VERSION/zig version")" \
+        || { bad "zig $ZIG_VERSION at ~/zig-$ZIG_VERSION/zig"; rc=1; }
+    rsh "test -d '$DIR/.git'" \
+        && ok "checkout $DIR @ $(rsh "cd '$DIR' && git describe --always --dirty")" \
+        || { bad "checkout at $DIR"; rc=1; }
+    rsh "test -f ~/Library/Keychains/$KC_NAME-db" \
+        && ok "keychain $KC_NAME" || { bad "keychain $KC_NAME"; rc=1; }
+    rsh "test -s ~/.config/slosh/build-keychain.pass" \
+        && ok "keychain password file" || { bad "keychain password file"; rc=1; }
+    ids="$(rsh "security find-identity -v -p codesigning ~/Library/Keychains/$KC_NAME-db 2>/dev/null | grep '$IDENTITY_CN' || true")"
+    [ -n "$ids" ] && ok "identity:$(printf '%s' "$ids" | sed 's/^ *[0-9]*)//')" \
+                  || { bad "signing identity in $KC_NAME"; rc=1; }
+    # The same identity in two keychains at once makes codesign fail with
+    # errSecInternalComponent -- which names nothing, blames nothing, and sends
+    # you looking at the partition list for an hour. Catch it here instead.
+    dupes="$(rsh "security find-identity -v -p codesigning 2>/dev/null | grep -c '$IDENTITY_CN' || true")"
+    if [ "${dupes:-0}" -gt 1 ]; then
+        bad "the identity is reachable $dupes times in the search list (should be once)"
+        say "     codesign will fail with errSecInternalComponent. Keep it in"
+        say "     $KC_NAME only; drop the others:"
+        say "       security list-keychains -d user      # see the search list"
+        say "       security delete-keychain <the extra one>"
+        rc=1
+    fi
+    # The one check that talks to Apple: credentials that cannot be validated
+    # are not credentials, they are a surprise waiting for release day.
+    if rsh "security unlock-keychain -p \"\$(cat ~/.config/slosh/build-keychain.pass)\" ~/Library/Keychains/$KC_NAME-db 2>/dev/null && xcrun notarytool history --keychain-profile '$NOTARY_PROFILE' --keychain ~/Library/Keychains/$KC_NAME-db >/dev/null 2>&1"; then
+        ok "notary credential '$NOTARY_PROFILE' (accepted by Apple)"
+    else
+        bad "notary credential '$NOTARY_PROFILE'"; rc=1
+    fi
+    [ "$rc" = 0 ] && printf '\nbuilder is ready\n' \
+                  || printf '\nsomething is missing -- run: %s %s\n' "$0" "$BUILDER"
+    exit $rc
+fi
+
+# ── 1. zig ──────────────────────────────────────────────────────────────────
+step "zig $ZIG_VERSION"
+if rsh "test -x ~/zig-$ZIG_VERSION/zig"; then
+    ok "already there ($(rsh "~/zig-$ZIG_VERSION/zig version"))"
+else
+    # Named for the builder's architecture, not ours: the machine driving this
+    # may be an intel mac, or not a mac at all.
+    arch="$(rsh 'uname -m')"
+    zdir="zig-$arch-macos-$ZIG_VERSION"
+    # Prefer a copy we already have: it is the exact tree this machine builds
+    # with, and it saves 50MB over a link that may not exist any more.
+    local_zig="$HOME/zig/$zdir"
+    if [ -d "$local_zig" ]; then
+        say "copying $local_zig"
+        (cd "$HOME/zig" && tar cf - "$zdir") | rsh "mkdir -p ~/zig && tar xf - -C ~/zig"
+    else
+        url="https://ziglang.org/download/$ZIG_VERSION/$zdir.tar.xz"
+        say "downloading $url"
+        rsh "mkdir -p ~/zig && cd ~/zig && curl -fsSL '$url' | tar xJf -"
+    fi
+    rsh "ln -sfn ~/zig/$zdir ~/zig-$ZIG_VERSION"
+    ok "zig $(rsh "~/zig-$ZIG_VERSION/zig version")"
+fi
+
+# ── 2. checkout ─────────────────────────────────────────────────────────────
+step "checkout"
+if rsh "test -d '$DIR/.git'"; then
+    ok "$DIR @ $(rsh "cd '$DIR' && git describe --always --dirty")"
+else
+    rsh "mkdir -p \"\$(dirname '$DIR')\" && git clone -q '$REPO_URL' '$DIR'" \
+        || fail "clone failed -- can the builder reach $REPO_URL?"
+    ok "cloned $REPO_URL -> $DIR"
+fi
+# The signing flow is untracked there exactly as it is here, so that neither
+# `git status` nor `git clean` on the builder treats it as debris.
+rsh "cd '$DIR' && for p in Makefile.macos dist/; do
+        grep -qxF \"\$p\" .git/info/exclude 2>/dev/null || echo \"\$p\" >> .git/info/exclude
+     done"
+# Only Makefile.macos: it is the one piece the builder needs that git will never
+# hand it. These scripts run on this side, so the builder has no use for them.
+[ -f "$root/Makefile.macos" ] \
+    || fail "no Makefile.macos in $root. It names your signing identity, your
+                     team id and the builder; it stays out of the repo because it
+                     describes an Apple account rather than the project."
+rsync -q "$root/Makefile.macos" "$BUILDER:$DIR/Makefile.macos"
+ok "Makefile.macos in place on the builder"
+
+# ── 3. keychain + signing identity ──────────────────────────────────────────
+step "signing identity"
+if rsh "security find-identity -v -p codesigning ~/Library/Keychains/$KC_NAME-db 2>/dev/null | grep -q '$IDENTITY_CN'"; then
+    ok "already in $KC_NAME on the builder"
+else
+    # Handing the key over means reading it out of *this* machine's keychain,
+    # which only a mac has. Everything else this script does works from
+    # anywhere; say so plainly rather than failing at `security: not found`.
+    command -v security >/dev/null 2>&1 \
+        || fail "the builder has no signing identity yet, and this machine is not a
+                     mac, so there is no keychain here to take one from. Run this
+                     step once from the mac that holds '$IDENTITY_CN'; after that
+                     everything (including --check) works from here."
+    command -v openssl >/dev/null || fail "openssl is needed to split the export"
+    security find-identity -v -p codesigning | grep -q "$IDENTITY_CN" \
+        || fail "this machine has no '$IDENTITY_CN' identity to hand over"
+
+    tmp="$(mktemp -d)"
+    chmod 700 "$tmp"
+    trap 'rm -rf "$tmp"' EXIT INT TERM
+    pass="$(openssl rand -base64 24)"
+
+    say "exporting from the login keychain"
+    security export -k "$HOME/Library/Keychains/login.keychain-db" \
+        -t identities -f pkcs12 -P "$pass" -o "$tmp/all.p12" >/dev/null 2>&1 \
+        || fail "security export failed (unlock your login keychain and retry)"
+    openssl pkcs12 -in "$tmp/all.p12" -nodes -legacy -passin "pass:$pass" \
+        -out "$tmp/all.pem" 2>/dev/null || fail "could not read the export back"
+
+    # Pair cert to key by localKeyID: the friendlyName on a key bag is the
+    # *person*, not the certificate, so name matching alone picks the wrong key
+    # on a machine with more than one identity.
+    SLOSH_WANT="$IDENTITY_CN" python3 - "$tmp" <<'PY' || fail "no such identity in the export"
+import os, re, sys
+tmp = sys.argv[1]
+want = os.environ["SLOSH_WANT"]
+bags = []
+for b in open(f"{tmp}/all.pem").read().split("Bag Attributes")[1:]:
+    pem = re.search(r"-----BEGIN [^-]+-----.*?-----END [^-]+-----", b, re.S)
+    if not pem:
+        continue
+    lk = re.search(r"localKeyID:\s*([0-9A-Fa-f ]+)", b)
+    fn = re.search(r"friendlyName:\s*(.+)", b)
+    bags.append({
+        "lk": lk.group(1).strip() if lk else None,
+        "fn": fn.group(1).strip() if fn else "",
+        "kind": "KEY" if "PRIVATE KEY" in pem.group(0) else "CERT",
+        "pem": pem.group(0),
+    })
+certs = [b for b in bags if b["kind"] == "CERT" and want in b["fn"]]
+if not certs:
+    sys.exit(1)
+if len(certs) > 1:
+    print(f"  note: {len(certs)} matching certificates, taking the first", file=sys.stderr)
+cert = certs[0]
+keys = [b for b in bags if b["kind"] == "KEY" and b["lk"] == cert["lk"]]
+if not keys:
+    sys.exit(1)
+open(f"{tmp}/devid.crt", "w").write(cert["pem"] + "\n")
+open(f"{tmp}/devid.key", "w").write(keys[0]["pem"] + "\n")
+print(f"  identity {cert['fn']}")
+PY
+    chmod 600 "$tmp/devid.key"
+
+    # Ship the chain too. A fresh mac may not have the Developer ID
+    # intermediate, and codesign that cannot build a chain to a root produces
+    # a signature Apple then rejects.
+    : > "$tmp/chain.pem"
+    security find-certificate -a -c "Developer ID Certification Authority" -p >> "$tmp/chain.pem" 2>/dev/null || true
+    security find-certificate -a -c "Apple Root CA" -p >> "$tmp/chain.pem" 2>/dev/null || true
+
+    name="$(openssl x509 -in "$tmp/devid.crt" -noout -subject \
+            | sed -n 's/.*CN *= *\([^,]*\).*/\1/p')"
+    openssl pkcs12 -export -legacy -inkey "$tmp/devid.key" -in "$tmp/devid.crt" \
+        -certfile "$tmp/chain.pem" -name "$name" -passout "pass:$pass" \
+        -out "$tmp/devid.p12" || fail "could not build the single-identity .p12"
+    chmod 600 "$tmp/devid.p12"
+    say "expires $(openssl x509 -in "$tmp/devid.crt" -noout -enddate | sed 's/notAfter=//')"
+
+    scp -q "$tmp/devid.p12" "$BUILDER:/tmp/slosh-devid.p12"
+    rsh "bash -s '$pass' '$KC_NAME'" <<'EOS' || fail "keychain setup failed on the builder"
+set -eu
+P12PASS="$1"; KC_NAME="$2"
+KC="$HOME/Library/Keychains/$KC_NAME-db"
+CONF="$HOME/.config/slosh"
+mkdir -p "$CONF"; chmod 700 "$CONF"
+if [ ! -s "$CONF/build-keychain.pass" ]; then
+  openssl rand -hex 24 > "$CONF/build-keychain.pass"; chmod 600 "$CONF/build-keychain.pass"
+fi
+KCPASS="$(cat "$CONF/build-keychain.pass")"
+[ -f "$KC" ] || security create-keychain -p "$KCPASS" "$KC_NAME"
+# No arguments: no idle timeout and no lock on sleep. A keychain that relocks
+# halfway through a notarization wait is a build that fails for no reason.
+security set-keychain-settings "$KC"
+security unlock-keychain -p "$KCPASS" "$KC"
+security import /tmp/slosh-devid.p12 -k "$KC" -P "$P12PASS" -f pkcs12 \
+  -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign -T /usr/bin/pkgbuild >/dev/null
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPASS" "$KC" >/dev/null
+# Append, never replace: -s with a single name would drop the login keychain
+# out of the search list for every tool on the machine.
+have="$(security list-keychains -d user | sed 's/^ *"//;s/"$//')"
+printf '%s\n' "$have" | grep -qxF "$KC" \
+  || security list-keychains -d user -s $(printf '%s\n' "$have" | tr '\n' ' ') "$KC"
+rm -f /tmp/slosh-devid.p12
+EOS
+    rm -rf "$tmp"; trap - EXIT INT TERM
+    ok "imported into $KC_NAME on $BUILDER"
+fi
+
+# ── 4. notarization credential ──────────────────────────────────────────────
+step "notary credential '$NOTARY_PROFILE'"
+kc_remote="~/Library/Keychains/$KC_NAME-db"
+if rsh "security unlock-keychain -p \"\$(cat ~/.config/slosh/build-keychain.pass)\" $kc_remote && xcrun notarytool history --keychain-profile '$NOTARY_PROFILE' --keychain $kc_remote >/dev/null 2>&1"; then
+    ok "already stored and accepted by Apple"
+else
+    [ -f "$NOTARY_ENV" ] && [ -r "$NOTARY_ENV" ] || fail "no $NOTARY_ENV. Create it, 0600, holding the App Store
+                     Connect key this account notarizes with:
+
+                       NOTARY_KEY=\$HOME/.config/slosh/notary/AuthKey_XXXXXXXXXX.p8
+                       NOTARY_KEY_ID=XXXXXXXXXX
+                       NOTARY_ISSUER=<issuer uuid from App Store Connect>
+
+                     (Override the path with \$SLOSH_NOTARY_ENV.)"
+    # shellcheck disable=SC1090
+    . "$NOTARY_ENV"
+    [ -n "${NOTARY_KEY:-}" ] && [ -f "$NOTARY_KEY" ] || fail "NOTARY_KEY does not point at a .p8"
+    [ -n "${NOTARY_KEY_ID:-}" ] || fail "NOTARY_ENV sets no NOTARY_KEY_ID"
+    [ -n "${NOTARY_ISSUER:-}" ] || fail "NOTARY_ENV sets no NOTARY_ISSUER"
+    key_base="$(basename "$NOTARY_KEY")"
+    scp -q "$NOTARY_KEY" "$BUILDER:/tmp/$key_base"
+    rsh "bash -s '$KC_NAME' '$key_base' '$NOTARY_KEY_ID' '$NOTARY_ISSUER' '$NOTARY_PROFILE'" <<'EOS' \
+        || fail "storing the notary credential failed"
+set -eu
+KC_NAME="$1"; KEY="$2"; KEY_ID="$3"; ISSUER="$4"; PROFILE="$5"
+KC="$HOME/Library/Keychains/$KC_NAME-db"
+mkdir -p "$HOME/.config/slosh/notary"; chmod 700 "$HOME/.config/slosh/notary"
+mv "/tmp/$KEY" "$HOME/.config/slosh/notary/$KEY"
+chmod 600 "$HOME/.config/slosh/notary/$KEY"
+security unlock-keychain -p "$(cat "$HOME/.config/slosh/build-keychain.pass")" "$KC"
+# store-credentials validates against Apple before it saves, so reaching the
+# end of this line means the credential actually works.
+xcrun notarytool store-credentials "$PROFILE" \
+  --key "$HOME/.config/slosh/notary/$KEY" --key-id "$KEY_ID" --issuer "$ISSUER" \
+  --keychain "$KC" | tail -2
+EOS
+    ok "stored in $KC_NAME"
+fi
+
+# ── 5. prove it ─────────────────────────────────────────────────────────────
+step "build"
+rsh "cd '$DIR' && make -s all" >/dev/null || fail "the builder cannot build slosh"
+ok "make all works on $BUILDER"
+
+# Signing is the part that only fails on the builder, so prove it here rather
+# than during a release. Everything above can be right and this still fail --
+# a duplicated identity, an ACL that did not take -- and the error when it does
+# is errSecInternalComponent, which explains nothing.
+step "signing"
+rsh "cd '$DIR' && make -s -f Makefile.macos sign KEYCHAIN=\$HOME/Library/Keychains/$KC_NAME-db" \
+    >/dev/null 2>&1 \
+    || fail "the builder cannot sign. Check for the identity appearing in more
+                     than one keychain: security find-identity -v -p codesigning"
+ok "codesign works over ssh with no interactive prompt"
+
+printf '\nbuilder ready. From here:\n\n  make -f Makefile.macos remote            # sign+notarize this tree\n  make -f Makefile.macos remote REF=v0.2.0 # ...or a pushed ref\n  make -f Makefile.macos builder-check     # re-run the checks\n'

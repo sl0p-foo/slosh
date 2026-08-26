@@ -1,0 +1,234 @@
+#!/bin/sh
+# macos-remote-build -- run the signed, notarized macOS build on the mac that
+# holds the signing identity, and bring the artifacts home.
+#
+#   contrib/macos-remote-build --builder <ssh-host>       # this tree, as it is
+#   contrib/macos-remote-build --ref v0.2.0     # a pushed tag, from a clean tree
+#   contrib/macos-remote-build --target pkg     # any Makefile.macos target
+#
+# Normally you do not run this by hand: `make macos-dist` forwards to it through
+# Makefile.macos, which is where the builder's name and the signing identity
+# live. Those are properties of a machine and an Apple account, so they are not
+# in the repo; this script is the mechanism, and holds neither.
+#
+# Two source modes, because the two things you do are not the same thing:
+#
+#   working tree (default)  rsync what is in front of you, dirty or not. This
+#                           is for "does it sign, does Apple accept it" while
+#                           you are still changing the code. The version string
+#                           says -dirty and that is the honest answer.
+#
+#   --ref <ref>             the builder resets a pristine checkout to a ref the
+#                           server already has, and builds from scratch. This is
+#                           what a release is: an artifact you can point at a
+#                           commit id, which is also what contrib/brew-release
+#                           needs to be true. It refuses a ref the remote has
+#                           never heard of rather than build the wrong tree.
+#
+# Everything it needs on the far side is put there by contrib/macos-builder-setup.
+set -eu
+
+BUILDER="${SLOSH_BUILDER:-}"
+DIR="${SLOSH_BUILDER_DIR:-src/slosh}"
+TARGET=dist
+REF=""
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+fail() { printf 'macos-remote-build: %s\n' "$*" >&2; exit 1; }
+say()  { printf '  %s\n' "$*"; }
+step() { printf '\n== %s\n' "$*"; }
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --builder) [ $# -ge 2 ] || fail "--builder needs a host"; BUILDER="$2"; shift 2 ;;
+        --builder=*) BUILDER="${1#--builder=}"; shift ;;
+        --dir)     [ $# -ge 2 ] || fail "--dir needs a path"; DIR="$2"; shift 2 ;;
+        --dir=*)   DIR="${1#--dir=}"; shift ;;
+        --ref)     [ $# -ge 2 ] || fail "--ref needs a ref"; REF="$2"; shift 2 ;;
+        --ref=*)   REF="${1#--ref=}"; shift ;;
+        --target)  [ $# -ge 2 ] || fail "--target needs a target"; TARGET="$2"; shift 2 ;;
+        --target=*) TARGET="${1#--target=}"; shift ;;
+        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) fail "unknown argument $1" ;;
+    esac
+done
+
+[ -n "$BUILDER" ] \
+    || fail "which builder? pass --builder <ssh-host>, or set SLOSH_BUILDER.
+                     Normally Makefile.macos passes it for you: make macos-dist"
+[ -f "$root/Makefile.macos" ] \
+    || fail "no Makefile.macos in $root -- it names the signing identity and the
+                     builder, and is deliberately not in the repo. See
+                     contrib/macos-builder-setup --help"
+
+step "builder $BUILDER:$DIR"
+ssh -o BatchMode=yes -o ConnectTimeout=15 "$BUILDER" true \
+    || fail "cannot ssh to '$BUILDER' without a prompt -- check ~/.ssh/config and your agent"
+ssh "$BUILDER" "test -d '$DIR/.git'" \
+    || fail "no checkout at $BUILDER:$DIR -- run contrib/macos-builder-setup $BUILDER"
+say "reachable, checkout present"
+
+# Makefile.macos is not in the repo, so a clean checkout on the builder does not
+# have one and it is pushed from here. Only that file: these scripts are tracked
+# and run on *this* side, so copying them over would do nothing except make a
+# release checkout dirty -- and a dirty release checkout is a failure below.
+push_signing_flow() {
+    rsync -q "$root/Makefile.macos" "$BUILDER:$DIR/Makefile.macos"
+}
+
+if [ -n "$REF" ]; then
+    step "resolving $REF against origin"
+    ssh "$BUILDER" "cd '$DIR' && git fetch -q --tags --prune origin" \
+        || fail "git fetch failed on the builder"
+
+    # ls-remote, not rev-parse. A release must be a tree the server publishes,
+    # and rev-parse answers from local refs first -- the builder's checkout is
+    # rsynced from a laptop in the other mode, so refs/heads/master there can
+    # be an unpushed commit. Asking that would quietly notarize a build nobody
+    # else can reproduce, under a name that claims otherwise. Same resolution
+    # order as contrib/brew-release, so the zip and the formula agree.
+    full="$(ssh "$BUILDER" "cd '$DIR' && git ls-remote origin 'refs/tags/$REF^{}' 'refs/tags/$REF' 'refs/heads/$REF' 2>/dev/null | head -1 | cut -f1")"
+    if [ -n "$full" ]; then
+        say "$REF -> $full (published by origin)"
+    else
+        # Not a name origin publishes. A raw commit id is still allowed, but
+        # only once we can see it on a remote branch.
+        full="$(ssh "$BUILDER" "cd '$DIR' && git rev-parse -q --verify '$REF^{commit}' 2>/dev/null || true")"
+        [ -n "$full" ] || fail "'$REF' is not a tag, branch or commit the builder can resolve -- is it pushed?"
+        ssh "$BUILDER" "cd '$DIR' && test -n \"\$(git branch -r --contains '$full' 2>/dev/null)\"" \
+            || fail "'$REF' ($full) is on no branch origin publishes -- push it before releasing it"
+        say "$REF -> $full (commit, reachable from a remote branch)"
+    fi
+
+    step "checking out $full on the builder"
+    # -e keeps our own untracked flow files; no -x, so build/ and the vendored
+    # zig-out survive and a release build is a recompile, not a re-download.
+    ssh "$BUILDER" "cd '$DIR' \
+        && git reset -q --hard '$full' \
+        && git clean -qfd -e Makefile.macos -e dist \
+        && make -s clean" || fail "could not put the builder on $full"
+    push_signing_flow
+
+    # What the artifact will be stamped with, from the builder's own git. If
+    # this does not name the commit we just asked for, stop: every later step
+    # would be labelling the wrong tree.
+    desc="$(ssh "$BUILDER" "cd '$DIR' && git describe --always --dirty")"
+    say "builder is at $desc"
+    case "$desc" in
+    *dirty*) fail "the builder's tree is dirty after a reset -- look at it by hand" ;;
+    esac
+    ssh "$BUILDER" "cd '$DIR' && test \"\$(git rev-parse HEAD)\" = '$full'" \
+        || fail "the builder is not on $full after the reset"
+else
+    step "syncing the working tree"
+    # --delete so a file removed here is removed there; build outputs and the
+    # vendored zig cache are excluded, which also protects them from --delete.
+    # .git goes too, so `git describe` on the builder tells the truth about the
+    # tree it was handed. Its info/exclude does not: that names the untracked
+    # files *the builder* keeps, and overwriting it with ours makes them show
+    # up as debris in its `git status` and as fair game for `git clean`.
+    rsync -a --delete \
+        --exclude '/build/' --exclude '/dist/' --exclude '/.venv/' \
+        --exclude '/.git/info/exclude' \
+        --exclude 'vendor/libghostty-vt/zig-out/' \
+        --exclude 'vendor/libghostty-vt/.zig-cache/' \
+        --exclude '.DS_Store' \
+        "$root/" "$BUILDER:$DIR/" || fail "rsync failed"
+    say "synced $(cd "$root" && git rev-parse --short HEAD 2>/dev/null || echo '?')$(cd "$root" && git diff --quiet 2>/dev/null || echo ' (dirty)')"
+fi
+
+step "make -f Makefile.macos $TARGET"
+ssh "$BUILDER" "cd '$DIR' && make -f Makefile.macos $TARGET" \
+    || fail "the build failed on $BUILDER (nothing was fetched)"
+
+# ── verify, on the builder ──────────────────────────────────────────────────
+# codesign and spctl are macOS tools, and the builder is the mac -- so the
+# artifact is verified there, before it is fetched. That is not a concession:
+# it is what lets this script be run from anywhere. Driven from a Linux box the
+# verdict is identical, because it is the same command on the same machine, and
+# all this end needs is ssh, rsync and something that can hash a file.
+step "verifying on the builder"
+# The script goes to a file and is fed to ssh as stdin, rather than living in a
+# heredoc inside $( ). bash 3.2 -- which is what macOS ships, and what runs
+# this file there -- mis-parses a `case` inside a command substitution: the
+# unbalanced `)` of each pattern ends the substitution early. Writing it out
+# sidesteps a bug that produces a syntax error thirty lines from its cause.
+vscript="$(mktemp)"
+trap 'rm -f "$vscript"' EXIT INT TERM
+cat > "$vscript" <<'EOS'
+set -eu
+art="$(ls -t dist/*.zip dist/*.pkg 2>/dev/null | head -1 || true)"
+[ -n "$art" ] || { echo "!! no artifact in dist/"; exit 1; }
+echo "ARTIFACT $art"
+case "$art" in
+*.zip)
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT INT TERM
+    ditto -x -k "$art" "$tmp"
+    bin="$(find "$tmp" -type f -perm -u+x | head -1)"
+    [ -n "$bin" ] || { echo "!! the zip holds no executable"; exit 1; }
+    codesign --verify --strict "$bin" 2>&1 || { echo "!! not validly signed"; exit 1; }
+    echo "SIGNED ok"
+    # The question a stranger's mac actually asks. Not `spctl --type exec`:
+    # that only understands app bundles and answers "the code is valid but does
+    # not seem to be an app" for every CLI tool ever signed, which reads as a
+    # failure and is not one. A downloaded binary is assessed as a quarantined
+    # file against its primary signature, and that path looks Apple's ticket up
+    # online -- so "Notarized Developer ID" means the notarization is real and
+    # live, not merely that we submitted something.
+    xattr -w com.apple.quarantine "0083;00000000;macos-remote-build;" "$bin" 2>/dev/null || true
+    v="$(spctl -a -t open --context context:primary-signature -v "$bin" 2>&1 || true)"
+    case "$v" in
+    *"Notarized Developer ID"*) echo "GATEKEEPER accepted, Notarized Developer ID" ;;
+    *) echo "!! gatekeeper rejected it: $v"; exit 1 ;;
+    esac
+    ;;
+*.pkg)
+    pkgutil --check-signature "$art" >/dev/null 2>&1 || { echo "!! pkg not signed"; exit 1; }
+    echo "SIGNED ok"
+    spctl --assess --type install -v "$art" >/dev/null 2>&1 \
+        && echo "GATEKEEPER accepted for install" \
+        || { echo "!! gatekeeper rejected the pkg"; exit 1; }
+    ;;
+esac
+echo "SHA256 $(shasum -a 256 "$art" | cut -d' ' -f1)"
+EOS
+verify="$(ssh "$BUILDER" "cd '$DIR' && bash -s" < "$vscript")" \
+    || fail "verification failed on the builder:
+$verify"
+
+artifact="$(printf '%s\n' "$verify" | sed -n 's/^ARTIFACT //p')"
+remote_sha="$(printf '%s\n' "$verify" | sed -n 's/^SHA256 //p')"
+printf '%s\n' "$verify" | sed -n 's/^SIGNED /  signature /p; s/^GATEKEEPER /  gatekeeper: /p'
+[ -n "$artifact" ] || fail "the builder named no artifact"
+
+step "fetching artifacts"
+mkdir -p "$root/dist"
+rsync -a --include '*/' --include '*.zip' --include '*.pkg' --exclude '*' \
+      "$BUILDER:$DIR/dist/" "$root/dist/" || fail "could not fetch dist/"
+
+local_artifact="$root/dist/$(basename "$artifact")"
+[ -f "$local_artifact" ] || fail "$artifact did not arrive in dist/"
+say "$(basename "$local_artifact")  $(wc -c < "$local_artifact" | tr -d ' ') bytes"
+
+# The builder vouched for those exact bytes. Hashing them here is the whole of
+# what this end can honestly check -- and it is enough: same hash, same verdict.
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | sed 's/.*= *//'
+    else return 1
+    fi
+}
+if local_sha="$(sha256_of "$local_artifact")" && [ -n "$local_sha" ]; then
+    [ "$local_sha" = "$remote_sha" ] \
+        || fail "the artifact changed in transit:
+  builder $remote_sha
+  here    $local_sha"
+    say "sha256 $local_sha (matches what the builder verified)"
+else
+    say "no sha256 tool here -- fetched, but transport is unverified"
+fi
+
+printf '\nartifact: %s\n' "$local_artifact"

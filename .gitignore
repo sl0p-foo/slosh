@@ -18,3 +18,10 @@ __pycache__/
 
 # the landing-page preview video (large binary, lives outside git)
 web/slosh-preview.mp4
+
+# the signed macOS artifacts, and the file that says who signs them.
+# Makefile.macos names a signing identity and a builder machine: that is a
+# property of whoever is releasing, not of the project. `make macos-dist`
+# tells you how to make one; contrib/macos-builder-setup sets the mac up.
+/dist/
+Makefile.macos
