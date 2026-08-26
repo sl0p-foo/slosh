@@ -129,16 +129,27 @@ if [ -n "$REF" ]; then
 else
     step "syncing the working tree"
     # --delete so a file removed here is removed there; build outputs and the
-    # vendored zig cache are excluded, which also protects them from --delete.
+    # vendored zig caches are excluded, which also protects them from --delete.
     # .git goes too, so `git describe` on the builder tells the truth about the
     # tree it was handed. Its info/exclude does not: that names the untracked
     # files *the builder* keeps, and overwriting it with ours makes them show
     # up as debris in its `git status` and as fair game for `git clean`.
+    #
+    # The three vendor/libghostty-vt caches below must stay in step with the
+    # .gitignore entries of the same name -- they are gigabytes of gitignored
+    # zig cache, and when zig-pkg/ (350M) was in .gitignore but missing here,
+    # every sync silently re-pushed it and looked like a hang. web/ (the
+    # landing page, ~430M with the demo) and tests/fuzz/ (the ~120M corpus)
+    # are tracked but are not inputs to `make all`, which is all the builder
+    # runs, so they are excluded too: sync what the signed binary needs.
     rsync -a --delete \
         --exclude '/build/' --exclude '/dist/' --exclude '/.venv/' \
         --exclude '/.git/info/exclude' \
         --exclude 'vendor/libghostty-vt/zig-out/' \
         --exclude 'vendor/libghostty-vt/.zig-cache/' \
+        --exclude 'vendor/libghostty-vt/zig-pkg/' \
+        --exclude '/web/' \
+        --exclude '/tests/fuzz/' \
         --exclude '.DS_Store' \
         "$root/" "$BUILDER:$DIR/" || fail "rsync failed"
     say "synced $(cd "$root" && git rev-parse --short HEAD 2>/dev/null || echo '?')$(cd "$root" && git diff --quiet 2>/dev/null || echo ' (dirty)')"
