@@ -13,6 +13,7 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import termios
 import time
 import uuid
@@ -21,6 +22,19 @@ BIN = os.environ.get(
     "SLOSH_BIN",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "slosh"),
 )
+
+# No greeting, because this file asserts on the bytes a client is sent.
+#
+# The splash assembles from particles scattered over the whole screen, so for
+# its first few hundred milliseconds any cell can be holding a fragment of the
+# logo -- including a cell of the pane text a reattach is supposed to repaint.
+# The full repaint then goes out *with* a particle sitting in the middle of
+# "marker-alpha", and what restores that cell afterwards is a one-cell diff, so
+# the string is never contiguous in the stream and a substring check fails about
+# half the time. The greeting has its own tests; here it is noise.
+CONFIG = os.path.join(tempfile.mkdtemp(prefix="slosh-session-"), "config.kdl")
+with open(CONFIG, "w") as f:
+    f.write("splash_ms 0\n")
 
 fails = 0
 
@@ -37,7 +51,7 @@ def attach(name, cols=80, rows=24, inner=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
-        os.environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
+        os.environ["SLOSH_CONFIG"] = CONFIG
         args = [BIN, "-s", name]
         if inner:
             args += ["--"] + inner
