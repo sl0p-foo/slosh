@@ -1,6 +1,11 @@
 #!/bin/sh
 # slosh installer -- https://slosh.foo
 #
+# On macOS or Linux with Homebrew there is a shorter road:
+#
+#     brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+#     brew install slosh
+#
 # You are reading this before running it, which is correct. What it does:
 #
 #   1. checks for zig 0.16 and git,
@@ -45,9 +50,11 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 say "cloning $REPO"
 git clone --quiet --depth 1 "$REPO" "$tmp/slosh"
 
-say "building (make vendor, once; then make)"
+say "building (make vendor, once; then make all)"
 make -C "$tmp/slosh" ZIG="$ZIG" vendor
-make -C "$tmp/slosh" ZIG="$ZIG"
+# `all`, spelled out: the default goal is the help text, so a bare `make` here
+# would print it cheerfully and install whatever build/slosh happened to exist.
+make -C "$tmp/slosh" ZIG="$ZIG" all
 
 say "installing to $PREFIX/bin/slosh"
 install -d "$PREFIX/bin"
