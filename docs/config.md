@@ -119,10 +119,13 @@ theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 | effects | `shaders { }`, `states { }` — see [shaders](shaders.md) and [chrome](chrome.md) |
 | keys | `keys { }` — see [keys](keys.md) |
 
-Two of those take more than one value. `gap` is in **rows**, and `gap_aspect`
+A few of those take more than one value. `gap` is in **rows**, and `gap_aspect`
 says how many columns a row is worth (2 by default, because a cell is about
 twice as tall as it is wide) — so both `gap` and `padding` are written in rows
-and come out looking square.
+and come out looking square. `min_pane cols=24 rows=6` and
+`min_split cols=32 rows=8` name their two floors as properties (what each floor
+*means* is on the [panes page](panes.md#small-terminals)), and `project_roots`
+takes one path per argument — see [workspaces](workspaces.md).
 
 `padding` is the space between a pane's frame and its contents, written the way
 CSS does it:
@@ -147,7 +150,8 @@ compact true
 Shared borders instead of gaps. Panes pack flush against 1-cell divider lines
 that meet in real junctions — `├` `┬` `┼` — one frame rings the whole tab, and
 each pane's title rides the line above it, so a boundary costs one cell where
-the default look spends four (a border, a gap, a border):
+the default look spends four columns (a border, a two-column gap, a border) or
+three rows:
 
 ```
 ╭────── nvim ───── ▬ □ ✕ ─┬─── npm run dev ── ▬ □ ✕ ─╮
@@ -159,8 +163,9 @@ the default look spends four (a border, a gap, a border):
 
 What changes, and what does not:
 
-- `gap` and `gap_aspect` stop applying — the boundary *is* the divider.
-  `padding` still works, and `rounded` still picks the corners.
+- `gap` stops applying — the boundary *is* the divider. `padding` still works
+  (still aspect-corrected, so `gap_aspect` keeps that job, along with shaping
+  the keyboard's float moves), and `rounded` still picks the corners.
 - **Dividers drag exactly as gaps did**, corners included, and the same hover
   hints appear on them. A pane whose title line is a shared divider is still
   dragged — by its name.

@@ -99,9 +99,10 @@ padding 0
 // Shared borders instead of gaps. Panes pack flush against 1-cell divider
 // lines that meet in real junctions (├ ┬ ┼), one frame rings the whole tab,
 // and each pane's title rides the line above it -- so a boundary costs one
-// cell instead of four. `gap` and `gap_aspect` stop applying (the boundary
-// *is* the divider); `padding` still does. The dividers carry the same drag
-// the gaps did; interior edges give up click-to-split -- a one-cell line
+// cell instead of four. `gap` stops applying (the boundary *is* the divider);
+// `padding` still works, and `gap_aspect` keeps its other jobs -- the
+// square-looking padding, the float nudge step. The dividers carry the same
+// drag the gaps did; interior edges give up click-to-split -- a one-cell line
 // cannot hold two verbs -- and the outer frame keeps it. A pane's status row
 // (a dead pane's epitaph, OSC 5577) overlays its last content row, there
 // being no bottom border left to carry it.

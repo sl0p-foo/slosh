@@ -137,10 +137,12 @@ typedef struct {
   uint16_t pad_top, pad_right, pad_bottom, pad_left;
   /* Shared borders instead of gaps: panes pack flush against 1-cell divider
    * lines, one outer frame rings the tab, and each pane's title rides the
-   * line above it. `gap` and `gap_aspect` stop applying (the boundary *is*
-   * the divider); `padding` still does. The dividers carry the same resize
-   * drag the gaps did; interior edges give up their click-to-split — a
-   * one-cell line cannot be both verbs — and the outer frame keeps it. */
+   * line above it. `gap` stops applying — the boundary *is* the divider —
+   * while `padding` still works and `gap_aspect` keeps its other jobs
+   * (square-looking padding, the float nudge step). The dividers carry the
+   * same resize drag the gaps did; interior edges give up their
+   * click-to-split — a one-cell line cannot be both verbs — and the outer
+   * frame keeps it. */
   bool compact;
   bool rounded;
   align_t title_align;
