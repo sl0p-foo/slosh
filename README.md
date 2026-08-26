@@ -21,8 +21,15 @@ C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
 ## Install
 
-Needs [zig](https://ziglang.org) 0.16 and nothing else. The result is one static
-binary.
+With [Homebrew](https://brew.sh) (macOS or Linux):
+
+```bash
+brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+brew install slosh
+```
+
+From source it needs [zig](https://ziglang.org) 0.16 and nothing else. The
+result is one static binary.
 
 ```bash
 make vendor    # the vendored terminal core, once

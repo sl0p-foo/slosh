@@ -1,0 +1,120 @@
+#!/bin/sh
+# brew-release -- point the Homebrew formula at a commit or tag, with the
+# sha256 that the cgit snapshot actually has right now.
+#
+#   contrib/brew-release                 # HEAD of origin/master
+#   contrib/brew-release v0.2.0          # a tag (must be pushed already)
+#   contrib/brew-release 1368b7f         # any ref the server can resolve
+#   contrib/brew-release --tap ~/src/homebrew-slosh v0.2.0
+#
+# It edits contrib/homebrew/slosh.rb in place (url, version, sha256) and, with
+# --tap, copies the result into <tap>/Formula/slosh.rb. It never commits or
+# pushes: read the diff, then commit both repos yourself.
+#
+# Publishing a new version is therefore:
+#
+#   1. bump VERSION in the Makefile, commit, tag, push (tag included)
+#   2. contrib/brew-release --tap ../homebrew-slosh v0.2.0
+#   3. brew install --build-from-source contrib/homebrew/slosh.rb   # prove it
+#   4. commit the formula here and in the tap, push both
+
+set -eu
+
+REPO_URL="${SLOSH_REPO_URL:-https://git.sl0p.foo/slosh.git}"
+SNAP_BASE="${SLOSH_SNAPSHOT_BASE:-https://git.sl0p.foo/slosh.git/snapshot/slosh}"
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+FORMULA="$root/contrib/homebrew/slosh.rb"
+TAP=""
+
+fail() { printf 'brew-release: %s\n' "$*" >&2; exit 1; }
+say()  { printf '  %s\n' "$*"; }
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --tap) [ $# -ge 2 ] || fail "--tap needs a directory"; TAP="$2"; shift 2 ;;
+        --tap=*) TAP="${1#--tap=}"; shift ;;
+        -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) fail "unknown option $1" ;;
+        *) break ;;
+    esac
+done
+
+REF="${1:-}"
+[ -f "$FORMULA" ] || fail "no formula at $FORMULA"
+
+# Resolve whatever was asked for to a full commit id, so the URL names one
+# immutable tree. A tag keeps its own name in the version string; a commit
+# gets the short id.
+if [ -z "$REF" ]; then
+    REF="$(git -C "$root" rev-parse origin/master)"
+    label=""
+else
+    label="$REF"
+fi
+
+full="$(git -C "$root" ls-remote "$REPO_URL" "refs/tags/$REF^{}" "refs/tags/$REF" \
+        "refs/heads/$REF" 2>/dev/null | head -1 | cut -f1)"
+if [ -z "$full" ]; then
+    # Not a remote ref: assume it is a commit id, and let the local clone
+    # expand a short one. Then check the server really has it.
+    full="$(git -C "$root" rev-parse --verify "${REF}^{commit}" 2>/dev/null || echo "$REF")"
+fi
+case "$full" in
+    ????????????????????????????????????????) ;;
+    *) fail "could not resolve '$REF' to a commit id (got '$full')" ;;
+esac
+
+# The version brew shows. A tag is the honest answer when there is one;
+# otherwise the Makefile's VERSION, the number of commits, and the short id --
+# in that order so that `brew upgrade` sees a later build as later. Without the
+# count, "0.1.0-b744a90" vs "0.1.0-1368b7f" would compare alphabetically, which
+# has nothing to do with which one came first.
+# A tag must look like a version (digits with a dot); "1368b7f" starts with a
+# digit but is a commit, and calling it version 1368b7f would be a lie brew
+# could never climb down from.
+mkver="$(sed -n 's/^VERSION *:*= *//p' "$root/Makefile" | head -1)"
+[ -n "$mkver" ] || fail "no VERSION in $root/Makefile"
+short="$(printf '%s' "$full" | cut -c1-7)"
+count="$(git -C "$root" rev-list --count "$full" 2>/dev/null || echo 0)"
+case "$label" in
+    v[0-9]*.[0-9]*) version="${label#v}" ;;
+    [0-9]*.[0-9]*)  version="$label" ;;
+    *)              version="$mkver-$count-$short" ;;
+esac
+
+url="$SNAP_BASE-$full.tar.gz"
+say "ref      $REF -> $full"
+say "version  $version"
+say "url      $url"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+code="$(curl -sL -o "$tmp/snap.tar.gz" -w '%{http_code}' "$url")"
+[ "$code" = 200 ] || fail "snapshot fetch returned HTTP $code -- is the ref pushed?"
+tar tzf "$tmp/snap.tar.gz" >/dev/null 2>&1 || fail "snapshot is not a valid tarball"
+sha="$(shasum -a 256 "$tmp/snap.tar.gz" | cut -d' ' -f1)"
+say "sha256   $sha"
+
+# Rewrite exactly the three stanzas, leaving every comment in place.
+awk -v url="$url" -v version="$version" -v sha="$sha" '
+    /^  url "/     { print "  url \"" url "\""; next }
+    /^  version "/ { print "  version \"" version "\""; next }
+    /^  sha256 "/  { print "  sha256 \"" sha "\""; next }
+    { print }
+' "$FORMULA" > "$tmp/slosh.rb"
+grep -q "$sha" "$tmp/slosh.rb" || fail "rewrite did not take -- formula stanzas changed shape?"
+mv "$tmp/slosh.rb" "$FORMULA"
+say "wrote    $FORMULA"
+
+if [ -n "$TAP" ]; then
+    [ -d "$TAP" ] || fail "no such tap directory: $TAP"
+    mkdir -p "$TAP/Formula"
+    cp "$FORMULA" "$TAP/Formula/slosh.rb"
+    say "copied   $TAP/Formula/slosh.rb"
+fi
+
+printf '\nnow prove it builds:\n  brew install --build-from-source %s\n' \
+    "contrib/homebrew/slosh.rb"
+printf 'then commit the formula here%s\n' \
+    "${TAP:+ and in $TAP}"
