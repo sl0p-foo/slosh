@@ -29,6 +29,18 @@ TAP=""
 fail() { printf 'brew-release: %s\n' "$*" >&2; exit 1; }
 say()  { printf '  %s\n' "$*"; }
 
+# Neither brew nor a mac is needed to run this -- it resolves a ref, fetches a
+# tarball and hashes it -- so it has to work on the Linux box a release is cut
+# from. `shasum` is perl's and merely usually present there; `sha256sum` is
+# coreutils and always is. Take whichever exists.
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | sed 's/.*= *//'
+    else fail "no sha256sum, shasum or openssl here -- cannot hash the snapshot"
+    fi
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --tap) [ $# -ge 2 ] || fail "--tap needs a directory"; TAP="$2"; shift 2 ;;
@@ -75,7 +87,14 @@ esac
 mkver="$(sed -n 's/^VERSION *:*= *//p' "$root/Makefile" | head -1)"
 [ -n "$mkver" ] || fail "no VERSION in $root/Makefile"
 short="$(printf '%s' "$full" | cut -c1-7)"
-count="$(git -C "$root" rev-list --count "$full" 2>/dev/null || echo 0)"
+# The count must be a real count. Falling back to 0 when the commit is not in
+# this clone would mint "0.1.0-0-<short>", which brew reads as older than every
+# version already published -- so a release cut from a clone that had not
+# fetched yet would look like a downgrade and never install.
+count="$(git -C "$root" rev-list --count "$full" 2>/dev/null || true)"
+[ -n "$count" ] || fail "commit $full is not in this clone, so its position in
+history is unknown and the version would be a lie. Fetch it first:
+  git -C $root fetch origin"
 case "$label" in
     v[0-9]*.[0-9]*) version="${label#v}" ;;
     [0-9]*.[0-9]*)  version="$label" ;;
@@ -93,7 +112,7 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 code="$(curl -sL -o "$tmp/snap.tar.gz" -w '%{http_code}' "$url")"
 [ "$code" = 200 ] || fail "snapshot fetch returned HTTP $code -- is the ref pushed?"
 tar tzf "$tmp/snap.tar.gz" >/dev/null 2>&1 || fail "snapshot is not a valid tarball"
-sha="$(shasum -a 256 "$tmp/snap.tar.gz" | cut -d' ' -f1)"
+sha="$(sha256_of "$tmp/snap.tar.gz")"
 say "sha256   $sha"
 
 # Rewrite exactly the three stanzas, leaving every comment in place.

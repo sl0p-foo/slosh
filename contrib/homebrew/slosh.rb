@@ -17,9 +17,9 @@ class Slosh < Formula
   # cgit serves a deterministic snapshot per ref: same ref, same bytes, so the
   # sha256 below stays honest. Pinned to a full commit id rather than a branch,
   # because a branch tarball changes under you and brew would keep the stale one.
-  url "https://git.sl0p.foo/slosh.git/snapshot/slosh-b744a90859bf248bfbea97f990668301b5fa9537.tar.gz"
-  version "0.1.0-185-b744a90"
-  sha256 "facafd86fc656a1c4fd925faa90b56b6932f7fb816bcdf3a1c55f2f43cb91c10"
+  url "https://git.sl0p.foo/slosh.git/snapshot/slosh-4bd545a46891b6ac5bb7599911d370978b84c234.tar.gz"
+  version "0.1.0-194-4bd545a"
+  sha256 "c720a4e1606a6ed01fb5c3cda106f37c1d36d06d0bec1e9f84a6cb74e3f83c86"
   head "https://git.sl0p.foo/slosh.git", branch: "master"
 
   # zig is the whole toolchain: it compiles the C, builds the vendored
