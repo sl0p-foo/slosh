@@ -68,8 +68,11 @@ MAINMAKE  ?= $(MAKE) -f Makefile
 BIN       ?= build/slosh
 DIST      ?= dist
 
-# Version string for the artifact names. Matches the Makefile's scheme.
-VERSION   ?= $(shell git describe --always --dirty 2>/dev/null || echo 0.0.0)
+# Version string for the artifact names. Derived by contrib/version, exactly as
+# the main Makefile does, so the signed zip's name matches the linux tarballs
+# and the binary's own --version. Runs on the builder, over the ref it checked
+# out, so a release names itself after that tag.
+VERSION   ?= $(shell contrib/version)
 ARCH      ?= $(shell uname -m)
 STEM      := slosh-$(VERSION)-macos-$(ARCH)
 ZIP       := $(DIST)/$(STEM).zip

@@ -1,0 +1,37 @@
+#!/bin/sh
+# version -- print slosh's version string, derived from git tags with ./VERSION
+# as the floor (and the answer when there is no git at all).
+#
+# One script, so a build, the artifact it is packaged into, and the string the
+# binary prints for `--version` can never disagree: the main Makefile bakes it
+# in, Makefile.macos names the signed zip with it, and the release target names
+# the linux tarballs with it. The ladder:
+#
+#   on a tag        v0.2.0            -> 0.2.0
+#   past a tag      v0.2.0-5-gabc123  -> 0.2.0-5-gabc123     (sorts after 0.2.0)
+#   before any tag  <VERSION>-<count>-g<short>               (+ -dirty if dirty)
+#   no .git at all  <VERSION>                                (verbatim)
+#
+# ./VERSION is the committed floor and the only value a source tarball without
+# git can show -- a cgit snapshot, which is how Homebrew builds from source. The
+# commit count is in the tag-less form so `brew upgrade` sees a later build as
+# later: without it 0.1.0-gabc123 vs 0.1.0-gdef456 would sort alphabetically,
+# which has nothing to do with which came first.
+set -eu
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+base="$(cat "$root/VERSION" 2>/dev/null || echo 0.0.0)"
+
+if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+    d="$(git -C "$root" describe --tags --match 'v[0-9]*' --dirty 2>/dev/null || true)"
+    if [ -n "$d" ]; then
+        printf '%s\n' "${d#v}"
+    else
+        count="$(git -C "$root" rev-list --count HEAD 2>/dev/null || echo 0)"
+        short="$(git -C "$root" rev-parse --short=8 HEAD 2>/dev/null || echo unknown)"
+        dirty=""; git -C "$root" diff --quiet 2>/dev/null || dirty="-dirty"
+        printf '%s-%s-g%s%s\n' "$base" "$count" "$short" "$dirty"
+    fi
+else
+    printf '%s\n' "$base"
+fi

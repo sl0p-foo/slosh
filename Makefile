@@ -19,27 +19,13 @@ VT_INC   := $(VT_OUT)/include
 # behaving oddly is "which build is this?" -- and a session keeps the binary it
 # started with, so the answer is not "whatever is in build/ now".
 #
-# It is derived from git tags (vX.Y.Z), so a tag is the single source of truth
-# and nothing here is bumped by hand:
-#   on a tag        v0.2.0            -> 0.2.0
-#   past a tag      v0.2.0-5-gabc123  -> 0.2.0-5-gabc123   (sorts after 0.2.0)
-#   before any tag  0.1.0-197-g2d1815 -> ./VERSION + commit count + short id
-#   no .git at all  0.1.0             -> ./VERSION verbatim (a cgit snapshot
-#                                        tarball, which is how Homebrew builds)
-# A dirty tree appends -dirty. ./VERSION is the committed floor and the only
-# value a source tarball without git can show; contrib/brew-release reads it too.
-# The commit count is in there so `brew upgrade` sees a later build as later:
-# without it 0.1.0-gabc123 vs 0.1.0-gdef456 would sort alphabetically, which
-# has nothing to do with which came first.
-VERSION := $(shell \
-  if git rev-parse --git-dir >/dev/null 2>&1; then \
-    d=$$(git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null); \
-    if [ -n "$$d" ]; then printf '%s\n' "$${d#v}"; \
-    else printf '%s-%s-g%s%s\n' "$$(cat VERSION 2>/dev/null || echo 0.0.0)" \
-      "$$(git rev-list --count HEAD 2>/dev/null || echo 0)" \
-      "$$(git rev-parse --short=8 HEAD 2>/dev/null || echo unknown)" \
-      "$$(git diff --quiet 2>/dev/null || echo -dirty)"; fi; \
-  else cat VERSION 2>/dev/null || echo 0.0.0; fi)
+# It is derived from git tags (vX.Y.Z) by contrib/version -- a tag is the single
+# source of truth and nothing here is bumped by hand. The same script names the
+# release artifacts and is read by Makefile.macos, so a build, its file name and
+# its baked-in --version can never disagree. See contrib/version for the ladder
+# (on a tag -> 0.2.0; before any tag -> <VERSION>-<count>-g<short>; no git at
+# all -> ./VERSION verbatim, which is how a cgit snapshot / Homebrew build sees it).
+VERSION := $(shell contrib/version)
 
 CFLAGS   := -std=c23 -O1 -g -Wall -Wextra -Wno-unused-parameter -MMD -MP \
             -I$(VT_INC) -Iinclude -Ibuild
@@ -74,7 +60,8 @@ else
 endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
-        docs www fmt fmt-check hooks tools install uninstall macos-dist
+        docs www fmt fmt-check hooks tools install uninstall macos-dist \
+        release release-linux
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -360,6 +347,64 @@ macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a
 	  echo "  cp macos-release.mk.example macos-release.mk   # then fill it in"; \
 	  echo "To provision a builder mac: contrib/macos-builder-setup --help"; exit 1; }
 	$(Q)$(MAKE) -f Makefile.macos remote-dist REF=$(REF)
+
+# ── releases ────────────────────────────────────────────────────────────────
+# Three binaries for a tagged release, staged in dist/ with a SHA256SUMS beside
+# them. The two linux ones are cross-built right here: zig cc is already the
+# compiler, so -target gets us x86_64 and aarch64 for free, statically linked
+# against musl so they run on any distro regardless of its libc. macOS is the
+# one that cannot be built here -- it must be signed and notarized on a mac --
+# so `release` hands that leg to `macos-dist`, which drives the builder.
+#
+# VERSION comes from the git tag (contrib/version), so the usual flow is to
+# check out the tag and run `make release REF=<tag>`: the linux tarballs are
+# named from the working tree, the macOS zip from the ref the builder checks
+# out, and because both resolve the same tag the three names agree.
+DIST          ?= dist
+# Each tarball carries the binary plus the paperwork a redistributed build must
+# ship (see THIRD-PARTY-LICENSES: libghostty-vt and stb_image are linked in).
+REL_DOCS      := README.md LICENSE THIRD-PARTY-LICENSES
+# The target triples we cross-build. The arch label in the artifact name is the
+# part before the first '-' (x86_64, aarch64).
+LINUX_TARGETS := x86_64-linux-musl aarch64-linux-musl
+# Release build flags: like CFLAGS but -O2, no -g (we strip at link with -s) and
+# no depfiles (a one-shot build, not an incremental one). The per-target zig-out
+# include is added in-recipe; the host VT_INC is deliberately left out.
+REL_CFLAGS    := -std=c23 -O2 -Wall -Wextra -Wno-unused-parameter -Iinclude -Ibuild
+
+release-linux: build/version.h build/logo.h ## cross-build the static linux tarballs into dist/
+	$(Q)mkdir -p $(DIST)
+	$(Q)set -e; for t in $(LINUX_TARGETS); do \
+	  arch=$${t%%-*}; stem=slosh-$(VERSION)-linux-$$arch; \
+	  vtpfx=build/vt/$$t; vta=$$vtpfx/lib/libghostty-vt.a; \
+	  odir=build/obj/$$t; stage=build/stage/$$stem; \
+	  printf '  %-5s %s\n' '[VT]' "$$t"; \
+	  ( cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build \
+	      -Demit-lib-vt -Demit-xcframework=false -Doptimize=ReleaseFast \
+	      -Dtarget=$$t --prefix "$(CURDIR)/$$vtpfx" ); \
+	  mkdir -p $$odir; \
+	  for c in $(SRC); do \
+	    o=$$odir/$$(basename $${c%.c}).o; \
+	    if [ "$$(basename $$c)" = png.c ]; then \
+	      $(CC) -target $$t $(REL_CFLAGS) -I$$vtpfx/include -I$(VT)/src/stb -Wno-unused-function -c "$$c" -o "$$o"; \
+	    else \
+	      $(CC) -target $$t $(REL_CFLAGS) -I$$vtpfx/include -c "$$c" -o "$$o"; \
+	    fi; \
+	  done; \
+	  printf '  %-5s %s\n' '[LD]' "$$stem/slosh"; \
+	  $(CC) -target $$t -s $$odir/*.o "$$vta" -o build/slosh-$$t; \
+	  rm -rf $$stage; mkdir -p $$stage; \
+	  cp build/slosh-$$t $$stage/slosh; cp $(REL_DOCS) $$stage/; \
+	  ( cd build/stage && tar czf "$(CURDIR)/$(DIST)/$$stem.tar.gz" "$$stem" ); \
+	  printf '  %-5s %s\n' '[TAR]' "$(DIST)/$$stem.tar.gz"; \
+	done
+
+release: release-linux ## full release: linux tarballs + signed macOS zip + SHA256SUMS in dist/
+	$(Q)$(MAKE) --no-print-directory macos-dist REF=$(REF)
+	$(Q)cd $(DIST) && { sha256sum slosh-$(VERSION)-* 2>/dev/null \
+	  || shasum -a 256 slosh-$(VERSION)-*; } > SHA256SUMS
+	$(call say,[SUMS],$(DIST)/SHA256SUMS)
+	$(Q)cat $(DIST)/SHA256SUMS
 
 # ── installation ────────────────────────────────────────────────────────────
 # For packagers (Homebrew's formula calls exactly this) and for anyone doing
