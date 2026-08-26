@@ -51,6 +51,11 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
     int slave = open(slave_name, O_RDWR);
     if (slave < 0) _exit(127);
     ioctl(slave, TIOCSCTTY, 0);
+    /* Darwin attaches no line discipline to the master until the slave is
+     * opened, so the TIOCSWINSZ above returns ENOTTY there and the size is
+     * dropped: the pane starts 0x0 and stays that way until something else
+     * resizes it. Setting it here, on the slave we just opened, works on both. */
+    ioctl(slave, TIOCSWINSZ, &ws);
     dup2(slave, STDIN_FILENO);
     dup2(slave, STDOUT_FILENO);
     dup2(slave, STDERR_FILENO);

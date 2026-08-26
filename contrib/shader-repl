@@ -202,7 +202,13 @@ def setup_readline():
     # `=`, `"` and `(` end a word: `color="#ff` should complete on `#ff`, and
     # `clamp(23` should not look like one enormous token.
     readline.set_completer_delims(' \t\n;=("')
-    readline.parse_and_bind("tab: complete")
+    # macOS ships Python's readline as a libedit wrapper, and libedit does not
+    # speak GNU readline's binding syntax: "tab: complete" is accepted in
+    # silence and tab does nothing at all. Same intent, its own words.
+    if "libedit" in (readline.__doc__ or ""):
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
 
 
 def write_history():

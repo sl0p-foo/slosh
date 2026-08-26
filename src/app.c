@@ -605,10 +605,32 @@ void draw_toasts(app_t *a, screen_t *s) {
     char line[160];
     snprintf(line, sizeof line, " %s ", text);
     uint16_t w = (uint16_t)strlen(line);
-    if (w >= s->cols) w = (uint16_t)(s->cols - 1);
+    /* Too wide: elide the middle rather than the end. Almost every toast that
+     * overflows is about a path, and a path's last component is the part you
+     * needed -- clipping the tail told you "cannot open /var/folders/5q/g_q5"
+     * and made you go and look for the rest. */
+    uint16_t avail = (uint16_t)(s->cols > 1 ? s->cols - 1 : 1);
+    if (w > avail && avail >= 5) { /* room for a head, the dots and a tail */
+      size_t head = (size_t)(avail - 3) / 2, tail = (size_t)avail - 3 - head;
+      char elided[160];
+      snprintf(elided, sizeof elided, "%.*s...%s", (int)head, line,
+               line + strlen(line) - tail);
+      memcpy(line, elided, sizeof line);
+      w = avail;
+    } else if (w > avail) {
+      /* A terminal too narrow for the dots gets a plain clip: `avail - 3`
+       * below five goes negative, and negative as size_t is a pointer into
+       * the weeds. */
+      w = avail;
+    }
     uint16_t y = (uint16_t)(bottom - i);
     if (y >= s->rows) break;
-    uint16_t x = (uint16_t)(s->cols - w - CFG.gap * CFG.gap_aspect);
+    /* Clamped, not wrapped: a toast wider than the screen minus the gap used
+     * to compute a negative x, which as uint16_t became ~65533 and drew the
+     * whole message off-screen -- the long messages, which are the ones you
+     * most want to read, were the ones that vanished. */
+    int xi = (int)s->cols - (int)w - (int)(CFG.gap * CFG.gap_aspect);
+    uint16_t x = xi > 0 ? (uint16_t)xi : 0;
     char clipped[160];
     snprintf(clipped, sizeof clipped, "%.*s", (int)w, line);
     screen_text(s, x, y, clipped, TOAST_FG, TOAST_BG, ATTR_BOLD);

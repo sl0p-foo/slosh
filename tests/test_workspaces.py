@@ -40,7 +40,7 @@ def roots(**projects):
     Values: layout text (a declared project), "git" (a `.git` and nothing else),
     or None (a directory that is neither, which must not be listed).
     """
-    base = tempfile.mkdtemp(prefix="slosh-ws-")
+    base = os.path.realpath(tempfile.mkdtemp(prefix="slosh-ws-"))
     dev = os.path.join(base, "dev")
     for name, what in projects.items():
         d = os.path.join(dev, *name.split("__"))

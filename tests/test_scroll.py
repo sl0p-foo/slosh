@@ -98,8 +98,12 @@ def test_indicator():
 def test_keyboard():
     with Session(SH, cols=50, rows=12) as s:
         s.settle()
-        fill(s)
         p = s.pane()
+        # The shell's first prompt, read rather than spelled out: it is "sh-5.3$"
+        # on the machine this was written on and "sh-3.2$" on a mac, and the
+        # claim below is about the *top of the scrollback*, not about bash.
+        first_line = s.snapshot().pane_text(p).splitlines()[0].strip()
+        fill(s)
         s.send(r"\x01\e[5~")  # C-a PageUp
         s.settle(80)
         check(
@@ -119,8 +123,8 @@ def test_keyboard():
         # the shell's first prompt — not the first line of `seq`
         check(
             "C-a Home goes to the top of the scrollback",
-            "sh-5.3$" in text and "60" not in text,
-            repr(text[:120]),
+            first_line in text and "60" not in text,
+            repr(first_line) + " in " + repr(text[:120]),
         )
 
         s.send(r"\x01\e[F")  # C-a End

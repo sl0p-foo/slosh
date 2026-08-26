@@ -24,7 +24,7 @@ SH = ["/bin/sh", "-c", "read x"]
 
 def project(name, text):
     """A directory with a layout file in it, the way a checkout would have."""
-    root = tempfile.mkdtemp(prefix="slosh-proj-")
+    root = os.path.realpath(tempfile.mkdtemp(prefix="slosh-proj-"))
     d = os.path.join(root, name)
     os.makedirs(os.path.join(d, "src"))
     path = os.path.join(d, "slosh.layout")

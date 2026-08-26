@@ -4,6 +4,10 @@
 #define _GNU_SOURCE
 #include "server.h"
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h> /* _NSGetExecutablePath: Darwin has no /proc/self/exe */
+#endif
+
 #include "config.h"
 
 /* The config-file watcher speaks the OS's native change-notification API:
@@ -338,11 +342,20 @@ void session_env(const char *name) {
   else
     unsetenv("SLOSH_SESSION");
   char self[512];
+#ifdef __APPLE__
+  /* Darwin's answer to /proc/self/exe. What it hands back can still contain
+   * symlinks and .., so realpath() finishes the job. */
+  char raw[512];
+  uint32_t sz = sizeof raw;
+  if (_NSGetExecutablePath(raw, &sz) == 0 && realpath(raw, self))
+    setenv("SLOSH_BIN", self, 1);
+#else
   ssize_t sn = readlink("/proc/self/exe", self, sizeof self - 1);
   if (sn > 0) {
     self[sn] = 0;
     setenv("SLOSH_BIN", self, 1);
   }
+#endif
 }
 
 int server_run(const char *name, const char *const argv[], uint16_t cols,

@@ -197,7 +197,9 @@ def test_cwd_expands_a_tilde():
     Unexpanded it reached chdir() literally, failed, and left the pane in
     whatever directory the session was started from — with the pane running,
     so nothing looked wrong until you typed `ls`."""
-    home = tempfile.mkdtemp(prefix="slosh-home-")
+    # realpath: on macOS the temp dir is under /var, which is a symlink to
+    # /private/var, and `pwd` in the pane prints the physical path.
+    home = os.path.realpath(tempfile.mkdtemp(prefix="slosh-home-"))
     text = """
     layout {
         tab name="t" {
@@ -213,12 +215,12 @@ def test_cwd_expands_a_tilde():
         snap = s.snapshot()
         check(
             "~ is the home directory",
-            home in snap.pane_text(panes[0]),
+            home in snap.pane_text(panes[0]).replace("\n", ""),
             repr(snap.pane_text(panes[0])),
         )
         check(
             "and ~/sub is under it",
-            os.path.join(home, "sub") in snap.pane_text(panes[1]),
+            os.path.join(home, "sub") in snap.pane_text(panes[1]).replace("\n", ""),
             repr(snap.pane_text(panes[1])),
         )
     os.unlink(s._layout_path)

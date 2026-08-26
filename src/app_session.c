@@ -2,8 +2,13 @@
 #define _GNU_SOURCE
 #include "app.h"
 
+#ifdef __APPLE__
+#include <libproc.h> /* Darwin has no /proc; live_cwd() uses this instead */
+#endif
+
 #include <ghostty/vt.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -494,6 +499,10 @@ uint32_t app_workspace_tab(app_t *a, const char *slug) {
   return t ? t->id : 0;
 }
 
+/* Defined with live_cwd below; declared here because the workspace writer
+ * needs it first. */
+static const char *cwd_as_named(const pane_t *p, const char *live);
+
 /* Make every tab this apply just built a member of the workspace.
  *
  * A tab the layout gave a purpose of its own keeps it and is not a member --
@@ -624,8 +633,11 @@ static bool tab_project(app_t *a, const tab_t *t, const char *path,
 
   if (!t->focus) return false;
   char cwdbuf[4096];
-  return project_find(roots, depth,
-                      live_cwd(t->focus->pane, cwdbuf, sizeof cwdbuf), out);
+  return project_find(
+      roots, depth,
+      cwd_as_named(t->focus->pane,
+                   live_cwd(t->focus->pane, cwdbuf, sizeof cwdbuf)),
+      out);
 }
 
 bool app_workspace_save(app_t *a, uint32_t tab, const char *path, int suspend,
@@ -761,6 +773,19 @@ static void sb_quoted(strbuf_t *b, const char *key, const char *val) {
  * not where it was started. The kernel knows; nothing else does. */
 const char *live_cwd(const pane_t *p, char *buf, size_t cap) {
   pid_t pid = pane_pid(p);
+#ifdef __APPLE__
+  /* Darwin has no /proc, and the kernel still knows: libproc answers the same
+   * question from libc, no entitlement and no privilege needed for a process
+   * we started ourselves. */
+  if (pid > 0) {
+    struct proc_vnodepathinfo vpi;
+    if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof vpi) ==
+        (int)sizeof vpi) {
+      snprintf(buf, cap, "%s", vpi.pvi_cdir.vip_path);
+      return buf;
+    }
+  }
+#endif
   if (pid > 0) {
     char link[64];
     snprintf(link, sizeof link, "/proc/%d/cwd", (int)pid);
@@ -770,7 +795,26 @@ const char *live_cwd(const pane_t *p, char *buf, size_t cap) {
       return buf;
     }
   }
-  return pane_start_cwd(p); /* not running, or not Linux: what it was given */
+  return pane_start_cwd(
+      p); /* not running, or no kernel answer: what it was given */
+}
+
+/* The name the pane was given, when that is another spelling of where it is.
+ *
+ * The kernel answers with the physical path, and on macOS /tmp is a symlink to
+ * /private/tmp -- so a layout that said cwd="/tmp" came back saying
+ * cwd="/private/tmp", and a file that had been portable stopped round-tripping
+ * through a save. If the pane has actually moved, the two no longer agree and
+ * the live path wins, which is the whole point of asking the kernel. */
+static const char *cwd_as_named(const pane_t *p, const char *live) {
+  const char *start = pane_start_cwd(p);
+  /* Absolute only: a pane started with cwd="." is not saying "wherever slosh
+   * happens to be", and writing "." back out would make the dump mean
+   * something different every time it is read. */
+  if (!start || start[0] != '/' || !live) return live;
+  char real[PATH_MAX];
+  if (realpath(start, real) && strcmp(real, live) == 0) return start;
+  return live;
 }
 
 /* Everything one dump needs to know, so dump_node does not have to ask the app
@@ -853,7 +897,9 @@ static void dump_node(node_t *n, strbuf_t *b, int depth, dumpctx_t *ctx) {
    * another machine. A directory outside the base stays absolute: it is not a
    * fact about the project. */
   sb_quoted(b, "cwd",
-            path_relative(live_cwd(n->pane, cwdbuf, sizeof cwdbuf), ctx->base));
+            path_relative(
+                cwd_as_named(n->pane, live_cwd(n->pane, cwdbuf, sizeof cwdbuf)),
+                ctx->base));
   char cmdbuf[4096];
   const char *command = dump_command(n, cmdbuf, sizeof cmdbuf);
   sb_quoted(b, "command", command);

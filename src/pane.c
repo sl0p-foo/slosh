@@ -3,6 +3,10 @@
 #define _GNU_SOURCE
 #include "slosh.h"
 
+#ifdef __APPLE__
+#include <sys/sysctl.h> /* KERN_PROCARGS2: Darwin has no /proc/<pid>/cmdline */
+#endif
+
 #include <errno.h>
 #include <stdio.h>
 #include <ghostty/vt.h>
@@ -61,7 +65,11 @@ struct pane {
   bool ephemeral;
   char **argv;
   char *cwd;
-  char label[128];
+  /* A command line, not a word: a layout can name an interpreter by its full
+   * path (Homebrew's python3 resolves to 124 characters before its arguments
+   * even start), and a truncated label is not merely cosmetic -- it is what
+   * `dump-layout` writes down and what a restore then tries to run. */
+  char label[1024];
 
   /* Selection anchor, in viewport coordinates, while a drag is in progress. */
   bool selecting;
@@ -446,15 +454,53 @@ const char *pane_foreground(const pane_t *p, char *buf, size_t cap) {
   pid_t fg = tcgetpgrp(p->pty.fd);
   if (fg <= 0 || fg == p->pty.pid) return NULL; /* the pane's own shell */
 
+  char raw[4096];
+  size_t n = 0;
+#ifdef __APPLE__
+  /* No /proc: KERN_PROCARGS2 is where Darwin keeps a process's argv. The block
+   * is argc as an int, then the executable path, then padding, then argc
+   * NUL-terminated arguments -- so we step over the path and the padding to
+   * reach argv[0], and hand back the same NUL-separated shape Linux gives.
+   *
+   * The size is asked for rather than assumed: the block carries the process's
+   * whole environment after the arguments, and a buffer that cannot hold all of
+   * it comes back rearranged rather than merely short -- which parsed as a
+   * command missing its last argument. */
+  size_t need = 0;
+  int mib[3] = {CTL_KERN, KERN_PROCARGS2, (int)fg};
+  if (sysctl(mib, 3, NULL, &need, NULL, 0) != 0 || need < sizeof(int))
+    return NULL;
+  char *args = malloc(need);
+  if (!args) return NULL;
+  size_t asz = need;
+  if (sysctl(mib, 3, args, &asz, NULL, 0) != 0 || asz < sizeof(int)) {
+    free(args);
+    return NULL;
+  }
+  int argc = 0;
+  memcpy(&argc, args, sizeof argc);
+  size_t i = sizeof(int);
+  while (i < asz && args[i]) i++;  /* the executable path */
+  while (i < asz && !args[i]) i++; /* the padding after it */
+  for (int a = 0; a < argc && i < asz; a++) {
+    size_t l = strlen(args + i) + 1;
+    if (n + l >= sizeof raw) break;
+    memcpy(raw + n, args + i, l);
+    n += l;
+    i += l;
+  }
+  free(args);
+  if (!n) return NULL;
+#else
   char path[64];
   snprintf(path, sizeof path, "/proc/%d/cmdline", (int)fg);
   FILE *f = fopen(path, "rb");
   if (!f) return NULL; /* gone between asking and reading, or not Linux */
-  char raw[4096];
-  size_t n = fread(raw, 1, sizeof raw - 1, f);
+  n = fread(raw, 1, sizeof raw - 1, f);
   fclose(f);
   if (!n) return NULL; /* a zombie or a kernel thread has no command line */
   raw[n] = 0;
+#endif
 
   size_t len = 0;
   buf[0] = 0;
