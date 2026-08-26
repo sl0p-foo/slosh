@@ -27,6 +27,8 @@ binary.
 ```bash
 make vendor    # the vendored terminal core, once
 make           # about a second
+sudo make install         # optional: /usr/local/bin/slosh
+# make install PREFIX=$HOME/.local   # ...or somewhere you own
 ```
 
 ## Run

@@ -53,7 +53,7 @@ else
 endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
-        docs www fmt fmt-check hooks tools
+        docs www fmt fmt-check hooks tools install uninstall
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -318,6 +318,35 @@ fuzz-corpus: ## replay fuzz seed corpora (CI-friendly, no fuzzing)
 hooks: ## install the pre-commit hook (formats staged C)
 	$(Q)git config core.hooksPath .githooks
 	@echo "core.hooksPath -> .githooks   (git commit --no-verify to skip)"
+
+# ── installation ────────────────────────────────────────────────────────────
+# For packagers (Homebrew's formula calls exactly this) and for anyone doing
+# `sudo make install`. DESTDIR is the staging root a package manager wants;
+# PREFIX is where the files will finally live. The binary is the only thing
+# slosh needs to run -- the rest is example configuration you may copy into
+# ~/.config/slosh, so it goes to share/ and nothing reads it from there.
+PREFIX   ?= /usr/local
+DESTDIR  ?=
+BINDIR   := $(DESTDIR)$(PREFIX)/bin
+SHAREDIR := $(DESTDIR)$(PREFIX)/share/slosh
+DOCDIR   := $(DESTDIR)$(PREFIX)/share/doc/slosh
+
+install: $(BIN) ## install to $PREFIX (default /usr/local, honours DESTDIR)
+	$(Q)install -d $(BINDIR) $(SHAREDIR) $(DOCDIR)
+	$(Q)install -m 755 $(BIN) $(BINDIR)/slosh
+	$(Q)install -m 644 config/config.kdl config/example.layout $(SHAREDIR)/
+	$(Q)for d in themes chrome shaders; do \
+	  install -d $(SHAREDIR)/$$d; \
+	  install -m 644 contrib/$$d/*.kdl $(SHAREDIR)/$$d/ 2>/dev/null || true; \
+	done
+	$(Q)install -m 644 README.md $(DOCDIR)/
+	$(Q)install -d $(DOCDIR)/docs && install -m 644 docs/*.md $(DOCDIR)/docs/
+	$(call say,[INST],$(BINDIR)/slosh)
+
+uninstall: ## remove what install put there
+	$(Q)rm -f $(BINDIR)/slosh
+	$(Q)rm -rf $(SHAREDIR) $(DOCDIR)
+	$(call say,[RM],$(BINDIR)/slosh)
 
 clean: ## remove our build output (not the vendor lib)
 	rm -rf build
