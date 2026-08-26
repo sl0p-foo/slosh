@@ -11,7 +11,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define HDR 5
+#define HDR MSG_HDR
 
 void msg_reader_init(msg_reader_t *r) {
   memset(r, 0, sizeof *r);

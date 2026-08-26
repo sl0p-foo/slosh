@@ -54,7 +54,13 @@ void msg_reader_feed(msg_reader_t *r, const uint8_t *data, size_t len);
  * until the next call) when a whole message is available. */
 bool msg_reader_next(msg_reader_t *r, msg_t *out);
 
-/* Blocking send of one frame. Returns 0 on success, -1 if the peer is gone. */
+/* One frame is a type byte and a 32-bit big-endian length, then the payload.
+ * The server frames into its own queue (it cannot afford to block on a client
+ * that has stopped reading), so the size is not private to proto.c. */
+#define MSG_HDR 5
+
+/* Blocking send of one frame. Returns 0 on success, -1 if the peer is gone.
+ * For the client, which has nothing else to be doing while it writes. */
 int msg_send(int fd, uint8_t type, const void *data, size_t len);
 
 /* $XDG_RUNTIME_DIR/slosh/<name>.sock, or /tmp/slosh-<uid>/<name>.sock.

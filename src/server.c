@@ -61,10 +61,30 @@ static int64_t now_ms(void) {
  * that probe counted as a client, and its teardown removed the *real* one. */
 #define MAX_CONNS 16
 
+/* A connection that has stopped reading must not stop the session.
+ *
+ * Everything the server says used to go out through a blocking sendmsg() that
+ * looped until the kernel took all of it. A display whose reader had paused --
+ * C-s at the terminal, a stopped ssh, a client swapping -- filled its socket
+ * buffer and then the *server* blocked inside that loop: every other pane, the
+ * config watcher and the control socket all stopped with it, and a session that
+ * is supposed to outlive its client hung on one. On Linux 64K of socket buffer
+ * hid it for long enough to look like it worked; macOS buffers are a fraction
+ * of that and it wedges within a screenful.
+ *
+ * So output is queued and flushed when the socket says it can take more. The
+ * cap is what makes it bounded: past it we are not buffering a slow reader any
+ * more, we are storing a screen nobody is looking at, and the connection is
+ * dropped. A display that comes back reattaches and gets a full repaint, which
+ * is the same thing that happens after any detach. */
+#define MAX_OUTBOX (4u * 1024 * 1024)
+
 typedef struct {
   int fd;
   msg_reader_t reader;
   bool display;
+  uint8_t *out; /* queued bytes, already framed */
+  size_t out_len, out_off, out_cap;
 } conn_t;
 
 typedef struct {
@@ -84,11 +104,60 @@ static conn_t *display_conn(server_t *s) {
 static void conn_close(server_t *s, size_t i) {
   close(s->conns[i].fd);
   msg_reader_free(&s->conns[i].reader);
+  free(s->conns[i].out);
   s->conns[i] = s->conns[--s->nconns];
 }
 
+/* Push what is queued. Returns false when the connection is finished with --
+ * the peer is gone, or it is so far behind that keeping up is not the word for
+ * what we would be doing. EAGAIN is not a failure: it is the socket saying to
+ * come back when poll() says so. */
+static bool conn_flush(conn_t *c) {
+  while (c->out_off < c->out_len) {
+    ssize_t w =
+        send(c->fd, c->out + c->out_off, c->out_len - c->out_off, MSG_NOSIGNAL);
+    if (w < 0) {
+      if (errno == EINTR) continue;
+      return errno == EAGAIN || errno == EWOULDBLOCK;
+    }
+    c->out_off += (size_t)w;
+  }
+  c->out_len = c->out_off = 0;
+  return true;
+}
+
+/* Frame a message onto the queue, then try to get rid of it immediately: the
+ * common case is a socket with room, and queueing is only the fallback. */
+static bool conn_send(conn_t *c, uint8_t type, const void *data, size_t len) {
+  size_t need = c->out_len + MSG_HDR + len;
+  if (need - c->out_off > MAX_OUTBOX) return false;
+  if (c->out_off && need > c->out_cap) { /* reclaim what has already gone */
+    memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
+    c->out_len -= c->out_off;
+    c->out_off = 0;
+    need = c->out_len + MSG_HDR + len;
+  }
+  if (need > c->out_cap) {
+    size_t cap = c->out_cap ? c->out_cap : 8192;
+    while (cap < need) cap *= 2;
+    uint8_t *grown = realloc(c->out, cap);
+    if (!grown) return false;
+    c->out = grown;
+    c->out_cap = cap;
+  }
+  uint8_t hdr[MSG_HDR] = {type, (uint8_t)(len >> 24), (uint8_t)(len >> 16),
+                          (uint8_t)(len >> 8), (uint8_t)len};
+  memcpy(c->out + c->out_len, hdr, MSG_HDR);
+  c->out_len += MSG_HDR;
+  if (len) {
+    memcpy(c->out + c->out_len, data, len);
+    c->out_len += len;
+  }
+  return conn_flush(c);
+}
+
 static void conn_drop(server_t *s, size_t i, uint8_t reason) {
-  msg_send(s->conns[i].fd, MSG_EXIT, &reason, 1);
+  conn_send(&s->conns[i], MSG_EXIT, &reason, 1);
   conn_close(s, i);
 }
 
@@ -142,7 +211,7 @@ static void push_graphics(server_t *s) {
   if (!c) return;
   size_t len = 0;
   const char *bytes = app_graphics(s->app, &len);
-  if (len) msg_send(c->fd, MSG_OUTPUT, bytes, len);
+  if (len) conn_send(c, MSG_OUTPUT, bytes, len);
 }
 
 /* The clipboard lives on the client's machine, not ours, so a copy travels as
@@ -157,7 +226,7 @@ static void push_clipboard(server_t *s) {
     size_t n = b64len + 32;
     char *msg = malloc(n);
     int len = snprintf(msg, n, "\x1b]52;c;%s\x1b\\", enc);
-    if (len > 0) msg_send(c->fd, MSG_OUTPUT, msg, (size_t)len);
+    if (len > 0) conn_send(c, MSG_OUTPUT, msg, (size_t)len);
     free(msg);
     free(enc);
   }
@@ -170,7 +239,7 @@ static void push_frame(server_t *s) {
   if (!c) return;
   screen_render(&s->screen);
   if (!s->screen.out_len) return;
-  if (msg_send(c->fd, MSG_OUTPUT, s->screen.out, s->screen.out_len) != 0)
+  if (!conn_send(c, MSG_OUTPUT, s->screen.out, s->screen.out_len))
     for (size_t i = 0; i < s->nconns; i++)
       if (&s->conns[i] == c) {
         conn_close(s, i);
@@ -444,7 +513,11 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     pfds[n++] = (struct pollfd){.fd = lfd, .events = POLLIN};
     size_t conn_slot = n;
     for (size_t i = 0; i < s.nconns; i++)
-      pfds[n++] = (struct pollfd){.fd = s.conns[i].fd, .events = POLLIN};
+      pfds[n++] = (struct pollfd){
+          .fd = s.conns[i].fd,
+          .events =
+              (short)(POLLIN |
+                      (s.conns[i].out_off < s.conns[i].out_len ? POLLOUT : 0))};
     size_t pane_slot = n;
     for (size_t i = 0; i < npanes; i++)
       pfds[n++] = (struct pollfd){.fd = fds[i], .events = POLLIN};
@@ -483,9 +556,12 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
         if (s.nconns == MAX_CONNS) {
           close(c);
         } else {
+          /* Non-blocking: with a queue behind it, a write that cannot
+           * complete now is a thing to finish later rather than to wait for. */
+          int fl = fcntl(c, F_GETFL, 0);
+          if (fl >= 0) fcntl(c, F_SETFL, fl | O_NONBLOCK);
           conn_t *nc = &s.conns[s.nconns++];
-          nc->fd = c;
-          nc->display = false;
+          *nc = (conn_t){.fd = c};
           msg_reader_init(&nc->reader);
         }
       }
@@ -493,7 +569,18 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
     for (size_t ci = 0; ci < s.nconns;) {
       struct pollfd *pf = &pfds[conn_slot + ci];
-      if (pf->fd != s.conns[ci].fd || !(pf->revents & (POLLIN | POLLHUP))) {
+      if (pf->fd != s.conns[ci].fd) {
+        ci++;
+        continue;
+      }
+      if (pf->revents & POLLOUT) {
+        if (!conn_flush(&s.conns[ci])) {
+          conn_close(&s,
+                     ci); /* gone, or too far behind to still be a display */
+          continue;
+        }
+      }
+      if (!(pf->revents & (POLLIN | POLLHUP))) {
         ci++;
         continue;
       }
@@ -561,7 +648,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
           char *reply =
               cmd_exec(s.app, &s.screen, s.in, (const char *)m.data, &q);
           const char *body = reply ? reply : "{\"error\":\"unknown command\"}";
-          msg_send(s.conns[ci].fd, MSG_REPLY, body, strlen(body));
+          conn_send(&s.conns[ci], MSG_REPLY, body, strlen(body));
           free(reply);
           if (q) g_stop = 1;
           s.screen.force_full = true; /* it may have changed the layout */
