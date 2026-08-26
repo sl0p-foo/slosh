@@ -84,8 +84,13 @@ esac
 # A tag must look like a version (digits with a dot); "1368b7f" starts with a
 # digit but is a commit, and calling it version 1368b7f would be a lie brew
 # could never climb down from.
-mkver="$(sed -n 's/^VERSION *:*= *//p' "$root/Makefile" | head -1)"
-[ -n "$mkver" ] || fail "no VERSION in $root/Makefile"
+# The base/floor version. It lives in ./VERSION (one line, e.g. 0.1.0), which
+# is also what the Makefile bakes into a source build that has no git and the
+# floor it builds tag-less versions on top of. It used to be grepped out of the
+# Makefile's `VERSION :=` line; that line is now a $(shell ...) derivation, so
+# read the file both of them trust instead.
+mkver="$(sed -n '1s/[[:space:]]*$//p' "$root/VERSION" 2>/dev/null | head -1)"
+[ -n "$mkver" ] || fail "no base version in $root/VERSION"
 short="$(printf '%s' "$full" | cut -c1-7)"
 # The count must be a real count. Falling back to 0 when the commit is not in
 # this clone would mint "0.1.0-0-<short>", which brew reads as older than every
