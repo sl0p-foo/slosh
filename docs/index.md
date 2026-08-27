@@ -32,6 +32,17 @@ sudo make install
 (The source build works on a mac too; Homebrew is simply the shorter road
 there.)
 
+### Windows
+
+Windows 10/11, x86-64 and ARM64, as one `slosh.exe`. Panes are ConPTYs and
+sessions are AF_UNIX sockets, so everything documented here works there too.
+
+```bash
+make -f Makefile.windows ARCH=x86_64    # or ARCH=aarch64; cross-compiles too
+```
+
+The details, and the three decisions the port rests on: [windows](windows.md).
+
 ## Run
 
 ```bash

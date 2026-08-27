@@ -31,6 +31,16 @@ sudo make install         # optional: /usr/local/bin/slosh
 (The source build works on a mac too; Homebrew is simply the shorter road
 there.)
 
+### Windows
+
+Windows 10/11, x86-64 and ARM64, as one `slosh.exe` with no runtime
+dependency beyond the OS. Panes are ConPTYs and sessions are AF_UNIX sockets,
+so everything below works there too — see [docs/windows.md](docs/windows.md).
+
+```bash
+make -f Makefile.windows ARCH=x86_64    # or ARCH=aarch64; cross-compiles too
+```
+
 ## Run
 
 ```bash
@@ -46,6 +56,7 @@ split, `C-a ?` for the keys, `C-a p` for every command by name.
 
 **[docs/](docs/index.md)**: [keys](docs/keys.md) ·
 [panes](docs/panes.md) · [configuration](docs/config.md) ·
+[windows](docs/windows.md) ·
 [shaders](docs/shaders.md) · [chrome](docs/chrome.md) ·
 [layouts](docs/layouts.md) · [scripting](docs/scripting.md) ·
 [how it works](docs/design.md)
