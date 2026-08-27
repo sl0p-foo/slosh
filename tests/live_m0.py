@@ -78,7 +78,12 @@ def main():
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 20, 100, 0, 0))
     os.kill(pid, signal.SIGWINCH)
     time.sleep(0.2)
-    os.write(fd, b"tput cols\n")
+    # `stty size` and not `tput cols`: it asks the tty itself, which is the
+    # thing under test, and it needs no terminfo entry -- tput could only
+    # report "unknown terminal xterm-ghostty" on a machine without ghostty's
+    # terminfo installed, which is most macs, and failed there for a reason
+    # that had nothing to do with resizing.
+    os.write(fd, b"stty size\n")
     out = drain(fd)
     # the pane is told its *content* width: 100 columns minus the gap (2 each
     # side, aspect-corrected) minus the frame border (1 each side)
