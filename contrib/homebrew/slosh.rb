@@ -49,8 +49,9 @@ class Slosh < Formula
     # and puts the same files in the same places.
     bin.install "build/slosh"
     # Guarded because the formula must be able to build any commit, including
-    # ones older than the manpage.
+    # ones older than the manpages.
     man1.install "docs/slosh.1" if File.exist?("docs/slosh.1")
+    man5.install "docs/slosh.5" if File.exist?("docs/slosh.5")
     pkgshare.install "config/config.kdl", "config/example.layout"
     %w[themes chrome shaders].each do |d|
       pkgshare.install Dir["contrib/#{d}"] if File.directory?("contrib/#{d}")

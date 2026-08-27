@@ -286,6 +286,32 @@ The chrome is draggable: a title moves a pane onto another to swap them
 and the corners resize floats.
 Every button on the frame says what it does when the pointer rests on
 it.
+.SH SHADERS
+A pane can wear
+.I shaders
+\(em colour passes over its cells, each a pure function from (cell,
+position, strength) to that cell's colours.
+Text is never touched, only colour, so selection and copy read what was
+really there.
+A
+.B shaders { }
+block in the configuration runs a chain over every pane
+.RB ( where=\(dqchrome\(dq
+runs a pass over the frame instead), a
+.B states { }
+block tints panes by what is true of them \(em dead, suspended,
+scrolled, unfocused, ringing a bell \(em and the strength of any pass
+can be an arithmetic expression over the cell's position, the cursor,
+focus and the clock, which is how scanlines, margins, spotlights and
+breathing frames are written in a config file without compiling
+anything.
+See
+.BR slosh (5)
+for the vocabulary; ready-made presets ship under
+.IR PREFIX/share/slosh/ ,
+and a program can prototype a chain on its own pane over an escape
+sequence (OSC\ 5577) when the configuration allows it with
+.BR in_band_shaders .
 .SH CONFIGURATION
 One KDL file:
 .IR ~/.config/slosh/config.kdl ,
@@ -302,6 +328,9 @@ keeping the working configuration when the new file is broken, and
 .B include
 composes files \(em a theme, a shared base \(em with the includer
 winning.
+The format, every setting, and the layout files a session can be built
+from are
+.BR slosh (5).
 .PP
 An installed copy of the annotated default configuration, example
 layouts, themes and shader presets lives under
@@ -375,8 +404,7 @@ a clean file; 1 when
 found problems, or when attaching, starting or addressing a session
 failed; 2 for an unknown argument.
 .SH SEE ALSO
-.BR tmux (1),
-.BR screen (1)
+.BR slosh (5)
 .PP
 The prose documentation under
 .IR PREFIX/share/doc/slosh/ ,

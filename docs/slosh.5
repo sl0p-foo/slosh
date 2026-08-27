@@ -1,0 +1,415 @@
+.\" slosh(5) -- the file formats: configuration and layouts. Hand-written
+.\" man(7), pure ASCII, like slosh.1 beside it. The settings here are held
+.\" to config.c's KNOWN_TOP list by tests/test_docs.py, the same way that
+.\" list is itself held to the loader -- so a knob cannot be added without
+.\" this page hearing about it.
+.TH SLOSH 5 "August 2026" "slosh" "File Formats"
+.SH NAME
+slosh \- configuration and layout files
+.SH SYNOPSIS
+.I $SLOSH_CONFIG
+.br
+.I $XDG_CONFIG_HOME/slosh/config.kdl
+.br
+.I ~/.config/slosh/config.kdl
+.br
+.IR *.layout " files, given to " "slosh \-\-layout" " or opened as workspaces"
+.SH DESCRIPTION
+.BR slosh (1)
+reads two kinds of document, sharing one syntax: a
+.I configuration
+(settings, colours, keys, shaders) and a
+.I layout
+(tabs, splits, commands \(em a session as a file).
+Which schema a document is held to is decided by what is in it, not by
+which flag read it: a file with
+.B layout
+or
+.B tab
+at the top is a layout, a file of settings is a configuration, and
+either handed to the wrong flag is named for what it is.
+.PP
+No configuration file is required; every setting has a default.
+.B slosh \-\-dump\-config
+prints them all, as a file you could have written, and
+.B slosh \-\-check
+reads yours back and reports every line it could not honour.
+A running session re-reads the configuration when it changes on disk: a
+file that no longer parses is refused whole (the running configuration
+stays), while anything smaller \(em an unknown setting, a binding that
+does not parse \(em skips that line, applies the rest, and says so.
+Three settings are read at pane creation rather than reload, because of
+when they are needed:
+.BR shell ,
+.B scrollback
+and
+.B scrollback_bytes
+apply to the next pane you open.
+.SH SYNTAX
+A subset of KDL (kdl.dev): one node per line, a name followed by
+arguments and
+.IB key = value
+properties, with children in braces.
+.PP
+.EX
+gap 1
+min_pane cols=24 rows=6
+keys {
+    prefix "ctrl+b"           // comments run to end of line
+    bind "v" "split-cols"
+}
+.EE
+.PP
+Strings are quoted with
+.B \(dq
+(with backslash escapes), numbers are integers, booleans are
+.B true
+and
+.BR false ,
+and
+.B ~
+at the start of a path is your home directory.
+.SH INCLUDE
+.EX
+include "themes/amber.kdl"
+include "keys/vim.kdl" "shaders/crt.kdl"
+.EE
+.PP
+An included file is another configuration applied in place, so one line
+swaps a theme, a key set, or a shader chain.
+A relative path is relative to the file doing the including; an included
+file may include others.
+The includer wins wherever they disagree, and a later include wins over
+an earlier one.
+.B keys
+blocks add to what came before;
+.B shaders
+and
+.B states
+blocks replace what they inherited.
+Every included file is watched for reload.
+.SH GEOMETRY
+.TP
+.BR gap\  \fIn\fR ,\ gap_aspect\  \fIn\fR
+Space between panes, in rows, and how many columns a row is worth
+(default 2, because a cell is about twice as tall as it is wide) \(em so
+gaps and padding come out looking square.
+.TP
+.BI padding\  n\ ...
+Space between a pane's frame and its contents, written the way CSS does
+it: one value for every side, two for vertical/horizontal, four for
+top right bottom left.
+.TP
+.BI rounded\  bool
+Rounded frame corners.
+.TP
+.BI compact\  bool
+Shared 1-cell borders instead of gaps: panes pack flush against divider
+lines that meet in real junctions, each pane's title rides the line
+above it, and dividers drag exactly as gaps did.
+Interior edges give up click-to-split (the whole line is the resize
+handle); floats, zoomed panes and the keyboard are unchanged.
+.TP
+.BR title_align\  \fIword\fR ,\ title_inset\  \fIn\fR
+Where a pane's title sits on its top border
+.RB ( left ,\  center ,\  right )
+and how far in.
+.TP
+.BR min_pane\  \fRcols=\fIn\fR\ rows=\fIn\fR ,\ min_split\  \fRcols=\fIn\fR\ rows=\fIn\fR
+Below
+.B min_pane
+a pane collapses rather than renders unusably; below
+.B min_split
+a split is not offered in the first place.
+.SH CHROME
+.TP
+.BR status_bar\  \fIbool\fR ,\ status_line\  \fIbool\fR ,\ status_pad\  \fIn\fR
+The tab strip along the top, the status line along the bottom, and the
+line's side margin.
+.TP
+.BI hints\  bool
+What the pointer is resting on, said in the status line.
+.TP
+.BI version_banner\  bool
+Which build this is, in the status line when it has nothing else to say.
+.TP
+.BI pane_buttons\  bool
+The minimise/zoom/close marks in a frame's top-right corner.
+.TP
+.BI bell_indicator\  bool
+Whether a pane's bell shows at all (the mark, and the frame effect).
+.TP
+.BR zoom_mark ,\ zoom_on_mark ,\ close_mark ,\ min_mark ,\ newtab_mark ,\ bell_mark
+The glyphs themselves, each one string.
+.SH BEHAVIOUR
+.TP
+.BI focus_follows_mouse\  bool
+Hovering focuses \(em never at the cost of what you were doing: not
+during a prefix, a drag, or a modal.
+.TP
+.BI scroll_lines\  n
+Rows per wheel notch.
+.TP
+.BR scrollback\  \fIn\fR ,\ scrollback_bytes\  \fIn\fR
+Lines of history a pane keeps, and the per-pane byte ceiling that count
+runs into \(em whichever bites first wins, and 0 disables that limit.
+Applied to the next pane you open: shrinking history retroactively
+would throw away output somebody is reading.
+.TP
+.BR toast_ms\  \fIn\fR ,\ splash_ms\  \fIn\fR
+How long an announcement stays up, and how long the logo greets an
+attach (0 for never).
+.TP
+.BI hover_delay_ms\  n
+How long the pointer must rest on a border before the split guide arms.
+.TP
+.BI select_scroll_ms\  n
+A selection dragged past a pane's top or bottom edge scrolls a step
+this often; each step is as many rows as the pointer is past the edge,
+so the hand is the throttle and this is the metronome.
+.TP
+.BR double_click_ms\  \fIn\fR ,\ word_separators\  \fIstring\fR
+How close two clicks must be to be a double, and what the word a
+double-click selects stops at \(em listed as separators, so CJK,
+accents and emoji need no table.
+Whitespace always separates.
+.TP
+.BI anim_ms\  n
+The frame clock while a shader animates.
+.TP
+.BR modal_scrim\  \fIn\fR ,\ dim_unfocused\  \fIn\fR ,\ float_shadow\  \fIn\fR
+How far everything behind a modal is pushed back, how far the panes you
+are not in are, and the shade a floating pane casts \(em each 0..255,
+0 for off.
+.TP
+.BI keep_dead\  word
+Which finished panes stay on screen offering [re-run] and [close]:
+.B commands
+(panes that ran a real command \(em the default),
+.BR all ,
+or
+.B none
+(collapse immediately).
+.TP
+.BR shell\  \fIpath\fR ,\ editor\  \fIname\fR
+What a new pane runs (unset:
+.BR $SHELL )
+and what edits the configuration (unset:
+.BR $EDITOR ,
+then vi).
+.TP
+.BI shader_dir\  path
+Where shader plugins (compiled .so passes) are loaded from.
+.TP
+.BI in_band_shaders\  bool
+Whether a program may set shader chains on its own pane over OSC 5577.
+Off by default; clearing a chain is always allowed, because the way out
+must not be the thing the setting controls.
+.SH PROJECTS
+.TP
+.BI project_roots\  path\ ...\ \fRdepth=\fIn\fR
+Where projects live, one path per argument, searched
+.I depth
+directories down (default 2).
+Unset, the workspaces feature is dormant.
+.TP
+.BI project_layout\  path
+A layout applied to projects that do not carry their own
+.IR slosh.layout .
+.SH THEME
+.B theme { }
+names every colour the compositor draws \(em frames, titles, tabs,
+buttons, modals, toasts \(em each its own entry, 48 of them, so one can
+change without dragging thirty others along.
+.PP
+.EX
+include "~/.config/slosh/themes/phosphor.kdl"
+theme { frame_focus "#00ff88" }   // ...but that one colour is mine
+.EE
+.PP
+.B slosh \-\-dump\-config
+prints the full list with the compiled-in values; ready-made themes
+ship under
+.IR PREFIX/share/slosh/themes/ .
+.SH SHADERS
+A shader is a colour pass over a pane's cells: foreground, background,
+attributes \(em never the text, because rewriting text would desync
+selection and copy.
+A
+.B shaders { }
+block is a chain every pane wears, in the order written:
+.PP
+.EX
+shaders {
+    vignette amount=70
+    ruler amount=60 at=80 color="#7aa2f7"
+}
+.EE
+.PP
+The built-ins:
+.BR dim ,\  grayscale ,\  tint ,\  vignette ,\  gradient ,\  zebra ,\  ruler ,\  margin ,\  spotlight .
+.B amount
+is 0..255 (default 128); two properties work on any pass:
+.B where=
+.RB ( \(dqcontent\(dq
+or
+.BR \(dqchrome\(dq ,
+the frame) and
+.B channel=
+.RB ( \(dqboth\(dq ,\  \(dqfg\(dq ,\  \(dqbg\(dq ).
+.PP
+.B amount
+may be an arithmetic expression instead of a number, evaluated per
+cell \(em how effects nobody built in are written without building
+anything:
+.PP
+.EX
+dim  amount="(y % 2) * 40"                        // scanlines
+tint amount="255 - dist(x, y, curx, cury) * 12" color="#7aa2f7"
+dim  amount="128 + sin(t / 4) / 2"                // a breathe
+.EE
+.PP
+Variables:
+.B x y cols rows
+(the cell and the rect),
+.B curx cury cursor focused
+(the cursor and focus),
+.B t since
+(milliseconds, and milliseconds in the current state),
+.B above below
+(scrollback hidden past each edge).
+Integer arithmetic and comparisons, ternaries,
+.BR min ,\  max ,\  abs ,\  clamp ,\  dist ,
+and
+.BR sin / cos
+taking degrees
+.RB ( PI
+is 180 \(em an angle, which is what it is here).
+No loops, no recursion: a configuration cannot spin.
+An expression that does not compile drops that one pass with a warning,
+never the file.
+.SH STATES
+.B states { }
+tints panes by what is
+.I true
+of them \(em the part you cannot discover by looking:
+.PP
+.EX
+states {
+    dead { grayscale amount=200; dim amount=90 }
+    scrolled { tint amount=22 color="#7aa2f7" }
+    unfocused { dim amount=60 }   // replaces dim_unfocused
+}
+.EE
+.PP
+The states, most urgent first \(em exactly one wins:
+.BR dragging ,\  drop_hover ,\  drop_target ,\  dead ,\  suspended ,\  bell ,\  scrolled ,\  floating ,\  unfocused .
+Naming a state replaces its default outright, including with nothing,
+which is how one is turned off.
+.SH KEYS
+.PP
+.EX
+keys {
+    prefix "ctrl+b"              // the leader; default ctrl+a
+    bind "v" "split-cols"        // as well as the default backslash
+    bind "minus" "none"          // and a default taken away
+    direct {
+        bind "ctrl+alt+left" "focus-left"   // no leader: fires at once
+    }
+}
+.EE
+.PP
+A
+.B keys
+block adds to the defaults rather than replacing them.
+Actions are named words \(em the same names the command palette shows,
+where any of them can be run without being bound at all.
+Bindings in a
+.B direct
+block fire without the prefix, and that chord is then gone from every
+program in every pane; the cheatsheet lists them apart, so its
+.I prefix then:
+caption stays true.
+.SH LAYOUT FILES
+A session as a document \(em what
+.B slosh \-\-layout
+builds,
+.B dump\-layout
+writes, and a project checks in as
+.IR slosh.layout :
+.PP
+.EX
+layout {
+    tab name="api" cwd="~/dev/api" {
+        pane command="nvim"
+        pane split="rows" {
+            pane command="npm run dev" suspended=true
+            pane
+        }
+    }
+}
+.EE
+.TP
+.B tab
+One per tab, in strip order:
+.BR name= ,
+.BR cwd= ,
+.B purpose=
+(a label scripts and project layouts address),
+.B active=true
+for the tab you land in.
+.TP
+.B pane
+A leaf, or a split when it has
+.B pane
+children.
+.B split=
+is
+.B \(dqcols\(dq
+or
+.BR \(dqrows\(dq ;
+.B weight=
+is its share of the parent (left out means even).
+.TP
+.B command=
+What the pane runs; without one, your shell.
+.B cwd=
+is inherited from the tab when the pane does not say; a relative path
+in a layout
+.I file
+resolves against the file's own directory, so a checked-in layout means
+the same thing from any working directory.
+.TP
+.B suspended=true
+Laid out but running nothing until touched, showing what it would run
+\(em so twelve checked-out projects are not twelve running dev servers.
+.TP
+.BR focus=true ,\ floating=true
+The pane you start in, within its tab; a pane that starts floating,
+with
+.B x= y= w= h=
+as its wanted rect in cells.
+.PP
+.B slosh \-\-check
+.I file.layout
+checks a layout as a layout, with the same one-problem-per-line report
+the configuration gets.
+.SH FILES
+.TP
+.I ~/.config/slosh/config.kdl
+The configuration (see
+.B SYNOPSIS
+for the full search order).
+.TP
+.I PREFIX/share/slosh/
+The annotated default configuration and an example layout, plus the
+shipped themes, chrome presets and shader presets \(em each a file to
+copy or
+.BR include .
+.SH SEE ALSO
+.BR slosh (1)
+.PP
+The prose documentation under
+.IR PREFIX/share/doc/slosh/ :
+the configuration, shaders, chrome, layouts and workspaces chapters are
+the long form of this page.

@@ -237,15 +237,18 @@ def test_html_in_the_source_is_escaped():
     check("and not a tag", "<script>" not in got, got[:400])
 
 
-# ---- the manpage ----------------------------------------------------------
+# ---- the manpages ---------------------------------------------------------
 #
-# docs/slosh.1 is hand-written roff, and prose about a program drifts from the
-# program unless something holds them together. The same idea as the nav
-# checks above: the source of truth for what the CLI accepts is main.c's
-# parser and for what the environment means is the code that reads it, so the
-# manpage is checked against those rather than against a copy of itself.
+# docs/slosh.1 and docs/slosh.5 are hand-written roff, and prose about a
+# program drifts from the program unless something holds them together. The
+# same idea as the nav checks above: the source of truth for what the CLI
+# accepts is main.c's parser, for the environment the code that reads it, and
+# for the settings config.c's KNOWN_TOP (itself held to the loader by
+# test_config.py) -- so the pages are checked against those rather than
+# against copies of themselves.
 
 MAN = os.path.join(DOCS, "slosh.1")
+MAN5 = os.path.join(DOCS, "slosh.5")
 
 
 def test_the_manpage_covers_the_cli():
@@ -278,27 +281,47 @@ def test_the_manpage_covers_the_environment():
         check(f"the manpage documents ${n}", n in man, n)
 
 
-def test_the_manpage_is_clean_roff():
-    """Pure ASCII (a manpage travels through implementations that never heard
-    of preconv) and, where groff is present, no warnings at its strictest."""
-    raw = open(MAN, "rb").read()
-    bad = [i for i, b in enumerate(raw) if b > 0x7F]
-    check("the roff is pure ASCII", not bad, f"non-ASCII at byte {bad[:3]}")
+def test_the_config_manpage_covers_the_settings():
+    """Every top-level setting the loader knows appears in slosh(5). KNOWN_TOP
+    is the list the loader refuses unknown names against, so a knob cannot be
+    added without this page hearing about it."""
+    man5 = open(MAN5).read()
+    config_c = open(os.path.join(ROOT, "src", "config.c")).read()
+    block = re.search(r"KNOWN_TOP\[\] = \{(.*?)\};", config_c, re.S)
+    check("KNOWN_TOP was found in config.c", block is not None, "")
+    names = re.findall(r'"(\w+)"', block.group(1)) if block else []
+    check("and it is the whole vocabulary", len(names) > 40, str(len(names)))
+    for n in names:
+        check(f"slosh(5) documents {n}", n in man5, n)
 
+
+def test_the_manpages_are_clean_roff():
+    """Pure ASCII (a manpage travels through implementations that never heard
+    of preconv), cross-referencing each other, and, where groff is present,
+    no warnings at its strictest."""
     import shutil
 
-    if not shutil.which("groff"):
-        return  # the ASCII check above still ran; lint where lint exists
-    r = subprocess.run(
-        ["groff", "-man", "-rCHECKSTYLE=3", "-ww", "-z", MAN],
-        capture_output=True,
-        text=True,
-    )
-    check(
-        "groff -ww has nothing to say",
-        r.returncode == 0 and not r.stderr.strip(),
-        r.stderr.strip()[:300],
-    )
+    for man in (MAN, MAN5):
+        name = os.path.basename(man)
+        raw = open(man, "rb").read()
+        bad = [i for i, b in enumerate(raw) if b > 0x7F]
+        check(f"{name} is pure ASCII", not bad, f"non-ASCII at byte {bad[:3]}")
+
+        if shutil.which("groff"):
+            r = subprocess.run(
+                ["groff", "-man", "-rCHECKSTYLE=3", "-ww", "-z", man],
+                capture_output=True,
+                text=True,
+            )
+            check(
+                f"groff -ww has nothing to say about {name}",
+                r.returncode == 0 and not r.stderr.strip(),
+                r.stderr.strip()[:300],
+            )
+
+    # The pair reference each other, so a reader who found one finds both.
+    check("slosh(1) points at slosh(5)", "slosh (5)" in open(MAN).read(), "")
+    check("slosh(5) points at slosh(1)", "slosh (1)" in open(MAN5).read(), "")
 
 
 if __name__ == "__main__":
@@ -312,5 +335,6 @@ if __name__ == "__main__":
     test_html_in_the_source_is_escaped()
     test_the_manpage_covers_the_cli()
     test_the_manpage_covers_the_environment()
-    test_the_manpage_is_clean_roff()
+    test_the_config_manpage_covers_the_settings()
+    test_the_manpages_are_clean_roff()
     sys.exit(report())

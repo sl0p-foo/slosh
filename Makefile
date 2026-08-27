@@ -363,8 +363,8 @@ macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a
 DIST          ?= dist
 # Each tarball carries the binary plus the paperwork a redistributed build must
 # ship (see THIRD-PARTY-LICENSES: libghostty-vt and stb_image are linked in),
-# and the manpage, because a tarball is what a packager starts from.
-REL_DOCS      := README.md LICENSE THIRD-PARTY-LICENSES docs/slosh.1
+# and the manpages, because a tarball is what a packager starts from.
+REL_DOCS      := README.md LICENSE THIRD-PARTY-LICENSES docs/slosh.1 docs/slosh.5
 # The target triples we cross-build. The arch label in the artifact name is the
 # part before the first '-' (x86_64, aarch64).
 LINUX_TARGETS := x86_64-linux-musl aarch64-linux-musl
@@ -419,12 +419,14 @@ DESTDIR  ?=
 BINDIR   := $(DESTDIR)$(PREFIX)/bin
 SHAREDIR := $(DESTDIR)$(PREFIX)/share/slosh
 DOCDIR   := $(DESTDIR)$(PREFIX)/share/doc/slosh
-MANDIR   := $(DESTDIR)$(PREFIX)/share/man/man1
+MAN1DIR  := $(DESTDIR)$(PREFIX)/share/man/man1
+MAN5DIR  := $(DESTDIR)$(PREFIX)/share/man/man5
 
 install: $(BIN) ## install to $PREFIX (default /usr/local, honours DESTDIR)
-	$(Q)install -d $(BINDIR) $(SHAREDIR) $(DOCDIR) $(MANDIR)
+	$(Q)install -d $(BINDIR) $(SHAREDIR) $(DOCDIR) $(MAN1DIR) $(MAN5DIR)
 	$(Q)install -m 755 $(BIN) $(BINDIR)/slosh
-	$(Q)install -m 644 docs/slosh.1 $(MANDIR)/slosh.1
+	$(Q)install -m 644 docs/slosh.1 $(MAN1DIR)/slosh.1
+	$(Q)install -m 644 docs/slosh.5 $(MAN5DIR)/slosh.5
 	$(Q)install -m 644 config/config.kdl config/example.layout $(SHAREDIR)/
 	$(Q)for d in themes chrome shaders; do \
 	  install -d $(SHAREDIR)/$$d; \
@@ -435,7 +437,7 @@ install: $(BIN) ## install to $PREFIX (default /usr/local, honours DESTDIR)
 	$(call say,[INST],$(BINDIR)/slosh)
 
 uninstall: ## remove what install put there
-	$(Q)rm -f $(BINDIR)/slosh $(MANDIR)/slosh.1
+	$(Q)rm -f $(BINDIR)/slosh $(MAN1DIR)/slosh.1 $(MAN5DIR)/slosh.5
 	$(Q)rm -rf $(SHAREDIR) $(DOCDIR)
 	$(call say,[RM],$(BINDIR)/slosh)
 
