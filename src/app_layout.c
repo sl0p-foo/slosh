@@ -1507,8 +1507,39 @@ bool app_edit_config(app_t *a) {
   if (!editor || !*editor) editor = "vi";
 
   char cmd[1024];
+#ifdef _WIN32
+  /* Windows has no editor it is *required* to have, and the obvious fallback
+   * is the wrong shape: notepad is a GUI program, so a pane running it draws
+   * nothing and looks broken. Prefer whichever console editor is actually
+   * installed, and only then fall back to opening a window.
+   *
+   * `editor` here is still whatever EDITOR or the config asked for; the search
+   * only runs when nothing was asked for, or when the POSIX default of `vi`
+   * came through and would not exist. */
+  bool windowed = false;
+  if (!editor || !*editor || strcmp(editor, "vi") == 0) {
+    static const char *const consoles[] = {"nvim",  "vim", "vi", "nano",
+                                           "micro", "hx",  NULL};
+    editor = NULL;
+    for (int i = 0; consoles[i] && !editor; i++)
+      if (sl_which(consoles[i])) editor = consoles[i];
+    if (!editor) {
+      editor = "notepad";
+      windowed = true;
+    }
+  }
+  /* cmd.exe does not treat single quotes as quoting, and the path is handed
+   * over in Windows spelling -- slosh joins with '/', $HOME arrives with '\\',
+   * and a GUI editor rejects the mixture outright. */
+  char native[PATH_MAX];
+  snprintf(cmd, sizeof cmd, "%s \"%s\"", editor,
+           sl_path_native(path, native, sizeof native));
+  if (windowed)
+    app_toast(a, "no console editor found: opened the config in notepad");
+#else
   snprintf(cmd, sizeof cmd, "%s '%s'", editor, path);
-  const char *argv[] = {"/bin/sh", "-c", cmd, NULL};
+#endif
+  const char *argv[] = {SLOSH_SHELL_DEFAULT, SLOSH_SHELL_CFLAG, cmd, NULL};
 
   /* Down rather than across: a config file is lines, and half the width of a
    * pane is a worse place to read them than half the height. */

@@ -99,8 +99,8 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
   bool suspended = a->force_suspend || kdl_prop_bool(node, "suspended", false);
   const char *argv[4];
   if (command) {
-    argv[0] = "/bin/sh";
-    argv[1] = "-c";
+    argv[0] = SLOSH_SHELL_DEFAULT;
+    argv[1] = SLOSH_SHELL_CFLAG;
     argv[2] = command;
     argv[3] = NULL;
   } else {

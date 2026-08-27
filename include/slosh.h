@@ -123,6 +123,20 @@ const char *path_relative(const char *path, const char *base);
 /* mkdir -p, for the directory a config or a session socket wants to live in. */
 bool path_mkdirs(const char *dir);
 
+/* ---- the shell a pane gets when nothing else is said -------------------- */
+
+/* One spelling of "run this command line through a shell", because three
+ * places need it and a Windows box has neither /bin/sh nor -c. SHELL is not
+ * set on Windows either, so ComSpec is what stands in for it (see
+ * default_argv). */
+#ifdef _WIN32
+#define SLOSH_SHELL_DEFAULT "cmd.exe"
+#define SLOSH_SHELL_CFLAG "/c"
+#else
+#define SLOSH_SHELL_DEFAULT "/bin/sh"
+#define SLOSH_SHELL_CFLAG "-c"
+#endif
+
 /* ---- pty --------------------------------------------------------------- */
 
 typedef struct {

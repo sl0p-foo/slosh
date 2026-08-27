@@ -62,6 +62,26 @@ bool msg_reader_next(msg_reader_t *r, msg_t *out) {
 int msg_send(int fd, uint8_t type, const void *data, size_t len) {
   uint8_t hdr[HDR] = {type, (uint8_t)(len >> 24), (uint8_t)(len >> 16),
                       (uint8_t)(len >> 8), (uint8_t)len};
+#ifdef _WIN32
+  /* No sendmsg: the two buffers are simply sent in order. The gather was only
+   * ever an optimisation -- what matters is that the header and its payload
+   * reach the socket as one contiguous stream, which sequential sends on a
+   * stream socket also guarantee. */
+  const void *parts[2] = {hdr, data};
+  size_t lens[2] = {HDR, len};
+  for (int i = 0; i < 2; i++) {
+    size_t off = 0;
+    while (off < lens[i]) {
+      ssize_t w = sl_write(fd, (const char *)parts[i] + off, lens[i] - off);
+      if (w < 0) {
+        if (errno == EINTR || errno == EAGAIN) continue;
+        return -1;
+      }
+      off += (size_t)w;
+    }
+  }
+  return 0;
+#else
   struct iovec iov[2] = {{hdr, HDR}, {(void *)data, len}};
   size_t total = HDR + len, sent = 0;
   while (sent < total) {
@@ -90,14 +110,27 @@ int msg_send(int fd, uint8_t type, const void *data, size_t len) {
     sent += (size_t)w;
   }
   return 0;
+#endif
 }
 
 static int session_dir(char *out, size_t cap) {
+#ifdef _WIN32
+  /* Per-user and non-roaming, which is what LOCALAPPDATA is for: a session
+   * socket is machine-local by definition and must not follow a roaming
+   * profile to another host. */
+  const char *base = getenv("LOCALAPPDATA");
+  if (!base || !*base) base = getenv("TEMP");
+  if (!base || !*base) return -1;
+  snprintf(out, cap, "%s/slosh", base);
+  for (char *p = out; *p; p++)
+    if (*p == '\\') *p = '/';
+#else
   const char *run = getenv("XDG_RUNTIME_DIR");
   if (run && *run)
     snprintf(out, cap, "%s/slosh", run);
   else
     snprintf(out, cap, "/tmp/slosh-%u", (unsigned)getuid());
+#endif
   if (mkdir(out, 0700) != 0 && errno != EEXIST) return -1;
   return 0;
 }

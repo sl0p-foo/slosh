@@ -1,5 +1,9 @@
 /* pty spawn. Hand-rolled rather than forkpty() so we need no libutil and
- * behave identically under musl. */
+ * behave identically under musl.
+ *
+ * Windows has no fork and no pty; src/pty_win.c implements the same three
+ * functions on ConPTY instead. */
+#ifndef _WIN32
 #define _GNU_SOURCE
 #include "slosh.h"
 
@@ -137,3 +141,5 @@ void pty_close(pty_t *p) {
   }
   p->pid = -1;
 }
+
+#endif /* !_WIN32 */

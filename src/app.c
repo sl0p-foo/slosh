@@ -762,7 +762,12 @@ const char *const *default_argv(app_t *a) {
   static const char *argv[2];
   if (a->argv && a->argv[0]) return a->argv;
   const char *sh = CFG.shell && *CFG.shell ? CFG.shell : getenv("SHELL");
-  argv[0] = sh && *sh ? sh : "/bin/sh";
+#ifdef _WIN32
+  /* Windows sets no SHELL; ComSpec is the equivalent and respects a user who
+   * has pointed it somewhere else. */
+  if (!sh || !*sh) sh = getenv("ComSpec");
+#endif
+  argv[0] = sh && *sh ? sh : SLOSH_SHELL_DEFAULT;
   argv[1] = NULL;
   return argv;
 }

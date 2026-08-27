@@ -112,6 +112,11 @@ static void conn_close(server_t *s, size_t i) {
  * the peer is gone, or it is so far behind that keeping up is not the word for
  * what we would be doing. EAGAIN is not a failure: it is the socket saying to
  * come back when poll() says so. */
+#ifdef _WIN32
+/* There is no SIGPIPE to suppress, so there is nothing for MSG_NOSIGNAL to
+ * ask for: a send to a closed socket already just returns an error. */
+#define MSG_NOSIGNAL 0
+#endif
 static bool conn_flush(conn_t *c) {
   while (c->out_off < c->out_len) {
     ssize_t w =
@@ -277,7 +282,10 @@ typedef struct {
 
 static void watch_config(watchset_t *w) {
   if (w->fd < 0) return;
-#ifdef __APPLE__
+#ifdef _WIN32
+  /* The watcher owns its directory handles and re-arms them itself, so there
+   * is no per-file descriptor to drop here. */
+#elif defined(__APPLE__)
   /* kqueue drops a vnode filter when its fd closes, so closing is the unwatch. */
   for (size_t i = 0; i < w->nwds; i++) close(w->wds[i]);
 #else
@@ -329,6 +337,11 @@ static void watch_config(watchset_t *w) {
       else
         close(vfd);
     }
+#elif defined(_WIN32)
+    /* Watch the directory and let the debounced re-read decide, which is the
+     * same conclusion the kqueue branch reaches for the same reason: an editor
+     * that saves by rename would slip out from under a watch on the file. */
+    sl_watch_add(w->fd, dir);
 #else
     int wd =
         inotify_add_watch(w->fd, dir, IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
@@ -346,7 +359,9 @@ static void watch_config(watchset_t *w) {
   }
 }
 
-#ifndef __APPLE__
+/* Only inotify reports which file changed; the kqueue and Windows watchers
+ * both re-read and let the debounce decide. */
+#if !defined(__APPLE__) && !defined(_WIN32)
 static bool watch_hit(const watchset_t *w, const char *name) {
   for (size_t i = 0; i < w->nnames; i++)
     if (strcmp(w->names[i], name) == 0) return true;
@@ -359,7 +374,9 @@ static bool watch_hit(const watchset_t *w, const char *name) {
  * debounces, because one save is not always one event. */
 static bool watch_drain(watchset_t *w) {
   bool touched = false;
-#ifdef __APPLE__
+#ifdef _WIN32
+  touched = sl_watch_drain(w->fd) != 0;
+#elif defined(__APPLE__)
   struct kevent evs[16];
   struct timespec zero = {0, 0};
   for (;;) {
@@ -411,7 +428,9 @@ void session_env(const char *name) {
   else
     unsetenv("SLOSH_SESSION");
   char self[512];
-#ifdef __APPLE__
+#ifdef _WIN32
+  if (sl_self_exe(self, sizeof self)) setenv("SLOSH_BIN", self, 1);
+#elif defined(__APPLE__)
   /* Darwin's answer to /proc/self/exe. What it hands back can still contain
    * symlinks and .., so realpath() finishes the job. */
   char raw[512];
@@ -439,6 +458,12 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
   session_env(name);
 
+#ifdef _WIN32
+  /* Windows delivers Ctrl-C and shutdown through a console control handler
+   * rather than as signals, and has no SIGPIPE or SIGCHLD to arrange for. */
+  signal(SIGINT, on_sig);
+  signal(SIGTERM, on_sig);
+#else
   struct sigaction sa = {.sa_handler = on_sig};
   sigaction(SIGTERM, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
@@ -451,6 +476,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
    * looked at. SIGCHLD's default action is to be discarded, so nothing is
    * interrupted and the only difference is that a status waits to be read. */
   signal(SIGCHLD, SIG_DFL);
+#endif
 
   server_t s = {0};
   s.app = app_new(argv, cols, rows);
@@ -491,7 +517,9 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   int inofd = -1;
   watchset_t watches = {.fd = -1};
   if (watch) {
-#ifdef __APPLE__
+#ifdef _WIN32
+    inofd = sl_watch_init();
+#elif defined(__APPLE__)
     inofd = kqueue();
     if (inofd >= 0) fcntl(inofd, F_SETFD, FD_CLOEXEC);
 #else
@@ -745,6 +773,40 @@ int server_spawn(const char *name, const char *const argv[], uint16_t cols,
   if (session_socket_path(name, path, sizeof path) != 0) return -1;
   session_log_path(name, logp, sizeof logp);
 
+#ifdef _WIN32
+  /* No fork: the daemon is started as a fresh detached process rather than as
+   * a copy of this one, reconstructing on its command line what the forked
+   * child would have inherited. `--server` is the flag main.c uses to run
+   * server_run() directly instead of spawning again. */
+  {
+    char self[512];
+    if (!sl_self_exe(self, sizeof self)) return -1;
+    const char *av[16];
+    char colbuf[16], rowbuf[16];
+    snprintf(colbuf, sizeof colbuf, "%u", (unsigned)cols);
+    snprintf(rowbuf, sizeof rowbuf, "%u", (unsigned)rows);
+    size_t n = 0;
+    av[n++] = self;
+    av[n++] = "--server";
+    av[n++] = "-s";
+    av[n++] = name;
+    av[n++] = "--cols";
+    av[n++] = colbuf;
+    av[n++] = "--rows";
+    av[n++] = rowbuf;
+    if (layout) {
+      av[n++] = "--layout";
+      av[n++] = layout;
+    }
+    if (!watch) av[n++] = "--no-reload";
+    if (argv && argv[0]) {
+      av[n++] = "--";
+      for (int i = 0; argv[i] && n < 15; i++) av[n++] = argv[i];
+    }
+    av[n] = NULL;
+    if (sl_spawn_detached(av, logp) < 0) return -1;
+  }
+#else
   pid_t pid = fork();
   if (pid < 0) return -1;
   if (pid == 0) {
@@ -760,6 +822,7 @@ int server_spawn(const char *name, const char *const argv[], uint16_t cols,
     _exit(server_run(name, argv, cols, rows, layout, watch));
   }
   waitpid(pid, NULL, 0); /* the intermediate exits immediately */
+#endif
 
   /* Wait for the socket to accept, rather than sleeping and hoping. */
   for (int i = 0; i < 400; i++) {

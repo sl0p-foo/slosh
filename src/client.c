@@ -27,18 +27,26 @@
   "\x1b[?25h\x1b[0m\x1b[?1049l"
 
 static volatile sig_atomic_t g_winch = 0, g_quit = 0;
+#ifndef _WIN32
 static struct termios g_saved;
+#endif
 static bool g_saved_ok = false;
 
+#ifndef _WIN32
 static void on_sig(int s) {
   if (s == SIGWINCH)
     g_winch = 1;
   else
     g_quit = 1;
 }
+#endif
 
 static void restore(void) {
+#ifdef _WIN32
+  if (g_saved_ok) sl_console_restore();
+#else
   if (g_saved_ok) tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_saved);
+#endif
   ssize_t r = write(STDOUT_FILENO, TERM_LEAVE, strlen(TERM_LEAVE));
   (void)r;
 }
@@ -88,6 +96,27 @@ int client_run(int fd) {
   uint16_t cols, rows, cell_w, cell_h;
   term_size(&cols, &rows, &cell_w, &cell_h);
 
+#ifdef _WIN32
+  /* Raw mode is a console mode rather than a line discipline, and stdin is a
+   * console handle that WSAPoll cannot wait on -- so a pump thread turns it
+   * into a socket and the poll set below stays two entries wide, as on POSIX.
+   * There is no SIGWINCH either: a resize is noticed by comparing the size,
+   * which the loop already re-reads whenever it is about to send one. */
+  if (!sl_console_raw()) {
+    fprintf(stderr, "slosh: not a terminal\n");
+    return 1;
+  }
+  g_saved_ok = true;
+  int stdin_fd = sl_console_stdin_socket();
+  if (stdin_fd < 0) {
+    sl_console_restore();
+    fprintf(stderr, "slosh: cannot read the console\n");
+    return 1;
+  }
+  atexit(restore);
+  write_all(STDOUT_FILENO, TERM_ENTER, strlen(TERM_ENTER));
+#else
+  int stdin_fd = STDIN_FILENO;
   if (tcgetattr(STDIN_FILENO, &g_saved) != 0) {
     fprintf(stderr, "slosh: not a terminal\n");
     return 1;
@@ -106,6 +135,7 @@ int client_run(int fd) {
   sigaction(SIGTERM, &sa, NULL);
   sigaction(SIGHUP, &sa, NULL);
   signal(SIGPIPE, SIG_IGN);
+#endif
 
   send_size(fd, MSG_HELLO, cols, rows, cell_w, cell_h);
 
@@ -115,10 +145,17 @@ int client_run(int fd) {
 
   while (!g_quit) {
     struct pollfd pfds[2] = {
-        {.fd = STDIN_FILENO, .events = POLLIN},
+        {.fd = stdin_fd, .events = POLLIN},
         {.fd = fd, .events = POLLIN},
     };
+#ifdef _WIN32
+    /* Bounded, so a console that changed size without producing a byte is
+     * still noticed promptly. */
+    int n = poll(pfds, 2, 200);
+    if (sl_console_resized()) g_winch = 1;
+#else
     int n = poll(pfds, 2, -1);
+#endif
 
     if (g_winch) {
       g_winch = 0;
@@ -134,7 +171,7 @@ int client_run(int fd) {
 
     if (pfds[0].revents & POLLIN) {
       uint8_t buf[65536];
-      ssize_t got = read(STDIN_FILENO, buf, sizeof buf);
+      ssize_t got = read(stdin_fd, buf, sizeof buf);
       if (got > 0 && msg_send(fd, MSG_INPUT, buf, (size_t)got) != 0) break;
       if (got == 0) break;
     }

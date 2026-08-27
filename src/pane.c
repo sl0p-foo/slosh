@@ -457,12 +457,21 @@ static void sq_append(char *out, size_t cap, size_t *len, const char *arg) {
 
 const char *pane_foreground(const pane_t *p, char *buf, size_t cap) {
   if (!p || p->pty.fd < 0 || p->pty.pid <= 0) return NULL;
+#ifdef _WIN32
+  pid_t fg = sl_proc_foreground(p->pty.pid);
+#else
   pid_t fg = tcgetpgrp(p->pty.fd);
+#endif
   if (fg <= 0 || fg == p->pty.pid) return NULL; /* the pane's own shell */
 
   char raw[4096];
   size_t n = 0;
-#ifdef __APPLE__
+#ifdef _WIN32
+  /* The image name, which is all a Windows snapshot offers without reading
+   * another process's memory. Shaped like the others: NUL-terminated. */
+  if (!sl_proc_cmdline(fg, raw, sizeof raw)) return NULL;
+  n = strlen(raw) + 1;
+#elif defined(__APPLE__)
   /* No /proc: KERN_PROCARGS2 is where Darwin keeps a process's argv. The block
    * is argc as an int, then the executable path, then padding, then argc
    * NUL-terminated arguments -- so we step over the path and the padding to

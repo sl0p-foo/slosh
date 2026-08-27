@@ -5,6 +5,9 @@
 /build/
 .scratch/
 vendor/libghostty-vt/zig-out/
+# one per cross-compiled Windows arch (Makefile.windows)
+vendor/libghostty-vt/zig-out-win-*/
+*.obj
 vendor/libghostty-vt/.zig-cache/
 vendor/libghostty-vt/zig-pkg/
 __pycache__/
