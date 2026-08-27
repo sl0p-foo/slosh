@@ -188,15 +188,26 @@ verify: ## check the signature is valid and well-formed
 
 # ── package for notarization ────────────────────────────────────────────────
 # A bare CLI binary can't be submitted to Apple; it must be inside a .zip,
-# .pkg, or .dmg. --keepParent preserves the filename inside the archive.
+# .pkg, or .dmg. --keepParent preserves the directory name inside the archive.
 # (The output dir is made in-recipe on purpose: a `$(DIST):` target would
 # collide with the phony `dist` command below and create a circular rule.)
-zip: sign ## zip the signed binary for submission / Homebrew
+#
+# The zip carries the same paperwork as the linux tarballs -- the licenses are
+# not decoration (libghostty-vt and stb_image are statically linked into this
+# binary too) and the manpages are as useful here as anywhere. The list is
+# read out of the main Makefile's REL_DOCS rather than copied, so the two
+# artifacts cannot drift apart; both Makefiles travel to the builder together.
+REL_DOCS := $(shell sed -n 's/^REL_DOCS[[:space:]]*:=[[:space:]]*//p' Makefile)
+
+zip: sign ## zip the signed binary + docs for submission / users
+	@test -n "$(REL_DOCS)" || { echo "  [FAIL] REL_DOCS not found in Makefile"; exit 1; }
 	@mkdir -p $(DIST)
-	@rm -f "$(ZIP)" "$(DIST)/slosh"
-	@cp "$(BIN)" "$(DIST)/slosh"          # stage as a clean top-level name
-	@ditto -c -k "$(DIST)/slosh" "$(ZIP)"  # single file -> archive contains just 'slosh'
-	@rm -f "$(DIST)/slosh"
+	@rm -rf "$(ZIP)" "$(DIST)/$(STEM)"
+	@mkdir -p "$(DIST)/$(STEM)"
+	@cp "$(BIN)" "$(DIST)/$(STEM)/slosh"
+	@cp $(REL_DOCS) "$(DIST)/$(STEM)/"
+	@ditto -c -k --keepParent "$(DIST)/$(STEM)" "$(ZIP)"
+	@rm -rf "$(DIST)/$(STEM)"
 	@echo "  [ZIP]  $(ZIP)"
 
 # ── notarize ────────────────────────────────────────────────────────────────
