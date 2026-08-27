@@ -114,8 +114,18 @@ $(VT_LIB):
 # PATH -- but on a machine with only the Command Line Tools (no full Xcode)
 # that xcodebuild is a stub that fails, so the auto-detect turns a working
 # build into a broken one. We never consume the xcframework, so disable it.
+#
+# -Dversion-string: the vendored tree has no .git of its own, so upstream's
+# version detection runs `git describe` in *our* repository and finds *our*
+# tags -- and a slosh release tag (v0.1.0) is not a ghostty version, which
+# upstream treats as a fatal mismatch. Passing the version from its own
+# build.zig.zon is what the fallback would have computed, read from the one
+# place a re-vendor updates.
+VT_VERSION := $(shell sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' $(VT)/build.zig.zon | head -1)
+VT_FLAGS   := -Demit-lib-vt -Demit-xcframework=false -Dversion-string=$(VT_VERSION) -Doptimize=ReleaseFast
+
 vendor: ## build the vendored libghostty-vt (needs zig 0.16)
-	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build -Demit-lib-vt -Demit-xcframework=false -Doptimize=ReleaseFast
+	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build $(VT_FLAGS)
 
 TEST_BIN := build/input_test
 
@@ -380,8 +390,7 @@ release-linux: build/version.h build/logo.h ## cross-build the static linux tarb
 	  vtpfx=build/vt/$$t; vta=$$vtpfx/lib/libghostty-vt.a; \
 	  odir=build/obj/$$t; stage=build/stage/$$stem; \
 	  printf '  %-5s %s\n' '[VT]' "$$t"; \
-	  ( cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build \
-	      -Demit-lib-vt -Demit-xcframework=false -Doptimize=ReleaseFast \
+	  ( cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build $(VT_FLAGS) \
 	      -Dtarget=$$t --prefix "$(CURDIR)/$$vtpfx" ); \
 	  mkdir -p $$odir; \
 	  for c in $(SRC); do \
