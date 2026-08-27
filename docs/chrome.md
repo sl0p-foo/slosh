@@ -1,8 +1,8 @@
 # Chrome shaders
 
 A frame is a rect too, so it is a pass too. `where="chrome"` on any entry in
-`shaders` or in a `states` block runs that pass over a pane's **frame** — border,
-padding, title, buttons — instead of its contents.
+`shaders` or in a `states` block runs that pass over a pane's **frame** -- border,
+padding, title, buttons -- instead of its contents.
 
 ```kdl
 states {
@@ -15,8 +15,8 @@ Nothing else changes: same shaders, same `amount`, same
 [expressions](shaders.md#strength-as-an-expression), same chain order. One new
 word.
 
-You have already seen one: the default bell flash — blinks then a breathe on
-the frame of a pane that rang, in theme's `bell` colour — is exactly this, a
+You have already seen one: the default bell flash -- blinks then a breathe on
+the frame of a pane that rang, in theme's `bell` colour -- is exactly this, a
 chrome tint whose amount reads `since`. (The shimmer that crosses the pane's
 body at the same moment is the same idea without the new word: an ordinary
 content pass in the same chain.) Writing your own `bell { … }` replaces both;
@@ -28,7 +28,7 @@ content pass in the same chain.) Writing your own `bell { … }` replaces both;
 default; mixing that towards a colour paints a rectangle behind the glyphs
 instead of colouring them, and leaves it there until the pane changes state.
 `fg` also keeps the padding inside the border out of it, since a blank cell has
-no foreground to colour — so the effect lands on exactly the rules, the title and
+no foreground to colour -- so the effect lands on exactly the rules, the title and
 the buttons.
 
 **The contents are cut out of the pass.** A full-strength chrome tint cannot
@@ -38,11 +38,11 @@ are two rects and two passes.
 ## Positions are the whole frame's
 
 `x`/`y` are counted from the frame's top-left corner, with `cols`/`rows` the size
-of the pane's rect — not of one side. One pass over the whole ring, so an effect
+of the pane's rect -- not of one side. One pass over the whole ring, so an effect
 can travel round a border instead of restarting at every corner.
 
 For anything that *travels*, though, the coordinate you want is distance along
-the ring, which the language can work out — clockwise from the top-left:
+the ring, which the language can work out -- clockwise from the top-left:
 
 ```
 (y == 0 ? x : x == cols-1 ? cols - 1 + y
@@ -55,12 +55,12 @@ with the perimeter itself `2 * cols + 2 * rows - 4`. Three things fall out of it
   corner it started from instead of stopping at a seam.
 - `(p - head + P) % P` is "how far ahead of the head", which makes an arc rotate
   rather than a blob slide.
-- `sin(TAU * p / P)` is that position **as an angle**, one cycle to the lap — and
+- `sin(TAU * p / P)` is that position **as an angle**, one cycle to the lap -- and
   a sine wraps at the corner for free, where a ramp needs the trick above. Any
   whole number of lobes (`* 3 / P`) fits the ring exactly, which is what makes a
   standing wave stand.
 
-There is no way to name a subexpression, so the formula is written out in full —
+There is no way to name a subexpression, so the formula is written out in full --
 which is why a small effect is a long line.
 
 Thirteen of them are ready to paste in
@@ -93,7 +93,7 @@ this state, where `t` only knows what time it is. The `bell` state ends when you
 look at the pane, because that is what answering a bell is.
 
 A pane that a small terminal has collapsed to a single row is chrome all the way
-through, which makes this the only kind of pass that can still colour it — and
+through, which makes this the only kind of pass that can still colour it -- and
 that is the state where a colour is worth the most.
 
 ## Animation costs a clock

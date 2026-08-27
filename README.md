@@ -1,6 +1,6 @@
 # slosh
 
-A terminal multiplexer — panes, tabs, sessions you can detach from — written in
+A terminal multiplexer -- panes, tabs, sessions you can detach from -- written in
 C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
 ## Install
@@ -35,13 +35,13 @@ split, `C-a ?` for the keys, `C-a p` for every command by name.
 
 ## Docs
 
-**[docs/](docs/index.md)** — [keys](docs/keys.md) ·
+**[docs/](docs/index.md)** -- [keys](docs/keys.md) ·
 [panes](docs/panes.md) · [configuration](docs/config.md) ·
 [shaders](docs/shaders.md) · [chrome](docs/chrome.md) ·
 [layouts](docs/layouts.md) · [scripting](docs/scripting.md) ·
 [how it works](docs/design.md)
 
-`make docs` renders the same pages as a static site into `build/docs` — no
+`make docs` renders the same pages as a static site into `build/docs` -- no
 dependencies, one file of Python and one stylesheet.
 
 ## What is different about it
@@ -49,7 +49,7 @@ dependencies, one file of Python and one stylesheet.
 - **The mouse works properly.** Click the middle of a border to split toward it,
   drag a gap to move a boundary, drag a pane by its title to swap it. Everything
   drawn registers what it is as it is drawn, so a click and a preview cannot
-  disagree — which is also how the split target can be *part* of an edge without
+  disagree -- which is also how the split target can be *part* of an edge without
   the highlight and the hit ever drifting apart.
 - **The layout is recomputed, never stored.** Small terminal? The tab becomes a
   list of headers, and comes back to exactly the arrangement you had.
@@ -57,7 +57,7 @@ dependencies, one file of Python and one stylesheet.
   `[re-run]` and `[close]` in its frame.
 - **Configuration is one KDL file** that reloads on save, can be built from
   `include`d pieces, and refuses a broken file instead of half-applying it.
-- **Colour passes over cells** — dim, tint, rulers, spotlights, and a border that
+- **Colour passes over cells** -- dim, tint, rulers, spotlights, and a border that
   can flash when a pane rings, with strengths written as expressions.
 - **Scriptable to the same depth it is usable**: one JSON object per line over
   the session's socket, and a pane can draw its own status bar and buttons with

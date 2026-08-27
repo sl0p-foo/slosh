@@ -21,7 +21,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | verb | |
 |---|---|
 | `panes` `tabs` | what exists, with ids, rects, titles, purposes, state. A pane's `tab_id` is what `move-pane` and `select-tab` want; its `tab` is where that tab sits in the strip |
-| `snapshot` | the composited screen, as JSON, `format:"text"`, or `format:"bytes"` — the emitter's own output for this frame (a second call is the delta) |
+| `snapshot` | the composited screen, as JSON, `format:"text"`, or `format:"bytes"` -- the emitter's own output for this frame (a second call is the delta) |
 | `deadline` | when the session wants its next frame, in ms, or -1 |
 | `send` | bytes as if typed, decoded like input (`"data":"\\x01\\\\"`) |
 | `raw` | bytes straight into the focused pane's pty |
@@ -29,16 +29,16 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `split` | `dir:"cols"\|"rows"`, `id` for which pane to split |
 | `focus` | `id` |
 | `close` `rerun` | `id`, or 0 for the focused pane |
-| `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1` — the way back from a pane that painted itself unreadable |
+| `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1` -- the way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` `set-name` | tabs, by `id` or `index` |
 | `set-name target="pane"` | a pane's name, which outranks the title its program sets |
-| `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`. The pane keeps running — same pty, same scrollback |
+| `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`. The pane keeps running -- same pty, same scrollback |
 | `float` | bare: toggle a pane [floating](panes.md#floating-a-pane) (`id`, or 0 for the focused one). With any of `x` `y` `w` `h` it *places*: floats first when tiled, re-places when floating, never un-floats; omitted fields keep their value |
 | `new-float` | a fresh floating shell over the current tab, centred, in the focused pane's directory; answers `id` |
 | `set-name` | `target:"tab"` (the default, because that is what this verb has always meant) or `"pane"`, `id`, `name`. A pane accepts 0 for the focused one. A pane's name wins over the title the program sets, so this is how a program that keeps announcing something stale gets overruled; an empty `name` clears it and hands the label back. Refusals say `no such pane` or `no such tab`, so a mistyped target is visible in the reply |
-| `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program — a lock held over an empty string was a state nothing could get out of |
+| `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program -- a lock held over an empty string was a state nothing could get out of |
 | `dump-layout` `apply-layout` | see [layouts](layouts.md). `dump-layout` takes `tab` (0 for every tab), `relative_to` to write every `cwd=` under that directory instead of absolute, and `suspend` (`as-is` `none` `commands` `all`); it answers `kdl` `panes` `suspended`, and an unknown `tab` is an error rather than an empty document |
-| `workspaces` | the projects on disk and which of them are open: `roots` says whether any are configured at all, and each entry has `name` `path` `purpose` `layout` (a file path, or "") `mtime` `tab` (0 when closed) — see [workspaces](workspaces.md) |
+| `workspaces` | the projects on disk and which of them are open: `roots` says whether any are configured at all, and each entry has `name` `path` `purpose` `layout` (a file path, or "") `mtime` `tab` (0 when closed) -- see [workspaces](workspaces.md) |
 | `open-workspace` | `name` or `path`, and `suspended`; answers `tab` `purpose` `path` `created` `tabs` `honoured`. Already open means focused, with `created:false` |
 | `close-workspace` | `name` or `purpose`; answers `closed`, how many tabs went |
 | `save-workspace` | write this tab as the project's layout: `tab` (0 for the current one), `path` for a tab that is not a workspace yet, `suspend`, and `force` to overwrite a layout the project already has; answers `path` `purpose` `panes` `suspended` `replaced` |
@@ -53,7 +53,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 
 ## Driving a project
 
-Everything a program needs in a project it has never seen — open it, ask what is
+Everything a program needs in a project it has never seen -- open it, ask what is
 in it, act on the purposes the project's own layout declared:
 
 ```bash
@@ -64,7 +64,7 @@ $ slosh -s work cmd '{"cmd":"open-workspace","name":"api"}'
 ```
 
 **The second call focuses what is there and says `created:false`.** Opening is
-idempotent, so a script drives it in a loop without asking first — and "have I
+idempotent, so a script drives it in a loop without asking first -- and "have I
 opened this already" is the question a script gets wrong after a crash or a
 re-attach.
 
@@ -83,13 +83,13 @@ that it starts asleep; nothing in the session, the config or the calling program
 had to know that.
 
 `workspaces` reports each project's layout file `mtime`, so a tool that kept the
-mtime it opened a workspace with can tell the file has moved on since — without
+mtime it opened a workspace with can tell the file has moved on since -- without
 the session storing a byte on its behalf. Re-applying the changed layout is
 deliberately not offered: the panes it would replace have processes in them.
 
 ## A pane can draw its own chrome
 
-By printing an escape sequence — no plugin, no config:
+By printing an escape sequence -- no plugin, no config:
 
 ```bash
 printf '\033]5577;1;status;building 3/7\033\\'
@@ -145,8 +145,8 @@ reading it first.
 ## Headless
 
 `slosh --script` is the whole program without a terminal: commands on stdin,
-answers on stdout. It is how the test suite works — drive these events, assert
-this screen — which is also why the suite is 1,500-odd real end-to-end checks that
+answers on stdout. It is how the test suite works -- drive these events, assert
+this screen -- which is also why the suite is 1,500-odd real end-to-end checks that
 finish in about thirteen seconds.
 
 ```bash

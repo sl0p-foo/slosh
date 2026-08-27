@@ -8,23 +8,23 @@ it cannot disagree with your keyboard. `C-a p` opens the same list as a palette
 you can type into.
 
 On a terminal too short for the whole sheet it shows what fits and says how much
-it did not — `+7 more, in docs/keys.md`, which is the table below.
+it did not -- `+7 more, in docs/keys.md`, which is the table below.
 
 ## Defaults
 
 | key | does |
 |---|---|
-| `Enter` | split whichever way there is more room — across the longer side, and the other axis if that will not fit |
+| `Enter` | split whichever way there is more room -- across the longer side, and the other axis if that will not fit |
 | `\` `-` | split into columns / rows, when you mean one |
 | `h` `j` `k` `l`, or arrows | move focus |
 | `o` | the next pane |
-| `H` `J` `K` `L`, or shift+arrows | move the boundary between panes — or the pane itself, when it is [floating](panes.md#floating-a-pane) |
+| `H` `J` `K` `L`, or shift+arrows | move the boundary between panes -- or the pane itself, when it is [floating](panes.md#floating-a-pane) |
 | `0` | give every visible pane an even share |
 | `Space` | turn the layout a quarter turn (four brings it back) |
 | `z` | zoom this pane to fill the tab, and back |
 | `m` | minimise it into the strip along the bottom |
 | `f` | [float](panes.md#floating-a-pane) it above the layout, and back |
-| `F` | a new floating shell — the throwaway terminal |
+| `F` | a new floating shell -- the throwaway terminal |
 | `=` (`+`) `-` | grow / shrink a focused float about its centre (`-` splits, when the pane is tiled) |
 | `x` | close this pane |
 | `X` | close this tab, and everything in it |
@@ -36,7 +36,7 @@ it did not — `+7 more, in docs/keys.md`, which is the table below.
 | `Tab` `shift+Tab` | next / previous tab |
 | `1`…`9` | go to that tab |
 | `s` | search: find a pane by name |
-| `w` | the projects picker — every project under your roots, open or not ([workspaces](workspaces.md)) |
+| `w` | the projects picker -- every project under your roots, open or not ([workspaces](workspaces.md)) |
 | `W` | write this tab out as this project's layout ([workspaces](workspaces.md)) |
 | `p` | the command palette |
 | `PgUp` `PgDn` `Home` `End` | [scrollback](config.md#scrollback) (the wheel works too) |
@@ -60,8 +60,8 @@ press without counting first.
 
 ## Rebinding
 
-`C-a` is a default, not a decision. If you want it back for start-of-line — and
-plenty of people do — one line takes it:
+`C-a` is a default, not a decision. If you want it back for start-of-line -- and
+plenty of people do -- one line takes it:
 
 ```kdl
 keys { prefix "ctrl+b" }        // or ctrl+space, or alt+x, or ...
@@ -83,7 +83,7 @@ keys {
 Modifiers are `ctrl+ alt+ shift+ super+`, or the shorthand the cheatsheet
 prints: `C-` `M-` `S-`. Named keys are `left right up down enter tab escape
 space backspace home end pageup pagedown delete insert backslash minus slash
-comma period f1`…`f12`, and the arrows can be written as `←` `→` `↑` `↓` too —
+comma period f1`…`f12`, and the arrows can be written as `←` `→` `↑` `↓` too --
 so a chord copied off the cheatsheet is a chord you can paste into a config.
 
 Anything else is the character you press. That includes the shifted ones, which
@@ -129,10 +129,10 @@ being bound at all.
 | session | `palette` `help` `edit-config` `detach` `quit` `literal-prefix` |
 
 `>` and `<` are the shifted period and comma. A terminal does not report the shift
-for punctuation, so `.` and `,` answer to them too — the same deal `/` has with
+for punctuation, so `.` and `,` answer to them too -- the same deal `/` has with
 `?`, and the reason the defaults bind both halves.
 
-`scroll-up` and `scroll-down` have no default key — the wheel does that job —
+`scroll-up` and `scroll-down` have no default key -- the wheel does that job --
 which is exactly the case the palette exists for. So does `clear-shaders`, which
 undoes whatever the program in a pane painted on it
 ([shaders](shaders.md#prototyping-in-a-pane)); bind it if you leave

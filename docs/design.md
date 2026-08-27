@@ -1,7 +1,7 @@
 # How it works
 
-Two decisions do most of the work. The rest — twenty-two numbered decisions,
-each with what it cost to get wrong — is in
+Two decisions do most of the work. The rest -- twenty-two numbered decisions,
+each with what it cost to get wrong -- is in
 `DESIGN.md`.
 
 ## One geometry
@@ -9,7 +9,7 @@ each with what it cost to get wrong — is in
 **Everything drawn registers what it is, as it is drawn**, and a click is a
 lookup in that list. Drawing and hit-testing cannot disagree, because there is
 only one of them. The dashed guide that shows where a split would land is drawn
-from the same rect the click will resolve against, in the same pass — so a
+from the same rect the click will resolve against, in the same pass -- so a
 preview that lies is not a bug you can have.
 
 The same rule applies to state that could be derived: the layout is a pure
@@ -81,7 +81,7 @@ next person. A mismatch is refused with both versions named rather than quietly
 reformatting the tree. Bumping it is one line in `ruff.toml`, one in the Makefile,
 and a reformat commit -- which is the honest cost of a new version.
 
-The base is LLVM, because that is what this code was written in by hand — two
+The base is LLVM, because that is what this code was written in by hand -- two
 spaces, 80 columns, `char *p`, braces attached. The settings that differ from it
 were chosen by measuring the reformat rather than by taste: LLVM alone rewrote 38%
 of the lines, mostly by splitting `if (!p) return false;` in two and reflowing
@@ -89,7 +89,7 @@ comments that are prose. Keeping those two and leaving include order alone bring
 it to 17%, which is alignment and table packing.
 
 Comments are not reflowed. They are prose here, wrapped by hand, and sometimes the
-line breaks carry meaning — a paragraph, a list, a diagram of a pane. A comment
+line breaks carry meaning -- a paragraph, a list, a diagram of a pane. A comment
 that runs long is a thing for a person to fix.
 
 The Python is the opposite: left entirely at ruff's defaults. The C here was
