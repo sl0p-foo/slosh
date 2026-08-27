@@ -48,6 +48,9 @@ class Slosh < Formula
     # lines here. `make install PREFIX=...` exists for everyone not using brew
     # and puts the same files in the same places.
     bin.install "build/slosh"
+    # Guarded because the formula must be able to build any commit, including
+    # ones older than the manpage.
+    man1.install "docs/slosh.1" if File.exist?("docs/slosh.1")
     pkgshare.install "config/config.kdl", "config/example.layout"
     %w[themes chrome shaders].each do |d|
       pkgshare.install Dir["contrib/#{d}"] if File.directory?("contrib/#{d}")

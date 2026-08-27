@@ -1,0 +1,383 @@
+.\" slosh(1) -- hand-written man(7), no toolchain renders it into being.
+.\" Kept in docs/ beside the longer prose; `make install` puts it under
+.\" share/man/man1. When behaviour changes, this file is part of the change.
+.TH SLOSH 1 "August 2026" "slosh" "User Commands"
+.SH NAME
+slosh \- a terminal multiplexer
+.SH SYNOPSIS
+.B slosh
+.RB [ \-s
+.IR name ]
+.RB [ \-\-layout
+.IR file ]
+.RB [ \-\-no\-reload ]
+.RB [ \-\-
+.IR command\ ... ]
+.br
+.B slosh ls
+.br
+.B slosh
+.RB [ \-s
+.IR name ]
+.B cmd
+.I line
+.br
+.B slosh \-\-check
+.RI [ file ]
+.br
+.B slosh \-\-dump\-config
+.br
+.B slosh \-\-headless
+|
+.B \-\-script
+.RB [ \-\-cols
+.IR n ]
+.RB [ \-\-rows
+.IR n ]
+.RB [ \-\-idle\-ms
+.IR n ]
+.RB [ \-\-layout
+.IR file ]
+.RB [ \-\-
+.IR command\ ... ]
+.SH DESCRIPTION
+.B slosh
+multiplexes one terminal into panes and tabs, grouped into named
+.I sessions
+that keep running when the terminal goes away.
+Run with no arguments it attaches to the session called
+.BR main ,
+creating it if nobody is home; detaching (or losing the connection)
+leaves the session and everything in it running, and the same command
+reattaches.
+.PP
+A trailing
+.B \-\-
+.I command\ ...
+is run in the first pane instead of the configured shell.
+Every other pane runs the shell the configuration names, or
+.BR $SHELL .
+.PP
+Attaching from inside a pane of the same session is refused, because the
+new client would displace the very view it was typed into; the error
+message names the escape hatches.
+Attaching to a
+.I different
+session from inside a pane is nesting, and allowed.
+.SH OPTIONS
+.TP
+.BI \-s\  name
+The session to attach to, create, or (with
+.BR cmd )
+address.
+Defaults to
+.BR main .
+.TP
+.BI \-\-layout\  file
+Apply a layout file to the session being created: tabs, splits,
+directories and commands, as written by
+.B dump\-layout
+or by hand.
+See the layouts chapter of the documentation.
+.TP
+.B \-\-no\-reload
+Do not watch the configuration file for changes.
+By default a running session re-reads it when it changes on disk, and a
+file that no longer parses is reported and otherwise ignored.
+.TP
+.BI \-\-check\  [file]
+Read a configuration \(em or, if the file looks like one, a layout \(em
+the way a session would, and print everything it could not honour, one
+problem per line as
+.IR file:line:\ what .
+Without an argument it checks the configuration a session would actually
+load.
+Exits 1 when there is anything to say, so it slots into an editor's
+compile step or a pre-commit hook without glue.
+.TP
+.B \-\-dump\-config
+Print every setting with its default, as a file you could have written.
+.RS
+.PP
+.EX
+slosh \-\-dump\-config > ~/.config/slosh/config.kdl
+.EE
+.PP
+is a supported way to start a configuration.
+The values are the defaults, not the ones currently in effect:
+this is the file to begin from, and
+.B \-\-check
+is the one that reads yours back.
+.RE
+.TP
+.B \-\-headless
+Run the whole compositor without a terminal: start the command, let it
+settle, print the composed screen to standard output, and exit.
+Useful for seeing what a program draws without attaching anything.
+.TP
+.B \-\-script
+The headless driver: the same compositor reading control commands from
+standard input, one per line, and answering on standard output \(em the
+same vocabulary the control socket speaks, without a server or a socket.
+This is what the test suite drives.
+.TP
+.BI \-\-cols\  n ,\ \-\-rows\  n
+The screen size for the headless modes (default 80\(mu24).
+When attaching from a terminal, the terminal's own size wins.
+.TP
+.BI \-\-idle\-ms\  n
+How long
+.B \-\-headless
+waits for output to go quiet before printing the screen (default 300).
+.TP
+.B \-\-version
+Print the version and exit.
+It is the same string the status line shows, so \(lqwhich build is
+this\(rq has one answer whether you ask the binary or the session.
+.TP
+.BI \-\-server\  name
+Run a session's server in the foreground.
+Internal: attaching spawns this for you.
+.SH COMMANDS
+.TP
+.B ls
+List sessions, each
+.B running
+or
+.B stale
+(a socket whose server no longer answers).
+.TP
+.BI cmd\  line
+Send one control command \(em a JSON object \(em to the session named by
+.B \-s
+and print the reply.
+A detached session answers exactly as an attached one does.
+The vocabulary (panes, tabs, layouts, workspaces, clipboard, snapshots,
+and more) is listed in the scripting chapter of the documentation:
+.RS
+.PP
+.EX
+slosh \-s work cmd '{"cmd":"new\-tab","name":"api"}'
+slosh \-s work cmd '{"cmd":"panes"}'
+.EE
+.RE
+.SH KEYS
+Everything is the
+.B prefix
+\(em
+.B ctrl+a
+by default \(em and then one key.
+Pressing the prefix twice sends a literal
+.B ctrl+a
+to the program in the pane.
+.B prefix\ ?
+shows a cheatsheet built from the bindings actually in force, and
+.B prefix\ p
+opens the same list as a palette you can type into; both therefore
+outrank the table below, which shows the defaults.
+.TP
+.B Enter
+Split whichever way there is more room;
+.B \e
+and
+.B \-
+split into columns or rows when you mean one.
+.TP
+.BR h\ j\ k\ l ,\ arrows
+Move focus;
+.B o
+focuses the next pane.
+.TP
+.BR H\ J\ K\ L ,\ shift+arrows
+Move the boundary between panes, or the pane itself when it is floating.
+.TP
+.B 0
+Give every visible pane an even share.
+.TP
+.B Space
+Turn the layout a quarter turn.
+.TP
+.B z
+Zoom this pane to fill the tab, and back.
+.TP
+.B m
+Minimise it into the strip along the bottom.
+.TP
+.BR f ,\ F
+Float this pane above the layout, and back; a
+.I new
+floating shell \(em the throwaway terminal.
+.TP
+.B =\ (+),\ \-
+Grow / shrink a focused float about its centre
+.RB ( \-
+splits, when the pane is tiled).
+.TP
+.BR x ,\ X
+Close this pane; close this tab and everything in it.
+On the last tab
+.B X
+refuses and points at
+.BR q .
+.TP
+.B r
+Run a finished pane's command again.
+.TP
+.B P
+Set this pane's purpose (a label layouts and scripts address).
+.TP
+.BR > \ < ,\ b
+Push this pane to the next / previous tab; break it out into a tab of
+its own.
+.TP
+.BR c ,\ Tab ,\ shift+Tab ,\ 1 \&...\& 9
+New tab; next / previous tab; go to that tab.
+.TP
+.B s
+Find a pane by name.
+.TP
+.BR w ,\ W
+The projects picker (workspaces); write this tab out as this project's
+layout.
+.TP
+.B p
+The command palette.
+.TP
+.B PgUp\ PgDn\ Home\ End
+Scrollback; the mouse wheel works too.
+.TP
+.B e
+Edit the configuration, in a pane.
+.TP
+.B d
+Detach, leaving the session running.
+.TP
+.B q
+Quit the session.
+.PP
+Rebinding is one line of configuration \(em
+.B keys { prefix "ctrl+b" }
+\(em and a
+.B keys
+block adds to the defaults rather than replacing them; binding a key to
+.B none
+takes it away.
+.SH MOUSE
+Clicking focuses.
+Dragging with the left button selects, and releasing copies \(em the
+selection is the copy, sent to your terminal as an OSC\ 52 clipboard
+write.
+A drag held past a pane's top or bottom edge scrolls the viewport under
+it, so more than one screenful is selectable in one gesture; the further
+past the edge, the faster.
+A double-click selects the word under the pointer, where words stop at
+configurable separators.
+The middle button pastes the last selection.
+The wheel scrolls a pane's scrollback, or becomes arrow keys for a
+full-screen program without scrollback of its own.
+.PP
+A program that asks for the mouse gets it \(em clicks, wheel and all \(em
+and holding
+.B shift
+selects over it, the escape hatch every terminal shares.
+.PP
+The chrome is draggable: a title moves a pane onto another to swap them
+(or onto the tab strip to move it there), a border drags the boundary,
+and the corners resize floats.
+Every button on the frame says what it does when the pointer rests on
+it.
+.SH CONFIGURATION
+One KDL file:
+.IR ~/.config/slosh/config.kdl ,
+honouring
+.B $XDG_CONFIG_HOME
+and overridden wholesale by
+.BR $SLOSH_CONFIG .
+No file is required; every setting has a default, and
+.B \-\-dump\-config
+prints them all as a starting point.
+A running session re-reads the file when it changes (see
+.BR \-\-no\-reload ),
+keeping the working configuration when the new file is broken, and
+.B include
+composes files \(em a theme, a shared base \(em with the includer
+winning.
+.PP
+An installed copy of the annotated default configuration, example
+layouts, themes and shader presets lives under
+.IR PREFIX/share/slosh/ .
+.SH ENVIRONMENT
+Set in every pane:
+.TP
+.B SLOSH
+.B 1
+\(em you are inside a pane.
+.TP
+.B SLOSH_SESSION
+The name of the session this pane belongs to \(em which one of possibly
+several, the part a program cannot work out for itself.
+Unset under
+.BR \-\-script ,
+which has no session.
+.TP
+.B SLOSH_BIN
+The binary that made this pane, so a program can reach the session even
+when
+.B slosh
+is not on its
+.BR PATH .
+.PP
+Read:
+.TP
+.B SLOSH_CONFIG
+The configuration file, overriding the default path.
+.TP
+.B XDG_CONFIG_HOME
+Where the default configuration path starts.
+.TP
+.B XDG_RUNTIME_DIR
+Where sockets and server logs live; without it,
+.IR /tmp/slosh\-UID/ .
+.TP
+.B SHELL
+What a pane runs when the configuration does not say.
+.TP
+.B EDITOR
+What
+.B prefix\ e
+opens the configuration in, when the configuration does not say.
+.SH FILES
+.TP
+.I ~/.config/slosh/config.kdl
+The configuration.
+.TP
+.I $XDG_RUNTIME_DIR/slosh/name.sock
+A session's control socket
+.RI ( /tmp/slosh\-UID/name.sock
+without
+.BR XDG_RUNTIME_DIR ).
+.TP
+.I $XDG_RUNTIME_DIR/slosh/name.log
+That session's server log.
+.TP
+.I PREFIX/share/slosh/
+The annotated default configuration, an example layout, and the shipped
+themes, chrome and shader presets.
+.TP
+.I PREFIX/share/doc/slosh/
+The full documentation, of which this page is the summary: keys, panes,
+configuration, shaders, layouts, workspaces, scripting, design.
+.SH EXIT STATUS
+0 on success, and for
+.B \-\-check
+a clean file; 1 when
+.B \-\-check
+found problems, or when attaching, starting or addressing a session
+failed; 2 for an unknown argument.
+.SH SEE ALSO
+.BR tmux (1),
+.BR screen (1)
+.PP
+The prose documentation under
+.IR PREFIX/share/doc/slosh/ ,
+which this page summarises.

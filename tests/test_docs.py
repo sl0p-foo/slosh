@@ -237,6 +237,70 @@ def test_html_in_the_source_is_escaped():
     check("and not a tag", "<script>" not in got, got[:400])
 
 
+# ---- the manpage ----------------------------------------------------------
+#
+# docs/slosh.1 is hand-written roff, and prose about a program drifts from the
+# program unless something holds them together. The same idea as the nav
+# checks above: the source of truth for what the CLI accepts is main.c's
+# parser and for what the environment means is the code that reads it, so the
+# manpage is checked against those rather than against a copy of itself.
+
+MAN = os.path.join(DOCS, "slosh.1")
+
+
+def test_the_manpage_covers_the_cli():
+    man = open(MAN).read()
+    main_c = open(os.path.join(ROOT, "src", "main.c")).read()
+
+    # Every option main.c compares against, plus the word commands. -h/--help
+    # print the usage line and are exempt: a manpage documenting the flag that
+    # asks for less documentation would be circular.
+    opts = set(re.findall(r'strcmp\(a, "(-[^"]+)"\)', main_c)) - {"-h", "--help", "--"}
+    words = set(re.findall(r'strcmp\(a, "([a-z]+)"\)', main_c))
+    for o in sorted(opts):
+        check(f"the manpage documents {o}", o.replace("-", "\\-") in man, o)
+    for w in sorted(words):
+        check(f"the manpage documents the {w} command", f"\n.B {w}" in man, w)
+
+
+def test_the_manpage_covers_the_environment():
+    """Every SLOSH_* variable the program reads or sets is a promise to
+    somebody's script, and the manpage is where they were promised."""
+    man = open(MAN).read()
+    names = set()
+    for f in os.listdir(os.path.join(ROOT, "src")):
+        if not f.endswith(".c"):
+            continue
+        src = open(os.path.join(ROOT, "src", f)).read()
+        names |= set(re.findall(r'(?:getenv|setenv|unsetenv)\("(SLOSH\w*)"', src))
+    check("main.c really was scanned", "SLOSH_SESSION" in names, str(names))
+    for n in sorted(names):
+        check(f"the manpage documents ${n}", n in man, n)
+
+
+def test_the_manpage_is_clean_roff():
+    """Pure ASCII (a manpage travels through implementations that never heard
+    of preconv) and, where groff is present, no warnings at its strictest."""
+    raw = open(MAN, "rb").read()
+    bad = [i for i, b in enumerate(raw) if b > 0x7F]
+    check("the roff is pure ASCII", not bad, f"non-ASCII at byte {bad[:3]}")
+
+    import shutil
+
+    if not shutil.which("groff"):
+        return  # the ASCII check above still ran; lint where lint exists
+    r = subprocess.run(
+        ["groff", "-man", "-rCHECKSTYLE=3", "-ww", "-z", MAN],
+        capture_output=True,
+        text=True,
+    )
+    check(
+        "groff -ww has nothing to say",
+        r.returncode == 0 and not r.stderr.strip(),
+        r.stderr.strip()[:300],
+    )
+
+
 if __name__ == "__main__":
     test_it_renders_every_page_in_the_nav()
     test_every_internal_link_lands_somewhere()
@@ -246,4 +310,7 @@ if __name__ == "__main__":
     test_the_markdown_subset()
     test_markup_inside_a_code_span_is_not_markup()
     test_html_in_the_source_is_escaped()
+    test_the_manpage_covers_the_cli()
+    test_the_manpage_covers_the_environment()
+    test_the_manpage_is_clean_roff()
     sys.exit(report())

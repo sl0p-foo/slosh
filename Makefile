@@ -362,8 +362,9 @@ macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a
 # out, and because both resolve the same tag the three names agree.
 DIST          ?= dist
 # Each tarball carries the binary plus the paperwork a redistributed build must
-# ship (see THIRD-PARTY-LICENSES: libghostty-vt and stb_image are linked in).
-REL_DOCS      := README.md LICENSE THIRD-PARTY-LICENSES
+# ship (see THIRD-PARTY-LICENSES: libghostty-vt and stb_image are linked in),
+# and the manpage, because a tarball is what a packager starts from.
+REL_DOCS      := README.md LICENSE THIRD-PARTY-LICENSES docs/slosh.1
 # The target triples we cross-build. The arch label in the artifact name is the
 # part before the first '-' (x86_64, aarch64).
 LINUX_TARGETS := x86_64-linux-musl aarch64-linux-musl
@@ -407,20 +408,23 @@ release: release-linux ## full release: linux tarballs + signed macOS zip + SHA2
 	$(Q)cat $(DIST)/SHA256SUMS
 
 # ── installation ────────────────────────────────────────────────────────────
-# For packagers (Homebrew's formula calls exactly this) and for anyone doing
+# For packagers (Homebrew's formula mirrors this layout) and for anyone doing
 # `sudo make install`. DESTDIR is the staging root a package manager wants;
 # PREFIX is where the files will finally live. The binary is the only thing
 # slosh needs to run -- the rest is example configuration you may copy into
-# ~/.config/slosh, so it goes to share/ and nothing reads it from there.
+# ~/.config/slosh, so it goes to share/ and nothing reads it from there. The
+# manpage goes where man(1) already looks, which is the whole point of one.
 PREFIX   ?= /usr/local
 DESTDIR  ?=
 BINDIR   := $(DESTDIR)$(PREFIX)/bin
 SHAREDIR := $(DESTDIR)$(PREFIX)/share/slosh
 DOCDIR   := $(DESTDIR)$(PREFIX)/share/doc/slosh
+MANDIR   := $(DESTDIR)$(PREFIX)/share/man/man1
 
 install: $(BIN) ## install to $PREFIX (default /usr/local, honours DESTDIR)
-	$(Q)install -d $(BINDIR) $(SHAREDIR) $(DOCDIR)
+	$(Q)install -d $(BINDIR) $(SHAREDIR) $(DOCDIR) $(MANDIR)
 	$(Q)install -m 755 $(BIN) $(BINDIR)/slosh
+	$(Q)install -m 644 docs/slosh.1 $(MANDIR)/slosh.1
 	$(Q)install -m 644 config/config.kdl config/example.layout $(SHAREDIR)/
 	$(Q)for d in themes chrome shaders; do \
 	  install -d $(SHAREDIR)/$$d; \
@@ -431,7 +435,7 @@ install: $(BIN) ## install to $PREFIX (default /usr/local, honours DESTDIR)
 	$(call say,[INST],$(BINDIR)/slosh)
 
 uninstall: ## remove what install put there
-	$(Q)rm -f $(BINDIR)/slosh
+	$(Q)rm -f $(BINDIR)/slosh $(MANDIR)/slosh.1
 	$(Q)rm -rf $(SHAREDIR) $(DOCDIR)
 	$(call say,[RM],$(BINDIR)/slosh)
 
