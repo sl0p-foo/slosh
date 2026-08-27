@@ -3,22 +3,6 @@
 A terminal multiplexer — panes, tabs, sessions you can detach from — written in
 C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
-```
-╭────────── nvim ─────────── ▬ □ ✕ ╮  ╭─────── npm run dev ─────── ▬ □ ✕ ╮
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  ╰──────────────────────────────────╯
-│                                  │
-│                                  │  ╭────────── shell ────────── ▬ □ ✕ ╮
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-╰──────────────────────────────────╯  ╰──────────────────────────────────╯
-```
-
 ## Install
 
 With [Homebrew](https://brew.sh) (macOS or Linux):
