@@ -152,6 +152,13 @@ else
         --exclude '/tests/fuzz/' \
         --exclude '.DS_Store' \
         "$root/" "$BUILDER:$DIR/" || fail "rsync failed"
+    # web/ and tests/fuzz/ are excluded above but *tracked*, and .git went
+    # over whole -- so the builder's stale copies of them read as local edits,
+    # and `git describe --dirty` stamps a clean release tree -dirty (which is
+    # exactly what named slosh-0.1.1-dirty-macos-arm64.zip before this line).
+    # Restoring them from the synced .git costs no network and keeps the
+    # describe honest; a tree that is *really* dirty here still says so.
+    ssh "$BUILDER" "cd '$DIR' && git checkout -q -- web tests/fuzz 2>/dev/null || true"
     say "synced $(cd "$root" && git rev-parse --short HEAD 2>/dev/null || echo '?')$(cd "$root" && git diff --quiet 2>/dev/null || echo ' (dirty)')"
 fi
 
