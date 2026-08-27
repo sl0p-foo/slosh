@@ -891,6 +891,10 @@ void config_defaults(config_t *c) {
    * -- and any key or click ends it early. */
   c->splash_ms = 900;
   c->hover_delay_ms = 250;
+  /* Slow enough to pick a line at one row past the edge, fast enough to cross
+   * ten thousand lines of scrollback without regretting the gesture -- and the
+   * distance past the edge scales the step, so the hand can hurry it. */
+  c->select_scroll_ms = 50;
   c->double_click_ms = 400;
   /* Quotes, brackets, and the punctuation that ends a clause or a list.
    *
@@ -1609,6 +1613,9 @@ char *config_render(const config_t *c) {
   cb_add(&b, "splash_ms %u          // the logo, on attach; 0 for never\n",
          c->splash_ms);
   cb_add(&b, "hover_delay_ms %u\n", c->hover_delay_ms);
+  cb_add(&b,
+         "select_scroll_ms %u      // drag past an edge: ms per scroll step\n",
+         c->select_scroll_ms);
   cb_add(&b, "double_click_ms %u\n", c->double_click_ms);
   cb_qstr(&b, "word_separators", c->word_separators,
           "// what a double-click's word stops at");
@@ -1857,6 +1864,7 @@ static const char *const KNOWN_TOP[] = {
     "scroll_lines",
     "scrollback",
     "scrollback_bytes",
+    "select_scroll_ms",
     "shader_dir",
     "shaders",
     "shell",
@@ -2170,6 +2178,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       (uint16_t)kdl_arg_int(kdl_child(root, "splash_ms"), 0, c->splash_ms);
   c->hover_delay_ms = (uint16_t)kdl_arg_int(kdl_child(root, "hover_delay_ms"),
                                             0, c->hover_delay_ms);
+  c->select_scroll_ms = (uint16_t)kdl_arg_int(
+      kdl_child(root, "select_scroll_ms"), 0, c->select_scroll_ms);
   c->double_click_ms = (uint16_t)kdl_arg_int(kdl_child(root, "double_click_ms"),
                                              0, c->double_click_ms);
   const char *ws = kdl_arg(kdl_child(root, "word_separators"), 0, NULL);

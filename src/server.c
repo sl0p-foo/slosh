@@ -706,6 +706,14 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
     app_reap(s.app);
 
+    /* The event-less work: a selection drag held past a pane's edge scrolls
+     * on a clock (app_next_deadline_ms is what woke the poll for it), and a
+     * step that moved anything is a frame the client is owed. */
+    if (app_tick(s.app) && !pending_paint) {
+      pending_paint = true;
+      next_frame = now_ms();
+    }
+
     if (app_detach_requested(s.app)) {
       app_clear_detach(s.app);
       drop_display(&s, EXIT_DETACHED);

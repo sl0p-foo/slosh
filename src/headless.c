@@ -54,6 +54,10 @@ static void settle(app_t *a, int quiet, screen_t *snap) {
     }
     if (snap) app_compose(a, snap);
     app_reap(a);
+    /* The same event-less work the server's loop does: without it a settle
+     * would freeze a selection drag that is holding past a pane's edge, and
+     * the auto-scroll would exist everywhere except under the tests. */
+    app_tick(a);
     if (ms_now() - last >= quiet) break;
   }
 }

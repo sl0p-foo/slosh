@@ -337,6 +337,13 @@ min_split cols=32 rows=8
 // Rows per wheel notch, and per scroll-up/scroll-down.
 scroll_lines 3
 
+// A selection dragged past a pane's top or bottom edge keeps going: the
+// viewport scrolls a step this often, for as long as the button is down and
+// the pointer stays past the edge. Each step is as many rows as the pointer
+// is past the edge -- one row past creeps, further hurries -- so the hand
+// that is already dragging is also the throttle. Lower is faster.
+select_scroll_ms 50
+
 // How many lines of history a pane keeps. `0` keeps none: the screen and
 // nothing behind it.
 //

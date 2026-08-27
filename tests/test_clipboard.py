@@ -336,6 +336,54 @@ def test_a_word_in_scrollback_is_the_word_on_screen():
         )
 
 
+def test_a_drag_held_past_the_edge_scrolls_the_selection():
+    """More text than fits the viewport is still selectable with one drag: held
+    past the pane's top edge, the viewport scrolls under the button on the
+    `select_scroll_ms` clock, and the far end of the selection stays anchored to
+    the cell that was pressed -- a tracked grid ref, not a viewport coordinate,
+    which is what keeps the bottom lines in the copy after the viewport has
+    left them behind."""
+    import tempfile
+
+    g = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    g.write("select_scroll_ms 5\n")  # the clock is configurable; wait less
+    g.close()
+    body = "; ".join("printf 'line%02d\\r\\n'" % i for i in range(1, 31))
+    with Session(echoing(body), cols=40, rows=12, config=g.name) as s:
+        s.until_text("line30")
+        p = s.pane()
+        cx, cy, h = p["content_x"], p["content_y"], p["content_h"]
+        check(
+            "the first line has already left the viewport",
+            "line01" not in s.snapshot().screen(),
+            repr(s.snapshot().pane_line(p, 0)),
+        )
+
+        # press on the bottom row, drag one row above the pane, and hold
+        s.send(rf"\e[<0;{cx + 1};{cy + h}M")
+        s.send(rf"\e[<32;{cx + 1};{cy}M")
+        s.settle(400)  # the hold: the auto-scroll clock does the walking
+        s.send(rf"\e[<0;{cx + 1};{cy}m")
+        s.settle(40)
+
+        check(
+            "holding there scrolled the viewport to the top",
+            s.snapshot().pane_line(p, 0).startswith("line01"),
+            repr(s.snapshot().pane_line(p, 0)),
+        )
+        clip = s.api("clipboard")["text"] or ""
+        check(
+            "the copy reaches text that was never on screen together",
+            clip.startswith("line01"),
+            repr(clip[:60]),
+        )
+        check(
+            "and still ends where the press was anchored",
+            "line30" in clip,
+            repr(clip[-60:]),
+        )
+
+
 def test_a_mouse_program_keeps_its_double_clicks():
     """The same rule the drag has: a program that asked for the mouse gets the
     clicks, and shift is the way to select over one anyway. A word selection that
@@ -560,5 +608,6 @@ if __name__ == "__main__":
     test_slow_clicks_are_two_clicks()
     test_the_separators_are_configurable()
     test_a_word_in_scrollback_is_the_word_on_screen()
+    test_a_drag_held_past_the_edge_scrolls_the_selection()
     test_a_mouse_program_keeps_its_double_clicks()
     sys.exit(report())

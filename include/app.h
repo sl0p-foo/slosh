@@ -33,6 +33,11 @@ size_t app_toast_count(app_t *a);
  * over the frame just composed — or -1 when nothing does. A property of that
  * frame, so it is asked after composing one. */
 int app_next_deadline_ms(app_t *a);
+/* Advance what runs on that clock without an event behind it — today, the
+ * auto-scroll of a selection drag held past a pane's edge. Both front ends
+ * call it from their loops; true means something changed and a repaint is
+ * owed. */
+bool app_tick(app_t *a);
 
 /* Text the session has copied, and the copy the client has not been told
  * about yet (which the front end sends on as OSC 52). Caller frees the take. */

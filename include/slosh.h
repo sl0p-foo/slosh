@@ -280,7 +280,9 @@ typedef struct {
 typedef void (*pane_gfx_fn)(pane_t *p, const pane_gfx_t *g, void *ud);
 size_t pane_graphics(pane_t *p, pane_gfx_fn cb, void *ud);
 
-/* Selection, in the pane's viewport coordinates. */
+/* Selection, in the pane's viewport coordinates. The anchor start() takes is
+ * kept as a tracked grid ref, so extend() keeps meaning the cell that was
+ * pressed even after the viewport has scrolled under the drag. */
 void pane_select_start(pane_t *p, uint16_t x, uint16_t y);
 void pane_select_extend(pane_t *p, uint16_t x, uint16_t y);
 void pane_select_clear(pane_t *p);

@@ -293,9 +293,60 @@ int app_next_deadline_ms(app_t *a) {
     if (soonest < 0 || due < soonest) soonest = due;
   }
 
+  /* A selection drag holding past the pane's top or bottom edge scrolls on a
+   * clock, not on motion: a pointer resting there sends no events, and "keep
+   * going" is exactly what resting it there means. */
+  if (a->drag.kind == DRAG_SELECT && a->ptr_valid) {
+    node_t *n = pane_by_id(a, a->drag.src);
+    if (n && ((int)a->ptr_y < (int)n->content.y ||
+              (int)a->ptr_y >= (int)n->content.y + (int)n->content.h)) {
+      int64_t due = a->drag.scroll_due;
+      int64_t now = now_ms_();
+      if (due < now) due = now;
+      if (soonest < 0 || due < soonest) soonest = due;
+    }
+  }
+
   if (soonest < 0) return -1;
   int64_t in = soonest - now_ms_();
   return in <= 0 ? 0 : (int)in;
+}
+
+/* Extend a pane's selection toward the pointer, clamped into its content:
+ * the nearest cell is what a pointer past an edge is pointing at. */
+static void select_extend_to_pointer(app_t *a, node_t *n) {
+  if (!n->content.w || !n->content.h) return;
+  int lx = (int)a->ptr_x - (int)n->content.x;
+  int ly = (int)a->ptr_y - (int)n->content.y;
+  lx = lx < 0 ? 0 : lx >= (int)n->content.w ? n->content.w - 1 : lx;
+  ly = ly < 0 ? 0 : ly >= (int)n->content.h ? n->content.h - 1 : ly;
+  pane_select_extend(n->pane, (uint16_t)lx, (uint16_t)ly);
+}
+
+/* The auto-scroll step behind app_next_deadline_ms's DRAG_SELECT deadline.
+ * Rows per step is how far past the edge the pointer sits -- one row past
+ * creeps, further hurries -- which is rate control by the hand that is
+ * already there. The step scrolls, then re-extends the selection: the anchor
+ * is a tracked grid ref (pane.c), so only the near end moves. True when
+ * anything changed, so a caller knows a repaint is owed. */
+bool app_tick(app_t *a) {
+  if (a->drag.kind != DRAG_SELECT || !a->ptr_valid) return false;
+  node_t *n = pane_by_id(a, a->drag.src);
+  if (!n || !n->content.h) return false;
+  int ly = (int)a->ptr_y - (int)n->content.y;
+  int over = ly < 0                    ? ly
+             : ly >= (int)n->content.h ? ly - (int)n->content.h + 1
+                                       : 0;
+  if (!over) return false;
+  int64_t now = now_ms_();
+  if (now < a->drag.scroll_due) return false;
+  /* Advance the clock whether or not the scroll had anywhere to go: a
+   * pointer parked past an edge of a fully scrolled pane must not turn the
+   * deadline into a busy loop. */
+  a->drag.scroll_due = now + CFG.select_scroll_ms;
+  pane_scroll(n->pane, over);
+  select_extend_to_pointer(a, n);
+  return true;
 }
 
 size_t app_toast_count(app_t *a) {
@@ -1280,6 +1331,7 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
         pane_select_word(n->pane, local.mx, local.my, CFG.word_separators);
       a->drag.kind = DRAG_SELECT;
       a->drag.src = n->id;
+      a->drag.scroll_due = 0; /* the first edge contact may scroll at once */
       return;
     }
 
@@ -1659,10 +1711,12 @@ void app_event(app_t *a, const input_event_t *ev) {
           }
         }
         if (a->drag.kind == DRAG_SELECT) {
+          /* Clamped, not refused: the old unsigned subtraction underflowed
+           * for a pointer above or left of the pane, and the selection froze
+           * at the border. Past an edge the drag keeps the nearest cell, and
+           * app_tick scrolls the viewport after it. */
           node_t *n = pane_by_id(a, a->drag.src);
-          if (n)
-            pane_select_extend(n->pane, (uint16_t)(ev->mx - n->content.x),
-                               (uint16_t)(ev->my - n->content.y));
+          if (n) select_extend_to_pointer(a, n);
         } else if (a->drag.kind == DRAG_EDGE &&
                    (a->drag.c_nv || a->drag.c_nh)) {
           /* One axis to each: the row boundary takes the vertical movement

@@ -200,6 +200,11 @@ struct app {
     uint32_t c_v[2];
     size_t c_vedge[2];
     size_t c_nv;
+    /* DRAG_SELECT: when the next auto-scroll step may fire. A selection held
+     * past the pane's top or bottom edge scrolls on this clock (app_tick), so
+     * reaching for text outside the viewport is the drag continuing rather
+     * than a dead stop at the border. */
+    int64_t scroll_due;
   } drag;
 
   graphics_t *gfx; /* kitty images, and what the client has been told */

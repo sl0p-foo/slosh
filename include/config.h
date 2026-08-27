@@ -219,7 +219,11 @@ typedef struct {
   /* How long the logo splash stays over a freshly attached screen, 0 for
    * never. Attach-only: a headless or scripted session has nobody to greet. */
   uint16_t splash_ms;
-  uint16_t hover_delay_ms;  /* how long the pointer must rest to arm a guide */
+  uint16_t hover_delay_ms; /* how long the pointer must rest to arm a guide */
+  /* How often a selection drag held past a pane's top or bottom edge scrolls
+   * another step. The step size is how far past the edge the pointer is, so
+   * this is the metronome and the hand is the throttle. */
+  uint16_t select_scroll_ms;
   uint16_t double_click_ms; /* how close two clicks must be to be a double */
   /* What a double-click's word stops at, listed as *separators* rather than as
    * word characters: anything unlisted belongs to a word, so text nobody

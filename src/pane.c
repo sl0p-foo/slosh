@@ -71,9 +71,14 @@ struct pane {
    * `dump-layout` writes down and what a restore then tries to run. */
   char label[1024];
 
-  /* Selection anchor, in viewport coordinates, while a drag is in progress. */
+  /* Selection anchor, while a drag is in progress. A *tracked* grid ref
+   * rather than a pair of viewport coordinates, because the viewport moves
+   * while the drag is alive -- dragging past an edge scrolls it -- and an
+   * anchor named by viewport coordinates would drift with every scroll,
+   * silently re-anchoring to whatever slid under the press. Allocated on the
+   * first selection and reused (ghostty_tracked_grid_ref_set) after that. */
   bool selecting;
-  uint16_t sel_x, sel_y;
+  GhosttyTrackedGridRef sel_anchor;
 
   osc_scan_t scan;
   char status[256];
@@ -397,6 +402,7 @@ void pane_free(pane_t *p) {
   if (p->menc) ghostty_mouse_encoder_free(p->menc);
   if (p->kev) ghostty_key_event_free(p->kev);
   if (p->kenc) ghostty_key_encoder_free(p->kenc);
+  ghostty_tracked_grid_ref_free(p->sel_anchor);
   if (p->cells) ghostty_render_state_row_cells_free(p->cells);
   if (p->rows) ghostty_render_state_row_iterator_free(p->rows);
   if (p->rstate) ghostty_render_state_free(p->rstate);
@@ -933,17 +939,29 @@ static bool grid_ref_at(pane_t *p, uint16_t x, uint16_t y,
 }
 
 void pane_select_start(pane_t *p, uint16_t x, uint16_t y) {
-  p->selecting = true;
-  p->sel_x = x;
-  p->sel_y = y;
+  GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_VIEWPORT,
+                     .value.coordinate = {.x = x, .y = y}};
+  bool ok;
+  if (p->sel_anchor)
+    ok = ghostty_tracked_grid_ref_set(p->sel_anchor, p->term, pt) ==
+         GHOSTTY_SUCCESS;
+  else
+    ok = ghostty_terminal_grid_ref_track(p->term, pt, &p->sel_anchor) ==
+         GHOSTTY_SUCCESS;
+  p->selecting = ok; /* no anchor, no drag: extend would have nothing to hold */
   pane_select_clear(p);
 }
 
 void pane_select_extend(pane_t *p, uint16_t x, uint16_t y) {
-  if (!p->selecting) return;
+  if (!p->selecting || !p->sel_anchor) return;
   GhosttyGridRef a, b;
-  if (!grid_ref_at(p, p->sel_x, p->sel_y, &a) || !grid_ref_at(p, x, y, &b))
+  /* The anchor can stop existing mid-drag: a program flooding output while
+   * you select can push the anchored row out of a full scrollback. Keeping
+   * the selection we had is the honest answer -- there is no cell left to
+   * anchor a new one to. */
+  if (ghostty_tracked_grid_ref_snapshot(p->sel_anchor, &a) != GHOSTTY_SUCCESS)
     return;
+  if (!grid_ref_at(p, x, y, &b)) return;
   GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
   sel.start = a;
   sel.end = b;
