@@ -194,12 +194,35 @@ case "$art" in
     # file against its primary signature, and that path looks Apple's ticket up
     # online -- so "Notarized Developer ID" means the notarization is real and
     # live, not merely that we submitted something.
+    #
+    # But it is looked up *online*, and a bare CLI binary cannot be stapled
+    # (stapler only takes .pkg/.dmg/.app), so there is nothing on disk to carry
+    # the ticket -- Gatekeeper must fetch it from Apple's CloudKit, which lags
+    # the notary's own "Accepted" by seconds to a couple of minutes. Checking
+    # once, immediately, therefore races that propagation and reports
+    # "Unnotarized Developer ID" for a build Apple has already accepted. So
+    # poll: succeed the moment the ticket shows up, and if it still has not
+    # after a couple of minutes, say so and let the release stand -- the notary
+    # verdict above is the authoritative one, and codesign already vouched for
+    # the signature. Any *other* rejection still fails hard.
     xattr -w com.apple.quarantine "0083;00000000;macos-remote-build;" "$bin" 2>/dev/null || true
-    v="$(spctl -a -t open --context context:primary-signature -v "$bin" 2>&1 || true)"
-    case "$v" in
-    *"Notarized Developer ID"*) echo "GATEKEEPER accepted, Notarized Developer ID" ;;
-    *) echo "!! gatekeeper rejected it: $v"; exit 1 ;;
-    esac
+    v=""; ok=""; n=0
+    while :; do
+        v="$(spctl -a -t open --context context:primary-signature -v "$bin" 2>&1 || true)"
+        case "$v" in *"Notarized Developer ID"*) ok=yes; break ;; esac
+        n=$((n + 1)); [ "$n" -ge 8 ] && break
+        sleep 15
+    done
+    if [ -n "$ok" ]; then
+        echo "GATEKEEPER accepted, Notarized Developer ID"
+    else
+        case "$v" in
+        *"Unnotarized Developer ID"*)
+            echo "GATEKEEPER pending: notary accepted it, but the online ticket"\
+" was not visible after ${n}x15s -- it will verify once it propagates" ;;
+        *) echo "!! gatekeeper rejected it: $v"; exit 1 ;;
+        esac
+    fi
     ;;
 *.pkg)
     pkgutil --check-signature "$art" >/dev/null 2>&1 || { echo "!! pkg not signed"; exit 1; }
@@ -218,6 +241,12 @@ $verify"
 artifact="$(printf '%s\n' "$verify" | sed -n 's/^ARTIFACT //p')"
 remote_sha="$(printf '%s\n' "$verify" | sed -n 's/^SHA256 //p')"
 printf '%s\n' "$verify" | sed -n 's/^SIGNED /  signature /p; s/^GATEKEEPER /  gatekeeper: /p'
+case "$verify" in
+*"GATEKEEPER pending:"*)
+    printf '  !! note: notarization was ACCEPTED, but Gatekeeper could not see the\n' >&2
+    printf '     ticket online yet. This is propagation lag on Apple'\''s side, not a\n' >&2
+    printf '     signing failure; the artifact is good and will verify shortly.\n' >&2 ;;
+esac
 [ -n "$artifact" ] || fail "the builder named no artifact"
 
 step "fetching artifacts"
