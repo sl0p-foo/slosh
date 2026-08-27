@@ -40,11 +40,15 @@ def test_the_splash_assembles_centered_and_goes_away():
 
         # The logo's first line contains its opening run three times over, and
         # assembly is staggered, so a middle occurrence can land before the
-        # leftmost: "assembled" is the row whose *first* block glyph is where
-        # the match begins.
+        # leftmost -- under load, whole checks before it. "Landed" is therefore
+        # all three occurrences present (the row in its final form), with the
+        # first block glyph where the match begins so a particle still passing
+        # to its left keeps us waiting rather than shifting the answer.
         def landed_row(sn):
             for i, line in enumerate(sn.text):
-                if GLYPHS in line and line.index(GLYPHS) == line.index("\u2584"):
+                if line.count(GLYPHS) == 3 and line.index(GLYPHS) == line.index(
+                    "\u2584"
+                ):
                     return i
             return None
 
