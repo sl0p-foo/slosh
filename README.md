@@ -5,22 +5,31 @@ in C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
 ## Install
 
-With [Homebrew](https://brew.sh) (macOS or Linux):
+### macOS
+
+With [Homebrew](https://brew.sh):
 
 ```bash
 brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
 brew install slosh
 ```
 
-From source it needs [zig](https://ziglang.org) 0.16 and nothing else. The
-result is one static binary.
+### Linux
+
+The same tap works under [Homebrew on
+Linux](https://docs.brew.sh/Homebrew-on-Linux). Building from source needs
+[zig](https://ziglang.org) 0.16 and nothing else, and the result is one static
+binary that runs on any distro:
 
 ```bash
 make vendor    # the vendored terminal core, once
-make           # about a second
+make all       # about a second
 sudo make install         # optional: /usr/local/bin/slosh
 # make install PREFIX=$HOME/.local   # ...or somewhere you own
 ```
+
+(The source build works on a mac too; Homebrew is simply the shorter road
+there.)
 
 ## Run
 
