@@ -4,15 +4,15 @@ Signed, notarized macOS builds of slosh happen on a dedicated mac, not on a
 laptop. This file says what is on that machine, how it got there, and what to
 do when it stops working.
 
-Which mac, and whose certificate, is in `macos-release.mk` -- the one file of
+Which mac, and whose certificate, is in `macos-release.mk`, the one file of
 this flow that is not in the repo. Copy `macos-release.mk.example` to it and
 fill in three lines. Examples below call the builder `m1`, which is just what
 `BUILDER` happens to say; `$BUILDER` in a shell snippet means that host.
 
 ## Everyday use
 
-From a checkout on any machine that can ssh to the builder -- **including a
-Linux one**; see "Driving it from Linux" below:
+From a checkout on any machine that can ssh to the builder, **including a
+Linux one** (see "Driving it from Linux" below):
 
 ```sh
 make macos-dist              # this working tree -> signed, notarized zip in dist/
@@ -61,7 +61,7 @@ The two source modes are not interchangeable:
 | `REF=…` | a commit **origin publishes**, from a clean tree | the tag or short id | releases |
 
 `REF=` resolves through `git ls-remote origin`, so it builds what the server
-has and refuses anything unpushed -- including a local branch of the same name.
+has and refuses anything unpushed, including a local branch of the same name.
 That matters because the default mode rsyncs `.git` too, so the builder's
 `refs/heads/master` can be a commit only your laptop has ever seen. An artifact
 named after a commit nobody can fetch is worse than no artifact.
@@ -71,8 +71,8 @@ Then the release continues: `contrib/brew-release --tap … v0.2.0`.
 ## Driving it from Linux
 
 Works, and is tested: `make -f Makefile.macos remote-dist` from a Debian box
-produced a notarized `slosh-78ad926-macos-arm64.zip`, and that artifact -- after
-a round trip through Linux -- still verifies as `accepted / source=Notarized
+produced a notarized `slosh-78ad926-macos-arm64.zip`, and that artifact, after
+a round trip through Linux, still verifies as `accepted / source=Notarized
 Developer ID` on a mac.
 
 This end needs only **ssh, rsync, git, GNU make** and something that can hash a
@@ -82,7 +82,7 @@ file (`sha256sum`, `shasum` or `openssl`). What it does *not* need is a mac:
   tools, so the artifact is unpacked and assessed there, before it is fetched.
   The verdict is the same command on the same machine no matter who asked.
 * **This end hashes what arrives** and compares it to the hash the builder
-  vouched for. Same bytes, same verdict -- that is the whole of what a
+  vouched for. Same bytes, same verdict: that is the whole of what a
   non-mac can honestly check, and it is enough.
 
 The scripts come with the checkout; add a `macos-release.mk` and point its
@@ -119,10 +119,10 @@ not an accident.
 
 Two things make it usable headlessly, and both are easy to lose:
 
-* `security set-keychain-settings` with **no arguments** -- no idle timeout and
+* `security set-keychain-settings` with **no arguments**: no idle timeout and
   no lock on sleep. The default six-hour timeout would relock the keychain
   mid-notarization for no visible reason.
-* `security set-key-partition-list -S apple-tool:,apple:,codesign:` -- without
+* `security set-key-partition-list -S apple-tool:,apple:,codesign:`. Without
   it macOS wants a click before letting `codesign` use the key, and over ssh
   that is simply a failure.
 
@@ -147,14 +147,14 @@ NOTARY_KEY_ID=XXXXXXXXXX
 NOTARY_ISSUER=<issuer-uuid from App Store Connect>
 ```
 
-That file, and not the script, is where the credential lives -- which is why
+That file, and not the script, is where the credential lives, which is why
 the scripts contain no secrets and are in the repo.
 
 ### How the private key is moved
 
 `security export` hands over **every** identity in the login keychain, which on
 a laptop also means localhost dev certs and whatever Compressor once installed.
-The setup script exports the bundle, then picks out the one Developer ID --
+The setup script exports the bundle, then picks out the one Developer ID,
 pairing certificate to key by `localKeyID`, because the friendly name on a key
 bag is the *person*, not the certificate, and name matching alone picks the
 wrong key on a machine with more than one identity. It rebuilds a `.p12`
@@ -182,7 +182,7 @@ Apple's log for the submission id rather than shipping it. `make -f
 Makefile.macos notary-status` on the builder lists recent submissions.
 
 **`spctl --assess --type exec` says "does not seem to be an app".** That is not
-a failure -- it is what Gatekeeper says about every bare CLI binary ever signed,
+a failure: it is what Gatekeeper says about every bare CLI binary ever signed,
 because `--type exec` only understands app bundles. The check that means
 something, and the one `contrib/macos-remote-build` runs on the builder for
 every artifact, is the one a downloaded file gets:
@@ -194,7 +194,7 @@ spctl -a -t open --context context:primary-signature -vv slosh
 ```
 
 That path looks Apple's ticket up online, so "Notarized Developer ID" means a
-stranger's mac will run it -- not merely that we submitted something.
+stranger's mac will run it, not merely that we submitted something.
 
 ## What is deliberately not here
 

@@ -1,11 +1,11 @@
 # slosh
 
-A terminal multiplexer -- panes, tabs, sessions you can detach from -- written in
-C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
+A terminal multiplexer: panes, tabs, and sessions you can detach from, written
+in C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
 ## Install
 
-Needs [zig](https://ziglang.org) 0.16 and nothing else -- no cmake, no
+Needs [zig](https://ziglang.org) 0.16 and nothing else: no cmake, no
 autotools, no libraries. The result is one static binary.
 
 ```bash
@@ -30,14 +30,14 @@ by name.
 
 ## Where to go
 
-- **[Keys](keys.md)** -- the leader, the defaults, rebinding, the palette.
-- **[Panes and tabs](panes.md)** -- splitting, moving, zooming, the mouse.
-- **[Configuration](config.md)** -- one file, live reload, themes, `include`.
-- **[Shaders](shaders.md)** -- colour passes over a pane's contents.
-- **[Chrome shaders](chrome.md)** -- the same passes over a pane's frame.
-- **[Layouts](layouts.md)** -- a session as a file you check in.
-- **[Workspaces](workspaces.md)** -- projects on disk, opened by name.
-- **[Scripting](scripting.md)** -- the control socket, and what a pane can draw.
-- **[How it works](design.md)** -- the two decisions that shape the rest.
+- **[Keys](keys.md)**: the leader, the defaults, rebinding, the palette.
+- **[Panes and tabs](panes.md)**: splitting, moving, zooming, the mouse.
+- **[Configuration](config.md)**: one file, live reload, themes, `include`.
+- **[Shaders](shaders.md)**: colour passes over a pane's contents.
+- **[Chrome shaders](chrome.md)**: the same passes over a pane's frame.
+- **[Layouts](layouts.md)**: a session as a file you check in.
+- **[Workspaces](workspaces.md)**: projects on disk, opened by name.
+- **[Scripting](scripting.md)**: the control socket, and what a pane can draw.
+- **[How it works](design.md)**: the two decisions that shape the rest.
 
 About 15k lines of C, no dependencies beyond libc and the vendored core.
