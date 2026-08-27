@@ -3,22 +3,6 @@
 A terminal multiplexer — panes, tabs, sessions you can detach from — written in
 C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
-```
-╭────────── nvim ─────────── ▬ □ ✕ ╮  ╭─────── npm run dev ─────── ▬ □ ✕ ╮
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  ╰──────────────────────────────────╯
-│                                  │
-│                                  │  ╭────────── shell ────────── ▬ □ ✕ ╮
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-│                                  │  │                                  │
-╰──────────────────────────────────╯  ╰──────────────────────────────────╯
-```
-
 ## Install
 
 Needs [zig](https://ziglang.org) 0.16 and nothing else — no cmake, no
