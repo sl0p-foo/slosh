@@ -21,6 +21,13 @@ VT_VERSION := $(shell sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' $(V
 OUT      := build/win-$(ARCH)
 VERSION  := $(shell contrib/version 2>/dev/null || cat VERSION)
 
+DIST     ?= dist
+STEM     := slosh-$(VERSION)-windows-$(ARCH)
+# The zip carries the same licensing paperwork as the linux tarballs
+# (libghostty-vt and stb_image are linked in -- see THIRD-PARTY-LICENSES).
+# The manpages are useless on Windows, so docs/windows.md rides along instead.
+REL_DOCS := README.md LICENSE THIRD-PARTY-LICENSES docs/windows.md
+
 CFLAGS   := -std=c23 -O1 -g -Wall -Wextra -Wno-unused-parameter -MMD -MP \
             -Icompat/win -I$(VT_INC) -Iinclude -I$(OUT) \
             -DGHOSTTY_STATIC \
@@ -41,7 +48,7 @@ else
   say  = @:
 endif
 
-.PHONY: all clean vendor-win FORCE
+.PHONY: all dist clean vendor-win FORCE
 .DEFAULT_GOAL := all
 
 all: $(BIN)
@@ -86,6 +93,18 @@ $(OUT)/logo.h: logo.txt | $(OUT)
 	  printf 'static const char *const LOGO[] = {\n'; \
 	  sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g' -e 's/^/    "/' -e 's/$$/",/' logo.txt; \
 	  printf '};\n'; } > $@
+
+# The release artifact: the binary plus the paperwork, as a zip, because a
+# tarball is the wrong shape on the machine that will open it.
+dist: $(BIN)
+	@mkdir -p $(DIST)
+	@rm -rf "$(DIST)/$(STEM)" "$(DIST)/$(STEM).zip"
+	@mkdir -p "$(DIST)/$(STEM)"
+	@cp "$(BIN)" "$(DIST)/$(STEM)/slosh.exe"
+	@cp $(REL_DOCS) "$(DIST)/$(STEM)/"
+	@(cd $(DIST) && zip -qr "$(STEM).zip" "$(STEM)")
+	@rm -rf "$(DIST)/$(STEM)"
+	$(call say,[ZIP],$(DIST)/$(STEM).zip)
 
 $(VT_LIB): vendor-win
 

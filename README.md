@@ -43,6 +43,10 @@ Cross-compiled from a mac or a Linux box, then copied across:
 make -f Makefile.windows ARCH=x86_64    # or ARCH=aarch64
 ```
 
+The binary lands at `build/win-<arch>/slosh.exe`; the `dist` target zips it
+with its licensing paperwork, and `make release` builds both architectures
+alongside the Linux and macOS artifacts.
+
 ## Run
 
 ```bash

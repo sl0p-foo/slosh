@@ -61,7 +61,7 @@ endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
         docs www fmt fmt-check hooks tools install uninstall macos-dist \
-        release release-linux
+        release release-linux release-windows
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -365,12 +365,13 @@ macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a
 	$(Q)$(MAKE) -f Makefile.macos remote-dist REF=$(REF)
 
 # ── releases ────────────────────────────────────────────────────────────────
-# Three binaries for a tagged release, staged in dist/ with a SHA256SUMS beside
-# them. The two linux ones are cross-built right here: zig cc is already the
-# compiler, so -target gets us x86_64 and aarch64 for free, statically linked
-# against musl so they run on any distro regardless of its libc. macOS is the
-# one that cannot be built here -- it must be signed and notarized on a mac --
-# so `release` hands that leg to `macos-dist`, which drives the builder.
+# Five artifacts for a tagged release, staged in dist/ with a SHA256SUMS beside
+# them. The two linux tarballs and the two windows zips are cross-built right
+# here: zig cc is already the compiler, so -target gets us x86_64 and aarch64
+# for free -- statically linked against musl for linux, and one slosh.exe with
+# no runtime dependency beyond the OS for windows (Makefile.windows). macOS is
+# the one that cannot be built here -- it must be signed and notarized on a mac
+# -- so `release` hands that leg to `macos-dist`, which drives the builder.
 #
 # VERSION comes from the git tag (contrib/version), so the usual flow is to
 # check out the tag and run `make release REF=<tag>`: the linux tarballs are
@@ -415,7 +416,11 @@ release-linux: build/version.h build/logo.h ## cross-build the static linux tarb
 	  printf '  %-5s %s\n' '[TAR]' "$(DIST)/$$stem.tar.gz"; \
 	done
 
-release: release-linux ## full release: linux tarballs + signed macOS zip + SHA256SUMS in dist/
+release-windows: ## cross-build the windows zips into dist/
+	$(Q)$(MAKE) --no-print-directory -f Makefile.windows ZIG=$(ZIG) ARCH=x86_64 dist
+	$(Q)$(MAKE) --no-print-directory -f Makefile.windows ZIG=$(ZIG) ARCH=aarch64 dist
+
+release: release-linux release-windows ## full release: linux tarballs + windows zips + signed macOS zip + SHA256SUMS in dist/
 	$(Q)$(MAKE) --no-print-directory macos-dist REF=$(REF)
 	$(Q)cd $(DIST) && { sha256sum slosh-$(VERSION)-* 2>/dev/null \
 	  || shasum -a 256 slosh-$(VERSION)-*; } > SHA256SUMS

@@ -17,6 +17,12 @@ architectures never share an output directory.
 The binary appears at `build/win-<arch>/slosh.exe`; copy that to the Windows
 machine.
 
+For a release, `make -f Makefile.windows ARCH=<arch> dist` stages the same
+build as `dist/slosh-<version>-windows-<arch>.zip` — the binary plus the same
+licensing paperwork the linux tarballs carry — and `make release` builds both
+architectures alongside the linux and macOS artifacts, covered by the same
+`SHA256SUMS`.
+
 ## What it does there
 
 Everything the POSIX build does: panes, splits, tabs, detachable sessions, the
