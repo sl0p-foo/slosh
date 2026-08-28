@@ -784,53 +784,146 @@ int sl_console_resized(void) {
 
 /* ---- directory watching -------------------------------------------------- */
 
+/* The server publishes the set of directories it wants watched; the pump
+ * thread owns the handles that watch them. The split is not tidiness: an
+ * overlapped read can only be cancelled by the thread that issued it, so
+ * whoever arms a directory must also be the one to disarm it. The server
+ * therefore never touches a HANDLE -- it writes `want`, bumps `generation`
+ * and pokes `change`, and the pump rebuilds at a moment of its own choosing.
+ *
+ * Rebuilding rather than appending is what makes a reload behave: the watch
+ * set is derived from the config, and a config that just changed may name
+ * different files than it did a second ago. inotify and kqueue rebuild for
+ * the same reason. */
+#define WATCH_DIRS_MAX 8
+
 typedef struct {
+  int fd;        /* the pollable end handed to the caller */
   SOCKET notify; /* written when something changes */
-  HANDLE dirs[8];
-  char paths[8][PATH_MAX];
-  int ndirs;
+  CRITICAL_SECTION lock;
+  char want[WATCH_DIRS_MAX][PATH_MAX];
+  int nwant;
+  volatile LONG generation; /* bumped whenever `want` changes */
+  HANDLE change;            /* poked with it, so the pump does not wait 200ms */
+  HANDLE thread;
   volatile LONG stop;
 } watcher_t;
 
 static watcher_t *g_watchers[16];
 static int g_nwatchers = 0;
 
+static watcher_t *watcher_for(int fd) {
+  for (int i = 0; i < g_nwatchers; i++)
+    if (g_watchers[i] && g_watchers[i]->fd == fd) return g_watchers[i];
+  return NULL;
+}
+
+#define WATCH_FILTER                                                           \
+  (FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE |              \
+   FILE_NOTIFY_CHANGE_SIZE)
+
+/* The pump's own state: one armed directory per slot. */
+typedef struct {
+  HANDLE dir;
+  HANDLE ev;
+  OVERLAPPED ov;
+  char buf[4096];
+} armed_t;
+
+static void watch_disarm(armed_t *a, int n) {
+  for (int i = 0; i < n; i++) {
+    if (a[i].dir != INVALID_HANDLE_VALUE) {
+      /* Cancel, then wait for the cancellation to land: the OVERLAPPED and
+       * its buffer live in this array, and a read still writing into them
+       * after we reuse the slot would be a use-after-free with extra steps. */
+      CancelIo(a[i].dir);
+      DWORD got = 0;
+      GetOverlappedResult(a[i].dir, &a[i].ov, &got, TRUE);
+      CloseHandle(a[i].dir);
+    }
+    if (a[i].ev) CloseHandle(a[i].ev);
+  }
+}
+
+static bool watch_arm_one(armed_t *a, const char *dir) {
+  memset(a, 0, sizeof *a);
+  a->dir = CreateFileA(dir, FILE_LIST_DIRECTORY,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       NULL, OPEN_EXISTING,
+                       FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
+  if (a->dir == INVALID_HANDLE_VALUE) return false;
+  a->ev = CreateEventA(NULL, TRUE, FALSE, NULL);
+  a->ov.hEvent = a->ev;
+  if (!a->ev || !ReadDirectoryChangesW(a->dir, a->buf, sizeof a->buf, FALSE,
+                                       WATCH_FILTER, NULL, &a->ov, NULL)) {
+    if (a->ev) CloseHandle(a->ev);
+    CloseHandle(a->dir);
+    a->dir = INVALID_HANDLE_VALUE;
+    a->ev = NULL;
+    return false;
+  }
+  return true;
+}
+
 static unsigned __stdcall watch_pump(void *arg) {
   watcher_t *w = (watcher_t *)arg;
   /* One overlapped ReadDirectoryChangesW per watched directory, all waited on
-   * together, each re-armed after it fires. The event is coalesced to a single
-   * byte because the reader only needs to know that it should look again --
-   * the debounce upstream turns a burst of these into one reload. */
-  OVERLAPPED ov[8] = {0};
-  HANDLE evs[8];
-  char bufs[8][4096];
-  int n = w->ndirs;
-  for (int i = 0; i < n; i++) {
-    evs[i] = CreateEventA(NULL, TRUE, FALSE, NULL);
-    ov[i].hEvent = evs[i];
-    ReadDirectoryChangesW(w->dirs[i], bufs[i], sizeof bufs[i], FALSE,
-                          FILE_NOTIFY_CHANGE_FILE_NAME |
-                              FILE_NOTIFY_CHANGE_LAST_WRITE |
-                              FILE_NOTIFY_CHANGE_SIZE,
-                          NULL, &ov[i], NULL);
-  }
+   * together with the rebuild event, each re-armed after it fires. What goes
+   * down the socket is a single byte, because the reader only needs to know
+   * that it should look again -- the debounce upstream turns a burst of these
+   * into one reload. */
+  armed_t armed[WATCH_DIRS_MAX];
+  int n = 0;
+  LONG armed_gen = -1;
+
   while (!InterlockedCompareExchange(&w->stop, 0, 0)) {
-    DWORD r = WaitForMultipleObjects((DWORD)n, evs, FALSE, 200);
+    LONG gen = InterlockedCompareExchange(&w->generation, 0, 0);
+    if (gen != armed_gen) {
+      /* Take a consistent snapshot of what was asked for, then arm it. The
+       * lock is not held across CreateFile: the server must never wait on a
+       * filesystem call to add a watch. */
+      char dirs[WATCH_DIRS_MAX][PATH_MAX];
+      int want;
+      EnterCriticalSection(&w->lock);
+      want = w->nwant;
+      for (int i = 0; i < want; i++)
+        snprintf(dirs[i], PATH_MAX, "%s", w->want[i]);
+      LeaveCriticalSection(&w->lock);
+
+      watch_disarm(armed, n);
+      n = 0;
+      for (int i = 0; i < want; i++)
+        if (watch_arm_one(&armed[n], dirs[i])) n++;
+      armed_gen = gen;
+    }
+
+    HANDLE waits[WATCH_DIRS_MAX + 1];
+    waits[0] = w->change;
+    for (int i = 0; i < n; i++) waits[i + 1] = armed[i].ev;
+    DWORD r = WaitForMultipleObjects((DWORD)n + 1, waits, FALSE, 200);
     if (r == WAIT_TIMEOUT) continue;
-    if (r >= WAIT_OBJECT_0 + (DWORD)n) break;
-    int i = (int)(r - WAIT_OBJECT_0);
+    if (r == WAIT_OBJECT_0) { /* the set changed; rebuild on the next turn */
+      ResetEvent(w->change);
+      continue;
+    }
+    if (r < WAIT_OBJECT_0 + 1 || r >= WAIT_OBJECT_0 + 1 + (DWORD)n) break;
+    int i = (int)(r - WAIT_OBJECT_0 - 1);
     DWORD got = 0;
-    GetOverlappedResult(w->dirs[i], &ov[i], &got, FALSE);
-    ResetEvent(evs[i]);
+    GetOverlappedResult(armed[i].dir, &armed[i].ov, &got, FALSE);
+    ResetEvent(armed[i].ev);
     char b = 1;
     send(w->notify, &b, 1, 0);
-    ReadDirectoryChangesW(w->dirs[i], bufs[i], sizeof bufs[i], FALSE,
-                          FILE_NOTIFY_CHANGE_FILE_NAME |
-                              FILE_NOTIFY_CHANGE_LAST_WRITE |
-                              FILE_NOTIFY_CHANGE_SIZE,
-                          NULL, &ov[i], NULL);
+    if (!ReadDirectoryChangesW(armed[i].dir, armed[i].buf, sizeof armed[i].buf,
+                               FALSE, WATCH_FILTER, NULL, &armed[i].ov, NULL)) {
+      /* The directory went away under us. Drop the slot rather than spin on a
+       * handle that will never complete again; the next rebuild re-opens it
+       * if the config still names it. */
+      CloseHandle(armed[i].dir);
+      CloseHandle(armed[i].ev);
+      armed[i] = armed[--n];
+    }
   }
-  for (int i = 0; i < n; i++) CloseHandle(evs[i]);
+  watch_disarm(armed, n);
   return 0;
 }
 
@@ -852,32 +945,56 @@ int sl_watch_init(void) {
   }
   u_long nb = 1;
   ioctlsocket(sp[1], FIONBIO, &nb);
+  w->fd = fd;
+  InitializeCriticalSection(&w->lock);
+  w->change = CreateEventA(NULL, TRUE, FALSE, NULL);
+  w->generation = 0;
   if (g_nwatchers < 16) g_watchers[g_nwatchers++] = w;
-  /* The thread starts on the first add, when there is something to watch. */
+  /* The thread starts here rather than on the first add: it owns the armed
+   * handles, so it has to be running before there is anything to arm. With an
+   * empty set it waits on `change` alone, which is exactly right. */
+  w->thread = (HANDLE)_beginthreadex(NULL, 0, watch_pump, w, 0, NULL);
   return fd;
 }
 
-static watcher_t *watcher_last(void) {
-  return g_nwatchers ? g_watchers[g_nwatchers - 1] : NULL;
+/* Bump the generation and wake the pump. Called with the lock held. */
+static void watch_republish(watcher_t *w) {
+  InterlockedIncrement(&w->generation);
+  SetEvent(w->change);
+}
+
+void sl_watch_clear(int fd) {
+  watcher_t *w = watcher_for(fd);
+  if (!w) return;
+  EnterCriticalSection(&w->lock);
+  w->nwant = 0;
+  watch_republish(w);
+  LeaveCriticalSection(&w->lock);
 }
 
 int sl_watch_add(int fd, const char *dir) {
-  (void)fd;
-  watcher_t *w = watcher_last();
-  if (!w || w->ndirs >= 8) return -1;
-  HANDLE h = CreateFileA(
-      dir, FILE_LIST_DIRECTORY,
-      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
-      OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
-  if (h == INVALID_HANDLE_VALUE) return -1;
-  w->dirs[w->ndirs] = h;
-  snprintf(w->paths[w->ndirs], PATH_MAX, "%s", dir);
-  w->ndirs++;
-  if (w->ndirs == 1) {
-    HANDLE t = (HANDLE)_beginthreadex(NULL, 0, watch_pump, w, 0, NULL);
-    if (t) CloseHandle(t);
+  watcher_t *w = watcher_for(fd);
+  if (!w || !dir || !*dir) return -1;
+  int rc = 0;
+  EnterCriticalSection(&w->lock);
+  /* The same directory twice is the ordinary case -- a config and the theme
+   * it includes usually live together -- and two handles on it would mean two
+   * bytes per save for the debounce to swallow. Compared case-insensitively
+   * because that is what the filesystem does. */
+  bool have = false;
+  for (int i = 0; i < w->nwant; i++)
+    if (_stricmp(w->want[i], dir) == 0) have = true;
+  if (!have) {
+    if (w->nwant < WATCH_DIRS_MAX) {
+      snprintf(w->want[w->nwant], PATH_MAX, "%s", dir);
+      w->nwant++;
+      watch_republish(w);
+    } else {
+      rc = -1;
+    }
   }
-  return 0;
+  LeaveCriticalSection(&w->lock);
+  return rc;
 }
 
 int sl_watch_drain(int fd) {
@@ -892,10 +1009,22 @@ int sl_watch_drain(int fd) {
 }
 
 void sl_watch_close(int fd) {
-  for (int i = 0; i < g_nwatchers; i++) {
-    watcher_t *w = g_watchers[i];
-    if (!w) continue;
+  watcher_t *w = watcher_for(fd);
+  if (w) {
     InterlockedExchange(&w->stop, 1);
+    SetEvent(w->change); /* rather than waiting out the 200ms poll */
+    if (w->thread) {
+      WaitForSingleObject(w->thread, 2000);
+      CloseHandle(w->thread);
+      w->thread = NULL;
+    }
+    /* Joined, so the handles it owned are closed and its slot can go. */
+    CloseHandle(w->change);
+    DeleteCriticalSection(&w->lock);
+    for (int i = 0; i < g_nwatchers; i++)
+      if (g_watchers[i] == w) g_watchers[i] = NULL;
+    closesocket(w->notify);
+    free(w);
   }
   if (fd >= 0) sl_close(fd);
 }

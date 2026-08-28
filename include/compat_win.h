@@ -259,6 +259,10 @@ void sl_globfree(glob_t *g);
  * reads it as "something under a watched directory changed" and re-stats the
  * files it cares about -- the same conclusion its kqueue branch reaches. */
 int sl_watch_init(void); /* -> pollable fd, or -1 */
+/* The watch set is rebuilt, not appended to: clear, then add what the config
+ * names now. A reload may name different files than the last one did, and the
+ * inotify and kqueue branches rebuild for that reason too. */
+void sl_watch_clear(int fd);
 int sl_watch_add(int fd, const char *dir);
 void sl_watch_close(int fd);
 int sl_watch_drain(int fd); /* consume readiness; 1 if anything changed */

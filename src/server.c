@@ -283,8 +283,9 @@ typedef struct {
 static void watch_config(watchset_t *w) {
   if (w->fd < 0) return;
 #ifdef _WIN32
-  /* The watcher owns its directory handles and re-arms them itself, so there
-   * is no per-file descriptor to drop here. */
+  /* The pump thread owns the handles, so dropping a watch is a message rather
+   * than a close: clear the set here and the adds below republish it. */
+  sl_watch_clear(w->fd);
 #elif defined(__APPLE__)
   /* kqueue drops a vnode filter when its fd closes, so closing is the unwatch. */
   for (size_t i = 0; i < w->nwds; i++) close(w->wds[i]);
