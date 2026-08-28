@@ -37,8 +37,10 @@ there.)
 Windows 10/11, x86-64 and ARM64, as one `slosh.exe`. Panes are ConPTYs and
 sessions are AF_UNIX sockets, so everything documented here works there too.
 
+Cross-compiled from a mac or a Linux box, then copied across:
+
 ```bash
-make -f Makefile.windows ARCH=x86_64    # or ARCH=aarch64; cross-compiles too
+make -f Makefile.windows ARCH=x86_64    # or ARCH=aarch64
 ```
 
 The details, and the three decisions the port rests on: [windows](windows.md).

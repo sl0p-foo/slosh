@@ -1,11 +1,11 @@
-# slosh for Windows — cross-compiled with zig, or built natively on the box.
+# slosh for Windows — cross-compiled with zig from a mac or a Linux box.
 #
 # `compat/win` comes first on the include path: it holds stub <poll.h>,
 # <sys/socket.h> and friends that redirect to include/compat_win.h, so the
 # existing sources keep their POSIX includes and call sites unchanged.
 #
-#   make -f Makefile.windows              # host arch, native
-#   make -f Makefile.windows ARCH=x86_64  # cross to x86_64
+#   make -f Makefile.windows              # ARCH=aarch64, the default
+#   make -f Makefile.windows ARCH=x86_64
 #
 ZIG      ?= zig
 ARCH     ?= aarch64

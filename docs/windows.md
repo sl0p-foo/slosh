@@ -1,20 +1,21 @@
 # Windows
 
-slosh builds and runs natively on Windows 10/11, on both x86-64 and ARM64. It
-is one `slosh.exe` with no runtime dependency beyond the OS.
+slosh runs natively on Windows 10/11, on both x86-64 and ARM64. It is one
+`slosh.exe` with no runtime dependency beyond the OS.
+
+The build is a cross-compile, from a mac or a Linux box:
 
 ```bash
-make -f Makefile.windows ARCH=x86_64     # cross-compile from mac or Linux
+make -f Makefile.windows ARCH=x86_64
 make -f Makefile.windows ARCH=aarch64
 ```
 
-`ARCH` defaults to `aarch64`. The same command builds natively on the Windows
-box itself, with zig on `PATH` and a `make`. The vendored terminal core is
-cross-compiled the same way and lands in
-`vendor/libghostty-vt/zig-out-win-<arch>`, so the two architectures never share
-an output directory.
+`ARCH` defaults to `aarch64`. The vendored terminal core is cross-compiled the
+same way and lands in `vendor/libghostty-vt/zig-out-win-<arch>`, so the two
+architectures never share an output directory.
 
-The binary appears at `build/win-<arch>/slosh.exe`.
+The binary appears at `build/win-<arch>/slosh.exe`; copy that to the Windows
+machine.
 
 ## What it does there
 
