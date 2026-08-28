@@ -1,0 +1,79 @@
+#!/bin/sh
+# release -- cut a release: bump ./VERSION, commit, tag. One command, so the
+# two steps that must agree cannot be done separately.
+#
+#   contrib/release 0.1.2                    # bump + commit + tag v0.1.2
+#   contrib/release 0.1.2 "What changed."    # ...with release notes in the tag
+#   contrib/release --check                  # VERSION agrees with the newest tag?
+#
+# The mistake this exists to prevent: tagging vX.Y.Z while ./VERSION still
+# says the previous number. VERSION is the floor contrib/version falls back to
+# when there is no git -- a cgit snapshot, a Homebrew source build -- so a
+# stale floor means those builds report a version that was already released.
+# It happened for v0.1.1. Bumping and tagging as one step removes the step
+# that was forgotten; the pre-push hook and `make release` both run --check,
+# so a tag made by hand is caught before it escapes.
+#
+# After tagging, the script prints the push and `make release` commands rather
+# than running them: pushing a tag is publishing, and publishing should be the
+# thing you do on purpose.
+set -eu
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$root"
+
+fail() { printf 'release: %s\n' "$*" >&2; exit 1; }
+
+# The invariant, checkable on its own: after every release, ./VERSION equals
+# the newest tag. It holds between releases too, because this script is the
+# only thing that moves either.
+if [ "${1:-}" = "--check" ]; then
+    newest="$(git tag -l 'v[0-9]*' | sort -V | tail -1)"
+    if [ -n "$newest" ] && [ "v$(cat VERSION)" != "$newest" ]; then
+        fail "VERSION says $(cat VERSION) but the newest tag is $newest --
+  the floor was not bumped when that tag was cut. Bring the file up by
+  hand (echo ${newest#v} > VERSION, commit), and use contrib/release for
+  the next one."
+    fi
+    exit 0
+fi
+
+[ $# -ge 1 ] || fail "usage: contrib/release X.Y.Z [notes] | contrib/release --check"
+v="${1#v}"       # accept 0.1.2 and v0.1.2; the tag gets the v either way
+notes="${2:-}"
+
+# The shape first, so nothing below has to wonder.
+printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$' \
+    || fail "'$v' does not look like X.Y.Z (or X.Y.Z-rcN)"
+
+# A release is cut from committed work on a branch, not from whatever happens
+# to be lying around in the tree or a detached HEAD.
+git symbolic-ref -q HEAD >/dev/null || fail "detached HEAD -- check out a branch"
+git diff --quiet && git diff --cached --quiet \
+    || fail "the tree is not clean -- commit or stash first"
+
+git rev-parse -q --verify "refs/tags/v$v" >/dev/null \
+    && fail "v$v already exists"
+
+# Strictly newer than everything already out there: the floor, and the newest
+# tag. sort -V, because 0.1.10 comes after 0.1.9 in versions and before it in
+# the alphabet.
+floor="$(cat VERSION)"
+newest="$( { git tag -l 'v[0-9]*' | sed 's/^v//'; echo "$floor"; } | sort -V | tail -1)"
+[ "$(printf '%s\n%s\n' "$newest" "$v" | sort -V | tail -1)" = "$v" ] && [ "$v" != "$newest" ] \
+    || fail "$v is not newer than $newest"
+
+# The cut itself: floor, commit, tag, in that order, so the tagged commit is
+# the one whose VERSION file already says so.
+printf '%s\n' "$v" > VERSION
+git add VERSION
+git commit -q -m "release: v$v" -- VERSION
+if [ -n "$notes" ]; then
+    git tag -a "v$v" -m "slosh $v" -m "$notes"
+else
+    git tag -a "v$v" -m "slosh $v"
+fi
+
+echo "release: v$v -- VERSION bumped, committed, tagged. To publish:"
+echo "    git push origin master v$v"
+echo "    make release REF=v$v      # the tarballs and zips, into dist/"

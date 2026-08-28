@@ -61,7 +61,7 @@ endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
         docs www fmt fmt-check hooks tools install uninstall macos-dist \
-        release release-linux release-windows
+        release release-check release-linux release-windows
 .DEFAULT_GOAL := help
 
 help: ## show this
@@ -339,7 +339,7 @@ fuzz-corpus: ## replay fuzz seed corpora (CI-friendly, no fuzzing)
 	$(MAKE) -C tests/fuzz replay
 	$(MAKE) -C tests/fuzz corpus
 
-hooks: ## install the pre-commit hook (formats staged C)
+hooks: ## install the git hooks (format on commit, tag sanity on push)
 	$(Q)git config core.hooksPath .githooks
 	@echo "core.hooksPath -> .githooks   (git commit --no-verify to skip)"
 
@@ -373,10 +373,14 @@ macos-dist: ## signed, notarized macOS build on the builder mac (REF=<tag> for a
 # the one that cannot be built here -- it must be signed and notarized on a mac
 # -- so `release` hands that leg to `macos-dist`, which drives the builder.
 #
-# VERSION comes from the git tag (contrib/version), so the usual flow is to
-# check out the tag and run `make release REF=<tag>`: the linux tarballs are
-# named from the working tree, the macOS zip from the ref the builder checks
-# out, and because both resolve the same tag the three names agree.
+# The tag itself is cut by `contrib/release X.Y.Z`, which bumps ./VERSION,
+# commits and tags as one step -- the two must agree, and doing them
+# separately is how v0.1.1 shipped with a stale floor. VERSION here comes
+# from the git tag (contrib/version), so the usual flow is contrib/release,
+# then check out the tag and run `make release REF=<tag>`: the linux tarballs
+# are named from the working tree, the macOS zip from the ref the builder
+# checks out, and because both resolve the same tag the names agree.
+# release-check re-verifies the floor/tag invariant before anything is built.
 DIST          ?= dist
 # Each tarball carries the binary plus the paperwork a redistributed build must
 # ship (see THIRD-PARTY-LICENSES: libghostty-vt and stb_image are linked in),
@@ -420,7 +424,10 @@ release-windows: ## cross-build the windows zips into dist/
 	$(Q)$(MAKE) --no-print-directory -f Makefile.windows ZIG=$(ZIG) ARCH=x86_64 dist
 	$(Q)$(MAKE) --no-print-directory -f Makefile.windows ZIG=$(ZIG) ARCH=aarch64 dist
 
-release: release-linux release-windows ## full release: linux tarballs + windows zips + signed macOS zip + SHA256SUMS in dist/
+release-check: ## verify ./VERSION agrees with the newest tag
+	$(Q)contrib/release --check
+
+release: release-check release-linux release-windows ## full release: linux tarballs + windows zips + signed macOS zip + SHA256SUMS in dist/
 	$(Q)$(MAKE) --no-print-directory macos-dist REF=$(REF)
 	$(Q)cd $(DIST) && { sha256sum slosh-$(VERSION)-* 2>/dev/null \
 	  || shasum -a 256 slosh-$(VERSION)-*; } > SHA256SUMS
