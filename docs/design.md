@@ -1,8 +1,6 @@
 # How it works
 
-Two decisions do most of the work. The rest (twenty-two numbered decisions,
-each with what it cost to get wrong) is in
-`DESIGN.md`.
+Two decisions do most of the work; the rest follow from them.
 
 ## One geometry
 

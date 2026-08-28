@@ -89,4 +89,4 @@ dependencies: one file of Python and one stylesheet.
   the session's socket, and a pane can draw its own status bar and buttons with
   an escape sequence.
 
-Design notes and the twenty-one decisions behind it: [DESIGN.md](DESIGN.md).
+Design notes: [how it works](docs/design.md).

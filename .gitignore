@@ -29,3 +29,8 @@ web/slosh-preview.mp4
 # the project. macos-release.mk.example is the template, and is tracked.
 /dist/
 macos-release.mk
+
+# Local dev tooling state, not part of the project: the per-repo speed cache,
+# and a scratch design doc.
+.fastfeedback/
+/DESIGN.md
