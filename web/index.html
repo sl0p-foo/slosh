@@ -62,6 +62,13 @@
 <span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
   </div>
 
+  <p class="aside">On Windows it is the same one binary: <code>slosh.exe</code>,
+  Windows 10/11, x86-64 and ARM64, no runtime dependency beyond the OS. Panes
+  are ConPTYs and sessions are AF_UNIX sockets, so everything below works there
+  too. It is cross-compiled from a mac or a Linux box
+  (<code>make -f Makefile.windows</code>), then copied across —
+  <a href="docs/windows.html">the details</a>.</p>
+
   <p>Then:</p>
 
   <div class="cmd">
@@ -148,6 +155,7 @@
     <li><a href="docs/layouts.html">layouts</a><span> — a session as a file you check in</span></li>
     <li><a href="docs/scripting.html">scripting</a><span> — the control socket, and what a pane can draw</span></li>
     <li><a href="docs/design.html">how it works</a><span> — the two decisions that shape the rest</span></li>
+    <li><a href="docs/windows.html">windows</a><span> — the native port, and what is different there</span></li>
   </ul>
 </section>
 

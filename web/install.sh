@@ -18,6 +18,10 @@
 # Nothing is downloaded except the git clone and what `make vendor` fetches
 # (the pinned libghostty-vt). No package manager, no config written, nothing
 # started. Uninstall is `rm /usr/local/bin/slosh`.
+#
+# Windows is not this script's job: slosh runs there natively, but as a
+# cross-compiled slosh.exe rather than a shell-script install -- see
+# docs/windows.md in the repo.
 
 set -eu
 
@@ -27,6 +31,11 @@ ZIG="${ZIG:-zig}"
 
 say()  { printf '  %s\n' "$*"; }
 fail() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
+
+case "$(uname -s 2>/dev/null || true)" in
+    *MINGW*|*MSYS*|*CYGWIN*)
+        fail "this builds the POSIX binary; Windows runs slosh.exe -- see docs/windows.md" ;;
+esac
 
 command -v git >/dev/null 2>&1 || fail "git is required"
 
