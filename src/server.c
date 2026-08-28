@@ -297,16 +297,9 @@ static void watch_config(watchset_t *w) {
   const char *files[WATCH_MAX];
   size_t n = app_config_files(files, WATCH_MAX);
   for (size_t i = 0; i < n; i++) {
-    char dir[512], base[128];
-    snprintf(dir, sizeof dir, "%s", files[i]);
-    char *slash = strrchr(dir, '/');
-    if (slash) {
-      *slash = 0;
-      snprintf(base, sizeof base, "%s", slash + 1);
-    } else {
-      snprintf(base, sizeof base, "%s", files[i]);
-      snprintf(dir, sizeof dir, ".");
-    }
+    char dirbuf[512], base[128], dir[512];
+    snprintf(dir, sizeof dir, "%s", path_dir(files[i], dirbuf, sizeof dirbuf));
+    snprintf(base, sizeof base, "%s", path_base(files[i]));
     /* The main config's directory is ours to create, so that a session started
      * before the file exists still notices it appearing. An include's is not:
      * a mistyped path should not leave a directory behind. */

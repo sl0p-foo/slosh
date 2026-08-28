@@ -119,8 +119,10 @@ const char *path_expand(const char *path, char *buf, size_t cap);
 const char *path_resolve(const char *path, const char *base, char *buf,
                          size_t cap);
 /* The directory part of a path: the base `path_resolve` wants. `.` when there
- * is no `/` in it. */
+ * is no separator in it. On Windows a backslash separates too. */
 const char *path_dir(const char *path, char *buf, size_t cap);
+/* The name part: the other half of `path_dir`, pointing into `path`. */
+const char *path_base(const char *path);
 /* The inverse of `path_resolve` for writing one back out: a path under `base`
  * relative to it, `.` for `base` itself, and anything not under it unchanged.
  * Points into `path` or a literal, so it needs no buffer. */

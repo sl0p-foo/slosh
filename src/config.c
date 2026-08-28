@@ -1938,13 +1938,7 @@ static void include_path(const char *base_file, const char *ref, char *out,
     return;
   }
   char dir[512];
-  snprintf(dir, sizeof dir, "%s", base_file);
-  char *slash = strrchr(dir, '/');
-  if (slash)
-    *slash = 0;
-  else
-    snprintf(dir, sizeof dir, ".");
-  snprintf(out, cap, "%s/%s", dir, r);
+  snprintf(out, cap, "%s/%s", path_dir(base_file, dir, sizeof dir), r);
 }
 
 /* Every `include` at the top level of this file, in order, applied *before* the

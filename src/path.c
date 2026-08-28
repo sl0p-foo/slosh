@@ -38,8 +38,8 @@ bool path_is_absolute(const char *path) {
   if (path[0] == '/') return true;
 #ifdef _WIN32
   if (path[0] == '\\') return true;
-  bool drive = (path[0] >= 'A' && path[0] <= 'Z') ||
-               (path[0] >= 'a' && path[0] <= 'z');
+  bool drive =
+      (path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z');
   if (drive && path[1] == ':' && (path[2] == '/' || path[2] == '\\'))
     return true;
 #endif
@@ -83,19 +83,53 @@ const char *path_resolve(const char *path, const char *base, char *buf,
   return buf;
 }
 
+/* The last separator in a path, whichever kind it is.
+ *
+ * Windows takes both and mixes them without being asked: slosh joins with '/'
+ * and the environment supplies '\\', so `$HOME` plus a literal lands as
+ * `C:\Users\you/.config/slosh/config.kdl`. A path that has been near a native
+ * API comes back all backslashes, and `SLOSH_CONFIG=C:\Users\you\slosh.kdl`
+ * is how a person would write it in the first place.
+ *
+ * Windows-only, because a backslash is a legal character in a POSIX file
+ * name: splitting on it there would invent a directory out of a file called
+ * `a\b`. */
+static const char *last_sep(const char *path) {
+  const char *slash = strrchr(path, '/');
+#ifdef _WIN32
+  const char *back = strrchr(path, '\\');
+  if (back && (!slash || back > slash)) slash = back;
+#endif
+  return slash;
+}
+
 /* The directory a file lives in: what `path_resolve` wants as its base. A path
- * with no `/` in it is in the current one, which is `.` rather than `""` --
- * an empty base means "no base" to everything downstream. */
+ * with no separator in it is in the current one, which is `.` rather than `""`
+ * -- an empty base means "no base" to everything downstream. */
 const char *path_dir(const char *path, char *buf, size_t cap) {
   if (!path) return NULL;
-  const char *slash = strrchr(path, '/');
+  const char *slash = last_sep(path);
   if (!slash) return ".";
-  if (slash == path) return "/";
+  if (slash == path) return *slash == '/' ? "/" : "\\";
   size_t n = (size_t)(slash - path);
+#ifdef _WIN32
+  /* `C:\config.kdl` lives in `C:\`, not in `C:` -- which names the current
+   * directory *on* drive C and is a different place. Keep the separator.
+   * Windows-only: on POSIX `a:` is just a directory called `a:`. */
+  if (n == 2 && path[1] == ':') n = 3;
+#endif
   if (n >= cap) n = cap - 1;
   memcpy(buf, path, n);
   buf[n] = 0;
   return buf;
+}
+
+/* The name part, the other half of path_dir. Points into `path`, so there is
+ * nothing to size and nothing to free. */
+const char *path_base(const char *path) {
+  if (!path) return NULL;
+  const char *slash = last_sep(path);
+  return slash ? slash + 1 : path;
 }
 
 /* The inverse, for writing a layout back out: a path under `base` becomes what
