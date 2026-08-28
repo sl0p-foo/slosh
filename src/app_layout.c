@@ -1511,15 +1511,26 @@ bool app_edit_config(app_t *a) {
   /* Windows has no editor it is *required* to have, and the obvious fallback
    * is the wrong shape: notepad is a GUI program, so a pane running it draws
    * nothing and looks broken. Prefer whichever console editor is actually
-   * installed, and only then fall back to opening a window.
+   * installed -- including `edit`, which recent Windows ships itself -- and
+   * only then fall back to opening a window.
    *
    * `editor` here is still whatever EDITOR or the config asked for; the search
    * only runs when nothing was asked for, or when the POSIX default of `vi`
    * came through and would not exist. */
   bool windowed = false;
   if (!editor || !*editor || strcmp(editor, "vi") == 0) {
-    static const char *const consoles[] = {"nvim",  "vim", "vi", "nano",
-                                           "micro", "hx",  NULL};
+    /* Editors somebody chose to install come first: having fetched nvim is a
+     * statement of preference, and Windows' own editor is not. `edit` --
+     * Microsoft Edit -- is last of the console editors because it is the one
+     * that arrives on its own, and so says nothing about what you want.
+     *
+     * It is still much the better fallback: it is a console program, so it
+     * fills the pane like any other editor, and a first-time user gets
+     * something usable without installing anything. It only ships from
+     * Windows 11 24H2 onwards, though, which is why notepad remains behind
+     * it rather than being replaced by it. */
+    static const char *const consoles[] = {"nvim",  "vim", "vi",   "nano",
+                                           "micro", "hx",  "edit", NULL};
     editor = NULL;
     for (int i = 0; consoles[i] && !editor; i++)
       if (sl_which(consoles[i])) editor = consoles[i];

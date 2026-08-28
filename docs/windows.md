@@ -126,10 +126,15 @@ the session on the one program that misbehaves. Whoever finishes last frees.
   full argv without reading another process's memory, so pane titles are
   correspondingly shorter.
 - **No editor is guaranteed.** `C-a e` prefers whichever console editor is
-  actually installed — `nvim`, `vim`, `vi`, `nano`, `micro`, `hx` — because the
-  obvious fallback is the wrong shape: `notepad` is a GUI program, so a pane
-  running it draws nothing and looks broken. If none is found it still opens
-  notepad, and says so, rather than leaving you an empty pane to puzzle over.
-  `EDITOR` and the config's `editor` are honoured ahead of the search.
+  actually installed — `nvim`, `vim`, `vi`, `nano`, `micro`, `hx`, `edit` —
+  because the obvious fallback is the wrong shape: `notepad` is a GUI program,
+  so a pane running it draws nothing and looks broken. Microsoft Edit (`edit`)
+  is a console program, so it fills a pane like any other editor: from Windows
+  11 24H2 there is a usable editor without installing one. It comes last of the
+  console editors because it arrives on its own, and so says nothing about what
+  you want, where having fetched nvim does. Older Windows does not ship it, so
+  if nothing is found slosh still opens notepad, and says so, rather than
+  leaving you an empty pane to puzzle over. `EDITOR` and the config's `editor`
+  are honoured ahead of the search.
 - **`--check`, `--dump-config`, layouts, workspaces and shaders** are
   unaffected: they never touched a pty or a socket.
