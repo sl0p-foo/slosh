@@ -139,6 +139,12 @@ $(KDL_TEST): tests/kdl_test.c src/kdl.c | build
 	$(call say,[LD],$@)
 	$(Q)$(CC) $(CFLAGS) tests/kdl_test.c src/kdl.c -o $@
 
+PATH_TEST := build/path_test
+
+$(PATH_TEST): tests/path_test.c src/path.c | build
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/path_test.c src/path.c -o $@
+
 EXPR_TEST := build/expr_test
 
 $(EXPR_TEST): tests/expr_test.c src/expr.c | build
@@ -187,10 +193,10 @@ build/.pass-%: tests/%.py tests/harness.py $(BIN) | build
 	@printf '  ok   %-24s %s\n' "$(notdir $<)" "$$(grep -c '^ok' build/.log-$* 2>/dev/null || echo ?) checks"
 	@touch $@
 
-test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(EXPR_TEST) $(EXPR_EVAL) ## unit + headless checks (fast)
+test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(EXPR_TEST) $(EXPR_EVAL) $(PATH_TEST) ## unit + headless checks (fast)
 	@./$(TEST_BIN) >/dev/null && ./$(KDL_TEST) >/dev/null && ./$(SHADER_TEST) >/dev/null \
-	  && ./$(EXPR_TEST) >/dev/null \
-	  && printf '  ok   %-24s %s\n' "C unit tests" "4 binaries"
+	  && ./$(EXPR_TEST) >/dev/null && ./$(PATH_TEST) >/dev/null \
+	  && printf '  ok   %-24s %s\n' "C unit tests" "5 binaries"
 	@$(MAKE) --no-print-directory -j$(JOBS) $(PY_STAMPS)
 	@printf '\nall green\n'
 
