@@ -65,6 +65,16 @@ struct pane {
   bool ephemeral;
   char **argv;
   char *cwd;
+  /* Roughly how much is sitting on the line being typed, counted from the
+   * keys we forwarded since the last Enter. The tty knows this exactly and we
+   * cannot ask it -- the shell's line editor is on the far side of a pty --
+   * so it is an estimate, and the one caller treats it as one: ctrl_d_exits
+   * acts only on zero, which is the case a miscount would have to invent
+   * rather than merely misjudge. Line editing we do not model (a recalled
+   * history entry, ^U, tab completion) leaves it too high, which forgets to
+   * exit; that is the direction to be wrong in, because the other one throws
+   * away a half-typed command. */
+  uint16_t line_len;
   /* A command line, not a word: a layout can name an interpreter by its full
    * path (Homebrew's python3 resolves to 124 characters before its arguments
    * even start), and a truncated label is not merely cosmetic -- it is what
@@ -721,6 +731,21 @@ void pane_send_key(pane_t *p, const input_event_t *ev) {
   /* Typing snaps back to the live view: reading scrollback and then typing
    * into a screen that is not the one you are looking at is a trap. */
   if (pane_scrolled(p)) pane_scroll_edge(p, false);
+
+  /* Track the line as it is typed. Only presses: a repeat is another
+   * character, a release is not. */
+  if (ev->action != KEY_RELEASE) {
+    if (ev->key == GHOSTTY_KEY_ENTER)
+      p->line_len = 0;
+    else if (ev->key == GHOSTTY_KEY_BACKSPACE) {
+      if (p->line_len) p->line_len--;
+    } else if (ev->text_len && (uint8_t)ev->text[0] >= 0x20 &&
+               p->line_len < UINT16_MAX)
+      /* Text, not keystrokes: a chord that produces no character (^L, an
+       * arrow) is not on the line, and the 0x20 floor keeps the control
+       * codes some encodings emit as text out of the count. */
+      p->line_len++;
+  }
   ghostty_key_encoder_setopt_from_terminal(p->kenc, p->term);
   ghostty_key_event_set_key(p->kev, (GhosttyKey)ev->key);
   ghostty_key_event_set_mods(p->kev, (GhosttyMods)ev->mods);
@@ -1173,6 +1198,8 @@ void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total) {
   *above = (uint32_t)sb.offset;
   *total = (uint32_t)(sb.total > sb.len ? sb.total - sb.len : 0);
 }
+
+bool pane_line_empty(const pane_t *p) { return p && p->line_len == 0; }
 
 bool pane_alt_screen(const pane_t *p) {
   GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;

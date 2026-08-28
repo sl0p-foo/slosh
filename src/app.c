@@ -1372,6 +1372,40 @@ static bool prefix_command(app_t *a, const input_event_t *ev) {
   return run_action(a, config_lookup(&CFG, ev->key, ev->mods));
 }
 
+/* Ctrl-D where the line discipline cannot do it: see `ctrl_d_exits` in
+ * config.h for why this exists and why it is this narrow.
+ *
+ * What it sends is the word, not a signal. `exit` is what the user would have
+ * typed and what every shell slosh can start already understands, so the pane
+ * ends the way it ends on POSIX -- the shell's own cleanup, its own exit
+ * status, and `keep_dead` deciding whether the corpse stays. Reaching past the
+ * shell to close the pane would skip all three, and would also be a second
+ * meaning for a key that already has one.
+ *
+ * Returns true when the keystroke was spent here and must not be forwarded. */
+static bool ctrl_d_exit(app_t *a, const input_event_t *ev) {
+  if (!CFG.ctrl_d_exits || ev->action == KEY_RELEASE) return false;
+  if (ev->key != GHOSTTY_KEY_D) return false;
+  if ((ev->mods & (MOD_CTRL | MOD_ALT | MOD_SUPER | MOD_SHIFT)) != MOD_CTRL)
+    return false;
+
+  pane_t *p = cur(a)->focus->pane;
+  /* An editor or a pager reads ^D as half a page down, and both live on the
+   * alternate screen -- which is the one thing here the pane can state rather
+   * than have guessed about it. */
+  if (pane_alt_screen(p)) return false;
+  /* A program in the foreground is a program that may want the EOF itself.
+   * NULL is the shell at its own prompt, with nothing running under it. */
+  char fg[1024];
+  if (pane_foreground(p, fg, sizeof fg)) return false;
+  /* On a line with something on it, POSIX sends EOF and the shell ignores it;
+   * what it does not do is throw the line away. Neither do we. */
+  if (!pane_line_empty(p)) return false;
+
+  pane_write(p, "exit\r", 5);
+  return true;
+}
+
 /* What an action does, given the action rather than the key that asked for it
  * -- because the command palette asks for actions by name, and a palette that
  * had to synthesise a keystroke to run one would be inventing input. */
@@ -1672,6 +1706,7 @@ void app_event(app_t *a, const input_event_t *ev) {
       pane_start(cur(a)->focus->pane);
       break;
     }
+    if (ctrl_d_exit(a, ev)) break;
     pane_send_key(cur(a)->focus->pane, ev);
     break;
   case EV_MOUSE: {

@@ -306,6 +306,30 @@ typedef struct {
   uint16_t status_pad;
   bool focus_follows_mouse;
 
+  /* Whether Ctrl-D at an idle shell prompt exits that shell, the way the tty
+   * line discipline would do it on POSIX.
+   *
+   * Windows has no VEOF: the console driver does not know the character, so
+   * cmd.exe and PowerShell simply ignore it and the one keystroke that closes
+   * a pane everywhere else does nothing. Typing `exit` works, which is the
+   * tell -- the intent was never ambiguous, only unspoken. So slosh speaks it,
+   * and that is exactly what it sends: the pane exits through the same door as
+   * a typed `exit`, with the shell's own cleanup and exit status, and
+   * `keep_dead` decides what is left behind. Closing the pane from outside
+   * would skip all three.
+   *
+   * Off on POSIX, where the line discipline already does this properly and
+   * an emulation could only get in the way -- ^D there is also EOF for `cat`
+   * and every REPL, and none of that is ours to intercept. On for anyone who
+   * wants the same key to mean the same thing on both.
+   *
+   * Narrow on purpose, because a wrong guess costs a pane. It fires only with
+   * the shell itself in the foreground (no child process to be sending EOF
+   * to), on the primary screen (in an editor or a pager ^D is half a page
+   * down), and on an empty line -- where POSIX would send EOF rather than
+   * discard what you typed. */
+  bool ctrl_d_exits;
+
   /* Whether the program running in a pane may set that pane's shader chains
    * over OSC 5577. Off, because a program restyling the session it happens to
    * be running in is a hazard and not a feature (D13) -- and on for anyone

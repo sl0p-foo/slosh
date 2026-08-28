@@ -248,6 +248,11 @@ void pane_scroll_edge(pane_t *p, bool top);
 bool pane_scrolled(const pane_t *p);
 void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total);
 bool pane_alt_screen(const pane_t *p);
+/* Whether the line being typed looks empty, counted from the keys forwarded
+ * since the last Enter. An estimate: the shell's line editor is on the far
+ * side of the pty and cannot be asked. Only ctrl_d_exits reads it, and only
+ * to refuse -- see the field in pane.c for which way it errs. */
+bool pane_line_empty(const pane_t *p);
 bool pane_wants_mouse(const pane_t *p);
 const char *pane_title(const pane_t *p);
 /* A BEL arrived and the pane has not been looked at since. */

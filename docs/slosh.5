@@ -147,6 +147,16 @@ The glyphs themselves, each one string.
 Hovering focuses \(em never at the cost of what you were doing: not
 during a prefix, a drag, or a modal.
 .TP
+.BI ctrl_d_exits\  bool
+Ctrl-D at an idle shell prompt sends
+.B exit
+to that shell, standing in for the EOF the tty would deliver on POSIX.
+On by default on Windows, which has no VEOF and so ignores the key
+entirely; off elsewhere, where the line discipline already does it.
+Only with the shell itself in the foreground, on the primary screen,
+and on an empty line \(em in an editor or a pager Ctrl-D is half a page
+down, and a line with something on it is not an EOF.
+.TP
 .BI scroll_lines\  n
 Rows per wheel notch.
 .TP

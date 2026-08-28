@@ -919,6 +919,14 @@ void config_defaults(config_t *c) {
   c->status_pad = 4;
   c->focus_follows_mouse = true;
   c->in_band_shaders = false;
+  /* Windows has no VEOF for the line discipline to act on, so ^D there is a
+   * key that does nothing until we make it mean something. POSIX already has
+   * it, and better than we could. */
+#ifdef _WIN32
+  c->ctrl_d_exits = true;
+#else
+  c->ctrl_d_exits = false;
+#endif
 
   c->default_fg = rgb(0xff, 0xff, 0xff);
   c->default_bg = rgb(0x00, 0x00, 0x00);
@@ -1601,6 +1609,10 @@ char *config_render(const config_t *c) {
   cb_add(&b, "\n// ---- behaviour ----\n");
   cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
   cb_add(&b, "in_band_shaders %s\n", yesno(c->in_band_shaders));
+  cb_add(&b,
+         "ctrl_d_exits %s        // ^D at an idle prompt exits the shell; "
+         "default on Windows only\n",
+         yesno(c->ctrl_d_exits));
   cb_add(&b, "scroll_lines %u\n", c->scroll_lines);
   cb_add(&b,
          "scrollback %zu           // lines of history per pane; 0 for none\n",
@@ -1838,6 +1850,7 @@ static const char *const KNOWN_TOP[] = {
     "bell_mark",
     "close_mark",
     "compact",
+    "ctrl_d_exits",
     "dim_unfocused",
     "double_click_ms",
     "word_separators",
@@ -2082,6 +2095,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                                         0, c->focus_follows_mouse);
   c->in_band_shaders =
       kdl_arg_bool(kdl_child(root, "in_band_shaders"), 0, c->in_band_shaders);
+  c->ctrl_d_exits =
+      kdl_arg_bool(kdl_child(root, "ctrl_d_exits"), 0, c->ctrl_d_exits);
 
   const char *align = kdl_arg(kdl_child(root, "title_align"), 0, NULL);
   if (align) {

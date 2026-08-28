@@ -289,6 +289,27 @@ status_pad 4
 // expands a collapsed pane just because the pointer crossed its header.
 focus_follows_mouse true
 
+// Ctrl-D at an idle shell prompt exits that shell.
+//
+// On POSIX the tty does this: ^D on an empty line is EOF, the shell reads it
+// and goes. Windows has no such character -- the console driver does not know
+// it, so cmd.exe and PowerShell ignore the one key that closes a pane
+// everywhere else. Typing `exit` works, which is the tell: the intent was
+// never ambiguous, only unspoken. So slosh sends exactly that word, and the
+// pane ends the way it would have anyway -- the shell's own cleanup, its own
+// exit status, and keep_dead above deciding what is left behind.
+//
+// Default: true on Windows, false everywhere else, where the real thing is
+// already there and better than an imitation. Turn it on if you want the key
+// to mean the same on both.
+//
+// It refuses unless all three hold, because a wrong guess costs a pane:
+// nothing running but the shell (a program in the foreground may want the EOF
+// itself), the primary screen (in an editor or a pager ^D is half a page
+// down), and an empty line (POSIX sends EOF there; it does not throw away
+// what you had typed).
+ctrl_d_exits false
+
 // Whether the program running in a pane may set that pane's shader chains, by
 // printing an escape sequence:
 //

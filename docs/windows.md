@@ -126,6 +126,17 @@ the session on the one program that misbehaves. Whoever finishes last frees.
   `tcgetpgrp()` would have named. Windows offers the image name rather than a
   full argv without reading another process's memory, so pane titles are
   correspondingly shorter.
+- **No `VEOF`, so Ctrl-D is made to mean something.** The console driver has
+  no EOF character: `^D` reaches cmd.exe and PowerShell as an ordinary
+  keystroke and they ignore it, so the key that closes a pane on every other
+  platform does nothing at all. `ctrl_d_exits` (on by default here, off
+  elsewhere) sends the shell the word `exit` instead — which is what you would
+  have typed, and what makes the pane end through the shell's own cleanup and
+  exit status rather than by being closed from outside. It stays out of the
+  way unless all three hold: the shell itself in the foreground, the primary
+  screen, and an empty line. A program that is running may want the EOF
+  itself; in an editor or a pager `^D` is half a page down; and a line with
+  something on it is not an EOF anywhere.
 - **No editor is guaranteed.** `C-a e` prefers whichever console editor is
   actually installed — `nvim`, `vim`, `vi`, `nano`, `micro`, `hx`, `edit` —
   because the obvious fallback is the wrong shape: `notepad` is a GUI program,
