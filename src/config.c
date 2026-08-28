@@ -1933,7 +1933,7 @@ static void include_path(const char *base_file, const char *ref, char *out,
                          size_t cap) {
   char buf[512];
   const char *r = path_expand(ref, buf, sizeof buf);
-  if (r[0] == '/') {
+  if (path_is_absolute(r)) {
     snprintf(out, cap, "%s", r);
     return;
   }

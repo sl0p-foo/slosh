@@ -104,6 +104,11 @@ char *screen_dump_json(screen_t *s);
 
 /* ---- paths -------------------------------------------------------------- */
 
+/* Whether a path stands on its own. A leading `/` everywhere; on Windows also
+ * a drive (`C:\dir`, `C:/dir`), a drive-relative root (`\dir`) and a UNC
+ * share. Drive letters are read as such only on Windows, because `C:` is an
+ * ordinary file name on POSIX. */
+bool path_is_absolute(const char *path);
 /* Expand a leading `~`, using `buf` when it has to. Returns `path` itself when
  * there is nothing to do, so `buf` only has to outlive the result's use. */
 const char *path_expand(const char *path, char *buf, size_t cap);

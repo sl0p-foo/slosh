@@ -15,6 +15,37 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Whether a path names a place outright, rather than one to be read against
+ * somewhere else.
+ *
+ * On POSIX that is a leading `/` and nothing else. Windows spells it three
+ * ways and all three have to count: rooted on the current drive (`\dir`),
+ * rooted on a named one (`C:\dir`, `C:/dir`), and a UNC share
+ * (`\\server\share`). Getting it wrong is not a lookup that fails, it is a
+ * concatenation that succeeds at being nonsense -- `include "C:/themes/t.kdl"`
+ * was resolved against the including file's directory and opened as
+ * `C:/Users/you/.config/slosh/C:/themes/t.kdl`.
+ *
+ * A drive letter must be followed by a separator to be absolute: `C:file` is
+ * relative to the current directory *of drive C*, which is a different thing
+ * and not one we can resolve for anybody.
+ *
+ * All of it is Windows-only on purpose. `C:` is an ordinary file name on
+ * POSIX and a path that begins with one is relative there, so reading it as a
+ * drive would break the platform that works to fix the one that does not. */
+bool path_is_absolute(const char *path) {
+  if (!path || !*path) return false;
+  if (path[0] == '/') return true;
+#ifdef _WIN32
+  if (path[0] == '\\') return true;
+  bool drive = (path[0] >= 'A' && path[0] <= 'Z') ||
+               (path[0] >= 'a' && path[0] <= 'z');
+  if (drive && path[1] == ':' && (path[2] == '/' || path[2] == '\\'))
+    return true;
+#endif
+  return false;
+}
+
 const char *path_expand(const char *path, char *buf, size_t cap) {
   if (!path) return NULL;
   /* `~` and `~/...` only. `~user` needs the password database and is not
@@ -42,7 +73,7 @@ const char *path_resolve(const char *path, const char *base, char *buf,
                          size_t cap) {
   if (!path) return NULL;
   if (path[0] == '~') return path_expand(path, buf, cap);
-  if (path[0] == '/' || !base || !*base) return path;
+  if (path_is_absolute(path) || !base || !*base) return path;
   /* `.` is the project directory itself, which is what a dump writes for the
    * pane that started there -- joined naively it would be `/home/you/dev/api/.`,
    * which works and reads like a bug. */
