@@ -4,14 +4,21 @@
 # so the repo is self-hosted: the same PKGBUILD, published two ways -- as a
 # file people can makepkg themselves, and as built packages pacman can sync.
 #
-#   contrib/arch-repo                 # build + index for this machine's arch
+#   contrib/arch-repo                 # build + sign + index for this arch
 #   ZIG=/path/to/zig contrib/arch-repo    # where zig is not /usr/bin/zig
 #
-# The output is dist/arch/<carch>/: the package, and the slosh.db /
-# slosh.files indexes repo-add maintains. Publishing is uploading that
-# directory to /opt/slosh/arch/<carch>/ on the box (the script prints the
-# rsync). makepkg does not cross-compile, so the aarch64 leg of the repo is
-# made by running this on an aarch64 machine.
+# The output is dist/arch/<carch>/: the package and its .sig, and the
+# slosh.db / slosh.files indexes repo-add maintains, also signed.
+# Publishing is uploading that directory to /opt/slosh/arch/<carch>/ on the
+# box (the script prints the rsync). makepkg does not cross-compile, so the
+# aarch64 leg of the repo is made by running this on an aarch64 machine.
+#
+# Everything is signed with the key below -- the one whose public half is
+# contrib/arch/slosh.asc, served at https://slosh.foo/arch/slosh.asc, and
+# whose fingerprint the README tells users to check. Pinned by fingerprint
+# here so a machine with other keys in its ring cannot sign with the wrong
+# one by default.
+KEY="${SLOSH_GPG_KEY:-0F67C909938CFFA8A76B59FD8D69B55A0E9056B9}"
 set -eu
 
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -21,6 +28,10 @@ fail() { printf 'arch-repo: %s\n' "$*" >&2; exit 1; }
 
 command -v makepkg >/dev/null 2>&1 || fail "makepkg not found -- this runs on an Arch machine"
 command -v repo-add >/dev/null 2>&1 || fail "repo-add not found (pacman ships it)"
+gpg --list-secret-keys "$KEY" >/dev/null 2>&1 \
+    || fail "no secret key $KEY in this keyring -- the repo is signed, and an
+  unsigned update would make every enrolled pacman refuse it. Import the
+  signing key, or SLOSH_GPG_KEY=<fingerprint> for a successor key."
 
 carch="$(uname -m)"
 out="$root/dist/arch/$carch"
@@ -37,15 +48,24 @@ cp contrib/arch/PKGBUILD "$work/"
 # check would object, and the build itself knows what it needs.
 depflag=""
 [ -x /usr/bin/zig ] || { [ -n "${ZIG:-}" ] && depflag="-d"; }
-( cd "$work" && PKGDEST="$out" makepkg -f $depflag )
+( cd "$work" && PKGDEST="$out" makepkg -f $depflag --sign --key "$KEY" )
 
-# Index exactly what this build produced; repo-add updates entries in place,
-# so re-running for the same version is harmless.
-pkgs="$(cd "$work" && PKGDEST="$out" makepkg --packagelist)"
-# repo-add locks the db itself; --new keeps an older file from replacing a
-# newer entry if two builds race.
-repo-add --new "$out/slosh.db.tar.gz" $pkgs
+# The index is regenerated from what is actually in the directory, every
+# time. repo-add refuses to touch an entry whose version it already has --
+# so after a same-version rebuild (new bytes, new signature) an incremental
+# add would leave the db describing the *previous* package, and every
+# client would see a checksum mismatch. Rebuilding the index from disk
+# cannot disagree with disk. --verify checks the package signatures just
+# made; --sign signs the db, so a tampered index is as loud as a tampered
+# package.
+rm -f "$out"/slosh.db* "$out"/slosh.files*
+repo-add --verify --sign --key "$KEY" "$out/slosh.db.tar.gz" "$out"/*.pkg.tar.zst
+
+# The public half rides along at the repo root, so the enrollment the README
+# describes has a URL to fetch, and the file in git to compare it against.
+cp contrib/arch/slosh.asc "$root/dist/arch/slosh.asc"
 
 echo ""
 echo "arch-repo: $out is the repository. To publish:"
 echo "    rsync -av --delete --chown=root:root $out/ root@sl0p.foo:/opt/slosh/arch/$carch/"
+echo "    rsync -a --chown=root:root $root/dist/arch/slosh.asc root@sl0p.foo:/opt/slosh/arch/slosh.asc"

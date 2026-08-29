@@ -31,15 +31,25 @@ sudo make install         # optional: /usr/local/bin/slosh
 (The source build works on a mac too; Homebrew is simply the shorter road
 there.)
 
-On Arch, a pacman repository serves built packages — in `/etc/pacman.conf`:
+On Arch, a pacman repository serves built, signed packages. Enroll the
+signing key (fingerprint `0F67C909938CFFA8A76B59FD8D69B55A0E9056B9`; the
+same key is [contrib/arch/slosh.asc](contrib/arch/slosh.asc) in git, so the
+two copies can be compared):
+
+```sh
+curl -fsSLO https://slosh.foo/arch/slosh.asc
+sudo pacman-key --add slosh.asc
+sudo pacman-key --lsign-key 0F67C909938CFFA8A76B59FD8D69B55A0E9056B9
+```
+
+then, in `/etc/pacman.conf`:
 
 ```ini
 [slosh]
-SigLevel = Optional TrustAll
 Server = https://slosh.foo/arch/$arch
 ```
 
-then `pacman -Sy slosh`. Details, and the PKGBUILD for building it yourself:
+and `pacman -Sy slosh`. Details, and the PKGBUILD for building it yourself:
 [contrib/arch](contrib/arch/README.md).
 
 ### Windows
