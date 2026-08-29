@@ -61,9 +61,8 @@ config that was never opened and a config with nothing wrong look identical.
 
 It is the loader, not a second implementation of it: the only checker that
 cannot drift from what a session does is the one a session uses. The single
-difference is how many problems each reports: a session has one status line and
-shows the first, and a linter that stopped at the first mistake would make you
-run it once per mistake.
+difference: a session's status line shows the first problem, the checker shows
+them all.
 
 ## include
 
@@ -136,10 +135,8 @@ padding 0 2            // vertical, horizontal
 padding 2 0 0 1        // top, right, bottom, left
 ```
 
-A number means the same thing however many of them you write, so `padding 1`,
-`padding 1 1` and `padding 1 1 1 1` are one padding rather than three. Three
-values is refused: CSS reads it as top/horizontal/bottom, and a line whose
-meaning you have to look up is a line nobody can read.
+Three values is refused: CSS reads it as top/horizontal/bottom, and a line
+whose meaning you have to look up is a line nobody can read.
 
 ## Compact
 
@@ -193,12 +190,10 @@ picks its own: 10,000 *bytes*, which measures at 622 lines of an 80-column pane,
 less than one `make` run. `scrollback` is that number replaced with the one every
 other multiplexer settled on.
 
-The two limits work together because either can be reached first and neither can
-see what the other depends on: a line count cannot know how wide your terminal is
-or how many styles a program used, and a byte count cannot know how many lines
-that bought. Whichever bites first wins. Both are estimates: history is pruned a
-page at a time (a page is about 400KB of grid), so a pane keeps a little more
-than it was told, never less.
+Whichever limit bites first wins: a line count cannot know how wide your
+terminal is, and a byte count cannot know how many lines it bought. Both are
+estimates: history is pruned a page (about 400KB of grid) at a time, so a pane
+keeps a little more than it was told, never less.
 
 What the ceiling costs, measured on a pane filled with styled output:
 

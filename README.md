@@ -16,10 +16,8 @@ brew install slosh
 
 ### Linux
 
-The same tap works under [Homebrew on
-Linux](https://docs.brew.sh/Homebrew-on-Linux). Building from source needs
-[zig](https://ziglang.org) 0.16 and nothing else, and the result is one static
-binary that runs on any distro:
+Building from source needs [zig](https://ziglang.org) 0.16 and nothing else,
+and the result is one static binary that runs on any distro:
 
 ```bash
 make vendor    # the vendored terminal core, once

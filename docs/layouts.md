@@ -21,26 +21,18 @@ slosh --layout project.layout
 
 ## What to call them
 
-**`*.layout`**, and a project's is `slosh.layout`. The syntax is still the same
-KDL subset the config uses, one parser reads both files, and for a while the
-files were `*.layout.kdl` on the argument that the extension should say so.
-The argument lost to a collision: zellij speaks the same syntax under that
-same extension with a different schema, and to anyone arriving from there
-`.kdl` said *whose* file it is, and naming the wrong owner is worse than not
-naming the parser. The name says what the file is; `slosh --check` says how
-it was read. (Point your editor's KDL highlighting at `*.layout`; it *is*
-still KDL underneath.) The old spelling is still found by the project scan,
-never written.
+**`*.layout`**, and a project's is `slosh.layout`. The syntax is the same KDL
+subset the config uses — one parser reads both files — but the extension is
+not `.kdl`: zellij speaks KDL layouts with a different schema, and naming the
+wrong owner is worse than not naming the parser. Point your editor's KDL
+highlighting at `*.layout`. The old `*.layout.kdl` spelling is still found by
+the project scan, never written.
 
 A filename cannot enforce anything, so **the document decides which schema it is
 held to, not the flag that read it**. `slosh --check` reads what is in front of
-it: a file with `layout` or `tab` at the top of it is checked as a layout, and a
-config handed to the same flag is still checked as a config. A file too broken to
-parse at all is judged by its name, because by then there is nothing else left to
-read. One flag rather than a `--check-layout` beside it: naming the schema is the
-part you wanted the checker to do, and the answer it used to give (`this is a
-layout, not a config`) replied to a question about a file with the name of
-another flag.
+it: a file with `layout` or `tab` at the top is checked as a layout, a config
+handed to the same flag is still checked as a config, and a file too broken to
+parse at all is judged by its name, there being nothing else left to read.
 
 ```
 $ slosh --check project.layout
@@ -64,12 +56,9 @@ $ slosh --check broken.layout
 broken.layout: 6 problems
 ```
 
-Those are the mistakes a layout can make that still parses: a property no pane
-has, a `split=` that is neither direction, a `weight=` that is not a number the
-engine will honour, a `true`/`false` written some other way, a `purpose=` on a
-split (which would tag nothing, because a split runs nothing) and a child node
-that is not a `pane`. Last comes `this layout declares no tabs`, reported at the
-end rather than first so it reads as the summary it is.
+Those are the mistakes a layout can make that still parses. `this layout
+declares no tabs` comes last rather than first, so it reads as the summary it
+is.
 
 Loading is the other half of the same answer:
 
@@ -79,9 +68,7 @@ slosh: config.kdl: this is a config, not a layout: `gap` is a setting
 ```
 
 A config handed to `--layout` is named for what it is instead of refused for
-having no tabs, which is true of it in the least useful way. Both answers come
-from the same list of settings the loader reads, so the two cannot disagree about
-which file is which.
+having no tabs, which is true of it in the least useful way.
 
 ## The shape
 
@@ -105,10 +92,9 @@ which file is which.
 - `purpose=`: a label for tooling; see below.
 
 **A relative `cwd=` in a layout *file* resolves against that file's own
-directory**, never against the directory you started the session from. It is the
-rule [`include`](config.md#include) already follows for configs, applied to the
-other half of the same syntax: the two documents share a parser, so they should
-not disagree about what a relative path is. A layout with no `cwd=` anywhere
+directory**, never against the directory you started the session from. It is
+the rule [`include`](config.md#include) already follows, applied to the other
+half of the same syntax. A layout with no `cwd=` anywhere
 starts in the file's directory too, so the common case needs no `cwd=` at all. An
 absolute path is unchanged, and `~` is still your home directory.
 
@@ -129,14 +115,11 @@ layout {
 ```
 
 Clone that repo somewhere else and the tab still opens on the checkout, with the
-pane that said `src` still in the checkout's `src`. The alternative (absolute
-paths, or a `$PROJECT` of our own to expand) makes the file personal to one
-machine, or makes you learn a variable to say "here".
+pane that said `src` still in the checkout's `src`.
 
-A layout that arrives as *text* over the socket has no file, and so no directory
-to be relative to. Relative paths in it keep the meaning they had before there
-was a base: relative to wherever the session is. Inventing one for text would
-mean guessing on behalf of whoever sent it.
+A layout that arrives as *text* over the socket has no file, and so no
+directory to be relative to; relative paths in it resolve against wherever the
+session is.
 
 A full annotated example is
 `config/example.layout`.
@@ -214,9 +197,7 @@ empty document, because an empty layout is a plausible answer for a tab you clos
 a minute ago and a silent one for a typo in an id.
 
 A dump records `focus=true` in **every** tab, not only the one you were looking
-at. It used to ask the session's current tab which pane was focused whichever tab
-it was writing, so restoring a six-tab session put you back where you were in one
-tab and wherever the file happened to begin in the other five.
+at, so restoring a six-tab session puts you back where you were in all six.
 
 ## Applying one to a running session
 
@@ -259,17 +240,13 @@ the layout rather than from whatever the program decides to print.
 
 `C-a P` gives the focused pane one from the keyboard (see
 [keys](keys.md#defaults)) and **a purpose an operator typed counts as declared,
-so it locks like one from a file**. The lock is not about which door the label
-came through, it is about the label coming from outside the pane at all: you named
-that pane `service:web` on purpose, and the shell in it printing a title is not an
-argument for renaming it.
+so it locks like one from a file**: you named that pane `service:web` on
+purpose, and the shell in it printing a title is not an argument for renaming
+it.
 
 **Setting a purpose to nothing unlocks it**, from a layout, the API or `C-a P`
 with the field cleared, and hands the label back to the program to describe
-itself again. Before that, a lock held over an empty string was the one state
-nothing could get out of: the pane carried no label, and the lock was what kept
-the program from supplying one. It is the same shape as clearing a pane's name,
-and worth more than a second verb whose whole job is taking a lock off.
+itself again — the same shape as clearing a pane's name.
 
 The [finder](panes.md#finding-a-pane) matches on purposes as well as titles, and
 `{"cmd":"panes"}` reports them.

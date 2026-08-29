@@ -12,11 +12,9 @@ looking at is drawn.
   Splitting the same direction again gives three equal shares rather than
   1/2 + 1/4 + 1/4.
 - **A new pane starts in the directory the pane it came out of is in**, not where
-  the session was started. Splitting inside a project to run one more thing and
-  landing in whatever directory the server was launched from is wrong on its own;
-  it was wrong on disk as well, because a saved
-  [project layout](workspaces.md) then carried an absolute `cwd=` pointing at
-  somewhere else entirely.
+  the session was started. Landing somewhere else is wrong on screen and worse
+  on disk: a saved [project layout](workspaces.md) would carry an absolute
+  `cwd=` pointing somewhere else entirely.
 - **Resize** with `C-a H J K L`: the boundary moves the way you press, whichever
   side of it you are on. Sizes are *weights*, so a resized layout survives the
   window changing size.
@@ -29,15 +27,14 @@ looking at is drawn.
   A turn that would squeeze a pane under the floor is refused with a word.
 - **`C-a z`** fills the tab with one pane and back; **`C-a m`** puts one away
   into a strip along the bottom, still running. Each put-away pane sits there
-  as a **miniature pane frame** (a frame is what a pane looks like here, so
-  a shrunken one reads as exactly what it is) and clicking it anywhere
-  brings the pane back:
+  as a **miniature pane frame**, and clicking it anywhere brings the pane
+  back:
 
-  ```
-  ╭────────────╮ ╭─────────────────╮
-  │ ▬ server   │ │ ▬ agent [!]     │
-  ╰────────────╯ ╰─────────────────╯
-  ```
+```
+╭────────────╮ ╭─────────────────╮
+│ ▬ server   │ │ ▬ agent [!]     │
+╰────────────╯ ╰─────────────────╯
+```
 
 ## The mouse
 
@@ -55,9 +52,9 @@ nothing you click can disagree with what is on screen.
   land. The rest of the edge does nothing when clicked.
 - **The top row is the drag handle, and its handle splits upward.** Clicking a
   pane's header to focus it never splits it. Its handle goes as near the middle
-  of the row as the row allows: centred when the row is empty, and against the
-  title when the title is holding the middle, since the title keeps its own cells
-  for the double-click rename. Arming an edge leaves the name, the buttons and a
+  of the row as the row allows: centred when the row is empty, beside the title
+  when the title holds the middle (the title keeps its cells for the
+  double-click rename). Arming an edge leaves the name, the buttons and a
   dead pane's epitaph legible: the heavy rule goes round them.
 - **Drag the gap between panes** to move that boundary. Where two gaps cross,
   drag the crossing to move both at once. With `gap 0` there is no gap to
@@ -101,11 +98,8 @@ nothing you click can disagree with what is on screen.
   rather than dropping it at the end.
 - Click a tab to switch, `+` to open one, a pane to focus it, and the marks in a
   frame's corner to minimise (`▬`), zoom (`□`) or close (`✕`) it.
-- **A tab in the strip has no `✕`** and closes with `C-a X` instead. A mark per tab
-  would cost two columns of every tab on every frame, forever, for a verb pressed
-  rarely, the same arithmetic that took the per-pane `+` away. A pane's marks
-  earn their cells because there is one set of them and it is where you are
-  looking.
+- **A tab in the strip has no `✕`** and closes with `C-a X` instead: a mark per
+  tab would cost two columns of every tab, forever, for a verb pressed rarely.
 - Hovering anything says what it does, in a word, in the status line.
 
 ## Floating a pane
@@ -129,9 +123,8 @@ like any shell, and un-floating lands it beside the pane it was opened over.
 - **`C-a H J K L` move a focused float** instead of moving a boundary, since
   a float has no boundary to move. **`=` (or `+`) grows it and `-` shrinks
   it** about its own centre, so it stays under your eyes; on a tiled pane
-  `-` still splits. Equalize lives on `0` for this reason: `+` arrives as a
-  bare `=` on terminals that do not report shift for punctuation, and two
-  verbs on one key survive only until that happens.
+  `-` still splits. Equalize lives on `0` because `+` arrives as a bare `=`
+  on terminals that do not report shift for punctuation.
 - **It casts a shadow** on what it covers, which is how you tell a float from
   a tile at a glance. `float_shadow 0` in the config turns it off, and a
   `states { floating { … } }` chain colours floats on top of that.
@@ -203,16 +196,15 @@ with two lines saying what ran and how it ended, and two buttons:
 ```
 
 **The command is written down because `[re-run]` is one button.** Without it,
-pressing it is a guess, most of all in a tab that a [project's
-layout](workspaces.md) built, where the command was never typed into that pane to
-be scrolled back to. A pane running the session's shell has no command to name
-and gets the exit line alone.
+pressing it is a guess — most of all in a tab a [project's
+layout](workspaces.md) built, where the command was never typed to be scrolled
+back to. A pane running the session's shell has no command to name and gets the
+exit line alone.
 
-`[re-run]` (or `C-a r`) runs the same command again in the same pane, keeping the
-previous run above it in the scrollback. So the two notes turn a pane you re-run
-into a log of what ran rather than a pile of identical epitaphs, and a command
-that failed while you were looking elsewhere still has its error message when you
-get back, while a mistyped command in a fresh session no longer closes it.
+`[re-run]` (or `C-a r`) runs the same command again in the same pane, keeping
+the previous run above it in the scrollback: a pane you re-run becomes a log of
+what ran, and a command that failed while you were looking elsewhere still has
+its error message when you get back.
 
 Which panes stay is one setting, `keep_dead`: `commands` (the default), `all`,
 or `none`.

@@ -49,9 +49,8 @@ it did not (`+7 more, in docs/keys.md`), which is the table below.
 **`x`/`X`, `p`/`P`, `w`/`W` and `f`/`F` are deliberately shifted pairs on one
 letter.** Close this pane / close this tab; run a command / tag this pane; go
 to a project / write this project down; float this pane / float a fresh one.
-The shifted half is the same verb on a bigger thing, or the thing you reach
-for within a moment of the other, so the shift is less to remember than a
-second letter would have been.
+The shifted half is the same verb on a bigger thing, so the shift is less to
+remember than a second letter would have been.
 
 `X` says how many panes went with the tab, since most of them were not the one you
 were looking at. On the **last** tab it refuses and points at `q` instead: a key

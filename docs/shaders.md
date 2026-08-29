@@ -74,10 +74,9 @@ shaders {
 `PI` being a half turn is what makes a radian-shaped formula port across as
 written: `sin(TAU * x / cols)` is one cycle over the pane's width, `PI / 2` is a
 quarter turn, `PI / 6` is thirty degrees. It is also *more* exact than radians
-could be in a language with no fractions: a sixth of a turn is 30 whole degrees,
-where `3.14159 / 6` in integers is 0. For the same reason there is no `deg2rad`
-or `rad2deg`: there is one angle unit, and a conversion could only lose the angle
-or invent a second scale to disagree with.
+could be in a language with no fractions: a sixth of a turn is 30 whole
+degrees, where `3.14159 / 6` in integers is 0. There is one angle unit, so
+there is no `deg2rad` or `rad2deg`.
 
 There are no loops and no recursion, on purpose: a config cannot spin and there
 is nothing to sandbox. An expression that does not compile drops that one shader
@@ -149,29 +148,22 @@ chrome> include "contrib/chrome/shine.kdl"    a file, the way a config includes 
 chrome> :load shine                           the same, for the presets that ship with it
 ```
 
-`:paste` prints the document back as a `shaders { }` block with `where=` on every
-entry, and that block can be typed straight back in, which is the point of
-borrowing the syntax rather than inventing one. A test reads it off the screen,
-clears the pane, types it back and compares the cells.
+`:paste` prints the document back as a `shaders { }` block with `where=` on
+every entry, and that block can be typed straight back in, which is the point
+of borrowing the syntax rather than inventing one. The reply counts
+(`1 chrome, 1 content`) say where the passes went, which is the only way to see
+that an entry's `where=` did what you meant.
 
-The text is a **document**: what it says replaces both chains, the way naming
-`shaders { }` in a config replaces the block rather than adding to it. The reply
-counts (`1 chrome, 1 content`) say where the passes went, which is the only way to
-see that an entry's `where=` did what you meant.
+Nothing in the prompt parses KDL: a file goes over by path and a pasted block
+via a temporary file, because the session already has the parser and a second
+reader would be a second opinion.
 
-Nothing in the prompt parses KDL. A file goes over by path and a pasted block via a
-temporary file, because the session already has the parser, and a second reader of
-a config file would be a second opinion about what it says, exactly where comments
-meet quoted strings.
-
-It is a readline prompt, so editing, up/down and ctrl-r work as they do in a shell,
-and history is kept between runs in `$XDG_DATA_HOME/slosh/shader-repl.history`.
-The chains only, since `:quit` is not something you want to press up past. Tab
-completes the commands, the shader names, the property keys, the expression
-language's own variables, constants and functions, and filenames after `:load`.
-`:help` prints the same list at once. A test checks that list against
-`src/shader.c` and `src/expr.c`, because a completion list that has gone stale
-reads as "that is all there is".
+It is a readline prompt: editing, up/down and ctrl-r work as in a shell, and
+history is kept between runs in `$XDG_DATA_HOME/slosh/shader-repl.history`
+(the chains only, since `:quit` is not something you want to press up past).
+Tab completes the commands, the shader names, the property keys, the
+expression language's variables, constants and functions, and filenames after
+`:load`; `:help` prints the same list at once.
 
 **Off by default.** It needs `in_band_shaders true`, because a program that can
 restyle the session it happens to be running in is a hazard first and a

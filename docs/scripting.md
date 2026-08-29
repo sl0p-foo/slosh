@@ -30,13 +30,12 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `focus` | `id` |
 | `close` `rerun` | `id`, or 0 for the focused pane |
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1`. The way back from a pane that painted itself unreadable |
-| `new-tab` `select-tab` `close-tab` `move-tab` `set-name` | tabs, by `id` or `index` |
-| `set-name target="pane"` | a pane's name, which outranks the title its program sets |
+| `new-tab` `select-tab` `close-tab` `move-tab` | tabs, by `id` or `index` |
 | `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`. The pane keeps running: same pty, same scrollback |
 | `float` | bare: toggle a pane [floating](panes.md#floating-a-pane) (`id`, or 0 for the focused one). With any of `x` `y` `w` `h` it *places*: floats first when tiled, re-places when floating, never un-floats; omitted fields keep their value |
 | `new-float` | a fresh floating shell over the current tab, centred, in the focused pane's directory; answers `id` |
 | `set-name` | `target:"tab"` (the default, because that is what this verb has always meant) or `"pane"`, `id`, `name`. A pane accepts 0 for the focused one. A pane's name wins over the title the program sets, so this is how a program that keeps announcing something stale gets overruled; an empty `name` clears it and hands the label back. Refusals say `no such pane` or `no such tab`, so a mistyped target is visible in the reply |
-| `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program, because a lock held over an empty string was a state nothing could get out of |
+| `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program |
 | `dump-layout` `apply-layout` | see [layouts](layouts.md). `dump-layout` takes `tab` (0 for every tab), `relative_to` to write every `cwd=` under that directory instead of absolute, and `suspend` (`as-is` `none` `commands` `all`); it answers `kdl` `panes` `suspended`, and an unknown `tab` is an error rather than an empty document |
 | `workspaces` | the projects on disk and which of them are open: `roots` says whether any are configured at all, and each entry has `name` `path` `purpose` `layout` (a file path, or "") `mtime` `tab` (0 when closed). See [workspaces](workspaces.md) |
 | `open-workspace` | `name` or `path`, and `suspended`; answers `tab` `purpose` `path` `created` `tabs` `honoured`. Already open means focused, with `created:false` |

@@ -91,9 +91,8 @@ line breaks carry meaning: a paragraph, a list, a diagram of a pane. A comment
 that runs long is a thing for a person to fix.
 
 The Python is the opposite: left entirely at ruff's defaults. The C here was
-hand-formatted into a house style worth arguing for; the Python was not, and a
-formatter of that kind is only worth having when there is nothing left to argue
-about. Every knob turned would be an argument to have again later. It cost a 60%
+hand-formatted into a house style worth arguing for; the Python was not, and
+every knob turned would be an argument to have again later. It cost a 60%
 reformat of the test suite, once.
 
 **Python imports are sorted and C includes are not**, which is not an

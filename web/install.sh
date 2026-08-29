@@ -1,7 +1,7 @@
 #!/bin/sh
 # slosh installer -- https://slosh.foo
 #
-# On macOS or Linux with Homebrew there is a shorter road:
+# On macOS with Homebrew there is a shorter road:
 #
 #     brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
 #     brew install slosh
