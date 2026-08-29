@@ -74,9 +74,13 @@ static int64_t now_ms(void) {
  *
  * So output is queued and flushed when the socket says it can take more. The
  * cap is what makes it bounded: past it we are not buffering a slow reader any
- * more, we are storing a screen nobody is looking at, and the connection is
- * dropped. A display that comes back reattaches and gets a full repaint, which
- * is the same thing that happens after any detach. */
+ * more, and new frames are *dropped* rather than queued -- the model remembers
+ * what it owes (force_full for cells, gfx_commit for images) and says it again
+ * once the backlog drains. Dropping used to mean closing the connection, but a
+ * backlog over the cap is not a dead client: one kitty image retransmission is
+ * megabytes in a single indivisible message, so the queue sits over the cap
+ * for exactly as long as a healthy client needs to swallow it -- and closing
+ * there detached the session every time a screenshot crossed the wire. */
 #define MAX_OUTBOX (4u * 1024 * 1024)
 
 typedef struct {
@@ -134,8 +138,14 @@ static bool conn_flush(conn_t *c) {
 /* Frame a message onto the queue, then try to get rid of it immediately: the
  * common case is a socket with room, and queueing is only the fallback. */
 static bool conn_send(conn_t *c, uint8_t type, const void *data, size_t len) {
+  /* The cap bounds the *backlog*, not the message: a queue already MAX_OUTBOX
+   * deep is a client that stopped reading, but a single big message on an
+   * empty queue is just a big message. A kitty image retransmission is
+   * megabytes of base64 in one indivisible stream -- capping the message
+   * itself made every screenshot larger than the cap silently undeliverable,
+   * forever. Memory stays bounded at MAX_OUTBOX plus one message. */
+  if (c->out_len - c->out_off > MAX_OUTBOX) return false;
   size_t need = c->out_len + MSG_HDR + len;
-  if (need - c->out_off > MAX_OUTBOX) return false;
   if (c->out_off && need > c->out_cap) { /* reclaim what has already gone */
     memmove(c->out, c->out + c->out_off, c->out_len - c->out_off);
     c->out_len -= c->out_off;
@@ -210,13 +220,27 @@ static char *b64(const char *in, size_t len, size_t *out_len) {
 }
 
 /* Images go out after the cell diff, so a repainted cell cannot land on top
- * of a placement we just made. */
-static void push_graphics(server_t *s) {
+ * of a placement we just made.
+ *
+ * Returns whether the client is caught up. The stream is indivisible -- half
+ * a frame is a dangling APC that eats whatever follows it -- so a full outbox
+ * drops the whole frame, the model is told (deletions stay owed, transmits
+ * are re-sent), and the caller keeps a repaint pending until it lands. Losing
+ * a frame here silently was how a scrolled-away screenshot stayed parked on
+ * the screen: its deletion left with the dropped bytes and was never owed
+ * again. */
+static bool push_graphics(server_t *s) {
   conn_t *c = display_conn(s);
-  if (!c) return;
+  if (!c) return true;
   size_t len = 0;
   const char *bytes = app_graphics(s->app, &len);
-  if (len) conn_send(c, MSG_OUTPUT, bytes, len);
+  if (!len) {
+    app_graphics_commit(s->app, true);
+    return true;
+  }
+  bool ok = conn_send(c, MSG_OUTPUT, bytes, len);
+  app_graphics_commit(s->app, ok);
+  return ok;
 }
 
 /* The clipboard lives on the client's machine, not ours, so a copy travels as
@@ -239,17 +263,22 @@ static void push_clipboard(server_t *s) {
 }
 
 /* Send whatever the last compose produced to the display client. */
-static void push_frame(server_t *s) {
+/* Returns whether the client has the frame (or there is none to owe it to).
+ * A refused send is a full outbox, not a dead client: the diff that was not
+ * queued is lost, so the client's cells are unknown from here on and the next
+ * attempt must be a full repaint. The caller keeps the paint pending, and the
+ * outbox drains on POLLOUT between frames; a client that truly went away
+ * shows up as a write error there, not here. */
+static bool push_frame(server_t *s) {
   conn_t *c = display_conn(s);
-  if (!c) return;
+  if (!c) return true;
   screen_render(&s->screen);
-  if (!s->screen.out_len) return;
-  if (!conn_send(c, MSG_OUTPUT, s->screen.out, s->screen.out_len))
-    for (size_t i = 0; i < s->nconns; i++)
-      if (&s->conns[i] == c) {
-        conn_close(s, i);
-        break;
-      }
+  if (!s->screen.out_len) return true;
+  if (!conn_send(c, MSG_OUTPUT, s->screen.out, s->screen.out_len)) {
+    s->screen.force_full = true;
+    return false;
+  }
+  return true;
 }
 
 static void drop_display(server_t *s, uint8_t reason) {
@@ -743,11 +772,16 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
 
     if (pending_paint && now_ms() >= next_frame) {
       app_compose(s.app, &s.screen);
-      push_frame(&s);
-      push_graphics(&s);
+      /* Either push can find the outbox full and drop its frame. The model
+       * remembers what the client is owed (a full repaint, the graphics
+       * deletions and transmissions), so the retry that this keeps pending
+       * is what eventually says it -- the outbox drains on POLLOUT between
+       * frames. */
+      bool frame_ok = push_frame(&s);
+      bool gfx_ok = push_graphics(&s);
       push_clipboard(&s);
-      pending_paint = false;
-      next_frame = now_ms();
+      pending_paint = !(frame_ok && gfx_ok);
+      next_frame = now_ms() + (pending_paint ? FRAME_MS : 0);
     }
   }
 

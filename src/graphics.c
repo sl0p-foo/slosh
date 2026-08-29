@@ -11,12 +11,27 @@
 #define OUT_ID_BASE 0x51000000u
 #define CHUNK 3072 /* bytes of base64 per escape, kitty's documented ceiling */
 
+/* A placement the client was shown and must now be told to forget. Kept in
+ * its own queue rather than deleted inline because the bytes of a frame can
+ * fail to reach the client (the server's outbox has a ceiling): a deletion
+ * that goes out with a dropped frame is a placement the client draws forever,
+ * pinned to a spot on the screen no scrolling will move. The queue survives
+ * until gfx_commit() says the client actually heard it. */
+typedef struct {
+  uint32_t out_id, place_id;
+} gfx_dead_t;
+
 struct graphics {
   gfx_image_t *imgs;
   size_t nimgs, imgcap;
   gfx_place_t *places;
   size_t nplaces, placecap;
   uint32_t next_out_id;
+
+  gfx_dead_t *dead; /* deletions owed to the client */
+  size_t ndead, deadcap;
+  size_t *txed; /* imgs[] indices transmitted in the frame being built */
+  size_t ntxed, txedcap;
 
   char *out;
   size_t len, cap;
@@ -73,6 +88,8 @@ void gfx_free(graphics_t *g) {
   if (!g) return;
   free(g->imgs);
   free(g->places);
+  free(g->dead);
+  free(g->txed);
   free(g->out);
   free(g);
 }
@@ -80,6 +97,9 @@ void gfx_free(graphics_t *g) {
 void gfx_reset(graphics_t *g) {
   for (size_t i = 0; i < g->nimgs; i++) g->imgs[i].sent = false;
   g->nplaces = 0;
+  /* A fresh client has no placements to delete and has seen no frame. */
+  g->ndead = 0;
+  g->ntxed = 0;
 }
 
 void gfx_forget_pane(graphics_t *g, uint32_t pane) {
@@ -90,6 +110,10 @@ void gfx_forget_pane(graphics_t *g, uint32_t pane) {
 }
 
 void gfx_begin(graphics_t *g) {
+  /* A flushed frame nobody committed was never delivered: the `graphics`
+   * control command renders the stream for a CLI, not for the client, and
+   * anything it claimed to transmit the client still has not seen. */
+  if (g->ntxed) gfx_commit(g, false);
   for (size_t i = 0; i < g->nplaces; i++) g->places[i].live = false;
   g->len = 0;
   if (g->out) g->out[0] = 0;
@@ -145,6 +169,15 @@ static void transmit(graphics_t *g, gfx_image_t *img, uint32_t px_w,
     out_str(g, "\x1b\\");
   }
   img->sent = true;
+  /* Provisionally: gfx_commit() unwinds this if the frame never arrives,
+   * because `sent` on an image the client does not have means every future
+   * placement of it silently draws nothing. Indices, not pointers -- the
+   * array reallocates as the same frame records more images. */
+  if (g->ntxed == g->txedcap) {
+    g->txedcap = g->txedcap ? g->txedcap * 2 : 8;
+    g->txed = realloc(g->txed, g->txedcap * sizeof *g->txed);
+  }
+  g->txed[g->ntxed++] = (size_t)(img - g->imgs);
 }
 
 void gfx_place(graphics_t *g, const gfx_req_t *req) {
@@ -218,7 +251,10 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
   const size_t before = 2; /* the DECSC gfx_begin() wrote */
 
   /* Placements that were on screen last frame and are not now must be told to
-   * go away; a terminal will happily keep drawing an image nobody owns. */
+   * go away; a terminal will happily keep drawing an image nobody owns. They
+   * queue rather than emit-and-forget: the model prunes them here whether or
+   * not the bytes ever reach the client, so the deletion must survive a
+   * dropped frame and be said again until gfx_commit() confirms delivery. */
   size_t keep = 0;
   for (size_t i = 0; i < g->nplaces; i++) {
     gfx_place_t *p = &g->places[i];
@@ -226,9 +262,25 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
       g->places[keep++] = *p;
       continue;
     }
-    out_fmt(g, "\x1b_Ga=d,d=i,q=2,i=%u,p=%u\x1b\\", p->out_id, p->place_id);
+    bool queued = false;
+    for (size_t j = 0; j < g->ndead; j++)
+      if (g->dead[j].out_id == p->out_id && g->dead[j].place_id == p->place_id)
+        queued = true;
+    if (!queued) {
+      if (g->ndead == g->deadcap) {
+        g->deadcap = g->deadcap ? g->deadcap * 2 : 8;
+        g->dead = realloc(g->dead, g->deadcap * sizeof *g->dead);
+      }
+      g->dead[g->ndead++] = (gfx_dead_t){p->out_id, p->place_id};
+    }
   }
   g->nplaces = keep;
+
+  /* Deletions before placements: a placement that died undelivered and then
+   * came back is deleted and re-placed in the same stream, which nets out. */
+  for (size_t i = 0; i < g->ndead; i++)
+    out_fmt(g, "\x1b_Ga=d,d=i,q=2,i=%u,p=%u\x1b\\", g->dead[i].out_id,
+            g->dead[i].place_id);
 
   /* Then (re)place everything that is. C=1 keeps the cursor where the text
    * renderer left it, which matters because we are interleaving with a diff. */
@@ -266,6 +318,20 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
 
   *out_len = g->len;
   return g->out; /* borrowed: valid until the next gfx_begin */
+}
+
+void gfx_commit(graphics_t *g, bool delivered) {
+  if (delivered) {
+    g->ndead = 0; /* the client heard the deletions; stop repeating them */
+  } else {
+    /* The transmissions in that frame never happened as far as the client
+     * is concerned; forget we made them so the next frame sends them again.
+     * Deletions stay queued for the same reason. Placements need nothing:
+     * every live one is re-emitted every frame anyway. */
+    for (size_t i = 0; i < g->ntxed; i++)
+      if (g->txed[i] < g->nimgs) g->imgs[g->txed[i]].sent = false;
+  }
+  g->ntxed = 0;
 }
 
 size_t gfx_placements(const graphics_t *g, const gfx_place_t **out) {

@@ -532,6 +532,49 @@ def test_a_png_that_is_not_one_places_nothing():
         check("and the session survived it", s.pane() is not None)
 
 
+def test_an_undelivered_frame_stays_owed():
+    """A frame's graphics bytes can fail to reach the client -- the server's
+    outbox has a ceiling, and one screenshot retransmission is megabytes of
+    base64. The model used to advance anyway: the image was marked sent (so it
+    was never transmitted again) and the deletions went out with the dropped
+    bytes (so they were never said again). The visible half of that bug was a
+    screenshot scrolled out of a pi transcript staying parked on the screen,
+    at a fixed position, immune to scrolling and pane swaps, forever.
+
+    A flush nobody commits counts as undelivered, which is also what the
+    `graphics` control command is: bytes rendered for a CLI, not the client.
+    So the contract is observable right here: everything stateful about a
+    frame -- transmissions and deletions -- must show up again in the next
+    one, until a delivery is confirmed."""
+    prog = (
+        "stty raw -echo; "
+        f'printf "\\033_Ga=T,f=24,s=4,v=2,i=7,q=2,c=6,r=2;{PX}\\033\\\\"; '
+        "head -c1 >/dev/null; seq 1 200; cat"
+    )
+    with Session(["/bin/sh", "-c", prog], cols=44, rows=10) as s:
+        s.until(lambda _: len(places(s)) == 1)
+
+        raw = s.api("graphics", format="bytes")["bytes"]
+        check("the image is transmitted", "_Ga=t" in raw, repr(raw[:80]))
+        raw = s.api("graphics", format="bytes")["bytes"]
+        check(
+            "and transmitted again: the last frame was never delivered",
+            "_Ga=t" in raw,
+            repr(raw[:80]),
+        )
+
+        s.send("x")  # the seq scrolls the image out of the viewport
+        s.until(lambda _: places(s) == [])
+        raw = s.api("graphics", format="bytes")["bytes"]
+        check("scrolling it away owes a deletion", "_Ga=d,d=i" in raw, repr(raw))
+        raw = s.api("graphics", format="bytes")["bytes"]
+        check(
+            "which is still owed next frame, not fire-and-forget",
+            "_Ga=d,d=i" in raw,
+            repr(raw),
+        )
+
+
 def test_scrolled_away_placements_are_dropped():
     prog = (
         "stty raw -echo; "
@@ -629,5 +672,7 @@ if __name__ == "__main__":
     test_partial_visibility_crops_rather_than_squashes()
     test_hidden_panes_place_nothing()
     test_placement_goes_away_with_its_pane()
+    test_scrolled_away_placements_are_dropped()
+    test_an_undelivered_frame_stays_owed()
     test_a_float_occludes_a_placement()
     sys.exit(report())

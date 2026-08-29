@@ -74,8 +74,16 @@ typedef struct {
 /* Record a visible placement, transmitting the image if the client has not
  * seen it yet. `data` may be NULL when the image is already transmitted. */
 void gfx_place(graphics_t *g, const gfx_req_t *req);
-/* End a frame: emit transmits, placements and deletions. Caller frees. */
+/* End a frame: emit transmits, placements and deletions. Borrowed until the
+ * next gfx_begin(). The frame is provisional until gfx_commit() says whether
+ * the bytes reached the client. */
 char *gfx_flush(graphics_t *g, size_t *out_len);
+/* The verdict on the last flushed frame. Delivered: the client is caught up.
+ * Not delivered: transmissions are forgotten so they are re-sent, and
+ * deletions stay owed -- a deletion the client never hears is an image
+ * parked on its screen that no scrolling will ever move. A flush nobody
+ * commits counts as undelivered at the next gfx_begin(). */
+void gfx_commit(graphics_t *g, bool delivered);
 
 /* Forget what the client has seen (it is a different client now). */
 void gfx_reset(graphics_t *g);

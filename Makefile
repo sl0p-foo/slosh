@@ -212,6 +212,8 @@ test-live: $(BIN) ## the checks that need a real tty (slow)
 	python3 tests/test_session.py
 	@echo
 	python3 tests/live_reload.py
+	@echo
+	python3 tests/live_graphics.py
 
 test-all: test test-live ## everything
 
@@ -279,7 +281,7 @@ coverage: $(COV_DIR)/slosh $(COV_UNITS) ## how much of the code the tests run
 	  (cd tests && SLOSH_BIN=../$(COV_DIR)/slosh timeout 300 python3 $$t >/dev/null 2>&1) \
 	    || echo "  (failed: $$t)"; \
 	done
-	@for t in test_session.py live_m0.py live_input.py live_reload.py; do \
+	@for t in test_session.py live_m0.py live_input.py live_reload.py live_graphics.py; do \
 	  (cd tests && SLOSH_BIN=../$(COV_DIR)/slosh timeout 300 python3 $$t >/dev/null 2>&1) \
 	    || echo "  (failed: $$t)"; \
 	done

@@ -23,6 +23,9 @@ void app_event(app_t *a, const input_event_t *ev);
  * the same thing as JSON for tests. Bytes are borrowed until the next call. */
 const char *app_graphics(app_t *a, size_t *len);
 void app_graphics_reset(app_t *a);
+/* Did the last app_graphics() stream reach the client? Undelivered frames
+ * are regenerated: transmissions repeat and deletions stay owed. */
+void app_graphics_commit(app_t *a, bool delivered);
 char *app_graphics_json(app_t *a);
 
 /* Transient announcements, drawn bottom-right and expiring on their own. */

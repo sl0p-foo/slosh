@@ -42,7 +42,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `close-workspace` | `name` or `purpose`; answers `closed`, how many tabs went |
 | `save-workspace` | write this tab as the project's layout: `tab` (0 for the current one), `path` for a tab that is not a workspace yet, `suspend`, and `force` to overwrite a layout the project already has; answers `path` `purpose` `panes` `suspended` `replaced` |
 | `notify` | put a line in the session's status area |
-| `graphics` | the kitty placements on screen, or the bytes sent for them |
+| `graphics` | the kitty placements on screen, or the bytes sent for them. The bytes are rendered for *you*, not the client, so anything stateful in them (image transmissions, deletions) is re-sent to the client on its next frame |
 | `clipboard` | what the session has copied |
 | `reload` | re-read the config; answers `{"ok":true,"warning":...}` if it had a complaint |
 | `splash` | replay the attach greeting; `fx` and `motion` pick the colour effect and the assembly by index, for a deterministic one |

@@ -2435,6 +2435,10 @@ const char *app_graphics(app_t *a, size_t *len) {
 
 void app_graphics_reset(app_t *a) { gfx_reset(a->gfx); }
 
+void app_graphics_commit(app_t *a, bool delivered) {
+  gfx_commit(a->gfx, delivered);
+}
+
 char *app_graphics_json(app_t *a) {
   size_t len = 0;
   app_graphics(a, &len); /* refresh the model; the bytes are the caller's job */
