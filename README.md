@@ -31,6 +31,17 @@ sudo make install         # optional: /usr/local/bin/slosh
 (The source build works on a mac too; Homebrew is simply the shorter road
 there.)
 
+On Arch, a pacman repository serves built packages — in `/etc/pacman.conf`:
+
+```ini
+[slosh]
+SigLevel = Optional TrustAll
+Server = https://slosh.foo/arch/$arch
+```
+
+then `pacman -Sy slosh`. Details, and the PKGBUILD for building it yourself:
+[contrib/arch](contrib/arch/README.md).
+
 ### Windows
 
 Windows 10/11, x86-64 and ARM64, as one `slosh.exe` with no runtime

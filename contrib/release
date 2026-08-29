@@ -77,4 +77,4 @@ fi
 echo "release: v$v -- VERSION bumped, committed, tagged. To publish:"
 echo "    git push origin master v$v"
 echo "    make release REF=v$v      # the tarballs and zips, into dist/"
-echo "    contrib/aur/README.md     # bump the AUR package (pkgver, sha256, .SRCINFO)"
+echo "    contrib/arch/README.md    # bump the PKGBUILD, contrib/arch-repo, upload"

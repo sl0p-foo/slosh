@@ -1,8 +1,11 @@
 # Maintainer: Peter Geissler <peter@haxx.in>
 #
-# The upstream copy of this file lives in contrib/aur/ in the slosh repo;
-# the AUR repo (ssh://aur@aur.archlinux.org/slosh.git) receives it plus a
-# regenerated .SRCINFO on every release -- see contrib/aur/README.md.
+# This file lives in contrib/arch/ in the slosh repo and is served raw at
+# https://git.sl0p.foo/slosh.git/plain/contrib/arch/PKGBUILD -- fetch it and
+# makepkg -si. The same file feeds the self-hosted pacman repository at
+# https://slosh.foo/arch/ (contrib/arch-repo builds it); it would also be the
+# AUR package, but AUR signups are closed while the AUR deals with supply
+# chain attacks, so self-hosting it is -- see contrib/arch/README.md.
 #
 # The build is offline-clean: the terminal core (libghostty-vt) is vendored
 # in the tarball, and its zig dependencies are all lazy and unused by the
@@ -17,6 +20,9 @@ arch=('x86_64' 'aarch64')
 url="https://slosh.foo"
 license=('MIT')
 depends=('glibc')
+# One package, no -debug split: this builds for a repo we host ourselves,
+# and the stripped binary is the artifact.
+options=('!debug')
 # zig 0.16 specifically: the vendored core states minimum_zig_version 0.16.0,
 # and a newer zig may well reject it -- zig is not yet stable across versions.
 makedepends=('zig')

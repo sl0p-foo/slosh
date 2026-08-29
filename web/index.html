@@ -62,6 +62,11 @@
 <span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
   </div>
 
+  <p class="aside">On Arch there is a <a href="arch/">pacman repository</a>
+  with built packages — the <code>[slosh]</code> stanza to add, and the
+  PKGBUILD for building it yourself, are in
+  <a href="https://git.sl0p.foo/slosh.git/tree/contrib/arch">contrib/arch</a>.</p>
+
   <p class="aside">On Windows it is the same one binary: <code>slosh.exe</code>,
   Windows 10/11, x86-64 and ARM64, no runtime dependency beyond the OS. Panes
   are ConPTYs and sessions are AF_UNIX sockets, so everything below works there

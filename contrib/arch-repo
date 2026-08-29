@@ -1,0 +1,51 @@
+#!/bin/sh
+# arch-repo -- build the Arch package and fold it into the pacman repository
+# slosh.foo serves at /arch/. AUR signups are closed (supply chain attacks),
+# so the repo is self-hosted: the same PKGBUILD, published two ways -- as a
+# file people can makepkg themselves, and as built packages pacman can sync.
+#
+#   contrib/arch-repo                 # build + index for this machine's arch
+#   ZIG=/path/to/zig contrib/arch-repo    # where zig is not /usr/bin/zig
+#
+# The output is dist/arch/<carch>/: the package, and the slosh.db /
+# slosh.files indexes repo-add maintains. Publishing is uploading that
+# directory to /opt/slosh/arch/<carch>/ on the box (the script prints the
+# rsync). makepkg does not cross-compile, so the aarch64 leg of the repo is
+# made by running this on an aarch64 machine.
+set -eu
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$root"
+
+fail() { printf 'arch-repo: %s\n' "$*" >&2; exit 1; }
+
+command -v makepkg >/dev/null 2>&1 || fail "makepkg not found -- this runs on an Arch machine"
+command -v repo-add >/dev/null 2>&1 || fail "repo-add not found (pacman ships it)"
+
+carch="$(uname -m)"
+out="$root/dist/arch/$carch"
+work="$root/build/arch-pkg"
+
+# makepkg builds in a copy, so a failed or dirty build cannot leave droppings
+# next to the PKGBUILD that later get committed.
+rm -rf "$work"
+mkdir -p "$work" "$out"
+cp contrib/arch/PKGBUILD "$work/"
+
+# -f: rebuilding the same pkgver-pkgrel is the common case while testing.
+# -d when zig comes from $ZIG rather than pacman, since only the dependency
+# check would object, and the build itself knows what it needs.
+depflag=""
+[ -x /usr/bin/zig ] || { [ -n "${ZIG:-}" ] && depflag="-d"; }
+( cd "$work" && PKGDEST="$out" makepkg -f $depflag )
+
+# Index exactly what this build produced; repo-add updates entries in place,
+# so re-running for the same version is harmless.
+pkgs="$(cd "$work" && PKGDEST="$out" makepkg --packagelist)"
+# repo-add locks the db itself; --new keeps an older file from replacing a
+# newer entry if two builds race.
+repo-add --new "$out/slosh.db.tar.gz" $pkgs
+
+echo ""
+echo "arch-repo: $out is the repository. To publish:"
+echo "    rsync -av --delete --chown=root:root $out/ root@sl0p.foo:/opt/slosh/arch/$carch/"
