@@ -23,15 +23,15 @@ shutil.copyfile(THEME, cfg)
 
 r = Recorder(["/bin/sh"], cols=100, rows=28, title="make it yours", config=cfg, env=ENV)
 
-# A neighbour with something on it, so geometry changes have a witness.
-r.api("split", dir="cols")
+# Something on the one pane, so geometry changes have a witness. No neighbour
+# beyond that: the editor C-a e opens is the only split, and gets half the
+# window to itself.
 r.capture(force=True)
 r.pause(0.6)
 r.run(
     "for i in 1 1 2 2 3 3 4 4 5 5 6 6; do"
     " printf '\\033[4%sm%-40s\\033[0m\\n' $i ' '; done"
 )
-r.api("focus", id=sorted(p["id"] for p in r.api("panes")["panes"])[0])
 r.capture(dt=0.4)
 r.pause(0.8)
 

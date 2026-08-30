@@ -16,9 +16,14 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from castgen import ROOT, THEME, Recorder, out_path
+from castgen import ROOT, Recorder, out_path
 
 ENV = {"PS1": "$ ", "ENV": "/dev/null"}
+
+# Mono, not the house pink: this demo is about colour passes, so the base
+# theme is the one without colour -- every hue on screen is a shader's. It
+# also gives this cast its own look in the tour's theme rotation.
+THEME = os.path.join(ROOT, "contrib", "themes", "mono.kdl")
 
 work = tempfile.mkdtemp(prefix="slosh-demo-")
 cfg = os.path.join(work, "config.kdl")

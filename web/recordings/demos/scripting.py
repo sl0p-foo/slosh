@@ -15,9 +15,13 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from castgen import Recorder, out_path
+from castgen import ROOT, Recorder, out_path
 
 ENV = {"PS1": "$ ", "ENV": "/dev/null"}
+
+# Amber, not the house pink: each cast in the tour records under its own
+# theme, so scrolling to the next step reads as a scene change.
+THEME = os.path.join(ROOT, "contrib", "themes", "amber.kdl")
 
 work = tempfile.mkdtemp(prefix="slosh-demo-")
 
@@ -63,7 +67,13 @@ with open(lay, "w") as f:
     )
 
 r = Recorder(
-    ["/bin/sh"], cols=100, rows=28, title="built to be driven", env=ENV, layout=lay
+    ["/bin/sh"],
+    cols=100,
+    rows=28,
+    title="built to be driven",
+    config=THEME,
+    env=ENV,
+    layout=lay,
 )
 
 r.capture(force=True, settle_ms=150)

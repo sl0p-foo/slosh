@@ -10,18 +10,33 @@
 </head>
 <body>
 
-<nav class="nav" aria-label="Site">
-  <a href="./" aria-current="page">slosh</a>
-  <a href="demo/">demo</a>
-  <a href="docs/">docs</a>
-  <span class="nav-fill"></span>
-  <a href="https://slosh.foo/src">src</a>
-</nav>
+<!-- The little logo: the big one, shrunk into the corner the stage's
+     v-centering leaves empty. It fades in when the hero scrolls away
+     (the observer at the bottom of the page) and is a road back up. -->
+<a class="logo-float" href="#" aria-label="slosh — back to top">
+<pre aria-hidden="true">
+▄██████▄ ███      ▄██████▄ ▄██████▄ ▄██  ▄██
+███   ▀▀ ███      ███  ███ ███   ▀▀ ███  ███
+▀██████▄ ███  ▄▄▄ ███  ███ ▀██████▄ ████████
+▄▄   ███ ███  ███ ███  ███ ▄▄   ███ ███  ███
+▀██████▀ ███████▀ ▀██████▀ ███████▀ ███  ███
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+</pre>
+</a>
 
 <main>
 
 <header class="hero">
-  <h1>slosh</h1>
+<pre class="logo">
+▄██████▄ ███      ▄██████▄ ▄██████▄ ▄██  ▄██
+███   ▀▀ ███      ███  ███ ███   ▀▀ ███  ███
+▀██████▄ ███  ▄▄▄ ███  ███ ▀██████▄ ████████
+▄▄   ███ ███  ███ ███  ███ ▄▄   ███ ███  ███
+▀██████▀ ███████▀ ▀██████▀ ███████▀ ███  ███
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+</pre>
   <p class="tagline">a modern terminal multiplexer written in C on top of
   <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a>.</p>
 
@@ -139,8 +154,11 @@
 <section id="install">
   <h2>install</h2>
 
-<p>we aim to make installing `slosh` as easy as possible. we provide binaries for most popular platforms/architectures on our <a href="">github</a>.
-and we also provide some arch package repo's as well as a brew formula, check below!
+<p>Prebuilt binaries for the popular platforms live at
+<a href="dist/">slosh.foo/dist</a> — one static file each, checksummed. The
+tabs below are the short roads to one: an installer for linux, a brew formula
+for macos, a signed pacman repo for arch, a zip for windows. Building from
+source works too, but you never need to.</p>
 
   <!-- Pure CSS tabs: hidden radios, labels drawn like a slosh tab strip,
        one panel per platform. The only JavaScript is the preselect at the
@@ -166,10 +184,18 @@ and we also provide some arch package repo's as well as a brew formula, check be
         <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | sudo sh</code></pre>
         <button class="copy" type="button" aria-label="Copy command">copy</button>
       </div>
-      <p class="aside">Piping a URL into a root shell should make you flinch —
-      <a href="install.sh">read it first</a>, it is short: git,
-      <a href="https://ziglang.org">zig</a> 0.16, one static binary into
-      <code>/usr/local/bin</code>, nothing else touched.</p>
+      <div class="cmd" data-copy="curl -fsSL https://slosh.foo/install.sh | PREFIX=$HOME/.local sh">
+        <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | PREFIX=$HOME/.local sh   <span class="c"># no root</span></code></pre>
+        <button class="copy" type="button" aria-label="Copy command">copy</button>
+      </div>
+      <p class="aside">Piping a URL into a shell should make you flinch —
+      <a href="install.sh">read it first</a>, it is short: it picks the
+      prebuilt static binary for your architecture from
+      <a href="dist/">dist/</a>, checks it against the published SHA256SUMS,
+      and puts the one file in <code>PREFIX/bin</code>. The sudo in the first
+      line is only for writing to <code>/usr/local/bin</code>; the second line
+      needs no root at any step and lands it in <code>~/.local/bin</code>.
+      Nothing compiled, nothing else touched.</p>
     </div>
 
     <div class="os-panel" id="install-macos">
@@ -179,7 +205,9 @@ and we also provide some arch package repo's as well as a brew formula, check be
         <button class="copy" type="button" aria-label="Copy commands">copy</button>
       </div>
       <p class="aside">No Homebrew? The linux tab's installer works here too —
-      it only needs <a href="https://ziglang.org">zig</a> 0.16 and git.</p>
+      on Apple silicon it fetches the signed prebuilt binary from
+      <a href="dist/">dist/</a>, verifies it, and installs that. No Xcode, no
+      build.</p>
     </div>
 
     <div class="os-panel" id="install-arch">
@@ -199,13 +227,14 @@ Server = https://slosh.foo/arch/$arch
 
     <div class="os-panel" id="install-windows">
       <div class="cmd">
-        <pre><code><span class="prompt">$</span> make -f Makefile.windows   <span class="c"># from a mac or linux box</span></code></pre>
+        <pre><code><span class="prompt">&gt;</span> curl.exe -LO https://slosh.foo/dist/slosh-&lt;version&gt;-windows-x86_64.zip
+<span class="prompt">&gt;</span> tar xf slosh-*-windows-x86_64.zip   <span class="c"># tar ships with Windows 10+</span></code></pre>
       </div>
-      <p class="aside">The same one binary: <code>slosh.exe</code>, Windows
-      10/11, x86-64 and ARM64, no runtime dependency beyond the OS. Panes are
+      <p class="aside">Pick the newest zip from <a href="dist/">dist/</a> —
+      x86-64 and ARM64, Windows 10/11. Inside is the same one binary:
+      <code>slosh.exe</code>, no runtime dependency beyond the OS. Panes are
       ConPTYs, sessions are AF_UNIX sockets, everything on this page works
-      there. Cross-compiled, then copied across —
-      <a href="docs/windows.html">the details</a>.</p>
+      there — <a href="docs/windows.html">the details</a>.</p>
     </div>
 
     <div class="os-panel" id="install-source">
@@ -215,19 +244,14 @@ Server = https://slosh.foo/arch/$arch
 <span class="prompt">$</span> make           <span class="c"># about a second</span>
 <span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
       </div>
-      <p class="aside">Needs <a href="https://ziglang.org">zig</a> 0.16 and
-      nothing else. No cmake, no autotools, no libraries. The result is one
+      <p class="aside">For the curious — the tabs above hand you this same
+      binary prebuilt. Needs <a href="https://ziglang.org">zig</a> 0.16 and
+      nothing else: no cmake, no autotools, no libraries. The result is one
       static binary.</p>
     </div>
   </div>
 </section>
 </main>
-
-<footer class="foot">
-  <span>MIT</span>
-  <span>C on <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a></span>
-  <span>one static binary</span>
-</footer>
 
 <script src="recordings/player.js"></script>
 <script>
@@ -245,6 +269,15 @@ for (const box of document.querySelectorAll(".cmd[data-copy]")) {
       btn.textContent = "select it";
     }
   });
+}
+
+// The little logo in the corner: on while the big one is off screen.
+const bigLogo = document.querySelector(".hero .logo");
+const littleLogo = document.querySelector(".logo-float");
+if (bigLogo && littleLogo && "IntersectionObserver" in window) {
+  new IntersectionObserver(([e]) => {
+    littleLogo.classList.toggle("show", !e.isIntersecting);
+  }).observe(bigLogo);
 }
 
 // The install box opens on the platform reading it; the tabs are CSS.

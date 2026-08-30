@@ -10,11 +10,22 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from castgen import Recorder, out_path
+from castgen import ROOT, Recorder, out_path
 
 ENV = {"PS1": "$ ", "ENV": "/dev/null"}
 
-r = Recorder(["/bin/sh"], cols=100, rows=28, title="layouts that reflow", env=ENV)
+# Slate, not the house pink: each cast in the tour records under its own
+# theme, so scrolling to the next step reads as a scene change.
+THEME = os.path.join(ROOT, "contrib", "themes", "slate.kdl")
+
+r = Recorder(
+    ["/bin/sh"],
+    cols=100,
+    rows=28,
+    title="layouts that reflow",
+    config=THEME,
+    env=ENV,
+)
 
 # Three named panes, built over the socket -- the demo is about the layout.
 r.api("split", dir="cols")

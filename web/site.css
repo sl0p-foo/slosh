@@ -13,6 +13,10 @@
   --faint: #45454a;
   --pink: #ff5fd7;
   --dead: #ff875f;
+  /* The feature tour's geometry, up here because the floating logo (a fixed
+   * element, outside the tour) centres itself on the tour's stage column. */
+  --tour-w: min(94vw, 88rem);
+  --tour-gap: clamp(1.5rem, 4vw, 4.5rem);
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
           "DejaVu Sans Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -45,28 +49,41 @@ kbd {
   font-size: 0.85em;
 }
 
-/* ---- the nav -------------------------------------------------------- */
+/* ---- the floating logo ---------------------------------------------- */
+/* The hero logo again, small, in the corner the stage's v-centering leaves
+ * empty on desktop. Faded in by the observer in index.html once the big one
+ * is off screen; a link back to the top. Hidden on one-column screens,
+ * where that corner is content, not air. */
 
-.nav {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  display: flex;
-  gap: 1.5em;
-  overflow-x: auto;
-  padding: 0 1.25rem;
-  border-bottom: 1px solid var(--panel);
-  background: var(--bg);
+.logo-float {
+  position: fixed;
+  top: 13.8rem;
+  /* Centred on the stage column: the tour is layout-centred and the stage
+   * is the 3fr of its 3fr/2fr split, so the terminal's midline sits at
+   * 50% - tourW/2 + (tourW - gap) * 3/10. 50%, not 50vw: a fixed element's
+   * percentages exclude the scrollbar, like the layout the tour centres in;
+   * vw would drag the logo half a scrollbar to the right. The translateX
+   * does the logo's own half. */
+  left: calc(50% - var(--tour-w) / 2 + (var(--tour-w) - var(--tour-gap)) * 0.3);
+  z-index: 4;
+  color: var(--pink);
+  opacity: 0;
+  transform: translateX(-50%) translateY(-0.4rem);
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+}
+.logo-float.show { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+.logo-float:hover { color: var(--fg); }
+.logo-float pre {
+  margin: 0;
   font-family: var(--mono);
-  font-size: 13px;
-  line-height: 2.6;
-  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1em;
 }
 
-.nav a { color: var(--dim); }
-.nav a:hover { color: var(--pink); text-decoration: none; }
-.nav a[aria-current] { color: var(--fg); }
-.nav-fill { flex: 1; }
+@media (max-width: 54rem) {
+  .logo-float { display: none; }
+}
 
 /* ---- the hero ------------------------------------------------------- */
 
@@ -79,6 +96,11 @@ main {
 .hero {
     padding: 3.5rem 0 1rem; 
     text-align:center !important;
+}
+
+.hero .logo {
+    color: var(--pink);
+    line-height: 1em;
 }
 
 .hero h1 {
@@ -235,13 +257,33 @@ section > p:last-child { margin-bottom: 0; }
  * recordings are 100 columns and want the room. */
 
 .scrolly {
-  --tour-w: min(94vw, 88rem);
   width: var(--tour-w);
   margin-left: calc((100% - var(--tour-w)) / 2);
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: clamp(1.5rem, 4vw, 4.5rem);
+  gap: var(--tour-gap);
+  /* Tuck the tour up under the hero. The stage's 100vh box centres the
+   * terminal, so before it pins, everything above the terminal is air —
+   * about 45vh minus half the player (≤ ~500px tall at this column width),
+   * minus the optical lift. Overlap the hero by that much, less ~2rem of
+   * breathing room; min() keeps it at 0 on viewports short enough that the
+   * air runs out. Pinned geometry is scroll-invariant, so alignment inside
+   * the tour is untouched. */
+  margin-top: min(0rem, 17.5rem - 45vh);
+  /* ...and the same at the exit, where the air below the terminal is larger
+   * still (the optical lift rides it high — ~54.5vh minus half the player).
+   * This collapses with the next section's 3.5rem margin-top, which the
+   * constant accounts for; the result is ~2.75rem from the terminal's final
+   * resting bottom to the install heading at any viewport height. */
+  margin-bottom: min(0rem, 14.5rem - 54.5vh);
+  /* The overlapped regions are transparent air, but they would still sit on
+   * top of the hero's buttons above and the install tabs below — let clicks
+   * fall through, and switch hit-testing back on for the things inside that
+   * want it. */
+  pointer-events: none;
 }
+.stage-pin [data-sloshcast],
+.scrolly-steps .step { pointer-events: auto; }
 
 .stage-pin {
   position: sticky;
@@ -251,10 +293,24 @@ section > p:last-child { margin-bottom: 0; }
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  /* Sit a touch above true centre: the steps on the right centre their text
+   * on the viewport, and against them a dead-centred terminal reads as low
+   * (the tab strip weights its top). border-box, so this lifts the centred
+   * content rather than growing the 100vh box. */
+  padding-bottom: clamp(2.5rem, 9vh, 6rem);
 }
 
 .stage-pin [data-sloshcast] { display: none; }
 .stage-pin .stage-active { display: block; }
+
+/* Breathing room at both ends of the steps column. Without it the column is
+ * exactly steps*50vh tall and the sticky stage has no travel margin: the
+ * terminal is still riding below centre when the first step reaches the
+ * middle of the viewport, and has already been dragged up past centre by the
+ * container's bottom edge when the last one does. 25vh each side means the
+ * stage is pinned (centred) from before the first step centres until after
+ * the last step does. */
+.scrolly-steps { padding: 25vh 0; }
 
 .step {
   min-height: 50vh;
@@ -300,10 +356,10 @@ section > p:last-child { margin-bottom: 0; }
    * beneath it. The sticky moves up to .scrolly-stage here: in block layout
    * .stage-pin's parent is only as tall as the player, so a sticky inside it
    * has nowhere to stick; .scrolly-stage is bounded by the whole tour. */
-  .scrolly { display: block; }
+  .scrolly { display: block; margin-top: 0; margin-bottom: 0; pointer-events: auto; }
   .scrolly-stage {
     position: sticky;
-    top: 2.2rem; /* below the nav */
+    top: 0;
     z-index: 2;
     padding: 0.6rem 0;
     background: var(--bg);
@@ -313,6 +369,9 @@ section > p:last-child { margin-bottom: 0; }
     height: auto;
     padding: 0;
   }
+  /* One column: the stage sticks above the steps, so the travel margin is
+   * pointless air here. */
+  .scrolly-steps { padding: 0; }
   .step { min-height: 50vh; }
   .step:first-child { padding-top: 1.5rem; }
 }
@@ -352,22 +411,6 @@ section > p:last-child { margin-bottom: 0; }
 
 .doclist a { font-family: var(--mono); font-size: 14px; }
 .doclist span { color: var(--faint); }
-
-/* ---- the footer ----------------------------------------------------- */
-
-.foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 1.5rem;
-  padding: 0.4rem 1.25rem;
-  border-top: 1px solid var(--panel);
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 2;
-}
-
-.foot a { color: var(--dim); }
 
 /* ---- small screens -------------------------------------------------- */
 

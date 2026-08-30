@@ -48,6 +48,10 @@ the one condition the webdemo README already states: `.wasm` must be served as
 - Every feature in the tour has its recording now; what remains on the
   recordings side (a detach demo, storyline polish, static no-JS posters) is
   in `recordings/PLAN.md`.
-- `install.sh` clones `https://slosh.foo/src` (override: `SLOSH_REPO=`). Pin
-  the real public repo URL once it exists — same for the `src` links in
+- `install.sh` downloads the prebuilt binary from `https://slosh.foo/dist/`
+  (override: `SLOSH_DIST=`), picking the newest version listed in its
+  `SHA256SUMS`. Once the GitHub repo is public, the front page and the
+  script can point at GitHub releases instead — same for the `src` links in
   `index.html`.
+- The windows zips (`make release-windows`) are not uploaded to `/dist/` yet;
+  the windows install tab points there, so upload them with the next release.
