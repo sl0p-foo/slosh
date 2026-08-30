@@ -101,9 +101,19 @@ kbd {
    * loop shifts by exactly one tile (at background-size 200%, position
    * 200% is one tile width), and only a 90deg gradient meets its own edge
    * seamlessly. */
-  background: linear-gradient(90deg,
+  /* Two layers, both clipped to the ink: the shine -- a band of light, the
+   * logo running slosh's own shine preset -- over the colour wash. The
+   * band is parked off the glyphs for most of the loop and sweeps across
+   * in the last split second (the keyframes below); -150%..250% is the
+   * full off-to-off journey for a 60%-wide no-repeat layer. */
+  background-image: linear-gradient(105deg,
+      rgba(255, 255, 255, 0) 32%, rgba(255, 255, 255, 0.85) 50%,
+      rgba(255, 255, 255, 0) 68%),
+    linear-gradient(90deg,
       var(--pink) 0%, #c95fff 35%, #5fafff 65%, var(--pink) 100%);
-  background-size: 200% 100%;
+  background-size: 60% 100%, 200% 100%;
+  background-repeat: no-repeat, repeat;
+  background-position: -150% 0, 0% 0;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -115,12 +125,15 @@ kbd {
  * compositor, so every pixel cycles the wheel even over the cached clip.
  * Chrome and Firefox get both, WebKit gets the rotation alone. */
 .logo-float.show pre {
-  animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite,
-    logo-glitch 7s linear infinite;
+  animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite;
 }
+/* One set of keyframes drives both layers: the colour slide moves linearly
+ * through every stop (each keyframe holds its proportional position), and
+ * the shine holds off-glyph until 86%, then crosses in the closing 0.7s. */
 @keyframes logo-cycle {
-  from { background-position: 0% 0; }
-  to { background-position: 200% 0; }
+  0% { background-position: -150% 0, 0% 0; }
+  86% { background-position: -150% 0, 172% 0; }
+  100% { background-position: 250% 0, 200% 0; }
 }
 /* The drop shadow lives in these keyframes because the filter property is
  * the animation's: a static filter would lose to it. Listed before the
@@ -131,40 +144,10 @@ kbd {
   from { filter: drop-shadow(0 4px 14px rgba(255, 95, 215, 0.3)) hue-rotate(0deg); }
   to { filter: drop-shadow(0 4px 14px rgba(255, 95, 215, 0.3)) hue-rotate(360deg); }
 }
-/* The distortion: a signal that is fine, fine, fine, and then for a third
- * of a second is not -- torn into bands, shoved sideways, sheared, whole
- * again. Slices via clip-path and shoves via transform, because filter
- * belongs to the hue animation and background to the slide. Doubled
- * percentages make the cuts hard; 7s against the 5s slide and 4s hue means
- * the burst lands somewhere new in the colour every time. */
-@keyframes logo-glitch {
-  0%, 91%, 96%, 100% {
-    transform: none;
-    clip-path: none;
-  }
-  91.5%, 92.3% {
-    transform: translateX(-0.35em) skewX(-7deg);
-    clip-path: inset(0 0 58% 0);
-  }
-  92.4%, 93.4% {
-    transform: translateX(0.4em) skewX(5deg);
-    clip-path: inset(38% 0 0 0);
-  }
-  93.5%, 94.6% {
-    transform: translateX(-0.15em);
-    clip-path: inset(18% 0 30% 0);
-  }
-  94.7%, 95.9% {
-    transform: translateX(0.08em) skewX(-2deg);
-    clip-path: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  /* The preference is about motion, not colour: the slide -- a pattern
-   * that travels -- goes, and so does the glitch, which is nothing but
-   * motion; the hue rotation, colour changing in place, stays. Nothing
-   * moves, everything still breathes. */
+  /* The preference is about motion, not colour: the slide and the shine --
+   * patterns that travel -- go; the hue rotation, colour changing in
+   * place, stays. Nothing moves, everything still breathes. */
   .logo-float.show pre { animation: logo-hue 5s linear infinite; }
 }
 
