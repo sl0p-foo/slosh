@@ -207,6 +207,55 @@ section > p:last-child { margin-bottom: 0; }
 
 .aside { color: var(--dim); font-size: 0.95rem; }
 
+/* ---- the embedded demo ------------------------------------------------ */
+/* A poster until the button is pushed, then the machine, same box. The
+ * frame is the section's whole width and most of a viewport tall: the demo
+ * page sizes its grid to the space it wakes up in, once, at boot. */
+
+.try-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  /* The tour's breakout: the machine deserves the same width the pinned
+   * terminal got, not the prose column. */
+  width: var(--tour-w);
+  margin-left: calc((100% - var(--tour-w)) / 2);
+  /* A poster until booted: the machine gets most of a viewport, the offer
+   * of one gets a modest strip. The height moves before the iframe goes in,
+   * so the guest reads its one-time geometry from the final room. */
+  padding: 3.5rem 1rem;
+  border: 1px solid var(--code-bg);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.try-stage.booted {
+  padding: 0;
+  height: 74vh;
+  min-height: 360px;
+}
+
+.boot {
+  padding: 0.6rem 1.6rem;
+  border: 0;
+  background: var(--pink);
+  color: var(--panel);
+  font-family: var(--mono);
+  font-size: 15px;
+  cursor: pointer;
+}
+.boot:hover { background: #fff; }
+
+.try-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 5px; /* inside the stage's own border */
+  background: var(--bg);
+}
+
 /* ---- the install box ------------------------------------------------- */
 /* Pick a platform, read only its instructions. Hidden radios, labels drawn
  * like a slosh tab strip, one panel each; the switching is CSS. */

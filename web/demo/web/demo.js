@@ -84,6 +84,12 @@ function update_downloading(flag) {
     var mem_size = (params["mem"] | 0) || 128;
     var cmdline = params["cmdline"] || "";
 
+    /* ?embed=1: the same page inside the front page's iframe. The chrome
+       around the stage belongs to the standalone page; embedded, the stage
+       is the whole story (demo.css hides the rest and fills the frame). */
+    if (params["embed"])
+        document.body.classList.add("embed");
+
     var stage = document.getElementById("stage");
     var wrap = document.getElementById("term_wrap");
     var status_el = document.getElementById("status");

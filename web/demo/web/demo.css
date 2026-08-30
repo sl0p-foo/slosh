@@ -182,3 +182,13 @@ footer p { margin: 0; max-width: 52rem; }
     #keys dl { grid-template-columns: 1fr; gap: 0 0; }
     #keys dt { text-align: left; margin-top: 0.5rem; }
 }
+
+/* ---- embedded (?embed=1) --------------------------------------------- */
+/* Inside the front page's iframe the stage is the whole story: no header
+   to introduce it, no footer to credit it (the front page does both), and
+   the stage plus the status bar fill the frame exactly. */
+
+body.embed { padding: 0.6rem 0.6rem 0.4rem; max-width: none; }
+body.embed header,
+body.embed footer { display: none; }
+body.embed #stage { height: calc(100vh - 3.4rem); min-height: 240px; }
