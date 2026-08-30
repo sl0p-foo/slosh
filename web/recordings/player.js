@@ -169,7 +169,15 @@ function scIsCanvasCp(cp) {
 // ── the player ────────────────────────────────────────────────────────────────
 
 function mountSloshcast(el, data, opts = {}) {
-  const speed = opts.speed || 1;
+  // Per-mount speed (data-speed) times the page's one global knob: set
+  // window.SLOSHCAST_SPEED before this script loads and every cast on the
+  // page plays that much faster, the recordings untouched. The clock still
+  // counts cast-time, so 0:04 / 0:26 means the same thing at any speed.
+  const speed =
+    (opts.speed || 1) *
+    (typeof window !== "undefined" && window.SLOSHCAST_SPEED > 0
+      ? window.SLOSHCAST_SPEED
+      : 1);
   const PAD = 8; // .sc-screen padding, px
   const BASE_FONT = 14;
   const esc = (s) =>
