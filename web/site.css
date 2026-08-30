@@ -448,8 +448,14 @@ section > p:last-child { margin-bottom: 0; }
   justify-content: center;
   opacity: 0.3;
   transition: opacity 0.25s;
-  scroll-snap-align: center; /* see the html rule: the magnet's targets */
 }
+
+/* The magnet's targets: the interior steps only. The first and the last
+ * are the tour's doorways, and a snap field on a doorway is a hand pulling
+ * you back in while you are trying to leave -- the stuck feeling at the
+ * hero above and past the final demo below, where there is no next magnet
+ * to hand you off to and a wheel tick can never outrun the pull. */
+.step:not(:first-child):not(:last-child) { scroll-snap-align: center; }
 .step.active { opacity: 1; }
 
 .step h3 {
