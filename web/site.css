@@ -88,6 +88,26 @@ kbd {
   /* Block glyphs' ink can round a hair narrower than the advance width,
    * leaving pinstripe gaps between ██; tuck each glyph into the last. */
   letter-spacing: -0.05em;
+  /* The colour cycles, slowly: a gradient of the pink's neighbours clipped
+   * to the ink and slid along it -- the logo's own little colour pass, in
+   * the spirit of the shaders it advertises. Horizontal on purpose: the
+   * loop shifts by exactly one tile (at background-size 200%, position
+   * 200% is one tile width), and only a 90deg gradient meets its own edge
+   * seamlessly. */
+  background: linear-gradient(90deg,
+      var(--pink) 0%, #c95fff 35%, #ff87e7 65%, var(--pink) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.logo-float.show pre { animation: logo-cycle 14s linear infinite; }
+@keyframes logo-cycle {
+  from { background-position: 0% 0; }
+  to { background-position: 200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-float.show pre { animation: none; }
 }
 
 @media (max-width: 54rem) {
