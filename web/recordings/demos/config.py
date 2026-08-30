@@ -86,6 +86,12 @@ r.type("opadding 1 2")
 r.send("\x1b", dt=0.3)
 save_and_reload(1.6)
 
+# Then take it all back -- compact is the dense school, and it reads best
+# with the panes flush against its dividers. cc rewrites the line in place.
+r.type("ccpadding 0")
+r.send("\x1b", dt=0.3)
+save_and_reload(1.2)
+
 # A different school of borders entirely.
 r.type("ocompact true")
 r.send("\x1b", dt=0.3)
