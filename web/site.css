@@ -120,7 +120,10 @@ kbd {
   to { filter: hue-rotate(360deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .logo-float.show pre { animation: none; }
+  /* The preference is about motion, not colour: the slide -- a pattern
+   * that travels -- goes; the hue rotation, colour changing in place,
+   * stays, at half speed. Nothing moves, everything still breathes. */
+  .logo-float.show pre { animation: logo-hue 24s linear infinite; }
 }
 
 @media (max-width: 54rem) {
