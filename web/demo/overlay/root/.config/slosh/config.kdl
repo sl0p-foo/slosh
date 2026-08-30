@@ -1,18 +1,30 @@
-// The demo's config. Deliberately about twenty lines: the reference config with
-// every setting and the reasoning attached is config/config.kdl in the source
-// tree, and 48KB of commentary is the wrong thing to ship to a browser.
-//
-// Saving a config applies to a running session, so this file is also a thing to
-// edit from inside the demo: `C-a e` opens it in a pane.
+// The demo's config -- and the demo's playground. `C-a e` opens this file in
+// a pane, and a running session re-reads it the moment you save, so the
+// commented lines below are all one uncomment away from happening on screen.
+// The reference config with every setting and the reasoning attached is
+// config/config.kdl in the source tree; 48KB of commentary is the wrong
+// thing to ship to a browser.
 
-// The default palette, from the file the repo ships rather than a second copy
-// of it -- overlay/root/.config/slosh/themes/sl0p.kdl is a symlink to
-// contrib/themes/sl0p.kdl, so this is the same sl0p as everywhere else and it
-// cannot fall behind. An include is resolved against *this* file's directory.
+// The palette. Every theme the repo ships is in themes/ right here, so
+// swapping the whole look is editing one word and saving:
+//
+//   sl0p        hot pink on near-black (this one)
+//   phosphor    a green terminal remembering being a VT220
+//   amber       the other kind of nostalgia
+//   slate       blue-grey, calm
+//   paper       dark-on-light, for the well-lit
+//   mono        no colour at all
+//   default     white on black, undecorated
 include "themes/sl0p.kdl"
 
 // Busybox ash is the only shell on this machine and $SHELL is not set on it.
 shell "/bin/sh"
+
+// Without this, C-a e falls back to `vi` -- busybox vi, which owes you
+// nothing. The image carries the real vim, pruned to exactly what syntax
+// highlighting needs, and it knows what a .kdl file is. This file deserves
+// the colour.
+editor "vim"
 
 // A tenth of the default history. The whole machine is 32MB of disk and
 // whatever RAM the page asked for, and nothing here will produce 1000 lines.
@@ -23,7 +35,32 @@ scrollback 1000
 gap 1
 padding 0 1
 
-// No shader by default: a cursor-line wash reads as a rendering artifact to
-// anyone who did not ask for it. The shader system is one paste away --
-// contrib/shaders/ has thirty-two of them, and `C-a e` opens this file in a
-// pane; it is re-read the moment you save.
+// ── things to try, in rough order of drama ──────────────────────────────────
+
+// A different school of borders entirely: shared dividers instead of
+// floating boxes. Pairs well with the square corners.
+// compact true
+// rounded false
+
+// How hard a pane that is not yours fades (0..255, 0 for not at all), and
+// the shade a floating pane casts on what it covers (C-a F floats one).
+// dim_unfocused 120
+// float_shadow 0
+
+// Colour passes over every pane's cells, computed per cell -- amounts can be
+// expressions of x, y, cols, rows, curx, cury, t. Uncomment one. Or all of
+// them, nobody is watching.
+// shaders {
+//     vignette amount=70
+//     zebra amount=22
+//     spotlight amount=90 radius=14
+//     ruler amount=60 at=40 color="#7aa2f7"
+//     tint where="chrome" color="#5fffaf" amount=120
+// }
+
+// Your keyboard, your call: bindings add to the defaults, "none" removes
+// one, and the cheatsheet (C-a ?) re-reads the result.
+// keys {
+//     bind "v" "split-cols"
+//     bind "s" "none"
+// }

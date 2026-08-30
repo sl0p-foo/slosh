@@ -1,0 +1,19 @@
+
+     [35m▄██████▄ ███      ▄██████▄ ▄██████▄ ▄██  ▄██[0m
+     [35m███   ▀▀ ███      ███  ███ ███   ▀▀ ███  ███[0m
+     [35m▀██████▄ ███  ▄▄▄ ███  ███ ▀██████▄ ████████[0m
+     [35m▄▄   ███ ███  ███ ███  ███ ▄▄   ███ ███  ███[0m
+     [35m▀██████▀ ███████▀ ▀██████▀ ███████▀ ███  ███[0m
+     [35m▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄[0m
+     [35m▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄[0m
+
+   A terminal multiplexer, running on a riscv64 Linux
+   that booted inside your browser tab. The machine is
+   throwaway; the real thing is not.
+
+   Three things to try:
+     [35mC-a Enter[0m   split the pane you are in
+     [35mC-a e[0m       the config, in vim; saving applies [1mlive[0m
+     [35mC-a ?[0m       every key, from the bindings in force
+
+   [2mDismiss this: [0m[35mC-a x[0m[2m, or the ✕ in its corner.[0m

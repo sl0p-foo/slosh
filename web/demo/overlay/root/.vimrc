@@ -21,3 +21,8 @@ colorscheme habamax
 set noswapfile
 set mouse=
 set laststatus=1
+
+" The config pane opens narrow, and vim's file-info message ("66 lines,
+" 2645 bytes") wraps there into a hit-enter prompt that reads as a stall.
+" F drops the message; the rest keep other chatter within one line.
+set shortmess+=atoOF

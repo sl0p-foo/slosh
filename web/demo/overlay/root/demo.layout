@@ -1,4 +1,5 @@
-// What the visitor lands in: one tab, three panes, one screen.
+// What the visitor lands in: one tab, three tiled panes, the config open in
+// vim beside them, and a welcome float on top of it all.
 //
 //   slosh --layout /root/demo.layout
 //
@@ -11,7 +12,13 @@ layout {
         // The greeting, and a shell under it. This pane was *given* a command,
         // so typing `exit` leaves the corpse and an offer to re-run it (`C-a r`)
         // rather than closing the pane -- which is a pane state worth seeing.
-        pane focus=true purpose="demo:welcome" command="cat /etc/motd; exec /bin/sh"
+        pane purpose="demo:welcome" command="cat /etc/motd; exec /bin/sh"
+
+        // The config, already open and highlighted: the discovery C-a e would
+        // make, made before anyone has to make it. Quitting vim leaves the
+        // corpse and its [re-run], so closing it is as reversible as
+        // everything else here.
+        pane purpose="demo:config" command="vim /root/.config/slosh/config.kdl"
 
         pane split="rows" {
 
@@ -23,5 +30,17 @@ layout {
             // No command: the session's shell, in /root.
             pane purpose="demo:shell"
         }
+
+        // The welcome, floating over everything with the focus, so the first
+        // thing anyone does is read it and the second is close it -- C-a x, or
+        // the ✕ it wears, both of which it teaches. `cat` holds it open (a
+        // command that exited would leave a corpse; this one only ends when
+        // the pane closes), and the float's shadow plus everyone else's
+        // dim_unfocused make it read as the dialog it is.
+        // Size is the text's (56 columns of it, plus the frame); position is
+        // deliberately absent, so the float takes the centred default at
+        // whatever size the browser gave the terminal. A smaller screen
+        // clamps the rect and nothing is owed.
+        pane floating=true focus=true w=62 h=22 purpose="demo:hello" command="cat /etc/welcome; exec cat"
     }
 }
