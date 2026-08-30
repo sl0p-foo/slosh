@@ -186,6 +186,9 @@
     <button class="boot" type="button" id="boot_btn">boot the machine</button>
     <p class="aside">riscv64 · TinyEMU, compiled to wasm · yours until you reload</p>
   </div>
+  <p class="aside try-live" id="try_live" hidden>The machine is yours until
+  you <button class="linkish" type="button" id="kill_btn">power it
+  off</button> — that forgets it entirely, and the button comes back.</p>
 </section>
 
 <!-- ================================================================ -->
@@ -367,13 +370,15 @@ if (stagePin && littleLogo) {
 // the front page keeps costing two files until someone asks for a machine.
 // Small screens go to the page itself instead of embedding it.
 const bootBtn = document.getElementById("boot_btn");
-if (bootBtn)
+if (bootBtn) {
+  const stage = document.getElementById("try_stage");
+  const live = document.getElementById("try_live");
+  const poster = [...stage.children]; // stashed while the machine runs
   bootBtn.addEventListener("click", () => {
     if (matchMedia("(max-width: 54rem)").matches) {
       location.href = "demo/";
       return;
     }
-    const stage = document.getElementById("try_stage");
     stage.classList.add("booted"); // full height first: the guest reads the
     const frame = document.createElement("iframe"); // room once, at boot
     frame.src = "demo/?embed=1";
@@ -385,7 +390,18 @@ if (bootBtn)
     // centred. Smooth for free -- the page scrolls smooth globally.
     stage.scrollIntoView({ block: "center" });
     frame.addEventListener("load", () => frame.contentWindow.focus());
+    live.hidden = false;
   });
+  // Power off: dropping the iframe out of the DOM tears the whole machine
+  // down -- emulator, kernel, disk cache, the lot -- and the poster returns
+  // from the stash, offering to do it all again.
+  document.getElementById("kill_btn").addEventListener("click", () => {
+    stage.classList.remove("booted");
+    stage.replaceChildren(...poster);
+    live.hidden = true;
+    stage.scrollIntoView({ block: "center" });
+  });
+}
 
 // The install box opens on the platform reading it; the tabs are CSS.
 const ua = navigator.userAgent;

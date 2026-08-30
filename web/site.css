@@ -256,6 +256,19 @@ section > p:last-child { margin-bottom: 0; }
   background: var(--bg);
 }
 
+.try-live { text-align: center; }
+
+/* A button dressed as a link, for verbs that live inside a sentence. */
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pink);
+  font: inherit;
+  cursor: pointer;
+}
+.linkish:hover { color: #fff; text-decoration: underline; }
+
 /* ---- the install box ------------------------------------------------- */
 /* Pick a platform, read only its instructions. Hidden radios, labels drawn
  * like a slosh tab strip, one panel each; the switching is CSS. */
