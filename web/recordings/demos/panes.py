@@ -2,9 +2,11 @@
 """panes -- panes and tabs, the way your hands expect.
 
 The opener: keys and mouse doing the same work. Split with a chord, split by
-clicking a border, drag the gap, swap two panes by dragging a title, zoom,
-and hop through a tab. Every coordinate is read from the compositor's hit
-list, so the demo cannot disagree with the program.
+clicking a border, drag the gap, then carry a pane by its title -- dropped in
+the middle it swaps, dropped on an edge band it tucks in beside, which is the
+whole layout rebuilt without the keyboard. Zoom, and hop through a tab, to
+close. Every coordinate is read from the compositor's hit list, so the demo
+cannot disagree with the program.
 """
 
 import os
@@ -50,7 +52,7 @@ r.drag_to(h[0] - 13, h[1], dur=0.8)
 r.release()
 r.pause(1.0)
 
-# Drag a pane by its title onto another: they swap.
+# Drag a pane by its title onto another: dropped in the middle, they swap.
 snap = r.snapshot()
 title = next(e for e in snap.hits if e["action"] == f"title:{ids[0]}")
 tx, ty = title["x"] + title["w"] // 2, title["y"]
@@ -65,6 +67,33 @@ r.drag_to(
 r.pause(0.4)
 r.release()
 r.pause(1.1)
+
+# The same grip, the other drop: carried over a pane, it subdivides into a
+# centre and four edge bands. The centre is the swap above; a band means "in
+# beside it, on this side", and fills the half of the pane the drop would
+# hand over while every other candidate greys out. Linger over the centre
+# first, then steer into the bottom band -- read off the hit list, like
+# every promise this program draws. Drop: the layout rebuilds, no keyboard.
+# The source is the top-right pane; the target the pane alone in the left
+# column, so the drop restacks the whole tab -- a rearrangement no swap
+# could produce, which is the point of the bands.
+panes = r.api("panes")["panes"]
+src = next(p for p in panes if p["id"] == ids[0])
+target = min((p for p in panes if p["id"] != ids[0]), key=lambda p: p["content_x"])
+title = next(e for e in r.snapshot().hits if e["action"] == f"title:{ids[0]}")
+r.move_to(title["x"] + title["w"] // 2, title["y"], dur=0.7)
+r.press()
+r.drag_to(
+    target["content_x"] + target["content_w"] // 2,
+    target["content_y"] + target["content_h"] // 2,
+    dur=0.8,
+)
+r.pause(0.7)
+band = next(e for e in r.snapshot().hits if e["action"] == f"drop:{target['id']}:b")
+r.drag_to(band["x"] + band["w"] // 2, band["y"] + band["h"] // 2, dur=0.5)
+r.pause(0.9)
+r.release()
+r.pause(1.4)
 
 # Zoom the focused pane to the whole tab, and back.
 r.key("z")
