@@ -150,9 +150,9 @@ function update_downloading(flag) {
     /* Geometry is chosen once, before vm_start, and then never again: jsemu.c
        sets console_resize_pending only in console_init(), and exports no
        resize entry point, so the guest hears the size exactly once at boot.
-       Nothing this page can do afterwards will reach it -- hence the scaling
-       below instead of a reflow. The caps exist only to keep a huge monitor
-       from asking the emulated CPU to repaint a stadium screen. */
+       Nothing this page can do afterwards will reach it -- hence the font
+       refit below instead of a reflow. The caps exist only to keep a huge
+       monitor from asking the emulated CPU to repaint a stadium screen. */
     var cell = measure_cell();
     var box = room();
     var cols = clamp(Math.floor(box.w / cell.w), 80, 220);
@@ -167,33 +167,41 @@ function update_downloading(flag) {
     if (geom_el)
         geom_el.textContent = cols + "x" + rows;
 
-    /* Stretch the fixed grid to fill whatever room there is. transform-origin
-       is top left, so the translate re-centres what the scale left hanging off
-       one side. The grid stays the size the guest was told; only the pixels
-       move. */
-    var natural = { w: 0, h: 0 };
-
-    function remeasure() {
-        wrap.style.transform = "none";
-        var r = wrap.getBoundingClientRect();
-        natural = { w: r.width, h: r.height };
-        rescale();
-    }
-
-    function rescale() {
-        if (!(natural.w > 0) || !(natural.h > 0))
-            return;
+    /* Fill the room by choosing a font size, never by a scale() transform.
+       xterm turns a mouse event into a cell with getBoundingClientRect() and
+       its own unscaled cell metrics; a transform it cannot see lands every
+       click on the wrong cell, off by the scale factor. Desktop kept the
+       factor near 1 (cols and rows were derived from this very room), so it
+       passed for working; a phone is forced onto the 80-column floor, the
+       factor lands near a half, and a tap selects a pane the finger never
+       touched. Refitting the font moves the same pixels honestly: the grid
+       stays what the guest was told, the drawn rect is the measured rect,
+       and the leftover is centred with translate -- which moves rect and
+       clicks together, and is the part of a transform xterm does see. */
+    function refit() {
         var b = room();
-        var s = Math.min(b.w / natural.w, b.h / natural.h);
-        if (!(s > 0))
-            return;
-        s = Math.min(s, 4);
-        var dx = Math.max(0, (b.w - natural.w * s) / 2);
-        wrap.style.transform = "translate(" + dx.toFixed(2) + "px, 0px) scale(" + s.toFixed(4) + ")";
+        /* Cell metrics are not linear in font size (hinting rounds each step
+           its own way), so walk until fixed -- two rounds in practice. */
+        for (var i = 0; i < 4; i++) {
+            var c = measure_cell();
+            var fit = Math.min(b.w / (c.w * cols), b.h / (c.h * rows));
+            var next = clamp(Math.floor(xt.options.fontSize * fit), 6, 32);
+            if (next === xt.options.fontSize)
+                break;
+            xt.options.fontSize = next;
+        }
+        var r = wrap.getBoundingClientRect();
+        var dx = Math.max(0, (b.w - r.width) / 2);
+        wrap.style.transform = "translate(" + dx.toFixed(2) + "px, 0px)";
     }
 
-    remeasure();
-    window.addEventListener("resize", rescale);
+    refit();
+    window.addEventListener("resize", refit);
+    /* A webfont that resolves after boot changes the cell metrics under the
+       fit; refit again when the fonts settle. The grid cannot move, only the
+       glyphs. */
+    if (document.fonts && document.fonts.ready)
+        document.fonts.ready.then(refit);
 
     /* Output: lib.js builds the string with String.fromCharCode over the
        guest's bytes, so each char code is one byte and the string is latin1,
