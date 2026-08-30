@@ -24,7 +24,14 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  /* Proximity, never mandatory: the browser magnets a stop landing *near* a
+   * step onto its centre -- which is the tour's activation point, so the
+   * rest position and the lit step agree -- and leaves momentum, half-reads
+   * and every section without a snap-align entirely alone. */
+  scroll-snap-type: y proximity;
+}
 
 body {
   margin: 0;
@@ -441,6 +448,7 @@ section > p:last-child { margin-bottom: 0; }
   justify-content: center;
   opacity: 0.3;
   transition: opacity 0.25s;
+  scroll-snap-align: center; /* see the html rule: the magnet's targets */
 }
 .step.active { opacity: 1; }
 
@@ -483,6 +491,9 @@ section > p:last-child { margin-bottom: 0; }
    * .stage-pin's parent is only as tall as the player, so a sticky inside it
    * has nowhere to stick; .scrolly-stage is bounded by the whole tour. */
   .scrolly { display: block; margin-top: 0; margin-bottom: 0; pointer-events: auto; }
+  /* One column: the sticky stage covers the upper part of the viewport, so
+   * a centre-snapped step would sit half beneath it. No magnet here. */
+  html { scroll-snap-type: none; }
   .scrolly-stage {
     position: sticky;
     top: 0;
