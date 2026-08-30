@@ -31,11 +31,25 @@ html {
    * rest position and the lit step agree -- and leaves momentum, half-reads
    * and every section without a snap-align entirely alone. */
   scroll-snap-type: y proximity;
+  /* The top colour, solid: what over-scroll rubber-banding shows, and the
+   * canvas behind the body's gradient. */
+  background: var(--bg);
 }
 
 body {
   margin: 0;
-  background: var(--bg);
+  /* The page lightens toward the ground, barely: near-black at the hero,
+   * held through the tour, then a slow climb to a grey that is still
+   * darker than the panels sitting on it (--code-bg is #1c1c22; ending
+   * shy of it keeps every box legible against the floor). The body's box
+   * is the whole document, so the fade maps to scroll distance. */
+  background: linear-gradient(
+    180deg,
+    var(--bg) 0%,
+    var(--bg) 30%,
+    #131318 70%,
+    #17171e 100%
+  );
   color: var(--fg);
   font: 16px/1.65 var(--sans);
   -webkit-font-smoothing: antialiased;
