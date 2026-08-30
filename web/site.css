@@ -615,6 +615,18 @@ section > p:last-child { margin-bottom: 0; }
 .doclist a { font-family: var(--mono); font-size: 14px; }
 .doclist span { color: var(--faint); }
 
+/* ---- the footer ------------------------------------------------------ */
+
+.foot {
+  padding: 0 0 1.6rem;
+  text-align: center;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.foot a { color: var(--dim); }
+.foot a:hover { color: var(--pink); }
+
 /* ---- small screens -------------------------------------------------- */
 
 @media (max-width: 44rem) {
