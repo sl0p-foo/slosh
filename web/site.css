@@ -458,17 +458,18 @@ section > p:last-child { margin-bottom: 0; }
 .step:not(:first-child):not(:last-child) { scroll-snap-align: center; }
 .step.active { opacity: 1; }
 
+/* A dimmed step is clickable everywhere -- the whole article glides itself
+ * to the centre, where it activates. The active one is just prose. */
+.step:not(.active) { cursor: pointer; }
+.step:not(.active):hover h3 { color: var(--pink); }
+
 .step h3 {
   margin: 0;
   color: var(--fg);
   font-size: clamp(1.4rem, 2.2vw, 1.9rem);
   font-weight: 650;
   line-height: 1.25;
-  /* Clickable: the title glides its step to the centre, where it activates.
-   * The pointer and a breath of pink say so. */
-  cursor: pointer;
 }
-.step h3:hover { color: var(--pink); }
 
 .step p {
   margin: 0.8rem 0 0;
