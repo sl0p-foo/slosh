@@ -258,9 +258,14 @@ section > p:last-child { margin-bottom: 0; }
    * breakout width and most of a viewport. The size moves before the iframe
    * goes in, so the guest reads its one-time geometry from the final room. */
   padding: 3.5rem 1rem;
-  border: 1px solid var(--code-bg);
+  /* --code-bg, not --panel: the page's floor lightens toward the ground
+   * (the body gradient), and down here it passes --panel by -- a box
+   * darker than its floor reads as a hole. --code-bg is the same raised
+   * step the install boxes beside it use; the border earns its keep now
+   * that the old one matched the new fill. */
+  border: 1px solid var(--faint);
   border-radius: 6px;
-  background: var(--panel);
+  background: var(--code-bg);
 }
 .try-stage.booted {
   width: var(--tour-w);
