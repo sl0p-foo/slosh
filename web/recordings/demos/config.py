@@ -15,7 +15,13 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from castgen import THEME, Recorder, out_path
 
-ENV = {"PS1": "$ ", "ENV": "/dev/null", "EDITOR": "vim -u NONE -i NONE"}
+# shortmess: the rotated editor pane is a column, and vim's file-info
+# message wraps there into a hit-enter prompt mid-demo. F drops it.
+ENV = {
+    "PS1": "$ ",
+    "ENV": "/dev/null",
+    "EDITOR": 'vim -u NONE -i NONE -c "set shortmess+=atoOF"',
+}
 
 work = tempfile.mkdtemp(prefix="slosh-demo-")
 cfg = os.path.join(work, "config.kdl")
@@ -47,6 +53,11 @@ def save_and_reload(hold):
 # C-a e: the config, in a pane of its own.
 r.key("e", dt=0.5)
 r.until_text("frame_focus", dt=0.6, timeout_ms=5000)
+r.pause(1.0)
+
+# C-a Space: a quarter turn. The editor arrived as a strip along the
+# bottom; turned, it is a column with the height the file deserves.
+r.key(" ", dt=0.5)
 r.pause(1.0)
 
 # Pink to green: find the focus colour, change the word, save.
