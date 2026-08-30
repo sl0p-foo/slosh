@@ -342,6 +342,11 @@ static rect_t float_clamp(rect_t want, rect_t area) {
   if (r.h < MIN_PANE_ROWS) r.h = MIN_PANE_ROWS;
   if (r.w > area.w) r.w = area.w;
   if (r.h > area.h) r.h = area.h;
+  /* An axis that was sized but never positioned: centred now, centred again
+   * next frame at whatever size the terminal is by then, until an explicit
+   * move or resize writes a real coordinate over the sentinel. */
+  if (r.x == FLOAT_CENTRE) r.x = (uint16_t)(area.x + (area.w - r.w) / 2);
+  if (r.y == FLOAT_CENTRE) r.y = (uint16_t)(area.y + (area.h - r.h) / 2);
   if (r.x < area.x) r.x = area.x;
   if (r.y < area.y) r.y = area.y;
   if (r.x + r.w > area.x + area.w) r.x = (uint16_t)(area.x + area.w - r.w);

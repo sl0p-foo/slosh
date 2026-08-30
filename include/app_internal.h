@@ -46,7 +46,10 @@ struct node {
    * each frame is this clamped to the tab's area, and the clamp never writes
    * back — shrink the terminal and the float is squeezed in, grow it again
    * and it is exactly where you put it. Zero-width means "never placed",
-   * which the placement answers with a centred default.
+   * which the placement answers with a centred default. An axis holding
+   * FLOAT_CENTRE was sized but never positioned — a layout file's `w=` `h=`
+   * without `x=` `y=` — and is centred anew every frame until an explicit
+   * move or resize writes a real coordinate.
    *
    * `raised` orders overlapping floats: highest paints last, so it is on
    * top. Stamped when a float is made and when a focused float is not the
@@ -337,6 +340,10 @@ extern config_t CFG;
 
 #define MIN_PANE_COLS (CFG.min_pane_cols)
 #define MIN_PANE_ROWS (CFG.min_pane_rows)
+
+/* A float_rect axis that was sized but never positioned (see node_t). No
+ * real coordinate can reach it: the clamp caps every rect to the tab area. */
+#define FLOAT_CENTRE UINT16_MAX
 #define FRAME_FOCUS (CFG.frame_focus)
 #define FRAME_IDLE (CFG.frame_idle)
 #define TITLE_FOCUS (CFG.title_focus)

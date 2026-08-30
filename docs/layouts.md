@@ -84,9 +84,10 @@ having no tabs, which is true of it in the least useful way.
   *would* run.
 - `focus=true`: the pane you start in, within its tab.
 - `floating=true`: the pane starts [floating](panes.md#floating-a-pane), with
-  `x=` `y=` `w=` `h=` as its wanted rect in cells (absent, it takes the centred
-  default). The rect is intent: a smaller screen clamps it, and the place you
-  asked for survives. It still holds a seat in the tree: its `weight=` and
+  `x=` `y=` `w=` `h=` as its wanted rect in cells. All four absent takes the
+  centred default; `w=` `h=` alone is that size, centred — and centred again
+  on every resize, until an explicit move or resize pins it. The rect is
+  intent: a smaller screen clamps it, and the place you asked for survives. It still holds a seat in the tree: its `weight=` and
   position are where un-floating lands it. A file whose every pane floats
   lands one as the backdrop, because an overlay needs something to be over.
 - `purpose=`: a label for tooling; see below.

@@ -123,12 +123,16 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
   if (kdl_prop_bool(node, "floating", false)) {
     leaf->floating = true;
     leaf->raised = ++a->raise_seq;
-    long fx = kdl_prop_int(node, "x", 0), fy = kdl_prop_int(node, "y", 0);
+    /* A coordinate the file does not name is centred (FLOAT_CENTRE), not
+     * zero: `w=` `h=` alone means "this big, wherever the middle is", and
+     * it stays the middle through every resize until something writes a
+     * real coordinate — which is what the docs promised all along. */
+    long fx = kdl_prop_int(node, "x", -1), fy = kdl_prop_int(node, "y", -1);
     long fw = kdl_prop_int(node, "w", 0), fh = kdl_prop_int(node, "h", 0);
     if (fw > 0 && fh > 0)
-      leaf->float_rect =
-          (rect_t){(uint16_t)(fx < 0 ? 0 : fx), (uint16_t)(fy < 0 ? 0 : fy),
-                   (uint16_t)fw, (uint16_t)fh};
+      leaf->float_rect = (rect_t){(uint16_t)(fx < 0 ? FLOAT_CENTRE : fx),
+                                  (uint16_t)(fy < 0 ? FLOAT_CENTRE : fy),
+                                  (uint16_t)fw, (uint16_t)fh};
   }
   /* `focus=true` restores which pane you were in. Recorded on the node and
    * resolved once the tab exists, because focus belongs to the tab. */
@@ -915,9 +919,14 @@ static void dump_node(node_t *n, strbuf_t *b, int depth, dumpctx_t *ctx) {
    * exactly is a session, not a shape. */
   if (n->floating) {
     sb_add(b, " floating=true");
-    if (n->float_rect.w)
-      sb_add(b, " x=%u y=%u w=%u h=%u", n->float_rect.x, n->float_rect.y,
-             n->float_rect.w, n->float_rect.h);
+    /* An axis still centred (FLOAT_CENTRE) is dumped by omission: writing
+     * the number it happened to land on would pin to this screen's size the
+     * one intent that deliberately has none. */
+    if (n->float_rect.w) {
+      if (n->float_rect.x != FLOAT_CENTRE) sb_add(b, " x=%u", n->float_rect.x);
+      if (n->float_rect.y != FLOAT_CENTRE) sb_add(b, " y=%u", n->float_rect.y);
+      sb_add(b, " w=%u h=%u", n->float_rect.w, n->float_rect.h);
+    }
   }
   if (n == ctx->tab->focus) sb_add(b, " focus=true");
   sb_add(b, "\n");
