@@ -26,11 +26,6 @@
 
 html {
   scroll-behavior: smooth;
-  /* Proximity, never mandatory: the browser magnets a stop landing *near* a
-   * step onto its centre -- which is the tour's activation point, so the
-   * rest position and the lit step agree -- and leaves momentum, half-reads
-   * and every section without a snap-align entirely alone. */
-  scroll-snap-type: y proximity;
   /* The top colour, solid: what over-scroll rubber-banding shows, and the
    * canvas behind the body's gradient. */
   background: var(--bg);
@@ -509,12 +504,6 @@ section > p:last-child { margin-bottom: 0; }
   transition: opacity 0.25s;
 }
 
-/* The magnet's targets: the interior steps only. The first and the last
- * are the tour's doorways, and a snap field on a doorway is a hand pulling
- * you back in while you are trying to leave -- the stuck feeling at the
- * hero above and past the final demo below, where there is no next magnet
- * to hand you off to and a wheel tick can never outrun the pull. */
-.step:not(:first-child):not(:last-child) { scroll-snap-align: center; }
 .step.active { opacity: 1; }
 
 /* A dimmed step is clickable everywhere -- the whole article glides itself
@@ -557,9 +546,6 @@ section > p:last-child { margin-bottom: 0; }
    * .stage-pin's parent is only as tall as the player, so a sticky inside it
    * has nowhere to stick; .scrolly-stage is bounded by the whole tour. */
   .scrolly { display: block; margin-top: 0; margin-bottom: 0; pointer-events: auto; }
-  /* One column: the sticky stage covers the upper part of the viewport, so
-   * a centre-snapped step would sit half beneath it. No magnet here. */
-  html { scroll-snap-type: none; }
   .scrolly-stage {
     position: sticky;
     top: 0;
