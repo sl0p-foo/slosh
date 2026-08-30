@@ -15,17 +15,29 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from castgen import THEME, Recorder, out_path
 
-# shortmess: the rotated editor pane is a column, and vim's file-info
-# message wraps there into a hit-enter prompt mid-demo. F drops it.
-ENV = {
-    "PS1": "$ ",
-    "ENV": "/dev/null",
-    "EDITOR": 'vim -u NONE -i NONE -c "set shortmess+=atoOF"',
-}
-
 work = tempfile.mkdtemp(prefix="slosh-demo-")
 cfg = os.path.join(work, "config.kdl")
 shutil.copyfile(THEME, cfg)
+
+# The editor's vimrc, authored here rather than -u NONE: NONE keeps the
+# render machine's dotfiles out of the cast, but it also turns off filetype
+# detection and syntax -- and a config demo whose config is monochrome
+# undersells both vim and the file. This is the whole rc, so the cast
+# depends on vim's own runtime and nothing personal. shortmess because the
+# rotated editor pane is a column, and the file-info message would wrap
+# there into a hit-enter prompt mid-demo.
+vimrc = os.path.join(work, "vimrc")
+with open(vimrc, "w") as f:
+    f.write(
+        "set nocompatible\nfiletype on\nsyntax on\ncolorscheme habamax\n"
+        "set noswapfile\nset shortmess+=atoOF\n"
+    )
+
+ENV = {
+    "PS1": "$ ",
+    "ENV": "/dev/null",
+    "EDITOR": "vim -u %s -i NONE" % vimrc,
+}
 
 r = Recorder(["/bin/sh"], cols=100, rows=28, title="make it yours", config=cfg, env=ENV)
 
