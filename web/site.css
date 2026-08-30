@@ -95,16 +95,29 @@ kbd {
    * 200% is one tile width), and only a 90deg gradient meets its own edge
    * seamlessly. */
   background: linear-gradient(90deg,
-      var(--pink) 0%, #c95fff 35%, #ff87e7 65%, var(--pink) 100%);
+      var(--pink) 0%, #c95fff 18%, #5fafff 38%, #5fd7d7 52%,
+      #87ffd7 62%, #ff87e7 82%, var(--pink) 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-.logo-float.show pre { animation: logo-cycle 14s linear infinite; }
+/* Two motions. The position slide scrolls the gradient through the ink --
+ * except in WebKit, which caches a text-clipped paint and never repaints it
+ * for a background-position animation, leaving the wash frozen. The hue
+ * rotation is the motion Safari does honour: filters run post-paint on the
+ * compositor, so every pixel cycles the wheel even over the cached clip.
+ * Chrome and Firefox get both, WebKit gets the rotation alone. */
+.logo-float.show pre {
+  animation: logo-cycle 8s linear infinite, logo-hue 12s linear infinite;
+}
 @keyframes logo-cycle {
   from { background-position: 0% 0; }
   to { background-position: 200% 0; }
+}
+@keyframes logo-hue {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(360deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .logo-float.show pre { animation: none; }
