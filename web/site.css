@@ -183,9 +183,35 @@ main {
 }
 
 .hero .logo {
-    color: var(--pink);
     line-height: 1em;
     letter-spacing: -0.05em; /* see .logo-float pre */
+    /* The same dress as the floating logo, in truer colours: no hue
+     * rotation (that is what walks the little one off into blues), just a
+     * slide through the palette's own pinks -- and --dead's sunset orange,
+     * which is as retrowave as the theme gets -- with the shine crossing
+     * once a loop. Every stop is a colour slosh already wears. */
+    background-image: linear-gradient(105deg,
+        rgba(255, 255, 255, 0) 32%, rgba(255, 255, 255, 0.85) 50%,
+        rgba(255, 255, 255, 0) 68%),
+      linear-gradient(90deg,
+        var(--pink) 0%, #ff87e7 28%, #c95fff 52%, var(--dead) 78%,
+        var(--pink) 100%);
+    background-size: 60% 100%, 200% 100%;
+    background-repeat: no-repeat, repeat;
+    background-position: -150% 0, 0% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 6px 26px rgba(255, 95, 215, 0.25));
+    animation: hero-cycle 4s linear infinite;
+}
+@keyframes hero-cycle {
+  0% { background-position: -150% 0, 0% 0; }
+  84% { background-position: -150% 0, 168% 0; }
+  100% { background-position: 250% 0, 200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero .logo { animation: none; }
 }
 
 .hero h1 {
