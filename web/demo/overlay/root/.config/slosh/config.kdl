@@ -26,6 +26,10 @@ shell "/bin/sh"
 // the colour.
 editor "vim"
 
+// No attach splash: the welcome float already greets with the same logo,
+// and two of them in quick succession reads as a glitch, not a greeting.
+splash_ms 0
+
 // A tenth of the default history. The whole machine is 32MB of disk and
 // whatever RAM the page asked for, and nothing here will produce 1000 lines.
 scrollback 1000
