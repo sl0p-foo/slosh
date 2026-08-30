@@ -76,7 +76,10 @@ main {
   padding: 0 1.25rem 4rem;
 }
 
-.hero { padding: 3.5rem 0 1rem; }
+.hero {
+    padding: 3.5rem 0 1rem; 
+    text-align:center !important;
+}
 
 .hero h1 {
   margin: 0;
@@ -89,7 +92,6 @@ main {
 
 .tagline {
   margin: 0.5rem 0 0;
-  max-width: 38rem;
   color: var(--dim);
   font-size: 1.05rem;
 }
@@ -133,42 +135,63 @@ section > p:last-child { margin-bottom: 0; }
 
 .aside { color: var(--dim); font-size: 0.95rem; }
 
-/* ---- the video placeholder ------------------------------------------ */
+/* ---- the install box ------------------------------------------------- */
+/* Pick a platform, read only its instructions. Hidden radios, labels drawn
+ * like a slosh tab strip, one panel each; the switching is CSS. */
 
-.video-placeholder {
+.install {
+  margin: 1rem 0;
+  border: 1px solid var(--panel);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.install > .os {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.os-tabs {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  aspect-ratio: 16 / 9;
-  border: 1px dashed var(--faint);
-  border-radius: 4px;
-  background:
-    repeating-linear-gradient(-45deg,
-      transparent 0 14px, rgba(255, 255, 255, 0.015) 14px 28px),
-    var(--panel);
-  text-align: center;
-}
-
-.video-placeholder .play {
-  color: var(--faint);
-  font-size: 2.5rem;
-  line-height: 1;
-}
-
-.video-note {
-  color: var(--dim);
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--panel);
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.video-sub { max-width: 28rem; padding: 0 1rem; color: var(--faint); font-size: 13px; }
-
-#video video {  /* the eventual replacement inherits the frame */
-  width: 100%;
-  border-radius: 4px;
+.os-tabs label {
+  padding: 0.05rem 0.7rem;
+  border-radius: 3px;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
 }
+.os-tabs label:hover { color: var(--pink); }
+
+.install > .os:focus-visible ~ .os-tabs { outline: 1px solid var(--pink); }
+
+.os-panel { display: none; padding: 0.4rem 1rem 0.9rem; }
+.os-panel .cmd { margin: 0.6rem 0; }
+.os-panel .aside { margin: 0.6rem 0 0; font-size: 0.9rem; }
+
+/* the checked radio lights its tab and shows its panel */
+#os-linux:checked   ~ .os-tabs label[for="os-linux"],
+#os-macos:checked   ~ .os-tabs label[for="os-macos"],
+#os-arch:checked    ~ .os-tabs label[for="os-arch"],
+#os-windows:checked ~ .os-tabs label[for="os-windows"],
+#os-source:checked  ~ .os-tabs label[for="os-source"] {
+  background: var(--pink);
+  color: var(--panel);
+}
+#os-linux:checked   ~ #install-linux,
+#os-macos:checked   ~ #install-macos,
+#os-arch:checked    ~ #install-arch,
+#os-windows:checked ~ #install-windows,
+#os-source:checked  ~ #install-source { display: block; }
 
 /* ---- command blocks ------------------------------------------------- */
 
@@ -205,6 +228,94 @@ section > p:last-child { margin-bottom: 0; }
   cursor: pointer;
 }
 .copy:hover { border-color: var(--pink); color: var(--pink); }
+
+/* ---- the feature tour ----------------------------------------------- */
+/* A terminal pinned to the left half, vertically centred; the features
+ * scroll by on the right. Wider than the text column on purpose — the
+ * recordings are 100 columns and want the room. */
+
+.scrolly {
+  --tour-w: min(94vw, 88rem);
+  width: var(--tour-w);
+  margin-left: calc((100% - var(--tour-w)) / 2);
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: clamp(1.5rem, 4vw, 4.5rem);
+}
+
+.stage-pin {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.stage-pin [data-sloshcast] { display: none; }
+.stage-pin .stage-active { display: block; }
+
+.step {
+  min-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  opacity: 0.3;
+  transition: opacity 0.25s;
+}
+.step.active { opacity: 1; }
+
+.step h3 {
+  margin: 0;
+  color: var(--fg);
+  font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.step p {
+  margin: 0.8rem 0 0;
+  color: var(--dim);
+  font-size: clamp(1.05rem, 1.4vw, 1.2rem);
+  line-height: 1.6;
+}
+
+.step ul {
+  margin: 1rem 0 0;
+  padding-left: 1.2em;
+  color: var(--dim);
+  font-size: clamp(0.98rem, 1.25vw, 1.1rem);
+  line-height: 1.55;
+}
+.step li { margin: 0.35rem 0; }
+.step li::marker { color: var(--pink); }
+
+/* The tour's exit: back up to the install box, or into the browser demo. */
+.step-cta { min-height: 45vh; }
+.step-cta .hero-links { margin-top: 1.5rem; }
+
+@media (max-width: 54rem) {
+  /* One column: the terminal sticks under the nav, the features scroll
+   * beneath it. The sticky moves up to .scrolly-stage here: in block layout
+   * .stage-pin's parent is only as tall as the player, so a sticky inside it
+   * has nowhere to stick; .scrolly-stage is bounded by the whole tour. */
+  .scrolly { display: block; }
+  .scrolly-stage {
+    position: sticky;
+    top: 2.2rem; /* below the nav */
+    z-index: 2;
+    padding: 0.6rem 0;
+    background: var(--bg);
+  }
+  .stage-pin {
+    position: static;
+    height: auto;
+    padding: 0;
+  }
+  .step { min-height: 50vh; }
+  .step:first-child { padding-top: 1.5rem; }
+}
 
 /* ---- the points list ------------------------------------------------ */
 

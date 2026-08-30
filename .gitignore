@@ -22,6 +22,9 @@ __pycache__/
 # the landing-page preview video (large binary, lives outside git)
 web/slosh-preview.mp4
 
+# rendered sloshcasts: `make -C web/recordings` re-creates them from demos/
+web/recordings/build/
+
 # the signed macOS artifacts, and the file that says who signs them.
 # The release *mechanism* is in the repo (Makefile.macos, contrib/macos-*).
 # macos-release.mk is the one file that is not: it names a team, a certificate

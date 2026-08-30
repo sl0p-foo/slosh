@@ -10,6 +10,7 @@ demo, assembled into a single static site:
 | `/docs/` | the documentation | `contrib/gen-docs`, the same pages `make docs` renders |
 | `/demo/` | the in-browser machine | `demo/`, on its own page so the front page stays light |
 | `/install.sh` | what `curl \| sudo sh` fetches | `install.sh` here |
+| `/recordings/` | scripted feature playbacks the front page embeds | `recordings/`, native format + player — see `recordings/PLAN.md` |
 
 ## Build
 
@@ -44,9 +45,9 @@ the one condition the webdemo README already states: `.wasm` must be served as
 
 ## TODO
 
-- The demo video is a placeholder (`#video` in `index.html`; the comment there
-  says exactly what to replace). Drop in `demo.mp4` + `demo-poster.png` when
-  rendered.
+- Every feature in the tour has its recording now; what remains on the
+  recordings side (a detach demo, storyline polish, static no-JS posters) is
+  in `recordings/PLAN.md`.
 - `install.sh` clones `https://slosh.foo/src` (override: `SLOSH_REPO=`). Pin
   the real public repo URL once it exists — same for the `src` links in
   `index.html`.

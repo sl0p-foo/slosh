@@ -1,0 +1,124 @@
+/* sloshcast player. The font stack is the site's rule: the system monospace
+ * wherever a terminal is being imitated, nothing fetched.
+ *
+ * Metrics are pinned in pixels (--sc-lh, set by the player), rows carry an
+ * explicit height, and the player scales by font size rather than transform
+ * -- all three learned from shellglass's viewer, all three in service of
+ * borders that meet instead of shimmer. */
+
+.sloshcast {
+  border: 1px solid #45454a;
+  border-radius: 6px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.sloshcast .sc-frame {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.sloshcast .sc-screen {
+  --sc-lh: 17px;
+  position: relative; /* the canvas, cursor and pointer position against it */
+  margin: 0;
+  padding: 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    monospace;
+  font-size: 14px;
+  line-height: var(--sc-lh);
+  box-sizing: content-box;
+}
+
+.sloshcast .sc-row {
+  white-space: pre;
+  height: var(--sc-lh);
+  contain: layout style;
+}
+
+/* Ghost text: characters the canvas paints as geometry. The glyph stays in
+ * the DOM, transparent, so selection and copy still carry it. */
+.sloshcast .sc-g {
+  color: transparent !important;
+}
+
+/* The geometry overlay. pointer-events:none and transparent everywhere it
+ * does not paint, so text, selection and the click-to-toggle pass through. */
+.sloshcast .sc-canvas {
+  position: absolute;
+  top: 8px; /* the screen's padding */
+  left: 8px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Inside .sc-screen: inherits the font, so 1ch is the grid's own cell width;
+ * top comes from a row's offsetTop, which already includes the screen's
+ * vertical padding, and only the horizontal padding needs adding back. */
+.sloshcast .sc-cursor {
+  display: none;
+  position: absolute;
+  margin: 0 0 0 8px;
+  width: 1ch;
+  height: var(--sc-lh);
+  background: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* The pointer track: an arrow the demo drives, gliding between the cells
+ * castgen recorded. A screen capture never shows the pointer; this one is
+ * data, so it can. Pink while the button is down. */
+.sloshcast .sc-pointer {
+  display: none;
+  position: absolute;
+  margin-left: 8px; /* the screen's horizontal padding, like the cursor */
+  width: 1.6ch;
+  height: 1.35em;
+  background: #fff;
+  clip-path: polygon(0 0, 0 88%, 34% 70%, 52% 100%, 68% 92%, 50% 62%, 78% 58%);
+  filter: drop-shadow(0 0 1px #000);
+  transition:
+    left 0.09s linear,
+    top 0.09s linear;
+  pointer-events: none;
+  z-index: 3;
+}
+.sloshcast .sc-pointer.sc-pressed {
+  background: #ff5fd7;
+}
+
+/* The big play glyph over the poster; gone while playing. */
+.sloshcast .sc-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 64px;
+  height: 64px;
+  border: 1px solid #ff5fd7;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ff5fd7;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 4;
+}
+.sloshcast.sc-playing .sc-play {
+  display: none;
+}
+
+.sloshcast .sc-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 4px 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    monospace;
+  font-size: 11px;
+  color: #45454a;
+  border-top: 1px solid #2a2a2e;
+  background: #141418;
+  white-space: nowrap;
+  overflow: hidden;
+}

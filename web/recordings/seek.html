@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>sloshcast seek</title>
+<link rel="stylesheet" href="player.css">
+<style>body{background:#0a0a0c;max-width:960px;margin:2rem auto}</style></head><body>
+<div id="p"></div>
+<script src="player.js"></script>
+<script>
+// A debug page: ?cast=NAME&t=SECONDS renders that demo frozen at that moment.
+// Handy for screenshots, and for picking data-poster times.
+const q = new URLSearchParams(location.search);
+fetch('build/' + (q.get('cast') || 'panes') + '.json').then(r=>r.json()).then(d=>{
+  mountSloshcast(document.getElementById('p'), d, {}).seek(parseFloat(q.get('t') || '0'));
+});
+</script></body></html>

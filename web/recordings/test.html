@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sloshcast — player test</title>
+<link rel="stylesheet" href="player.css">
+<style>
+  body { background: #0a0a0c; color: #ddd; font-family: ui-monospace, monospace;
+         max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { color: #ff5fd7; font-size: 1.1rem; }
+  .sloshcast { margin-bottom: 2rem; }
+</style>
+</head>
+<body>
+<h1>sloshcast player test</h1>
+<p>click a cast to pause/resume.</p>
+<div data-sloshcast="build/panes.json" data-loop data-autoplay></div>
+<div data-sloshcast="build/sessions.json" data-loop></div>
+<div data-sloshcast="build/reflow.json" data-loop></div>
+<div data-sloshcast="build/config.json" data-loop></div>
+<div data-sloshcast="build/shaders.json" data-loop></div>
+<div data-sloshcast="build/scripting.json" data-loop></div>
+<script src="player.js"></script>
+</body>
+</html>

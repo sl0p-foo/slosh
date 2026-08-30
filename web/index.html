@@ -6,6 +6,7 @@
 <title>slosh — a terminal multiplexer</title>
 <meta name="description" content="slosh: panes, tabs, sessions you can detach from. One static binary, written in C on libghostty-vt.">
 <link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="recordings/player.css">
 </head>
 <body>
 
@@ -21,22 +22,116 @@
 
 <header class="hero">
   <h1>slosh</h1>
-  <p class="tagline">A terminal multiplexer — panes, tabs, sessions you can
-  detach from — written in C on top of
+  <p class="tagline">a modern terminal multiplexer written in C on top of
   <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a>.</p>
 
   <p class="hero-links">
     <a class="btn" href="#install">install</a>
     <a class="btn ghost" href="demo/">try it in the browser</a>
+    <a class="btn ghost" href="docs/">browse docs</a>
   </p>
 </header>
 
-<!-- ================================================================ -->
+<section id="different" style='margin-top:0;'>
+  <!-- The feature tour: a terminal pinned on the left, the features scrolling
+       by on the right. The step under the middle of the viewport is the
+       active one, and its data-cast picks which recording the terminal
+       replays (web/recordings/demos/, one script per step). -->
+  <div class="scrolly">
+    <div class="scrolly-stage">
+      <div class="stage-pin">
+        <div data-sloshcast="recordings/panes.json" data-loop data-name="panes" class="stage-active"></div>
+        <div data-sloshcast="recordings/sessions.json" data-loop data-name="sessions"></div>
+        <div data-sloshcast="recordings/reflow.json" data-loop data-name="reflow"></div>
+        <div data-sloshcast="recordings/config.json" data-loop data-name="config"></div>
+        <div data-sloshcast="recordings/shaders.json" data-loop data-name="shaders"></div>
+        <div data-sloshcast="recordings/scripting.json" data-loop data-name="scripting"></div>
+      </div>
+    </div>
 
-<section id="video">
-  <h2>watch it</h2>
+    <div class="scrolly-steps">
+      <article class="step active" data-cast="panes">
+        <h3>Panes and tabs, the way your hands expect.</h3>
+        <p>One chord to split — or just click, because everything drawn is a
+        real target.</p>
+        <ul>
+          <li>click the middle of a border to split toward it</li>
+          <li>drag the gap to move the boundary</li>
+          <li>drag a pane by its title to swap it</li>
+          <li>zoom, tab away, come back — nothing lost</li>
+        </ul>
+      </article>
 
-  <video controls preload="metadata" src="slosh-preview.mp4"></video>
+      <article class="step" data-cast="sessions">
+        <h3>Sessions outlive everything.</h3>
+        <p>Detach, let the ssh connection die, come back tomorrow: every pane
+        exactly where you left it.</p>
+        <ul>
+          <li>detach mid-thought, reattach mid-thought</li>
+          <li>keep separate sessions for separate lives — hop between them</li>
+          <li>a command that died while you were away keeps its output, its
+          exit status, and offers <code>[re-run]</code></li>
+        </ul>
+      </article>
+
+      <article class="step" data-cast="reflow">
+        <h3>Layouts that reflow the way you expect.</h3>
+        <p>The arrangement is derived from the window, never stored — so every
+        size gets a sensible layout, and nothing drifts.</p>
+        <ul>
+          <li>quarter-turn the whole layout in place</li>
+          <li>shrink until boxes become a tidy list</li>
+          <li>grow back: the exact arrangement returns</li>
+        </ul>
+      </article>
+
+      <article class="step" data-cast="config">
+        <h3>Make it yours, live.</h3>
+        <p>One config file, re-read the moment you save — and <kbd>C-a</kbd>
+        <kbd>e</kbd> opens it right there, in a pane.</p>
+        <ul>
+          <li>retheme the whole session in one substitution</li>
+          <li>padding, gaps, titles — every knob, applied as you watch</li>
+          <li><code>compact true</code>: a different school of borders entirely</li>
+        </ul>
+      </article>
+
+      <article class="step" data-cast="shaders">
+        <h3>Colour passes, written as expressions.</h3>
+        <p>Dim, tint, rulers, spotlights — over a pane's cells or over its
+        frame, with strengths computed from <code>x</code>, <code>y</code>, the
+        cursor, the clock.</p>
+        <ul>
+          <li>tint a frame, rule a column, scanline the lot</li>
+          <li>a spotlight that follows the cursor as you type</li>
+          <li><code>:load shine</code> — a shipped preset runs light along the frame</li>
+          <li>a pane rings unfocused — its border flashes</li>
+        </ul>
+      </article>
+
+      <article class="step" data-cast="scripting">
+        <h3>Built to be driven.</h3>
+        <p>One JSON object per line over the session's socket — the same depth
+        the keyboard gets. An agent can hold the other end.</p>
+        <ul>
+          <li>split and rename panes from a script, replies and all</li>
+          <li>a program draws status and buttons into its own frame</li>
+          <li>the click comes back on that program's stdin</li>
+        </ul>
+      </article>
+
+                        <!--
+      <article class="step step-cta">
+        <h3>Convinced?</h3>
+        <p class="hero-links">
+          <a class="btn" href="#install">install</a>
+          <a class="btn ghost" href="demo/">try it in the browser</a>
+        </p>
+      </article>
+-->
+    </div>
+  </div>
+
 </section>
 
 <!-- ================================================================ -->
@@ -44,126 +139,88 @@
 <section id="install">
   <h2>install</h2>
 
-  <div class="cmd" data-copy="curl -fsSL https://slosh.foo/install.sh | sudo sh">
-    <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | sudo sh</code></pre>
-    <button class="copy" type="button" aria-label="Copy command">copy</button>
-  </div>
+<p>we aim to make installing `slosh` as easy as possible. we provide binaries for most popular platforms/architectures on our <a href="">github</a>.
+and we also provide some arch package repo's as well as a brew formula, check below!
 
-  <p class="aside">Piping a URL into a root shell should make you flinch —
-  <a href="install.sh">read it first</a>, it is short. Or skip it entirely:
-  building from source needs <a href="https://ziglang.org">zig</a> 0.16 and
-  nothing else. No cmake, no autotools, no libraries. The result is one static
-  binary.</p>
+  <!-- Pure CSS tabs: hidden radios, labels drawn like a slosh tab strip,
+       one panel per platform. The only JavaScript is the preselect at the
+       bottom of the page, which checks the radio for the platform reading
+       this; without it the linux tab is simply checked in the HTML. -->
+  <div class="install">
+    <input class="os" type="radio" name="os" id="os-linux" checked>
+    <input class="os" type="radio" name="os" id="os-macos">
+    <input class="os" type="radio" name="os" id="os-arch">
+    <input class="os" type="radio" name="os" id="os-windows">
+    <input class="os" type="radio" name="os" id="os-source">
 
-  <div class="cmd">
-    <pre><code><span class="prompt">$</span> git clone https://slosh.foo/src slosh &amp;&amp; cd slosh
+    <div class="os-tabs">
+      <label for="os-linux">linux</label>
+      <label for="os-macos">macos</label>
+      <label for="os-arch">arch</label>
+      <label for="os-windows">windows</label>
+      <label for="os-source">source</label>
+    </div>
+
+    <div class="os-panel" id="install-linux">
+      <div class="cmd" data-copy="curl -fsSL https://slosh.foo/install.sh | sudo sh">
+        <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | sudo sh</code></pre>
+        <button class="copy" type="button" aria-label="Copy command">copy</button>
+      </div>
+      <p class="aside">Piping a URL into a root shell should make you flinch —
+      <a href="install.sh">read it first</a>, it is short: git,
+      <a href="https://ziglang.org">zig</a> 0.16, one static binary into
+      <code>/usr/local/bin</code>, nothing else touched.</p>
+    </div>
+
+    <div class="os-panel" id="install-macos">
+      <div class="cmd" data-copy="brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git &amp;&amp; brew install slosh">
+        <pre><code><span class="prompt">$</span> brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+<span class="prompt">$</span> brew install slosh</code></pre>
+        <button class="copy" type="button" aria-label="Copy commands">copy</button>
+      </div>
+      <p class="aside">No Homebrew? The linux tab's installer works here too —
+      it only needs <a href="https://ziglang.org">zig</a> 0.16 and git.</p>
+    </div>
+
+    <div class="os-panel" id="install-arch">
+      <div class="cmd" data-copy="sudo pacman -Sy slosh">
+        <pre><code><span class="c"># /etc/pacman.conf</span>
+[slosh]
+Server = https://slosh.foo/arch/$arch
+
+<span class="prompt">$</span> sudo pacman -Sy slosh</code></pre>
+        <button class="copy" type="button" aria-label="Copy command">copy</button>
+      </div>
+      <p class="aside">Built, signed packages. Enroll the signing key first —
+      the key, the fingerprint to check and the PKGBUILD are in
+      <a href="https://git.sl0p.foo/slosh.git/tree/contrib/arch">contrib/arch</a>,
+      the same instructions at <a href="arch/">arch/</a>.</p>
+    </div>
+
+    <div class="os-panel" id="install-windows">
+      <div class="cmd">
+        <pre><code><span class="prompt">$</span> make -f Makefile.windows   <span class="c"># from a mac or linux box</span></code></pre>
+      </div>
+      <p class="aside">The same one binary: <code>slosh.exe</code>, Windows
+      10/11, x86-64 and ARM64, no runtime dependency beyond the OS. Panes are
+      ConPTYs, sessions are AF_UNIX sockets, everything on this page works
+      there. Cross-compiled, then copied across —
+      <a href="docs/windows.html">the details</a>.</p>
+    </div>
+
+    <div class="os-panel" id="install-source">
+      <div class="cmd">
+        <pre><code><span class="prompt">$</span> git clone https://slosh.foo/src slosh &amp;&amp; cd slosh
 <span class="prompt">$</span> make vendor    <span class="c"># the vendored terminal core, once</span>
 <span class="prompt">$</span> make           <span class="c"># about a second</span>
 <span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
+      </div>
+      <p class="aside">Needs <a href="https://ziglang.org">zig</a> 0.16 and
+      nothing else. No cmake, no autotools, no libraries. The result is one
+      static binary.</p>
+    </div>
   </div>
-
-  <p class="aside">On Arch there is a <a href="arch/">pacman repository</a>
-  with built, signed packages — the <code>[slosh]</code> stanza, the
-  signing key to enroll, and the PKGBUILD for building it yourself are in
-  <a href="https://git.sl0p.foo/slosh.git/tree/contrib/arch">contrib/arch</a>.</p>
-
-  <p class="aside">On Windows it is the same one binary: <code>slosh.exe</code>,
-  Windows 10/11, x86-64 and ARM64, no runtime dependency beyond the OS. Panes
-  are ConPTYs and sessions are AF_UNIX sockets, so everything below works there
-  too. It is cross-compiled from a mac or a Linux box
-  (<code>make -f Makefile.windows</code>), then copied across —
-  <a href="docs/windows.html">the details</a>.</p>
-
-  <p>Then:</p>
-
-  <div class="cmd">
-    <pre><code><span class="prompt">$</span> slosh              <span class="c"># attach to session "main", creating it if needed</span>
-<span class="prompt">$</span> slosh -s work      <span class="c"># a named session</span>
-<span class="prompt">$</span> slosh ls           <span class="c"># what is running</span></code></pre>
-  </div>
-
-  <p>Sessions survive detaching, and your ssh connection dying. Then
-  <kbd>C-a</kbd> <kbd>\</kbd> to split, <kbd>C-a</kbd> <kbd>?</kbd> for the
-  keys, <kbd>C-a</kbd> <kbd>p</kbd> for every command by name.</p>
 </section>
-
-<!-- ================================================================ -->
-
-<section id="different">
-  <h2>what is different about it</h2>
-
-  <dl class="points">
-    <dt>The mouse works properly.</dt>
-    <dd>Click the middle of a border to split toward it, drag a gap to move a
-    boundary, drag a pane by its title to swap it. Everything drawn registers
-    what it is as it is drawn, so a click and a preview cannot disagree.</dd>
-
-    <dt>The layout is recomputed, never stored.</dt>
-    <dd>Small terminal? The tab becomes a list of headers, and comes back to
-    exactly the arrangement you had. Nothing drifts, because there is nothing
-    stored to drift.</dd>
-
-    <dt>Dead panes keep their output.</dt>
-    <dd>A pane told to run something keeps what it printed when that thing
-    exits, with <code>[re-run]</code> and <code>[close]</code> in its
-    frame.</dd>
-
-    <dt>Configuration is one KDL file.</dt>
-    <dd>It reloads on save, can be built from <code>include</code>d pieces, and
-    refuses a broken file instead of half-applying it.</dd>
-
-    <dt>Colour passes over cells.</dt>
-    <dd>Dim, tint, rulers, spotlights, and a border that can flash when a pane
-    rings — with strengths written as expressions.</dd>
-
-    <dt>Scriptable to the same depth it is usable.</dt>
-    <dd>One JSON object per line over the session's socket, and a pane can draw
-    its own status bar and buttons with an escape sequence.</dd>
-  </dl>
-
-  <p class="aside">The multiplexers we have are crusty, and the things that
-  make them awkward follow from how the programs are built. So: start over, and
-  stand on the shoulders of the person who already solved the genuinely hard
-  part — the terminal core from <a href="https://ghostty.org">ghostty</a> does
-  the VT parsing, scrollback, selection, images and key encoding. What sits on
-  top is about 15k lines of C, and recomputes rather than remembers.
-  The decisions behind it: <a href="docs/design.html">how it
-  works</a>.</p>
-</section>
-
-<!-- ================================================================ -->
-
-<section id="try">
-  <h2>try it without installing anything</h2>
-
-  <p>The <a href="demo/">demo page</a> boots a riscv64 Linux —
-  Fabrice Bellard's TinyEMU compiled to WebAssembly — with slosh running as the
-  thing you land in. Nothing is installed, nothing is uploaded, and reloading
-  the page throws the machine away. It streams about 11&nbsp;MiB once, then
-  never touches the network again.</p>
-
-  <p class="aside">It is an emulator interpreting every instruction, so the
-  machine is honest but not fast. The real thing redraws in microseconds.</p>
-</section>
-
-<!-- ================================================================ -->
-
-<section id="docs">
-  <h2>docs</h2>
-
-  <ul class="doclist">
-    <li><a href="docs/keys.html">keys</a><span> — the leader, the defaults, rebinding, the palette</span></li>
-    <li><a href="docs/panes.html">panes and tabs</a><span> — splitting, moving, zooming, the mouse</span></li>
-    <li><a href="docs/config.html">configuration</a><span> — one file, live reload, themes, include</span></li>
-    <li><a href="docs/shaders.html">shaders</a><span> — colour passes over a pane's contents</span></li>
-    <li><a href="docs/chrome.html">chrome</a><span> — the same passes over a pane's frame</span></li>
-    <li><a href="docs/layouts.html">layouts</a><span> — a session as a file you check in</span></li>
-    <li><a href="docs/scripting.html">scripting</a><span> — the control socket, and what a pane can draw</span></li>
-    <li><a href="docs/design.html">how it works</a><span> — the two decisions that shape the rest</span></li>
-    <li><a href="docs/windows.html">windows</a><span> — the native port, and what is different there</span></li>
-  </ul>
-</section>
-
 </main>
 
 <footer class="foot">
@@ -172,9 +229,11 @@
   <span>one static binary</span>
 </footer>
 
+<script src="recordings/player.js"></script>
 <script>
-// The one script on the page: the copy buttons. No framework, no tracker,
-// nothing fetched from anywhere.
+// The scripts on the page: the copy buttons, the install preselect and the
+// feature tour. No framework, no tracker, nothing fetched from anywhere but
+// here.
 for (const box of document.querySelectorAll(".cmd[data-copy]")) {
   const btn = box.querySelector(".copy");
   btn.addEventListener("click", async () => {
@@ -184,6 +243,66 @@ for (const box of document.querySelectorAll(".cmd[data-copy]")) {
       setTimeout(() => (btn.textContent = "copy"), 1200);
     } catch {
       btn.textContent = "select it";
+    }
+  });
+}
+
+// The install box opens on the platform reading it; the tabs are CSS.
+const ua = navigator.userAgent;
+const os = /Windows/i.test(ua) ? "windows" : /Mac/i.test(ua) ? "macos" : "linux";
+const radio = document.getElementById("os-" + os);
+if (radio) radio.checked = true;
+
+// The feature tour: the step under the middle of the viewport is active,
+// and picks which recording plays on the pinned terminal.
+const tour = document.querySelector(".scrolly");
+if (tour) {
+  const mounts = [...tour.querySelectorAll(".stage-pin [data-sloshcast]")];
+  const steps = [...tour.querySelectorAll(".step")];
+  const ctl = (el) => el._sloshcast;
+  let current = null; // the first activation always plays
+
+  const show = (name) => {
+    if (!name || name === current) return;
+    current = name;
+    for (const el of mounts) {
+      const on = el.dataset.name === name;
+      el.classList.toggle("stage-active", on);
+      if (!ctl(el)) continue; // still fetching; the sloshcast event catches up
+      if (on) {
+        ctl(el).restart();
+        ctl(el).play();
+      } else ctl(el).pause();
+    }
+  };
+
+  const mid = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries)
+        if (e.isIntersecting) {
+          for (const s of steps) s.classList.toggle("active", s === e.target);
+          show(e.target.dataset.cast);
+        }
+    },
+    { rootMargin: "-45% 0px -45% 0px" },
+  );
+  for (const s of steps) mid.observe(s);
+
+  // Nothing plays while the tour is off screen.
+  new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const active = mounts.find((m) => m.classList.contains("stage-active"));
+      if (!active || !ctl(active)) continue;
+      if (e.isIntersecting) ctl(active).play();
+      else ctl(active).pause();
+    }
+  }).observe(tour);
+
+  // A cast that finished loading while its step was already active.
+  tour.addEventListener("sloshcast", (e) => {
+    if (e.target.classList.contains("stage-active")) {
+      ctl(e.target).fit();
+      ctl(e.target).play();
     }
   });
 }

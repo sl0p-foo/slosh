@@ -17,25 +17,41 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$here")"
-out="$root/build/www"
+www="$root/build/www"
 
+# Assemble into a staging directory and swap at the end: a build that fails
+# halfway (set -eu) must not have already deleted the site that worked.
+out="$root/build/.www-staging"
 rm -rf "$out"
 mkdir -p "$out"
+
+publish() {
+    rm -rf "$www"
+    mv "$out" "$www"
+}
 
 # For now slosh.foo is a coming-soon page; the full site is assembled only
 # when asked (FULL=1) while it is being finished.
 if [ "${FULL:-0}" != 1 ]; then
     cp "$here/coming-soon.html" "$out/index.html"
-    echo "build-site: $out (coming soon -- FULL=1 for the real site)"
+    publish
+    echo "build-site: $www (coming soon -- FULL=1 for the real site)"
     exit 0
 fi
 
-# The front page.
+# The front page. Its recordings are below; there is no video.
 cp "$here/index.html" "$here/site.css" "$here/install.sh" "$out/"
-cp "$here/slosh-preview.mp4" "$out/"
 
 # The docs, rendered by the same generator `make docs` uses.
 python3 "$root/contrib/gen-docs" "$out/docs"
+
+# The recordings: scripted feature playbacks (see recordings/PLAN.md),
+# re-rendered from their driver scripts so they can never be stale.
+make -C "$here/recordings"
+mkdir -p "$out/recordings"
+cp "$here/recordings/build/"*.json \
+   "$here/recordings/player.js" "$here/recordings/player.css" \
+   "$out/recordings/"
 
 # The demo, assembled by its own Makefile, on its own page.
 if [ "${NO_DEMO:-0}" = 1 ]; then
@@ -46,5 +62,6 @@ else
     cp -R "$here/demo/build/site/." "$out/demo/"
 fi
 
-echo "build-site: $out"
+publish
+echo "build-site: $www"
 echo "build-site: serve with: web/demo/serve --dir build/www"
