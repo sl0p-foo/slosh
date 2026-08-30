@@ -460,6 +460,18 @@ if (tour) {
   const ctl = (el) => el._sloshcast;
   let current = null; // the first activation always plays
 
+  // A step's title is a road to the step: clicking it glides the article to
+  // the middle of the viewport, which is the exact spot where the observer
+  // below activates it -- so the click also switches the recording, through
+  // the same door scrolling uses.
+  for (const s of steps) {
+    const h = s.querySelector("h3");
+    if (h)
+      h.addEventListener("click", () =>
+        s.scrollIntoView({ block: "center" })
+      );
+  }
+
   const show = (name) => {
     if (!name || name === current) return;
     current = name;

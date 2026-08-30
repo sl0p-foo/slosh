@@ -450,7 +450,11 @@ section > p:last-child { margin-bottom: 0; }
   font-size: clamp(1.4rem, 2.2vw, 1.9rem);
   font-weight: 650;
   line-height: 1.25;
+  /* Clickable: the title glides its step to the centre, where it activates.
+   * The pointer and a breath of pink say so. */
+  cursor: pointer;
 }
+.step h3:hover { color: var(--pink); }
 
 .step p {
   margin: 0.8rem 0 0;
