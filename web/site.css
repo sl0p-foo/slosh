@@ -95,8 +95,7 @@ kbd {
    * 200% is one tile width), and only a 90deg gradient meets its own edge
    * seamlessly. */
   background: linear-gradient(90deg,
-      var(--pink) 0%, #c95fff 18%, #5fafff 38%, #5fd7d7 52%,
-      #87ffd7 62%, #ff87e7 82%, var(--pink) 100%);
+      var(--pink) 0%, #c95fff 35%, #5fafff 65%, var(--pink) 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -109,21 +108,26 @@ kbd {
  * compositor, so every pixel cycles the wheel even over the cached clip.
  * Chrome and Firefox get both, WebKit gets the rotation alone. */
 .logo-float.show pre {
-  animation: logo-cycle 8s linear infinite, logo-hue 12s linear infinite;
+  animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite;
 }
 @keyframes logo-cycle {
   from { background-position: 0% 0; }
   to { background-position: 200% 0; }
 }
+/* The drop shadow lives in these keyframes because the filter property is
+ * the animation's: a static filter would lose to it. Listed before the
+ * hue-rotate, so the glow is rotated with the letters and always matches
+ * their current colour. Soft and low: on a near-black page a shadow can
+ * only read as a faint underglow. */
 @keyframes logo-hue {
-  from { filter: hue-rotate(0deg); }
-  to { filter: hue-rotate(360deg); }
+  from { filter: drop-shadow(0 4px 14px rgba(255, 95, 215, 0.3)) hue-rotate(0deg); }
+  to { filter: drop-shadow(0 4px 14px rgba(255, 95, 215, 0.3)) hue-rotate(360deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   /* The preference is about motion, not colour: the slide -- a pattern
    * that travels -- goes; the hue rotation, colour changing in place,
-   * stays, at half speed. Nothing moves, everything still breathes. */
-  .logo-float.show pre { animation: logo-hue 24s linear infinite; }
+   * stays. Nothing moves, everything still breathes. */
+  .logo-float.show pre { animation: logo-hue 5s linear infinite; }
 }
 
 @media (max-width: 54rem) {
