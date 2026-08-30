@@ -218,19 +218,18 @@ section > p:last-child { margin-bottom: 0; }
   align-items: center;
   justify-content: center;
   gap: 0.7rem;
-  /* The tour's breakout: the machine deserves the same width the pinned
-   * terminal got, not the prose column. */
-  width: var(--tour-w);
-  margin-left: calc((100% - var(--tour-w)) / 2);
-  /* A poster until booted: the machine gets most of a viewport, the offer
-   * of one gets a modest strip. The height moves before the iframe goes in,
-   * so the guest reads its one-time geometry from the final room. */
+  /* A poster until booted: the prose column's width and a modest strip of
+   * height for the offer; the machine, once asked for, gets the tour's
+   * breakout width and most of a viewport. The size moves before the iframe
+   * goes in, so the guest reads its one-time geometry from the final room. */
   padding: 3.5rem 1rem;
   border: 1px solid var(--code-bg);
   border-radius: 6px;
   background: var(--panel);
 }
 .try-stage.booted {
+  width: var(--tour-w);
+  margin-left: calc((100% - var(--tour-w)) / 2);
   padding: 0;
   height: 74vh;
   min-height: 360px;
