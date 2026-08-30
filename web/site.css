@@ -115,7 +115,8 @@ kbd {
  * compositor, so every pixel cycles the wheel even over the cached clip.
  * Chrome and Firefox get both, WebKit gets the rotation alone. */
 .logo-float.show pre {
-  animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite;
+  animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite,
+    logo-glitch 7s linear infinite;
 }
 @keyframes logo-cycle {
   from { background-position: 0% 0; }
@@ -130,10 +131,40 @@ kbd {
   from { filter: drop-shadow(0 4px 14px rgba(255, 95, 215, 0.3)) hue-rotate(0deg); }
   to { filter: drop-shadow(0 4px 14px rgba(255, 95, 215, 0.3)) hue-rotate(360deg); }
 }
+/* The distortion: a signal that is fine, fine, fine, and then for a third
+ * of a second is not -- torn into bands, shoved sideways, sheared, whole
+ * again. Slices via clip-path and shoves via transform, because filter
+ * belongs to the hue animation and background to the slide. Doubled
+ * percentages make the cuts hard; 7s against the 5s slide and 4s hue means
+ * the burst lands somewhere new in the colour every time. */
+@keyframes logo-glitch {
+  0%, 91%, 96%, 100% {
+    transform: none;
+    clip-path: none;
+  }
+  91.5%, 92.3% {
+    transform: translateX(-0.35em) skewX(-7deg);
+    clip-path: inset(0 0 58% 0);
+  }
+  92.4%, 93.4% {
+    transform: translateX(0.4em) skewX(5deg);
+    clip-path: inset(38% 0 0 0);
+  }
+  93.5%, 94.6% {
+    transform: translateX(-0.15em);
+    clip-path: inset(18% 0 30% 0);
+  }
+  94.7%, 95.9% {
+    transform: translateX(0.08em) skewX(-2deg);
+    clip-path: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* The preference is about motion, not colour: the slide -- a pattern
-   * that travels -- goes; the hue rotation, colour changing in place,
-   * stays. Nothing moves, everything still breathes. */
+   * that travels -- goes, and so does the glitch, which is nothing but
+   * motion; the hue rotation, colour changing in place, stays. Nothing
+   * moves, everything still breathes. */
   .logo-float.show pre { animation: logo-hue 5s linear infinite; }
 }
 
