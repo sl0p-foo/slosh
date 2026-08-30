@@ -297,6 +297,30 @@ if (bigLogo && littleLogo && "IntersectionObserver" in window) {
   }).observe(bigLogo);
 }
 
+// ...and vertically centred in the air between the viewport top and the
+// pinned terminal's top edge. That edge is (viewport - the stage's lift
+// padding) / 2 - half the player, which moves with both the window and the
+// player's own height -- so it is measured, not guessed in CSS. Hidden when
+// the air runs out rather than allowed to overlap the terminal.
+const stagePin = document.querySelector(".stage-pin");
+function placeLittleLogo() {
+  const player = stagePin && stagePin.querySelector(".stage-active");
+  if (!player || !littleLogo) return;
+  const pad = parseFloat(getComputedStyle(stagePin).paddingBottom) || 0;
+  const termTop = (innerHeight - pad) / 2 - player.offsetHeight / 2;
+  const air = termTop - littleLogo.offsetHeight;
+  littleLogo.style.top = Math.max(8, air / 2) + "px";
+  littleLogo.style.visibility = air >= 16 ? "" : "hidden";
+}
+if (stagePin && littleLogo) {
+  placeLittleLogo();
+  window.addEventListener("resize", placeLittleLogo);
+  // The players size themselves when their casts arrive -- and the pin is a
+  // 100vh box that never resizes, so watch the players, not the pin.
+  const ro = new ResizeObserver(placeLittleLogo);
+  for (const el of stagePin.querySelectorAll("[data-sloshcast]")) ro.observe(el);
+}
+
 // The install box opens on the platform reading it; the tabs are CSS.
 const ua = navigator.userAgent;
 const os = /Windows/i.test(ua) ? "windows" : /Mac/i.test(ua) ? "macos" : "linux";

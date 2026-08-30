@@ -57,6 +57,9 @@ kbd {
 
 .logo-float {
   position: fixed;
+  /* The resting value only: the script centres it in the air between the
+   * viewport top and the pinned terminal's top edge, which no fixed number
+   * tracks across viewport heights. */
   top: 13.8rem;
   /* Centred on the stage column: the tour is layout-centred and the stage
    * is the 3fr of its 3fr/2fr split, so the terminal's midline sits at
