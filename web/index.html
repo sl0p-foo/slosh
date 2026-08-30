@@ -186,9 +186,10 @@
     <button class="boot" type="button" id="boot_btn">boot the machine</button>
     <p class="aside">riscv64 · TinyEMU, compiled to wasm · yours until you reload</p>
   </div>
-  <p class="aside try-live" id="try_live" hidden>The machine is yours until
-  you <button class="linkish" type="button" id="kill_btn">power it
-  off</button> — that forgets it entirely, and the button comes back.</p>
+  <p class="try-live" id="try_live" hidden>
+    <button class="boot ghost" type="button" id="kill_btn">power off</button>
+    <span class="aside">forgets the machine entirely — boot another any time</span>
+  </p>
 </section>
 
 <!-- ================================================================ -->
