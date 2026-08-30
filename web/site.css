@@ -65,6 +65,27 @@ kbd {
   font-size: 0.85em;
 }
 
+/* ---- the logo, as geometry ------------------------------------------- */
+/* The ascii logo drawn as rects and used as a mask, because the block
+ * glyphs it was typed in do not survive every platform: Android's default
+ * monospace has none of them, so each one falls back to whatever font
+ * volunteers, each with its own metrics, and the grid shatters. Geometry
+ * has no fallback to shatter through. Generated from logo.txt by
+ * web/gen-logo-mask (44x7 cells of half-blocks) -- and the animated background
+ * layers show through the mask exactly as they showed through
+ * background-clip: text. Rects that touch also join exactly, which
+ * retires the letter-spacing hack that closed the fonts' pinstripes. */
+:root {
+  --logo-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 264 70'%3E%3Crect x='6' y='-0.4' width='36' height='5.8'/%3E%3Crect x='54' y='-0.4' width='18' height='5.8'/%3E%3Crect x='114' y='-0.4' width='36' height='5.8'/%3E%3Crect x='168' y='-0.4' width='36' height='5.8'/%3E%3Crect x='222' y='-0.4' width='12' height='5.8'/%3E%3Crect x='252' y='-0.4' width='12' height='5.8'/%3E%3Crect x='0' y='4.6' width='48' height='5.8'/%3E%3Crect x='54' y='4.6' width='18' height='5.8'/%3E%3Crect x='108' y='4.6' width='48' height='5.8'/%3E%3Crect x='162' y='4.6' width='48' height='5.8'/%3E%3Crect x='216' y='4.6' width='18' height='5.8'/%3E%3Crect x='246' y='4.6' width='18' height='5.8'/%3E%3Crect x='0' y='9.6' width='18' height='5.8'/%3E%3Crect x='36' y='9.6' width='12' height='5.8'/%3E%3Crect x='54' y='9.6' width='18' height='5.8'/%3E%3Crect x='108' y='9.6' width='18' height='5.8'/%3E%3Crect x='138' y='9.6' width='18' height='5.8'/%3E%3Crect x='162' y='9.6' width='18' height='5.8'/%3E%3Crect x='198' y='9.6' width='12' height='5.8'/%3E%3Crect x='216' y='9.6' width='18' height='5.8'/%3E%3Crect x='246' y='9.6' width='18' height='5.8'/%3E%3Crect x='0' y='14.6' width='18' height='5.8'/%3E%3Crect x='54' y='14.6' width='18' height='5.8'/%3E%3Crect x='108' y='14.6' width='18' height='5.8'/%3E%3Crect x='138' y='14.6' width='18' height='5.8'/%3E%3Crect x='162' y='14.6' width='18' height='5.8'/%3E%3Crect x='216' y='14.6' width='18' height='5.8'/%3E%3Crect x='246' y='14.6' width='18' height='5.8'/%3E%3Crect x='0' y='19.6' width='42' height='5.8'/%3E%3Crect x='54' y='19.6' width='18' height='5.8'/%3E%3Crect x='108' y='19.6' width='18' height='5.8'/%3E%3Crect x='138' y='19.6' width='18' height='5.8'/%3E%3Crect x='162' y='19.6' width='42' height='5.8'/%3E%3Crect x='216' y='19.6' width='48' height='5.8'/%3E%3Crect x='6' y='24.6' width='42' height='5.8'/%3E%3Crect x='54' y='24.6' width='18' height='5.8'/%3E%3Crect x='84' y='24.6' width='18' height='5.8'/%3E%3Crect x='108' y='24.6' width='18' height='5.8'/%3E%3Crect x='138' y='24.6' width='18' height='5.8'/%3E%3Crect x='168' y='24.6' width='42' height='5.8'/%3E%3Crect x='216' y='24.6' width='48' height='5.8'/%3E%3Crect x='30' y='29.6' width='18' height='5.8'/%3E%3Crect x='54' y='29.6' width='18' height='5.8'/%3E%3Crect x='84' y='29.6' width='18' height='5.8'/%3E%3Crect x='108' y='29.6' width='18' height='5.8'/%3E%3Crect x='138' y='29.6' width='18' height='5.8'/%3E%3Crect x='192' y='29.6' width='18' height='5.8'/%3E%3Crect x='216' y='29.6' width='18' height='5.8'/%3E%3Crect x='246' y='29.6' width='18' height='5.8'/%3E%3Crect x='0' y='34.6' width='12' height='5.8'/%3E%3Crect x='30' y='34.6' width='18' height='5.8'/%3E%3Crect x='54' y='34.6' width='18' height='5.8'/%3E%3Crect x='84' y='34.6' width='18' height='5.8'/%3E%3Crect x='108' y='34.6' width='18' height='5.8'/%3E%3Crect x='138' y='34.6' width='18' height='5.8'/%3E%3Crect x='162' y='34.6' width='12' height='5.8'/%3E%3Crect x='192' y='34.6' width='18' height='5.8'/%3E%3Crect x='216' y='34.6' width='18' height='5.8'/%3E%3Crect x='246' y='34.6' width='18' height='5.8'/%3E%3Crect x='0' y='39.6' width='48' height='5.8'/%3E%3Crect x='54' y='39.6' width='48' height='5.8'/%3E%3Crect x='108' y='39.6' width='48' height='5.8'/%3E%3Crect x='162' y='39.6' width='48' height='5.8'/%3E%3Crect x='216' y='39.6' width='18' height='5.8'/%3E%3Crect x='246' y='39.6' width='18' height='5.8'/%3E%3Crect x='6' y='44.6' width='36' height='5.8'/%3E%3Crect x='54' y='44.6' width='42' height='5.8'/%3E%3Crect x='114' y='44.6' width='36' height='5.8'/%3E%3Crect x='162' y='44.6' width='42' height='5.8'/%3E%3Crect x='216' y='44.6' width='18' height='5.8'/%3E%3Crect x='246' y='44.6' width='18' height='5.8'/%3E%3Crect x='0' y='54.6' width='264' height='5.8'/%3E%3Crect x='0' y='64.6' width='264' height='5.8'/%3E%3C/svg%3E");
+}
+
+.logo-art {
+  display: block;
+  aspect-ratio: 264 / 70;
+  -webkit-mask: var(--logo-svg) center / 100% 100% no-repeat;
+  mask: var(--logo-svg) center / 100% 100% no-repeat;
+}
+
 /* ---- the floating logo ---------------------------------------------- */
 /* The hero logo again, small, in the corner the stage's v-centering leaves
  * empty on desktop. Faded in by the observer in index.html once the big one
@@ -96,14 +117,8 @@ kbd {
  * (the global a:hover) is a mess, and a colour flash is not much better.
  * The pointer cursor alone says clickable. */
 .logo-float:hover { text-decoration: none; }
-.logo-float pre {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1em;
-  /* Block glyphs' ink can round a hair narrower than the advance width,
-   * leaving pinstripe gaps between ██; tuck each glyph into the last. */
-  letter-spacing: -0.05em;
+.logo-float .logo-art {
+  width: 318px; /* what 44 columns of 12px mono came to */
   /* The colour cycles, slowly: a gradient of the pink's neighbours clipped
    * to the ink and slid along it -- the logo's own little colour pass, in
    * the spirit of the shaders it advertises. Horizontal on purpose: the
@@ -123,9 +138,6 @@ kbd {
   background-size: 60% 100%, 200% 100%;
   background-repeat: no-repeat, repeat;
   background-position: -150% 0, 0% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 /* Two motions. The position slide scrolls the gradient through the ink --
  * except in WebKit, which caches a text-clipped paint and never repaints it
@@ -133,7 +145,7 @@ kbd {
  * rotation is the motion Safari does honour: filters run post-paint on the
  * compositor, so every pixel cycles the wheel even over the cached clip.
  * Chrome and Firefox get both, WebKit gets the rotation alone. */
-.logo-float.show pre {
+.logo-float.show .logo-art {
   animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite;
 }
 /* One set of keyframes drives both layers: the colour slide moves linearly
@@ -157,7 +169,7 @@ kbd {
   /* The preference is about motion, not colour: the slide and the shine --
    * patterns that travel -- go; the hue rotation, colour changing in
    * place, stays. Nothing moves, everything still breathes. */
-  .logo-float.show pre { animation: logo-hue 5s linear infinite; }
+  .logo-float.show .logo-art { animation: logo-hue 5s linear infinite; }
 }
 
 @media (max-width: 54rem) {
@@ -178,8 +190,8 @@ main {
 }
 
 .hero .logo {
-    line-height: 1em;
-    letter-spacing: -0.05em; /* see .logo-float pre */
+    width: min(88vw, 352px); /* what 44 columns of the default mono came to */
+    margin: 0 auto;
     /* The same dress as the floating logo, in truer colours: no hue
      * rotation (that is what walks the little one off into blues), just a
      * slide through the palette's own pinks -- and --dead's sunset orange,
@@ -194,9 +206,6 @@ main {
     background-size: 60% 100%, 200% 100%;
     background-repeat: no-repeat, repeat;
     background-position: -150% 0, 0% 0;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
     filter: drop-shadow(0 6px 26px rgba(255, 95, 215, 0.25));
     animation: hero-cycle 4s linear infinite;
 }

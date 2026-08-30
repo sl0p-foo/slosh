@@ -14,29 +14,16 @@
      v-centering leaves empty. It fades in when the hero scrolls away
      (the observer at the bottom of the page) and is a road back up. -->
 <a class="logo-float" href="#" aria-label="slosh — back to top">
-<pre aria-hidden="true">
-▄██████▄ ███      ▄██████▄ ▄██████▄ ▄██  ▄██
-███   ▀▀ ███      ███  ███ ███   ▀▀ ███  ███
-▀██████▄ ███  ▄▄▄ ███  ███ ▀██████▄ ████████
-▄▄   ███ ███  ███ ███  ███ ▄▄   ███ ███  ███
-▀██████▀ ███████▀ ▀██████▀ ███████▀ ███  ███
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-</pre>
+<span class="logo-art"></span>
 </a>
 
 <main>
 
 <header class="hero">
-<pre class="logo">
-▄██████▄ ███      ▄██████▄ ▄██████▄ ▄██  ▄██
-███   ▀▀ ███      ███  ███ ███   ▀▀ ███  ███
-▀██████▄ ███  ▄▄▄ ███  ███ ▀██████▄ ████████
-▄▄   ███ ███  ███ ███  ███ ▄▄   ███ ███  ███
-▀██████▀ ███████▀ ▀██████▀ ███████▀ ███  ███
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-</pre>
+<!-- The logo as geometry (a masked div; see .logo-art in site.css): the
+     ascii original lives in logo.txt, but block glyphs do not survive every
+     platform's font fallback, and rects do. -->
+<div class="logo logo-art" role="img" aria-label="slosh"></div>
   <p class="tagline">a modern terminal multiplexer written in C on top of
   <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a>.</p>
 

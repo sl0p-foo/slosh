@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Regenerate the logo mask in site.css from logo.txt.
+
+The site draws the logo as geometry -- an SVG of rects used as a CSS mask --
+because the half-block glyphs the ascii original is typed in do not survive
+every platform's font fallback (Android's default monospace has none of
+them). This script turns logo.txt into that SVG and splices it into
+site.css's --logo-svg custom property in place.
+
+Each character cell is 6x10 units; ▀ fills the top half, ▄ the bottom, █
+both. Horizontal runs merge into single rects, and every rect is drawn with
+a little vertical overlap (EPS): stacked halves land on fractional pixels
+when the mask scales, and the seams read as pinstripes without it.
+"""
+
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+LOGO = os.path.join(os.path.dirname(HERE), "logo.txt")
+CSS = os.path.join(HERE, "site.css")
+
+CW, CH, EPS = 6, 10, 0.4
+
+
+def runs(row, want):
+    out, start = [], None
+    for i, ch in enumerate(row + " "):
+        hit = ch in want
+        if hit and start is None:
+            start = i
+        if not hit and start is not None:
+            out.append((start, i))
+            start = None
+    return out
+
+
+def num(v):
+    return f"{v:.1f}".rstrip("0").rstrip(".")
+
+
+lines = open(LOGO).read().rstrip("\n").splitlines()
+rects = []
+for j, row in enumerate(lines):
+    for a, b in runs(row, "\u2580\u2588"):
+        rects.append((a * CW, j * CH - EPS, (b - a) * CW, CH / 2 + 2 * EPS))
+    for a, b in runs(row, "\u2584\u2588"):
+        rects.append((a * CW, j * CH + CH / 2 - EPS, (b - a) * CW, CH / 2 + 2 * EPS))
+
+w = max(len(l) for l in lines) * CW
+h = len(lines) * CH
+body = "".join(
+    f"<rect x='{num(x)}' y='{num(y)}' width='{num(rw)}' height='{num(rh)}'/>"
+    for x, y, rw, rh in rects
+)
+svg = f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {w} {h}'>{body}</svg>"
+uri = svg.replace("<", "%3C").replace(">", "%3E").replace("#", "%23")
+
+css = open(CSS).read()
+out = re.sub(
+    r'--logo-svg: url\("data:image/svg\+xml,[^"]*"\);',
+    f'--logo-svg: url("data:image/svg+xml,{uri}");',
+    css,
+    count=1,
+)
+if out == css and "--logo-svg" not in css:
+    sys.exit("gen-logo-mask: no --logo-svg property in site.css to replace")
+open(CSS, "w").write(out)
+print(
+    f"gen-logo-mask: {len(rects)} rects, viewBox 0 0 {w} {h}, "
+    f"{len(uri)} URI bytes -> site.css"
+)
