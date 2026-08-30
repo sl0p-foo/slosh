@@ -73,12 +73,18 @@ kbd {
   pointer-events: none;
 }
 .logo-float.show { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
-.logo-float:hover { color: var(--fg); }
+/* A link, but not dressed as one: underlining seven rows of block glyphs
+ * (the global a:hover) is a mess, and a colour flash is not much better.
+ * The pointer cursor alone says clickable. */
+.logo-float:hover { text-decoration: none; }
 .logo-float pre {
   margin: 0;
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1em;
+  /* Block glyphs' ink can round a hair narrower than the advance width,
+   * leaving pinstripe gaps between ██; tuck each glyph into the last. */
+  letter-spacing: -0.05em;
 }
 
 @media (max-width: 54rem) {
@@ -101,6 +107,7 @@ main {
 .hero .logo {
     color: var(--pink);
     line-height: 1em;
+    letter-spacing: -0.05em; /* see .logo-float pre */
 }
 
 .hero h1 {
