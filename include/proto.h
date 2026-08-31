@@ -30,7 +30,7 @@ enum {
 enum {
   EXIT_SESSION_ENDED = 0, /* the last pane closed */
   EXIT_DETACHED = 1,      /* the user detached */
-  EXIT_REPLACED = 2,      /* another client attached */
+  EXIT_REPLACED = 2, /* legacy: retained so new clients speak to old servers */
 };
 
 typedef struct {

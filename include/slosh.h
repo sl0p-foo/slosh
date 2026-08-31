@@ -76,6 +76,14 @@ void screen_init(screen_t *s, uint16_t cols, uint16_t rows);
 void screen_free(screen_t *s);
 void screen_resize(screen_t *s, uint16_t cols, uint16_t rows);
 void screen_clear(screen_t *s);
+/* Project a canonical screen into a client-sized one. The source starts at
+ * (x,y); anything beyond its edges is blank filler. Diff history in `dst` is
+ * deliberately left alone, so every attached terminal advances independently. */
+void screen_project(screen_t *dst, const screen_t *src, uint16_t x, uint16_t y);
+/* Move an existing client viewport only as far as needed to keep the canonical
+ * cursor visible, then clamp it to the canonical screen. */
+void screen_follow_cursor(const screen_t *src, uint16_t cols, uint16_t rows,
+                          uint16_t *x, uint16_t *y);
 cell_t *screen_at(screen_t *s, uint16_t x, uint16_t y);
 void screen_put_utf8(screen_t *s, uint16_t x, uint16_t y, const char *txt,
                      size_t len, color_t fg, color_t bg, uint16_t attrs);

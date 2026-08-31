@@ -6,6 +6,7 @@ the assertions are about what survives: content, layout, and the process.
 """
 
 import fcntl
+import json
 import os
 import pty
 import select
@@ -84,6 +85,23 @@ def control(name, line):
         [BIN, "-s", name, "cmd", line], capture_output=True, text=True, timeout=10
     )
     return out.stdout.strip()
+
+
+def screen_size(name):
+    snap = json.loads(control(name, "snapshot json"))
+    return snap["cols"], snap["rows"]
+
+
+def resize(pid, fd, cols, rows):
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    os.kill(pid, signal.SIGWINCH)
+
+
+def running(pid):
+    try:
+        return os.waitpid(pid, os.WNOHANG)[0] == 0
+    except ChildProcessError:
+        return False
 
 
 def wait_gone(pid, timeout=3.0):
@@ -188,22 +206,75 @@ def main():
     out = drain(fd2)
     check("input works after reattach", b"beta" in out, repr(out[-60:]))
 
-    # --- a second client replaces the first -----------------------------
-    pid3, fd3 = attach(name)
+    # --- multiple attached clients share one session --------------------
+    pid3, fd3 = attach(name, cols=50, rows=12)
     drain(fd3)
     tail = drain(fd2, idle=0.2, limit=2.0)
     check(
-        "the displaced client is told it was replaced",
-        b"replaced" in tail or wait_gone(pid2, 1.0),
+        "a second client leaves the first attached",
+        b"replaced" not in tail and running(pid2),
         repr(tail[-60:]),
+    )
+    check("the newest attachment owns the size", screen_size(name) == (50, 12))
+
+    # The control path asks the canonical screen for a full repaint. Since the
+    # canonical screen is now only a model, that request has to fan out to both
+    # clients' independent diff histories.
+    drain(fd2)
+    drain(fd3)
+    control(name, "reload")
+    repaint2 = drain(fd2)
+    repaint3 = drain(fd3)
+    check(
+        "a canonical repaint reaches every attached client",
+        b"\x1b[2J" in repaint2 and b"\x1b[2J" in repaint3,
+        repr((repaint2[-80:], repaint3[-80:])),
+    )
+
+    os.write(fd2, b"-from-first-client")
+    out2 = drain(fd2)
+    out3 = drain(fd3)
+    shared = control(name, "snapshot text")
+    check(
+        "either client can type into the shared pane",
+        b"t-client" in out2
+        and b"t-client" in out3
+        and "from-firs" in shared
+        and "t-client" in shared,
+        repr((out2[-80:], out3[-80:])),
+    )
+    check("the last client to type owns the size", screen_size(name) == (80, 24))
+
+    resize(pid3, fd3, 40, 10)
+    drain(fd3)
+    check(
+        "resizing an inactive client does not steal the size",
+        screen_size(name) == (80, 24),
+    )
+    resize(pid2, fd2, 70, 20)
+    drain(fd2)
+    check("the active client's resize wins", screen_size(name) == (70, 20))
+
+    os.write(fd3, b"-small-client-active")
+    drain(fd3)
+    drain(fd2)
+    check("input promotes the smaller client", screen_size(name) == (40, 10))
+
+    os.write(fd3, b"\x01d")
+    tail = drain(fd3, idle=0.2, limit=2.0)
+    check("detach exits only its issuing client", wait_gone(pid3), repr(tail[-60:]))
+    check("the other client stays attached", running(pid2))
+    check(
+        "disconnecting the active client restores the previous active size",
+        screen_size(name) == (70, 20),
     )
 
     # --- closing the last pane ends the session -------------------------
-    os.write(fd3, b"\x01x")  # close pane 2
-    drain(fd3)
-    os.write(fd3, b"\x01x")  # close the last one
-    drain(fd3, idle=0.3, limit=2.0)
-    check("the client exits when the session ends", wait_gone(pid3))
+    os.write(fd2, b"\x01x")  # close pane 2
+    drain(fd2)
+    os.write(fd2, b"\x01x")  # close the last one
+    drain(fd2, idle=0.3, limit=2.0)
+    check("every client exits when the session ends", wait_gone(pid2))
 
     time.sleep(0.3)
     listing = subprocess.run([BIN, "ls"], capture_output=True, text=True).stdout

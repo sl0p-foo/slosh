@@ -871,6 +871,20 @@ bool app_should_quit(const app_t *a) { return a->quit || a->ntabs == 0; }
 bool app_detach_requested(const app_t *a) { return a->detach; }
 void app_clear_detach(app_t *a) { a->detach = false; }
 
+void app_cancel_client_pointer(app_t *a) {
+  if (a->drag.kind == DRAG_SELECT) {
+    node_t *n = pane_by_id(a, a->drag.src);
+    if (n) pane_select_done(n->pane);
+  }
+  memset(&a->drag, 0, sizeof a->drag);
+  a->ptr_valid = false;
+}
+
+void app_cancel_client_interaction(app_t *a) {
+  a->prefix = false;
+  app_cancel_client_pointer(a);
+}
+
 /* ---- walking ------------------------------------------------------------ */
 
 typedef void (*leaf_fn)(node_t *, void *);
