@@ -18,9 +18,9 @@ class Slosh < Formula
   # bytes, so the sha256 below stays honest. Pinned to a full commit id rather
   # than a branch, because a branch tarball changes under you and brew would
   # keep the stale one.
-  url "https://github.com/sl0p-foo/slosh/archive/5987a7f7adfcde60d7757ad858c7435fdaf479e0.tar.gz"
-  version "0.1.2"
-  sha256 "a5fc5ee33d8b6813a98b597f241e48d8d424c2f83bd93f30b4abbf1477573fb8"
+  url "https://github.com/sl0p-foo/slosh/archive/f2a9ff9b8b1f552fbae3bda9b0fc0be647cdc5eb.tar.gz"
+  version "0.1.3"
+  sha256 "2b997946069ed116664585623a707dc74d3c5b5915e7e7f1edf5b19baa2b5ca5"
   head "https://github.com/sl0p-foo/slosh.git", branch: "master"
 
   # zig is the whole toolchain: it compiles the C, builds the vendored

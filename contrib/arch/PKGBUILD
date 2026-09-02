@@ -14,7 +14,7 @@
 # ZIG_GLOBAL_CACHE_DIR.
 
 pkgname=slosh
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc="Terminal multiplexer: panes, tabs, and sessions you can detach from, on libghostty-vt"
 arch=('x86_64' 'aarch64')
@@ -32,7 +32,7 @@ options=('!debug' '!strip')
 makedepends=('zig')
 # GitHub's tag archive extracts to $pkgname-$pkgver/ (the v is stripped).
 source=("$pkgname-v$pkgver.tar.gz::https://github.com/sl0p-foo/slosh/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('a524d0668f8e9f197c6e27db277400b1877f60e897e76bee5d34f6e59f996d87')
+sha256sums=('f15f8d53dee46967339565228d0c87541770a9eda1e325756e92496764e849ff')
 
 # The Makefile's ZIG default is a developer-machine path; a builder has the
 # real one. Overridable so the package can be test-built where zig lives

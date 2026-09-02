@@ -30,6 +30,13 @@ cd "$root"
 fail() { printf 'arch-repo: %s\n' "$*" >&2; exit 1; }
 
 command -v makepkg >/dev/null 2>&1 || fail "makepkg not found -- this runs on an Arch machine"
+# The build needs zig, but not necessarily pacman's: a zig on PATH (the
+# release box keeps it in ~/zig-<version>) serves, passed to the PKGBUILD as
+# $ZIG. Exported, because makepkg is a child and a plain sh variable is not.
+if [ ! -x /usr/bin/zig ] && [ -z "${ZIG:-}" ] && command -v zig >/dev/null 2>&1; then
+    ZIG="$(command -v zig)"
+fi
+export ZIG
 command -v repo-add >/dev/null 2>&1 || fail "repo-add not found (pacman ships it)"
 gpg --list-secret-keys "$KEY" >/dev/null 2>&1 \
     || fail "no secret key $KEY in this keyring -- the repo is signed, and an
