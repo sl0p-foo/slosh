@@ -349,6 +349,13 @@ layouts, themes and shader presets lives under
 .SH ENVIRONMENT
 Set in every pane:
 .TP
+.B TERM
+.B xterm-ghostty
+when the machine's terminfo database has the entry (it ships with ghostty),
+.B xterm-256color
+when it does not: an entry curses cannot find makes editors exit on
+the spot and backspace guess.
+.TP
 .B SLOSH
 .B 1
 : you are inside a pane.

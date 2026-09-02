@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -17,6 +18,64 @@
 #include <time.h>
 #include <termios.h>
 #include <unistd.h>
+
+/* What a pane's TERM should be. xterm-ghostty is the truth -- the terminal
+ * core is ghostty's -- but the truth is useless to a program whose curses
+ * cannot find the entry: the entry ships with ghostty, and a machine that
+ * has never seen ghostty has ncurses' database and nothing else. There,
+ * nano exits on the spot ("Error opening terminal"), which reads as `C-a e`
+ * flashing a pane; and a shell that cannot look up kbs guesses at what
+ * backspace sends. So the entry is looked up the way curses would --
+ * $TERMINFO, ~/.terminfo, $TERMINFO_DIRS, then the system directories, in
+ * the letter layout (x/) and Darwin's hashed one (78/) -- and when it is
+ * not there, TERM says xterm-256color: in every ncurses database since
+ * forever, and close enough to what we speak that everything works. The
+ * lookup happens where it matters: panes run on the server's machine.
+ *
+ * Computed once, in the parent, before the first fork. */
+static bool term_add(char *dirs, size_t cap, size_t *n, const char *d) {
+  if (!d || !*d) return false;
+  int w = snprintf(dirs + *n, cap - *n, "%s%s", *n ? ":" : "", d);
+  if (w > 0) *n = *n + (size_t)w < cap ? *n + (size_t)w : cap - 1;
+  return true;
+}
+
+static const char *pty_term(void) {
+  static const char *cached = NULL;
+  if (cached) return cached;
+  cached = "xterm-256color";
+
+  char dirs[2048] = "";
+  size_t n = 0;
+  term_add(dirs, sizeof dirs, &n, getenv("TERMINFO"));
+  const char *home = getenv("HOME");
+  char user_ti[1024];
+  if (home) {
+    snprintf(user_ti, sizeof user_ti, "%s/.terminfo", home);
+    term_add(dirs, sizeof dirs, &n, user_ti);
+  }
+  term_add(dirs, sizeof dirs, &n, getenv("TERMINFO_DIRS"));
+  term_add(dirs, sizeof dirs, &n,
+           "/etc/terminfo:/lib/terminfo:/usr/share/terminfo:"
+           "/usr/local/share/terminfo");
+
+  char *save = NULL;
+  for (char *d = strtok_r(dirs, ":", &save); d;
+       d = strtok_r(NULL, ":", &save)) {
+    char path[1200];
+    snprintf(path, sizeof path, "%s/x/xterm-ghostty", d);
+    if (access(path, R_OK) == 0) {
+      cached = "xterm-ghostty";
+      break;
+    }
+    snprintf(path, sizeof path, "%s/78/xterm-ghostty", d);
+    if (access(path, R_OK) == 0) {
+      cached = "xterm-ghostty";
+      break;
+    }
+  }
+  return cached;
+}
 
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
               const char *cwd, uint16_t cell_w, uint16_t cell_h) {
@@ -73,6 +132,8 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
                        .ws_ypixel = (unsigned short)(rows * cell_h)};
   ioctl(slave, TIOCSWINSZ, &ws);
 
+  pty_term(); /* warm the cache in the parent; the child only reads it */
+
   pid_t pid = fork();
   if (pid < 0) {
     close(slave);
@@ -97,7 +158,7 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
 
     /* We are opinionated about the outer terminal (D11), and we present the
      * same contract inward. xterm-ghostty is what libghostty-vt implements. */
-    setenv("TERM", "xterm-ghostty", 1);
+    setenv("TERM", pty_term(), 1);
     setenv("SLOSH", "1", 1);
     unsetenv("ZELLIJ");
 
