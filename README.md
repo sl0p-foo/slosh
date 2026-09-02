@@ -3,6 +3,9 @@
 A terminal multiplexer: panes, tabs, and sessions you can detach from, written
 in C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
+**[slosh.foo](https://slosh.foo)**: the website, with a feature tour, the
+rendered docs, and a bootable in-browser demo.
+
 ## Install
 
 Prebuilt binaries for every platform are on the

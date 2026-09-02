@@ -49,6 +49,14 @@ header {
 header > a { font-family: var(--mono); font-weight: 600; color: var(--ink); }
 header .crumb { color: var(--dim); font-size: 13px; }
 header .crumb::before { content: "/ "; }
+/* The way back out: docs live under the site, and the header is the one
+ * surface every page shares. Absolute, so a locally rendered build/docs
+ * points somewhere real too. */
+header .home {
+  margin-left: auto;
+  color: var(--dim); font: 500 13px var(--mono);
+}
+header .home:hover { color: var(--ink); }
 
 .burger { display: none; cursor: pointer; color: var(--dim); font-size: 20px; }
 

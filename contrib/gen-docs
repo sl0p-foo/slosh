@@ -280,7 +280,8 @@ SHELL = """<!doctype html>
 </head><body>
 <input type="checkbox" id="menu" hidden>
 <header><label for="menu" class="burger" aria-label="Menu">≡</label>
-<a href="index.html">slosh</a><span class="crumb">{crumb}</span></header>
+<a href="index.html">slosh</a><span class="crumb">{crumb}</span>
+<a class="home" href="https://slosh.foo">slosh.foo</a></header>
 <div class="wrap">
 {sidebar}
 <main>
