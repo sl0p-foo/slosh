@@ -22,7 +22,14 @@ set -eu
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 base="$(cat "$root/VERSION" 2>/dev/null || echo 0.0.0)"
 
-if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+# The .git that answers must be the tree's own. A source tarball extracted
+# *inside* some other repository (makepkg builds in build/arch-pkg/, which
+# is inside ours) has no .git of its own, and git happily walks up and
+# answers for the outer tree -- which is how the v0.1.4 arch package
+# introduced itself as "0.1.4-dirty": the tag's tarball, stamped with the
+# release box's uncommitted paperwork. If the toplevel git names is not us,
+# we are a tarball, and ./VERSION is the honest answer.
+if [ "$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)" = "$root" ]; then
     d="$(git -C "$root" describe --tags --match 'v[0-9]*' --dirty 2>/dev/null || true)"
     if [ -n "$d" ]; then
         printf '%s\n' "${d#v}"
