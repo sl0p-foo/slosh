@@ -3,7 +3,12 @@
 # zig is the C compiler: it is already required to build libghostty-vt, and it
 # gives us static musl linking and cross-compilation for free (D12).
 
-ZIG      ?= $(HOME)/zig-0.16.0/zig
+# Honour an explicit ZIG=... on the command line or in the environment;
+# otherwise use whatever `zig` is on $PATH.
+ZIG      ?= $(shell command -v zig 2>/dev/null)
+ifeq ($(ZIG),)
+  $(error zig not found on $$PATH -- install it or pass ZIG=/path/to/zig)
+endif
 CC       := $(ZIG) cc
 VT       := vendor/libghostty-vt
 VT_OUT   := $(VT)/zig-out
