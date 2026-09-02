@@ -19,7 +19,7 @@ A formula has to live in a *tap* — a git repo named `homebrew-<tapname>` full
 of `Formula/*.rb`. Ours is `homebrew-slosh`, so users say:
 
 ```bash
-brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+brew tap sl0p-foo/slosh
 brew install slosh
 ```
 

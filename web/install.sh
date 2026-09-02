@@ -3,7 +3,7 @@
 #
 # On macOS with Homebrew there is a shorter road:
 #
-#     brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+#     brew tap sl0p-foo/slosh
 #     brew install slosh
 #
 # and on Arch there is a signed pacman repo -- https://slosh.foo/arch/.
@@ -70,7 +70,7 @@ case "$os" in
         case "$arch" in
             arm64) plat=macos-arm64; ext=zip ;;
             *) fail "no prebuilt binary for intel macs yet -- use Homebrew
-  (brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git && brew install slosh)" ;;
+  (brew tap sl0p-foo/slosh && brew install slosh)" ;;
         esac ;;
     *MINGW*|*MSYS*|*CYGWIN*)
         fail "Windows runs slosh.exe -- download the zip from $BASE/ (see docs/windows.md)" ;;

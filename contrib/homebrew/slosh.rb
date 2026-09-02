@@ -5,7 +5,7 @@
 # stanzas below (url/version/sha256) for a new commit or tag and copies the
 # result into the tap repo, which is what users actually tap:
 #
-#     brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+#     brew tap sl0p-foo/slosh
 #     brew install slosh
 #
 # Try it without publishing anything:

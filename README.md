@@ -10,7 +10,7 @@ in C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 With [Homebrew](https://brew.sh):
 
 ```bash
-brew tap sl0p/slosh https://git.sl0p.foo/homebrew-slosh.git
+brew tap sl0p-foo/slosh
 brew install slosh
 ```
 
