@@ -9,6 +9,7 @@ Start
 
 Using it
   keys.md
+  actions.md
   panes.md
   workspaces.md
 
@@ -22,6 +23,5 @@ Driving it
   scripting.md
 
 Inside
-  design.md
   windows.md
   macos-release.md
