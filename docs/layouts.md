@@ -81,7 +81,7 @@ having no tabs, which is true of it in the least useful way.
 - `cwd=`: where it starts. Inherited from the tab when the pane does not say.
 - `suspended=true`: laid out but running nothing until you touch it, so twelve
   checked-out projects are not twelve running dev servers. The pane shows what it
-  *would* run.
+  _would_ run.
 - `focus=true`: the pane you start in, within its tab.
 - `floating=true`: the pane starts [floating](panes.md#floating-a-pane), with
   `x=` `y=` `w=` `h=` as its wanted rect in cells. All four absent takes the
@@ -92,7 +92,7 @@ having no tabs, which is true of it in the least useful way.
   lands one as the backdrop, because an overlay needs something to be over.
 - `purpose=`: a label for tooling; see below.
 
-**A relative `cwd=` in a layout *file* resolves against that file's own
+**A relative `cwd=` in a layout _file_ resolves against that file's own
 directory**, never against the directory you started the session from. It is
 the rule [`include`](config.md#include) already follows, applied to the other
 half of the same syntax. A layout with no `cwd=` anywhere
@@ -118,7 +118,7 @@ layout {
 Clone that repo somewhere else and the tab still opens on the checkout, with the
 pane that said `src` still in the checkout's `src`.
 
-A layout that arrives as *text* over the socket has no file, and so no
+A layout that arrives as _text_ over the socket has no file, and so no
 directory to be relative to; relative paths in it resolve against wherever the
 session is.
 
@@ -141,7 +141,7 @@ is that loop, for when the thing you are rebuilding is slosh itself.
 or you typed it. `label`, what a layout said, comes first and outlives the
 program that ran it, so a project's `command="npm run dev"` stays that in the file
 after the server has exited. Failing that, the pane's terminal is asked what owns
-it: a pty has a foreground process group, and that group *is* the job running in
+it: a pty has a foreground process group, and that group _is_ the job running in
 the pane. So arranging a project by hand and writing it down are one job rather
 than two: split, start the dev server and the log tailer, `C-a W`, done.
 
@@ -156,7 +156,7 @@ with.
 Argv is joined with shell quoting, since `command=` is handed to `/bin/sh -c`:
 `python3 -c 'import x; x.go()'` comes back as one argument rather than three.
 
-What a dump can honestly restore is the *shape*, and the command that made it.
+What a dump can honestly restore is the _shape_, and the command that made it.
 What it cannot is the state inside a program (a shell's history, a half-written
 commit message, an editor's undo) and it does not pretend otherwise. A pane
 running the session's default shell is dumped as a pane with no command, so
@@ -169,23 +169,23 @@ slosh -s work cmd '{"cmd":"dump-layout","tab":3}'
 slosh -s work cmd '{"cmd":"dump-layout","relative_to":"~/dev/api","suspend":"commands"}'
 ```
 
-| argument | what it says |
-|---|---|
-| `tab` | a tab **id**, or `0` (the default) for the whole session |
-| `relative_to` | a directory every `cwd=` is written relative to |
-| `suspend` | which panes come back laid out but not running |
+| argument      | what it says                                             |
+| ------------- | -------------------------------------------------------- |
+| `tab`         | a tab **id**, or `0` (the default) for the whole session |
+| `relative_to` | a directory every `cwd=` is written relative to          |
+| `suspend`     | which panes come back laid out but not running           |
 
 `relative_to` is the writing end of the reading rule above: point it at the
 project and the dump comes out with `cwd="."` and `cwd="src"` in it rather than
 your home directory, which is what makes the file committable without an edit
 afterwards. `suspend` takes four words:
 
-| word | means |
-|---|---|
-| `as-is` | what is suspended in the session right now, the default here, because a session dump should describe the session |
-| `none` | everything comes back running |
-| `commands` | every pane that was given a command |
-| `all` | nothing starts until you touch it |
+| word       | means                                                                                                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `as-is`    | what is suspended in the session right now, the default here, because a session dump should describe the session |
+| `none`     | everything comes back running                                                                                    |
+| `commands` | every pane that was given a command                                                                              |
+| `all`      | nothing starts until you touch it                                                                                |
 
 `commands` is the one you want for a layout you will open often, and it is what
 [workspaces](workspaces.md) saves with: the pane running this morning's dev server
@@ -226,7 +226,7 @@ shifts; an id survives that.
 Two things a move deliberately drops, both of them the old tab's opinion rather
 than the pane's: a zoom that named it, and its minimised flag. Carried across, the
 first would zoom a pane that has left and the second would file the arrival in a
-strip nobody asked for. Which tab you are *looking* at does not change.
+strip nobody asked for. Which tab you are _looking_ at does not change.
 
 `C-a >` and `C-a <` push the focused pane one tab along, `C-a b` gives it a tab of
 its own, and a pane can be dragged onto a tab in the strip; see
@@ -236,25 +236,15 @@ its own, and a pane can be dragged onto a tab in the strip; see
 
 A pane or tab can carry a `purpose=` label (`agent:main`, `logs`, `db`) for
 tooling to find it by. A purpose declared in a layout or over the control API is
-*locked*: a program inside the pane cannot overwrite it, so identity comes from
+_locked_: a program inside the pane cannot overwrite it, so identity comes from
 the layout rather than from whatever the program decides to print.
-
-`C-a P` gives the focused pane one from the keyboard (see
-[keys](keys.md#defaults)) and **a purpose an operator typed counts as declared,
-so it locks like one from a file**: you named that pane `service:web` on
-purpose, and the shell in it printing a title is not an argument for renaming
-it.
-
-**Setting a purpose to nothing unlocks it**, from a layout, the API or `C-a P`
-with the field cleared, and hands the label back to the program to describe
-itself again — the same shape as clearing a pane's name.
 
 The [finder](panes.md#finding-a-pane) matches on purposes as well as titles, and
 `{"cmd":"panes"}` reports them.
 
 ## When the layout is found rather than named
 
-Everything above assumes you name the file. When it lives *in* the project,
+Everything above assumes you name the file. When it lives _in_ the project,
 `slosh.layout` beside the `.git`, you do not have to: `C-a w` lists the
 projects under the roots you configured and opening one applies the layout it
 found there, or a default layout bound to that directory when the project has
