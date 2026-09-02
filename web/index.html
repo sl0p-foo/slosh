@@ -188,6 +188,13 @@
     </div>
 
     <div class="os-panel" id="install-arch">
+      <div class="cmd" data-copy="curl -fsSLO https://slosh.foo/arch/slosh.asc &amp;&amp; sudo pacman-key --add slosh.asc &amp;&amp; sudo pacman-key --lsign-key 0F67C909938CFFA8A76B59FD8D69B55A0E9056B9">
+        <pre><code><span class="c"># enroll the signing key, once</span>
+<span class="prompt">$</span> curl -fsSLO https://slosh.foo/arch/slosh.asc
+<span class="prompt">$</span> sudo pacman-key --add slosh.asc
+<span class="prompt">$</span> sudo pacman-key --lsign-key 0F67C909938CFFA8A76B59FD8D69B55A0E9056B9</code></pre>
+        <button class="copy" type="button" aria-label="Copy commands">copy</button>
+      </div>
       <div class="cmd" data-copy="sudo pacman -Sy slosh">
         <pre><code><span class="c"># /etc/pacman.conf</span>
 [slosh]
@@ -196,10 +203,13 @@ Server = https://slosh.foo/arch/$arch
 <span class="prompt">$</span> sudo pacman -Sy slosh</code></pre>
         <button class="copy" type="button" aria-label="Copy command">copy</button>
       </div>
-      <p class="aside">Built, signed packages. Enroll the signing key first —
-      the key, the fingerprint to check and the PKGBUILD are in
-      <a href="https://github.com/sl0p-foo/slosh/tree/master/contrib/arch">contrib/arch</a>,
-      the same instructions at <a href="arch/">arch/</a>.</p>
+      <p class="aside">Built, signed packages. The fingerprint to check before
+      the <code>--lsign-key</code>: the same key is
+      <a href="https://github.com/sl0p-foo/slosh/blob/master/contrib/arch/slosh.asc">contrib/arch/slosh.asc</a>
+      in git, so the file fetched from the website can be compared against the
+      one in the source. The PKGBUILD, for building it yourself, is in
+      <a href="https://github.com/sl0p-foo/slosh/tree/master/contrib/arch">contrib/arch</a>
+      too; the same instructions at <a href="arch/">arch/</a>.</p>
     </div>
 
     <div class="os-panel" id="install-source">
