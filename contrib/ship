@@ -1,0 +1,193 @@
+#!/bin/sh
+# ship -- the whole release, one command:
+#
+#   contrib/ship 0.2.0                # tag, build, publish, everywhere
+#   contrib/ship 0.2.0 "What changed."
+#
+# contrib/release cuts the tag and deliberately stops there: pushing is
+# publishing, and publishing should be the thing you do on purpose. This is
+# that thing, done on purpose -- every channel a release must reach, in order,
+# so that none is forgotten (v0.1.2 shipped with the arch repo still serving
+# v0.1.1, which is the mistake this script exists to prevent):
+#
+#   1. contrib/release      bump ./VERSION, commit, tag       (skipped if done)
+#   2. git push             master + tag -> cgit and GitHub
+#   3. make release-*       linux tarballs, windows zips      (cross-built here)
+#   4. make macos-dist      signed, notarized zip             (the builder mac)
+#   5. gh release           the five artifacts + SHA256SUMS on GitHub
+#   6. brew-release         pin the formula, push the tap
+#   7. arch                 bump the PKGBUILD, rebuild + sign + rsync the repo
+#   8. paperwork            commit the formula + PKGBUILD, push
+#
+# Every step is skipped when its result already exists, so a run that died at
+# notarization resumes where it stopped instead of rebuilding artifacts whose
+# checksums are already published -- a rebuilt tarball has new bytes (mtimes),
+# and changing SHA256SUMS under people is worse than a slow retry.
+#
+# The macOS build uses the working-tree sync mode of macos-remote-build (the
+# tree *is* the tag checkout, and clean, so the version stamps honestly).
+# --ref mode would be tidier but needs the builder to fetch from origin, and
+# the builder holds no git credentials on purpose.
+set -eu
+
+GH_REPO="${SLOSH_GH_REPO:-sl0p-foo/slosh}"
+TAP_DIR="${SLOSH_TAP_DIR:-../homebrew-slosh}"
+TAP_URL="${SLOSH_TAP_URL:-git@github.com:sl0p-foo/homebrew-slosh.git}"
+ARCH_DEST="${SLOSH_ARCH_DEST:-root@sl0p.foo:/opt/slosh/arch}"
+ARCH_URL="${SLOSH_ARCH_URL:-https://slosh.foo/arch}"
+GPG_KEY="${SLOSH_GPG_KEY:-0F67C909938CFFA8A76B59FD8D69B55A0E9056B9}"
+
+root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$root"
+
+fail() { printf 'ship: %s\n' "$*" >&2; exit 1; }
+say()  { printf '  %s\n' "$*"; }
+step() { printf '\n== %s\n' "$*"; }
+
+[ $# -ge 1 ] || { sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+v="${1#v}"; notes="${2:-}"
+printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$' \
+    || fail "'$v' does not look like X.Y.Z"
+tag="v$v"
+
+# ── preflight: every credential and machine, before anything is cut ─────────
+# The point of one overarching script is that it cannot half-publish; so it
+# refuses to start unless every channel it will touch is reachable now.
+step "preflight"
+git diff --quiet && git diff --cached --quiet || fail "the tree is not clean"
+[ "$(git symbolic-ref --short -q HEAD)" = master ] || fail "not on master"
+command -v gh >/dev/null || fail "gh not installed"
+gh auth status >/dev/null 2>&1 || fail "gh is not authenticated (gh auth login)"
+command -v makepkg >/dev/null && command -v repo-add >/dev/null \
+    || fail "makepkg/repo-add missing -- the arch leg runs here"
+gpg --list-secret-keys "$GPG_KEY" >/dev/null 2>&1 \
+    || fail "arch signing key $GPG_KEY not in this keyring"
+[ -f macos-release.mk ] || fail "no macos-release.mk -- the macOS leg needs it"
+builder="$(sed -n 's/^BUILDER[[:space:]]*[?:]*=[[:space:]]*//p' macos-release.mk | head -1)"
+[ -n "$builder" ] || fail "macos-release.mk names no BUILDER"
+ssh -o BatchMode=yes -o ConnectTimeout=15 "$builder" true \
+    || fail "cannot ssh to the builder '$builder'"
+arch_host="${ARCH_DEST%%:*}"
+ssh -o BatchMode=yes -o ConnectTimeout=15 "$arch_host" true \
+    || fail "cannot ssh to '$arch_host' (publishes the arch repo)"
+if [ ! -d "$TAP_DIR/.git" ]; then
+    say "no tap checkout at $TAP_DIR -- cloning"
+    git clone -q "$TAP_URL" "$TAP_DIR" || fail "could not clone the tap"
+fi
+say "all channels reachable"
+
+# ── 1. the tag ──────────────────────────────────────────────────────────────
+step "tag $tag"
+if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    [ "$(cat VERSION)" = "$v" ] || fail "$tag exists but VERSION says $(cat VERSION)"
+    say "already cut (resuming)"
+else
+    contrib/release "$v" ${notes:+"$notes"}
+fi
+
+# ── 2. push ─────────────────────────────────────────────────────────────────
+# origin fans out to cgit and GitHub (two push urls); a no-op when resuming.
+step "push master + $tag"
+git push origin master "$tag"
+
+# ── 3+4. artifacts, from the tag checkout ───────────────────────────────────
+# Only the legs whose artifact is missing are built: artifacts are named by
+# version and a tag is immutable, so an existing file *is* the build. (This is
+# what makes a resumed run safe -- see the header.)
+linux_x=dist/slosh-$v-linux-x86_64.tar.gz
+linux_a=dist/slosh-$v-linux-aarch64.tar.gz
+win_x=dist/slosh-$v-windows-x86_64.zip
+win_a=dist/slosh-$v-windows-aarch64.zip
+mac=dist/slosh-$v-macos-arm64.zip
+missing=""
+for f in "$linux_x" "$linux_a" "$win_x" "$win_a" "$mac"; do
+    [ -f "$f" ] || missing="$missing $f"
+done
+if [ -n "$missing" ]; then
+    step "build:$missing"
+    git checkout -q "$tag"
+    trap 'git checkout -q master' EXIT INT TERM
+    make release-check
+    { [ -f "$linux_x" ] && [ -f "$linux_a" ]; } || make release-linux
+    { [ -f "$win_x" ] && [ -f "$win_a" ]; }     || make release-windows
+    [ -f "$mac" ] || make macos-dist
+    git checkout -q master
+    trap - EXIT INT TERM
+else
+    step "build"
+    say "all five artifacts already in dist/ (resuming)"
+fi
+for f in "$linux_x" "$linux_a" "$win_x" "$win_a" "$mac"; do
+    [ -f "$f" ] || fail "$f was not produced"
+done
+( cd dist && sha256sum "slosh-$v"-* > SHA256SUMS )
+
+# ── 5. the GitHub release ───────────────────────────────────────────────────
+step "github release"
+if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+    have="$(gh release view "$tag" --repo "$GH_REPO" --json assets -q '.assets[].name')"
+    for f in "$linux_x" "$linux_a" "$win_x" "$win_a" "$mac"; do
+        printf '%s\n' "$have" | grep -qx "$(basename "$f")" \
+            || gh release upload "$tag" --repo "$GH_REPO" "$f"
+    done
+    gh release upload "$tag" --repo "$GH_REPO" --clobber dist/SHA256SUMS
+    say "release existed -- missing assets uploaded, SHA256SUMS refreshed"
+else
+    prev="$(git tag -l 'v[0-9]*' | sort -V | grep -B1 -x "$tag" | head -1)"
+    [ "$prev" = "$tag" ] && prev=""
+    relnotes="$(git log --oneline ${prev:+$prev..}"$tag" --no-decorate \
+        | grep -v ' release: v' | sed 's/^[a-f0-9]* /- /')"
+    gh release create "$tag" --repo "$GH_REPO" --title "slosh $v" \
+        --notes "$relnotes" \
+        "$linux_x" "$linux_a" "$win_x" "$win_a" "$mac" dist/SHA256SUMS
+fi
+
+# ── 6. homebrew ─────────────────────────────────────────────────────────────
+# Rerun even when already pinned: it re-downloads and re-hashes the tarball,
+# so a drifted GitHub archive would be caught here and not by a user.
+step "homebrew formula + tap"
+contrib/brew-release --tap "$TAP_DIR" "$tag"
+( cd "$TAP_DIR" \
+  && { git diff --quiet Formula/slosh.rb 2>/dev/null \
+       && git ls-files --error-unmatch Formula/slosh.rb >/dev/null 2>&1; } \
+  || { git add Formula/slosh.rb && git commit -q -m "slosh $v" && git push -q; } )
+
+# ── 7. arch ─────────────────────────────────────────────────────────────────
+# The db on the server is the truth about what pacman serves; if it already
+# lists this version, the leg is done (aarch64 stays a by-hand reminder --
+# makepkg does not cross-compile).
+step "arch repo"
+if curl -fsSL "$ARCH_URL/x86_64/slosh.db.tar.gz" | tar tzf - 2>/dev/null \
+   | grep -q "^slosh-$v-"; then
+    say "$ARCH_URL already serves $v (resuming)"
+else
+    sha="$(curl -fsSL "https://github.com/$GH_REPO/archive/refs/tags/$tag.tar.gz" \
+        | sha256sum | cut -d' ' -f1)"
+    sed -i -e "s/^pkgver=.*/pkgver=$v/" -e "s/^pkgrel=.*/pkgrel=1/" \
+           -e "s/^sha256sums=.*/sha256sums=('$sha')/" contrib/arch/PKGBUILD
+    contrib/arch-repo
+    carch="$(uname -m)"
+    rsync -a --delete --chown=root:root "dist/arch/$carch/" "$ARCH_DEST/$carch/"
+    rsync -a --chown=root:root dist/arch/slosh.asc "$ARCH_DEST/slosh.asc"
+    say "published to $ARCH_DEST/$carch"
+fi
+
+# ── 8. the paperwork ────────────────────────────────────────────────────────
+# The formula and the PKGBUILD pin the tag's tarball, so they can only change
+# *after* the tag exists -- they land on master behind it.
+step "paperwork"
+if git diff --quiet contrib/homebrew/slosh.rb contrib/arch/PKGBUILD; then
+    say "nothing to commit"
+else
+    git add contrib/homebrew/slosh.rb contrib/arch/PKGBUILD
+    git commit -q -m "release: $tag paperwork -- formula and PKGBUILD pinned"
+    git push origin master
+    say "committed and pushed"
+fi
+
+printf '\nshipped %s:\n' "$tag"
+say "github   https://github.com/$GH_REPO/releases/tag/$tag"
+say "brew     brew tap sl0p-foo/slosh && brew install slosh"
+say "arch     $ARCH_URL ($(uname -m); run contrib/ship on an aarch64 box for the other leg)"
+say "reminder: brew install --build-from-source contrib/homebrew/slosh.rb on a"
+say "          machine with brew, to prove the formula before announcing"

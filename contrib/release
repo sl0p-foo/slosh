@@ -74,7 +74,9 @@ else
     git tag -a "v$v" -m "slosh $v"
 fi
 
-echo "release: v$v -- VERSION bumped, committed, tagged. To publish:"
+echo "release: v$v -- VERSION bumped, committed, tagged. To publish everything:"
+echo "    contrib/ship $v           # push, build, github release, brew, arch"
+echo "or by hand:"
 echo "    git push origin master v$v"
 echo "    make release REF=v$v      # the tarballs and zips, into dist/"
 echo "    contrib/arch/README.md    # bump the PKGBUILD, contrib/arch-repo, upload"
