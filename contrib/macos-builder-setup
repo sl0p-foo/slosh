@@ -37,7 +37,7 @@ CHECK=0
 BUILDER=""
 IDENTITY_CN="${SLOSH_IDENTITY_CN:-Developer ID Application}"
 ZIG_VERSION="${SLOSH_ZIG_VERSION:-0.16.0}"
-REPO_URL="${SLOSH_REPO_URL:-https://git.sl0p.foo/slosh.git}"
+REPO_URL="${SLOSH_REPO_URL:-https://github.com/sl0p-foo/slosh.git}"
 DIR="${SLOSH_BUILDER_DIR:-src/slosh}"
 # Overridable so this script can be rehearsed against a scratch keychain and
 # checkout on the real builder without touching the one that signs releases.

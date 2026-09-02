@@ -1,7 +1,8 @@
 # Maintainer: Peter Geissler <peter@haxx.in>
 #
 # This file lives in contrib/arch/ in the slosh repo and is served raw at
-# https://git.sl0p.foo/slosh.git/plain/contrib/arch/PKGBUILD -- fetch it and
+# https://raw.githubusercontent.com/sl0p-foo/slosh/master/contrib/arch/PKGBUILD
+# -- fetch it and
 # makepkg -si. The same file feeds the self-hosted pacman repository at
 # https://slosh.foo/arch/ (contrib/arch-repo builds it); it would also be the
 # AUR package, but AUR signups are closed while the AUR deals with supply
@@ -13,7 +14,7 @@
 # ZIG_GLOBAL_CACHE_DIR.
 
 pkgname=slosh
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=1
 pkgdesc="Terminal multiplexer: panes, tabs, and sessions you can detach from, on libghostty-vt"
 arch=('x86_64' 'aarch64')
@@ -26,8 +27,9 @@ options=('!debug')
 # zig 0.16 specifically: the vendored core states minimum_zig_version 0.16.0,
 # and a newer zig may well reject it -- zig is not yet stable across versions.
 makedepends=('zig')
-source=("$pkgname-v$pkgver.tar.gz::https://git.sl0p.foo/slosh.git/snapshot/$pkgname-v$pkgver.tar.gz")
-sha256sums=('c28545524bff2e1582aae34068512439112db8a03c81b587a813492b6912323c')
+# GitHub's tag archive extracts to $pkgname-$pkgver/ (the v is stripped).
+source=("$pkgname-v$pkgver.tar.gz::https://github.com/sl0p-foo/slosh/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('a524d0668f8e9f197c6e27db277400b1877f60e897e76bee5d34f6e59f996d87')
 
 # The Makefile's ZIG default is a developer-machine path; a builder has the
 # real one. Overridable so the package can be test-built where zig lives
@@ -35,7 +37,7 @@ sha256sums=('c28545524bff2e1582aae34068512439112db8a03c81b587a813492b6912323c')
 _zig="${ZIG:-/usr/bin/zig}"
 
 prepare() {
-  cd "$pkgname-v$pkgver"
+  cd "$pkgname-$pkgver"
   # A snapshot has no .git, so contrib/version falls back to ./VERSION -- and
   # in v0.1.1 that file was left at 0.1.0 (fixed since by contrib/release,
   # which bumps and tags as one step). Harmless for later tags: this writes
@@ -44,7 +46,7 @@ prepare() {
 }
 
 build() {
-  cd "$pkgname-v$pkgver"
+  cd "$pkgname-$pkgver"
   # A hermetic zig cache: nothing under $HOME touched, nothing reused from it.
   export ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache"
   make ZIG="$_zig" vendor
@@ -52,7 +54,7 @@ build() {
 }
 
 package() {
-  cd "$pkgname-v$pkgver"
+  cd "$pkgname-$pkgver"
   make ZIG="$_zig" DESTDIR="$pkgdir" PREFIX=/usr install
   # MIT, so the license ships with the package; THIRD-PARTY-LICENSES covers
   # what is statically linked in (libghostty-vt, stb_image).

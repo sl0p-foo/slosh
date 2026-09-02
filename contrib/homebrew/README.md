@@ -23,8 +23,8 @@ brew tap sl0p-foo/slosh
 brew install slosh
 ```
 
-The explicit URL is only needed because the tap is not on GitHub; brew
-remembers it after the first tap. `brew install --HEAD slosh` builds the tip of
+The tap lives at `github.com/sl0p-foo/homebrew-slosh`, which brew resolves
+from the short name on its own. `brew install --HEAD slosh` builds the tip of
 master instead of the pinned release.
 
 (Getting into `homebrew-core` — plain `brew install slosh`, no tap — has a
@@ -100,8 +100,9 @@ brew audit --strict --tap=sl0p/slosh
   need the zig packages vendored into the tarball or declared as `resource`s.
 - **No LICENSE.** The formula therefore has no `license` stanza. Taps do not
   care; homebrew-core would refuse.
-- **Snapshot tarballs.** cgit generates them on demand; the bytes have been
-  stable across requests and days for a given ref, which is what the `sha256`
-  relies on. If that ever changes, switch the formula to
-  `url "https://git.sl0p.foo/slosh.git", using: :git, revision: "<sha>"`,
+- **Snapshot tarballs.** GitHub generates `/archive/<sha>.tar.gz` on demand;
+  the bytes are stable per ref (and after the Jan 2023 compression incident
+  GitHub committed to keeping them so), which is what the `sha256` relies on.
+  If that ever changes, switch the formula to
+  `url "https://github.com/sl0p-foo/slosh.git", using: :git, revision: "<sha>"`,
   which is content-addressed and needs no hash.

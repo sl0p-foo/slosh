@@ -20,8 +20,13 @@
 
 set -eu
 
-REPO_URL="${SLOSH_REPO_URL:-https://git.sl0p.foo/slosh.git}"
-SNAP_BASE="${SLOSH_SNAPSHOT_BASE:-https://git.sl0p.foo/slosh.git/snapshot/slosh}"
+REPO_URL="${SLOSH_REPO_URL:-https://github.com/sl0p-foo/slosh.git}"
+# GitHub's on-demand archive of a commit: extracts to slosh-<sha>/, and the
+# bytes have been stable per ref since the Jan 2023 compression incident,
+# which GitHub has since promised not to repeat unannounced. Same trust story
+# the cgit snapshots had, and the same fallback applies if it ever breaks:
+# a `using: :git, revision:` url in the formula, which needs no hash.
+SNAP_BASE="${SLOSH_SNAPSHOT_BASE:-https://github.com/sl0p-foo/slosh/archive}"
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 FORMULA="$root/contrib/homebrew/slosh.rb"
 TAP=""
@@ -106,7 +111,7 @@ case "$label" in
     *)              version="$mkver-$count-$short" ;;
 esac
 
-url="$SNAP_BASE-$full.tar.gz"
+url="$SNAP_BASE/$full.tar.gz"
 say "ref      $REF -> $full"
 say "version  $version"
 say "url      $url"

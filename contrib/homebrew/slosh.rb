@@ -14,13 +14,14 @@
 class Slosh < Formula
   desc "Terminal multiplexer with detachable sessions and programmable pane chrome"
   homepage "https://sl0p.foo"
-  # cgit serves a deterministic snapshot per ref: same ref, same bytes, so the
-  # sha256 below stays honest. Pinned to a full commit id rather than a branch,
-  # because a branch tarball changes under you and brew would keep the stale one.
-  url "https://git.sl0p.foo/slosh.git/snapshot/slosh-5987a7f7adfcde60d7757ad858c7435fdaf479e0.tar.gz"
+  # GitHub's archive of a commit is deterministic per ref: same ref, same
+  # bytes, so the sha256 below stays honest. Pinned to a full commit id rather
+  # than a branch, because a branch tarball changes under you and brew would
+  # keep the stale one.
+  url "https://github.com/sl0p-foo/slosh/archive/5987a7f7adfcde60d7757ad858c7435fdaf479e0.tar.gz"
   version "0.1.2"
   sha256 "a5fc5ee33d8b6813a98b597f241e48d8d424c2f83bd93f30b4abbf1477573fb8"
-  head "https://git.sl0p.foo/slosh.git", branch: "master"
+  head "https://github.com/sl0p-foo/slosh.git", branch: "master"
 
   # zig is the whole toolchain: it compiles the C, builds the vendored
   # libghostty-vt, and links it statically. Nothing is needed at runtime, which

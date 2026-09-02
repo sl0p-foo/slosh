@@ -100,7 +100,7 @@ identity yet and it says so in those words rather than dying on
 | | |
 |---|---|
 | toolchain | Command Line Tools; zig 0.16.0 at `~/zig-0.16.0/zig` (a symlink into `~/zig/`) |
-| checkout | `~/src/slosh`, cloned from `https://git.sl0p.foo/slosh.git` |
+| checkout | `~/src/slosh`, cloned from `https://github.com/sl0p-foo/slosh.git` |
 | keychain | `~/Library/Keychains/slosh-build.keychain-db` |
 | keychain password | `~/.config/slosh/build-keychain.pass`, mode 0600 |
 | signing key | `Developer ID Application: <SIGNER> (<TEAM_ID>)`, Developer ID certs last five years |

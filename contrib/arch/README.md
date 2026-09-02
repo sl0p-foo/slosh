@@ -33,15 +33,15 @@ package signatures, and now gets them. The database is signed too, so
 temperament. (x86_64 today; aarch64 when a build machine of that shape
 exists.)
 
-**The PKGBUILD itself** — cgit serves it raw, for anyone who would rather
+**The PKGBUILD itself** — GitHub serves it raw, for anyone who would rather
 build than trust:
 
 ```sh
-curl -fsSLO https://git.sl0p.foo/slosh.git/plain/contrib/arch/PKGBUILD
+curl -fsSLO https://raw.githubusercontent.com/sl0p-foo/slosh/master/contrib/arch/PKGBUILD
 makepkg -si
 ```
 
-The build is offline-clean: the source tarball is the cgit snapshot of the
+The build is offline-clean: the source tarball is GitHub's archive of the
 release tag, which carries the vendored libghostty-vt, and every zig
 dependency in the vendored core's `build.zig.zon` is lazy and unused by the
 VT-only build — `zig build` fetches nothing (verified against a cold
@@ -66,7 +66,7 @@ extended, ship the successor the same two ways and say so loudly.
 After `contrib/release X.Y.Z` (which prints this as a reminder):
 
 1. Bump `pkgver` and `sha256sums` in the PKGBUILD — the hash of
-   `https://git.sl0p.foo/slosh.git/snapshot/slosh-vX.Y.Z.tar.gz`.
+   `https://github.com/sl0p-foo/slosh/archive/refs/tags/vX.Y.Z.tar.gz`.
 2. `contrib/arch-repo` — builds the package, updates the indexes in
    `dist/arch/<carch>/`, and prints the rsync that publishes it.
 3. Commit the PKGBUILD change.
