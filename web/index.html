@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>slosh — a terminal multiplexer</title>
+<title>slosh: a terminal multiplexer</title>
 <meta name="description" content="slosh: panes, tabs, sessions you can detach from. One static binary, written in C on libghostty-vt.">
 <link rel="stylesheet" href="site.css">
 <link rel="stylesheet" href="recordings/player.css">
 </head>
 <body>
 
-<a class="logo-float" href="#" aria-label="slosh — back to top">
+<a class="logo-float" href="#" aria-label="slosh: back to top">
     <span class="logo-art"></span>
 </a>
 
@@ -45,12 +45,12 @@
     <div class="scrolly-steps">
       <article class="step active" data-cast="panes">
         <h3>Panes and tabs, what else?</h3>
-        <p>One keycombo to split — or just click, because we don't hate the mouse.</p>
+        <p>One keycombo to split, or just click, because we don't hate the mouse.</p>
         <ul>
           <li>click the middle of a border to split toward it</li>
           <li>drag the gap to move the boundary</li>
           <li>drag a pane by its title </li>
-          <li>zoom, tab away, come back — nothing lost!</li>
+          <li>zoom, tab away, come back: nothing lost!</li>
         </ul>
       </article>
 
@@ -60,7 +60,7 @@
         exactly where you left it.</p>
         <ul>
           <li>detach mid-thought, reattach mid-thought</li>
-          <li>attach from two terminals at once — both type, both see</li>
+          <li>attach from two terminals at once: both type, both see</li>
           <li>keep separate sessions for separate lives; hop between them</li>
           <li>a command that died while you were away keeps its output and exit status</li>
         </ul>
@@ -89,20 +89,20 @@
 
       <article class="step" data-cast="shaders">
         <h3>Nifty visual effects, written as expressions.</h3>
-        <p>Dim, tint, rulers, spotlights — over a pane's cells or over its
+        <p>Dim, tint, rulers, spotlights: over a pane's cells or over its
         frame, with strengths computed from <code>x</code>, <code>y</code>, the
         cursor, the clock.</p>
         <ul>
           <li>tint a frame, rule a column, scanline the lot</li>
           <li>a spotlight that follows the cursor as you type</li>
-          <li><code>:load shine</code> — a shipped preset runs light along the frame</li>
-          <li>a pane rings unfocused — its border flashes</li>
+          <li><code>:load shine</code>, and a shipped preset runs light along the frame</li>
+          <li>a pane rings unfocused, its border flashes</li>
         </ul>
       </article>
 
       <article class="step" data-cast="scripting">
         <h3>Built to be driven.</h3>
-        <p>One JSON object per line over the session's socket — the same depth
+        <p>One JSON object per line over the session's socket: the same depth
         the keyboard gets. An agent can hold the other end.</p>
         <ul>
           <li>split and rename panes from a script, replies and all</li>
@@ -114,7 +114,7 @@
       <article class="step" data-cast="extras">
         <h3>Floats, and the small comforts.</h3>
         <p><kbd>C-a</kbd> <kbd>F</kbd> drops a throwaway shell on top of
-        whatever you are doing — a monitor, a man page, a quick command.</p>
+        whatever you are doing: a monitor, a man page, a quick command.</p>
         <ul>
           <li>move it with the keys that move boundaries; grow it about its
           centre</li>
@@ -182,7 +182,7 @@
 <span class="prompt">$</span> brew install slosh</code></pre>
         <button class="copy" type="button" aria-label="Copy commands">copy</button>
       </div>
-      <p class="aside">Builds from source in under a minute — the only
+      <p class="aside">Builds from source in under a minute; the only
       dependency is <a href="https://ziglang.org">zig</a>, which the formula
       pulls in.</p>
     </div>
@@ -222,7 +222,7 @@ Server = https://slosh.foo/arch/$arch
       <p class="aside">Needs <a href="https://ziglang.org">zig</a> 0.16 and
       nothing else: no cmake, no autotools, no libraries. The result is one
       static binary. Windows cross-compilation is
-      <code>make&nbsp;-f&nbsp;Makefile.windows</code> —
+      <code>make&nbsp;-f&nbsp;Makefile.windows</code>;
       <a href="docs/windows.html">the details</a>.</p>
     </div>
   </div>
