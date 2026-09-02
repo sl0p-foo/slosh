@@ -206,7 +206,11 @@ Server = https://slosh.foo/arch/$arch
 <span class="prompt">$</span> sudo pacman -Sy slosh</code></pre>
         <button class="copy" type="button" aria-label="Copy command">copy</button>
       </div>
-      <p class="aside">Built, signed packages. The fingerprint to check before
+      <p class="aside">Built, signed packages. Add
+      <code>extra/ghostty-terminfo</code> if you want the
+      <code>xterm-ghostty</code> entry system-wide; without it slosh quietly
+      installs its own copy into <code>~/.terminfo</code>.
+      The fingerprint to check before
       the <code>--lsign-key</code>: the same key is
       <a href="https://github.com/sl0p-foo/slosh/blob/master/contrib/arch/slosh.asc">contrib/arch/slosh.asc</a>
       in git, so the file fetched from the website can be compared against the

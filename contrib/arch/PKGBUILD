@@ -15,12 +15,17 @@
 
 pkgname=slosh
 pkgver=0.1.5
-pkgrel=1
+pkgrel=2
 pkgdesc="Terminal multiplexer: panes, tabs, and sessions you can detach from, on libghostty-vt"
 arch=('x86_64' 'aarch64')
 url="https://slosh.foo"
 license=('MIT')
 depends=('glibc')
+# Not a hard dependency: without it, slosh writes its own embedded copy of
+# the entry into ~/.terminfo the first time a pane needs it. The package is
+# the system-wide, pacman-managed spelling of the same thing -- and we do
+# not ship the file ourselves precisely because this package owns that path.
+optdepends=('ghostty-terminfo: xterm-ghostty terminfo system-wide, instead of the automatic ~/.terminfo copy')
 # One package, no -debug split: this builds for a repo we host ourselves,
 # and the stripped binary is the artifact. !strip because the aarch64 package
 # is cross-built on the x86_64 release box and native strip cannot read

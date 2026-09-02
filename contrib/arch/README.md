@@ -27,7 +27,14 @@ would both have to lie. Then, in `/etc/pacman.conf`:
 Server = https://slosh.foo/arch/$arch
 ```
 
-and `pacman -Sy slosh`. No `SigLevel` override: pacman's default demands
+and `pacman -Sy slosh`. Optionally add `extra/ghostty-terminfo`: panes
+advertise `TERM=xterm-ghostty`, and while slosh installs its own embedded
+copy of the entry into `~/.terminfo` when it is missing everywhere, the
+package is the system-wide, pacman-managed spelling, and the reason our
+package does not ship the file itself (two packages must not own one path).
+The optdepends line says the same thing at install time.
+
+No `SigLevel` override: pacman's default demands
 package signatures, and now gets them. The database is signed too, so
 `SigLevel = Required DatabaseRequired` also works, if that is your
 temperament. (x86_64 and aarch64 both, and both built on the same x86_64
