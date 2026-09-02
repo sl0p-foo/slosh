@@ -1,0 +1,37 @@
+#!/bin/sh
+# publish -- build the website and put it on slosh.foo.
+#
+#   web/publish              # build + rsync        (or: make www-publish)
+#   NO_DEMO=1 web/publish    # ...skipping the demo build; the served demo
+#                            # is left alone rather than deleted
+#
+# The web root on the box is /opt/slosh, which also holds the pacman
+# repository at /arch -- that one is published by contrib/arch-repo (via
+# contrib/ship), not by this script, so the --delete that keeps the site
+# exact must never reach it.
+set -eu
+
+DEST="${SLOSH_WWW_DEST:-root@sl0p.foo:/opt/slosh}"
+
+here="$(cd "$(dirname "$0")" && pwd)"
+root="$(dirname "$here")"
+www="$root/build/www"
+
+fail() { printf 'publish: %s\n' "$*" >&2; exit 1; }
+
+"$here/build-site"
+
+# What goes up must be the real site: a botched build that produced an empty
+# or partial tree, synced with --delete, is the site going dark. build-site
+# stages and swaps so this should be unreachable; check anyway, it is cheap.
+[ -f "$www/index.html" ] || fail "$www has no index.html -- refusing to sync"
+[ -d "$www/docs" ]       || fail "$www has no docs/ -- refusing to sync"
+
+# A NO_DEMO build has no demo/ in it; --delete would read that as "the demo
+# was removed" and take down the one being served. Exclude what was not built.
+demo_flag=""
+[ -d "$www/demo" ] || { demo_flag="--exclude=/demo"; \
+    echo "publish: no demo in this build -- leaving the served one in place"; }
+
+rsync -a --delete --exclude '/arch' $demo_flag --chown=root:root "$www/" "$DEST/"
+echo "publish: https://slosh.foo is current"

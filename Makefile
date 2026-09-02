@@ -65,7 +65,7 @@ else
 endif
 
 .PHONY: all clean vendor run test retest test-live test-all smoke help coverage \
-        docs www fmt fmt-check hooks tools install uninstall macos-dist \
+        docs www www-publish fmt fmt-check hooks tools install uninstall macos-dist \
         release release-check release-linux release-windows
 .DEFAULT_GOAL := help
 
@@ -230,6 +230,9 @@ docs: ## render docs/ into build/docs (no dependencies; open build/docs/index.ht
 
 www: ## assemble the website into build/www (NO_DEMO=1 to skip the browser demo)
 	$(Q)web/build-site
+
+www-publish: ## build the site and rsync it to slosh.foo
+	$(Q)web/publish
 
 run: $(BIN) ## build and run
 	./$(BIN)

@@ -30,15 +30,6 @@ publish() {
     mv "$out" "$www"
 }
 
-# For now slosh.foo is a coming-soon page; the full site is assembled only
-# when asked (FULL=1) while it is being finished.
-if [ "${FULL:-0}" != 1 ]; then
-    cp "$here/coming-soon.html" "$out/index.html"
-    publish
-    echo "build-site: $www (coming soon -- FULL=1 for the real site)"
-    exit 0
-fi
-
 # The front page. Its recordings are below; there is no video.
 cp "$here/index.html" "$here/site.css" "$out/"
 
