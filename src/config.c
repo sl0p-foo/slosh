@@ -1169,7 +1169,6 @@ void config_free(config_t *c) {
   free(c->binds);
   free(c->shell);
   free(c->editor);
-  free(c->shader_dir);
   free(c->project_layout);
   for (size_t i = 0; i < c->nproject_roots; i++) free(c->project_roots[i]);
   for (size_t i = 0; i < c->nfiles; i++) free(c->files[i]);
@@ -1655,10 +1654,6 @@ char *config_render(const config_t *c) {
     cb_qstr(&b, "editor", c->editor, NULL);
   else
     cb_add(&b, "// editor \"nvim\"        // unset: $EDITOR, then vi\n");
-  if (c->shader_dir)
-    cb_qstr(&b, "shader_dir", c->shader_dir, NULL);
-  else
-    cb_add(&b, "// shader_dir \"~/.config/slosh/shaders\"\n");
   if (c->nproject_roots) {
     cb_add(&b, "project_roots");
     for (size_t i = 0; i < c->nproject_roots; i++) {
@@ -1878,7 +1873,6 @@ static const char *const KNOWN_TOP[] = {
     "scrollback",
     "scrollback_bytes",
     "select_scroll_ms",
-    "shader_dir",
     "shaders",
     "shell",
     "splash_ms",
@@ -2212,37 +2206,6 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   if (ed) {
     free(c->editor);
     c->editor = strdup(ed);
-  }
-
-  /* Shader plugins, before any shader is named below: a `shaders` block may
-   * use what one of these adds, and a name is looked up as it is parsed. The
-   * default is a directory beside this file, so dropping a `.so` next to the
-   * config is the whole installation procedure. */
-  const char *sdir = kdl_arg(kdl_child(root, "shader_dir"), 0, NULL);
-  if (sdir) {
-    free(c->shader_dir);
-    c->shader_dir = strdup(sdir);
-  }
-  {
-    char dir[1024];
-    if (c->shader_dir) {
-      char buf[1024];
-      snprintf(dir, sizeof dir, "%s",
-               path_expand(c->shader_dir, buf, sizeof buf));
-    } else {
-      snprintf(dir, sizeof dir, "%s", path);
-      char *slash = strrchr(dir, '/');
-      if (slash)
-        slash[1] = 0;
-      else
-        dir[0] = 0;
-      snprintf(dir + strlen(dir), sizeof dir - strlen(dir), "shaders");
-    }
-    char lerr[256] = {0};
-    shader_load_dir(dir, lerr, sizeof lerr);
-    /* A plugin that will not load is worth a line, and worth nothing more:
-     * the config it came with still works, minus that effect (D9). */
-    if (lerr[0]) complain(c, err, errcap, 0, "%s", lerr);
   }
 
   /* Where projects live. Several roots because people have `~/dev` and `~/work`,

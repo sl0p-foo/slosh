@@ -9,7 +9,11 @@ ZIG      ?= $(shell command -v zig 2>/dev/null)
 ifeq ($(ZIG),)
   $(error zig not found on $$PATH -- install it or pass ZIG=/path/to/zig)
 endif
-CC       := $(ZIG) cc
+# TARGET=aarch64-linux-gnu (any zig triple) cross-compiles `make all` and
+# `make vendor` -- zig is the C compiler precisely so this costs nothing.
+# The arch PKGBUILD uses it to build the aarch64 package on the x86_64 box.
+TARGET   ?=
+CC       := $(ZIG) cc $(if $(TARGET),-target $(TARGET))
 VT       := vendor/libghostty-vt
 VT_OUT   := $(VT)/zig-out
 VT_LIB   := $(VT_OUT)/lib/libghostty-vt.a
@@ -130,7 +134,7 @@ VT_VERSION := $(shell sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' $(V
 VT_FLAGS   := -Demit-lib-vt -Demit-xcframework=false -Dversion-string=$(VT_VERSION) -Doptimize=ReleaseFast
 
 vendor: ## build the vendored libghostty-vt (needs zig 0.16)
-	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build $(VT_FLAGS)
+	cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build $(VT_FLAGS) $(if $(TARGET),-Dtarget=$(TARGET))
 
 TEST_BIN := build/input_test
 
@@ -169,26 +173,6 @@ SHADER_TEST := build/shader_test
 $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) | build
 	$(call say,[LD],$@)
 	$(Q)$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) -o $@
-
-# Shader plugins, for test_shader_plugin.py: a good one, one that announces an
-# ABI we do not speak, and the example we ship in contrib -- which is built
-# here so that a broken example is a failing test rather than a bug report.
-PLUGIN_CFLAGS := -std=c23 -O1 -fPIC -shared -Iinclude
-
-build/testshader.so: tests/shader_plugin_test.c include/shader_abi.h | build
-	$(call say,[SO],$@)
-	$(Q)$(CC) $(PLUGIN_CFLAGS) $< -o $@
-
-build/badshader.so: tests/shader_plugin_test.c include/shader_abi.h | build
-	$(call say,[SO],$@)
-	$(Q)$(CC) $(PLUGIN_CFLAGS) -DBAD_ABI $< -o $@
-
-build/exampleshader.so: contrib/shader-plugin/example.c include/shader_abi.h | build
-	$(call say,[SO],$@)
-	$(Q)$(CC) $(PLUGIN_CFLAGS) $< -o $@
-
-build/.pass-test_shader_plugin: build/testshader.so build/badshader.so \
-                                build/exampleshader.so
 
 build/.pass-test_shadertoy: $(EXPR_EVAL) contrib/shadertoy.html
 

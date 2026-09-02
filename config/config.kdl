@@ -18,8 +18,6 @@
 //
 //   shell        consulted when a pane is made, so it applies to the next
 //                pane you open rather than to the ones already running
-//   shader_dir   plugins are loaded on reload but never unloaded, so a new
-//                .so is picked up and a replaced one needs a new session
 //
 // A session started before this file existed still notices it appearing: the
 // watch is on the directory, and slosh creates that directory at startup so
@@ -430,22 +428,6 @@ word_separators "\"'`()[]{}<>;,|"
 // theme's default_fg/default_bg first, and if those do not match your
 // terminal's real colours the screen will shift slightly while a modal is up.
 modal_scrim 120
-
-// Extra shaders can be loaded from shared libraries: any `*.so` in the
-// directory below that exports a slosh shader plugin. Once loaded they are
-// named here exactly like a built-in. Default: a `shaders` directory beside
-// this file, so dropping the .so next to your config is the whole install.
-//
-// A plugin is native code running in the session's own process, with your
-// privileges and no sandbox -- which is the same thing `shell` and a layout's
-// `command=` already are, and the reason the search path is a directory you
-// own rather than a value that can point anywhere. Install ones you trust.
-//
-// Adding a plugin and saving this file loads it; nothing is ever unloaded, so
-// *replacing* one needs a new session. Skeleton and Makefile:
-// contrib/shader-plugin/
-//
-// shader_dir "~/.config/slosh/shaders"
 
 // ── projects ────────────────────────────────────────────────────────────────
 //

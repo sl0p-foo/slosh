@@ -30,8 +30,10 @@ Server = https://slosh.foo/arch/$arch
 and `pacman -Sy slosh`. No `SigLevel` override: pacman's default demands
 package signatures, and now gets them. The database is signed too, so
 `SigLevel = Required DatabaseRequired` also works, if that is your
-temperament. (x86_64 today; aarch64 when a build machine of that shape
-exists.)
+temperament. (x86_64 and aarch64 both, and both built on the same x86_64
+release box: makepkg does not cross-compile but zig does, so the aarch64
+package is a substitute `CARCH` and a `-target` triple away — see
+`contrib/arch-repo`.)
 
 **The PKGBUILD itself** — GitHub serves it raw, for anyone who would rather
 build than trust:

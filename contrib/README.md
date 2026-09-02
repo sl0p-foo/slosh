@@ -94,16 +94,6 @@ rolling bar), `motion` (sonar, ripples, plasma, matrix rain), `built-ins`
 Move the mouse while the cursor-following ones are up. `curx`/`cury` is where
 the cursor is, and standing still tells you nothing about a torch.
 
-## shader-plugin/
-
-A skeleton for adding your own shaders as a shared library, with a Makefile
-and two worked examples (`checker`, `pulse`). Build it, drop the `.so` in
-`~/.config/slosh/shaders/`, and name it in your config like a built-in.
-
-The only header a plugin needs is `include/shader_abi.h`. What a shader may and
-may not do — and why a plugin is native code rather than a sandboxed one —
-is in that directory's README.
-
 ## shadertoy.html
 
 Write a shader expression, watch it happen. One file, no build, no server:

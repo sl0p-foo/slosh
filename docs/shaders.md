@@ -136,15 +136,3 @@ of borrowing the syntax rather than inventing one. The reply counts
 that an entry's `where=` did what you meant.
 
 **Off by default.** It needs `in_band_shaders true`.
-
-## Your own, compiled
-
-A shader is a C function from one cell to that cell's colours. Any `*.so` in
-`~/.config/slosh/shaders/` that exports one is loaded at startup and named in
-the config exactly like a built-in. Skeleton, Makefile and the rules a shader
-has to keep:
-`contrib/shader-plugin`.
-
-It is native code in the session's process, so install ones you trust. It has
-the same standing as `shell` and a layout's `command=`, which can already run
-anything as you.

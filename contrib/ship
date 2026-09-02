@@ -154,22 +154,28 @@ contrib/brew-release --tap "$TAP_DIR" "$tag"
 
 # ── 7. arch ─────────────────────────────────────────────────────────────────
 # The db on the server is the truth about what pacman serves; if it already
-# lists this version, the leg is done (aarch64 stays a by-hand reminder --
-# makepkg does not cross-compile).
+# lists this version for every architecture, the leg is done. Both packages
+# are built here -- zig cross-compiles the aarch64 one (see contrib/arch-repo).
 step "arch repo"
-if curl -fsSL "$ARCH_URL/x86_64/slosh.db.tar.gz" | tar tzf - 2>/dev/null \
-   | grep -q "^slosh-$v-"; then
-    say "$ARCH_URL already serves $v (resuming)"
+arches="${SLOSH_ARCHES:-x86_64 aarch64}"
+served=yes
+for carch in $arches; do
+    curl -fsSL "$ARCH_URL/$carch/slosh.db.tar.gz" 2>/dev/null | tar tzf - 2>/dev/null \
+        | grep -q "^slosh-$v-" || served=""
+done
+if [ -n "$served" ]; then
+    say "$ARCH_URL already serves $v for: $arches (resuming)"
 else
     sha="$(curl -fsSL "https://github.com/$GH_REPO/archive/refs/tags/$tag.tar.gz" \
         | sha256sum | cut -d' ' -f1)"
     sed -i -e "s/^pkgver=.*/pkgver=$v/" -e "s/^pkgrel=.*/pkgrel=1/" \
            -e "s/^sha256sums=.*/sha256sums=('$sha')/" contrib/arch/PKGBUILD
     contrib/arch-repo
-    carch="$(uname -m)"
-    rsync -a --delete --chown=root:root "dist/arch/$carch/" "$ARCH_DEST/$carch/"
+    for carch in $arches; do
+        rsync -a --delete --chown=root:root "dist/arch/$carch/" "$ARCH_DEST/$carch/"
+    done
     rsync -a --chown=root:root dist/arch/slosh.asc "$ARCH_DEST/slosh.asc"
-    say "published to $ARCH_DEST/$carch"
+    say "published to $ARCH_DEST for: $arches"
 fi
 
 # ── 8. the paperwork ────────────────────────────────────────────────────────
@@ -188,6 +194,6 @@ fi
 printf '\nshipped %s:\n' "$tag"
 say "github   https://github.com/$GH_REPO/releases/tag/$tag"
 say "brew     brew tap sl0p-foo/slosh && brew install slosh"
-say "arch     $ARCH_URL ($(uname -m); run contrib/ship on an aarch64 box for the other leg)"
+say "arch     $ARCH_URL (x86_64 + aarch64)"
 say "reminder: brew install --build-from-source contrib/homebrew/slosh.rb on a"
 say "          machine with brew, to prove the formula before announcing"

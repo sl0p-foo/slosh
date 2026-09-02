@@ -438,12 +438,6 @@ typedef struct {
   /* What `edit-config` opens the file with; NULL means $EDITOR, then vi. */
   char *editor;
 
-  /* Where to look for shader plugins (`*.so`). NULL means the default: a
-   * `shaders` directory beside the config file. Read before the `shaders` and
-   * `states` blocks are parsed, because what they are allowed to name depends
-   * on what has been loaded. */
-  char *shader_dir;
-
   /* Where projects live: `project_roots "~/dev" "~/work" depth=2`. A project is
    * a subdirectory of one of these with a `slosh.layout` in it -- or a
    * `.git`, which gets `project_layout` instead. Empty means the feature is

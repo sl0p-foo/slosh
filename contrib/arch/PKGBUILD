@@ -22,8 +22,11 @@ url="https://slosh.foo"
 license=('MIT')
 depends=('glibc')
 # One package, no -debug split: this builds for a repo we host ourselves,
-# and the stripped binary is the artifact.
-options=('!debug')
+# and the stripped binary is the artifact. !strip because the aarch64 package
+# is cross-built on the x86_64 release box and native strip cannot read
+# foreign ELF -- the link strips instead (LDFLAGS=-s below), both arches
+# alike, so the two packages are made the same way.
+options=('!debug' '!strip')
 # zig 0.16 specifically: the vendored core states minimum_zig_version 0.16.0,
 # and a newer zig may well reject it -- zig is not yet stable across versions.
 makedepends=('zig')
@@ -35,6 +38,13 @@ sha256sums=('a524d0668f8e9f197c6e27db277400b1877f60e897e76bee5d34f6e59f996d87')
 # real one. Overridable so the package can be test-built where zig lives
 # elsewhere (ZIG=/path/to/zig makepkg).
 _zig="${ZIG:-/usr/bin/zig}"
+
+# Cross-compile when the target is not the build machine: pacman's CARCH
+# names the architecture, zig turns it into a target triple. -linux-gnu
+# because depends=('glibc'); zig carries the headers and stubs for every
+# glibc, so nothing aarch64 needs to be installed here.
+_tgt=""
+[ "$CARCH" = "$(uname -m)" ] || _tgt="$CARCH-linux-gnu"
 
 prepare() {
   cd "$pkgname-$pkgver"
@@ -49,8 +59,17 @@ build() {
   cd "$pkgname-$pkgver"
   # A hermetic zig cache: nothing under $HOME touched, nothing reused from it.
   export ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache"
-  make ZIG="$_zig" vendor
-  make ZIG="$_zig" all
+  # The pinned 0.1.2 tarball's Makefile predates TARGET= support, so the
+  # cross-compile is spelled as full CC / VT_FLAGS overrides, which work on
+  # that Makefile and the current one alike. At the next pkgver bump this
+  # collapses to: make ZIG="$_zig" TARGET="$_tgt" LDFLAGS=-s vendor all
+  local _cc="$_zig cc${_tgt:+ -target $_tgt}"
+  local _vtver
+  _vtver="$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' \
+      vendor/libghostty-vt/build.zig.zon | head -1)"
+  local _vtflags="-Demit-lib-vt -Demit-xcframework=false -Dversion-string=$_vtver -Doptimize=ReleaseFast${_tgt:+ -Dtarget=$_tgt}"
+  make ZIG="$_zig" CC="$_cc" VT_FLAGS="$_vtflags" LDFLAGS=-s vendor
+  make ZIG="$_zig" CC="$_cc" VT_FLAGS="$_vtflags" LDFLAGS=-s all
 }
 
 package() {

@@ -37,36 +37,16 @@
  * this frame. */
 #define SHADE_CHAIN_MAX (SHADE_MAX * 2 + 2)
 
-/* shade_ctx_t, shader_t and shade_fn are the ABI (shader_abi.h). */
+/* shade_ctx_t, shader_t and shade_fn are the model (shader_abi.h). */
 
-/* Build a shader by registry name. False if the name is not known — a
- * built-in, or one a loaded plugin added. */
+/* Build a shader by registry name. False if the name is not a built-in. */
 bool shader_make(shader_t *out, const char *kind, color_t color,
                  uint8_t amount);
 /* The same, for the shaders that take a number of their own. */
 bool shader_make_p(shader_t *out, const char *kind, color_t color,
                    uint8_t amount, uint16_t param);
-/* Iterate the registry: the i'th name, or NULL past the end. Built-ins first,
- * then anything plugins added, in load order. */
+/* Iterate the registry: the i'th name, or NULL past the end. */
 const char *shader_kind(size_t i);
-
-/* Load every `*.so` in `dir` that exports a shader plugin, adding what they
- * declare to the registry. Returns how many shaders were added; a directory
- * that does not exist is not an error (it is the normal case). Failures are
- * per file: a library that cannot be opened, does not export the symbol, or
- * was built against another ABI is reported in `err` and skipped, and the
- * rest still load.
- *
- * Idempotent by path: a file already loaded is not loaded again, so calling
- * this on a config reload picks up newly added plugins and disturbs nothing.
- * Nothing is ever unloaded — a shader's function pointer may be sitting in a
- * live config or on a pane, and dlclose() would turn it into a jump into an
- * unmapped page. Replacing a plugin therefore needs a new session.
- *
- * A plugin is native code with the privileges of the session that loads it.
- * This is deliberately a directory you own, not a config value pointing
- * anywhere: the trust decision is "put a file here". */
-size_t shader_load_dir(const char *dir, char *err, size_t errcap);
 
 /* Run `n` shaders in order over `r`, skipping the cells inside `hole` (NULL
  * for none). `base` supplies everything in the context except the per-cell

@@ -1,15 +1,11 @@
-/* The shader ABI: everything a shader needs to see, and nothing else.
+/* The shader model: everything a shader sees, and nothing else.
  *
- * This header exists so a shader can be compiled *outside* this tree — a
- * plugin includes only this file, with no libghostty-vt, no pty, no layout.
- * That is also the contract: a shader gets a cell and where it sits, and it
- * cannot reach anything else, because nothing else is declared here.
- *
- * Everything in here is ABI. Changing the layout of these structs breaks
- * every plugin built against the old one, so SLOSH_SHADER_ABI is bumped
- * when they change, and a plugin that reports the wrong version (or the wrong
- * sizes, which catches a plugin built against an edited copy of this file) is
- * refused at load rather than trusted into a crash.
+ * The contract: a shader gets a cell and where it sits, and it cannot reach
+ * anything else, because nothing else is declared here — no libghostty-vt,
+ * no pty, no layout. (This file was once the ABI for loadable .so shader
+ * plugins; those are gone — the static musl release builds cannot dlopen, so
+ * a feature most binaries could not use was a feature in name only — but the
+ * discipline of a small, closed surface is worth keeping.)
  */
 #ifndef SLOSH_SHADER_ABI_H
 #define SLOSH_SHADER_ABI_H
@@ -17,11 +13,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-/* 3: shade_ctx_t gained `state_ms`, so an effect can know how long the pane has
- *    been as it is and not only what time it is; struct shader gained
- *    `channels`, which is the pass's business rather than a shader's. */
-#define SLOSH_SHADER_ABI 4
 
 /* Which of a cell's two colours a pass is allowed to keep. Enforced by the
  * pass, not by the shader: every shader writes whatever it writes, and the
@@ -118,7 +109,7 @@ struct shader {
   color_t color;            /* the target colour, for shaders that have one */
   /* Strength, 0..255; 0 is identity, 255 is fully applied. A cell whose
    * strength works out to 0 is skipped by the pass rather than handed to the
-   * shader, so a plugin is never called to do nothing -- and a cell the
+   * shader, so a shader is never called to do nothing -- and a cell the
    * terminal was drawing in its own default colour stays that way. */
   uint8_t amount;
   /* One number whose meaning is the shader's own, because a second parameter
@@ -135,47 +126,10 @@ struct shader {
   uint8_t channels;
 };
 
-/* ---- plugins ------------------------------------------------------------
- *
- * A shared library dropped in the shader directory, exporting one symbol:
- *
- *   const shader_plugin_t *slosh_shader_plugin(void);
- *
- * SLOSH_SHADER_PLUGIN() writes that for you. See
- * contrib/shader-plugin/ for a complete one.
- */
-
+/* A named shader: what the registry stores. */
 typedef struct {
   const char *name; /* what to call it in the config */
   shade_fn fn;
 } shader_def_t;
-
-typedef struct {
-  uint32_t abi;         /* SLOSH_SHADER_ABI it was built against */
-  uint32_t cell_size;   /* the three sizes catch a plugin built against a */
-  uint32_t ctx_size;    /* copy of this header that has drifted, which a */
-  uint32_t shader_size; /* version number alone would not */
-  const char *name;     /* the bundle's name, for the log line */
-  size_t count;
-  const shader_def_t *shaders;
-} shader_plugin_t;
-
-#define SLOSH_SHADER_PLUGIN_SYM "slosh_shader_plugin"
-
-/* Define the entry point. `defs` is a static array of shader_def_t. */
-#define SLOSH_SHADER_PLUGIN(bundle_name, defs)                                 \
-  const shader_plugin_t *slosh_shader_plugin(void);                            \
-  const shader_plugin_t *slosh_shader_plugin(void) {                           \
-    static const shader_plugin_t table = {                                     \
-        .abi = SLOSH_SHADER_ABI,                                               \
-        .cell_size = sizeof(cell_t),                                           \
-        .ctx_size = sizeof(shade_ctx_t),                                       \
-        .shader_size = sizeof(shader_t),                                       \
-        .name = (bundle_name),                                                 \
-        .count = sizeof(defs) / sizeof((defs)[0]),                             \
-        .shaders = (defs),                                                     \
-    };                                                                         \
-    return &table;                                                             \
-  }
 
 #endif /* SLOSH_SHADER_ABI_H */

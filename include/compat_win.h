@@ -222,36 +222,6 @@ struct sl_pollfd {
 };
 int sl_poll(struct sl_pollfd *fds, nfds_t n, int timeout_ms);
 
-/* ---- dynamic loading ----------------------------------------------------- */
-
-#ifndef RTLD_NOW
-#define RTLD_NOW 0
-#define RTLD_LOCAL 0
-#define RTLD_LAZY 0
-#define RTLD_GLOBAL 0
-#endif
-void *sl_dlopen(const char *path, int flags);
-void *sl_dlsym(void *lib, const char *sym);
-int sl_dlclose(void *lib);
-const char *sl_dlerror(void);
-
-/* ---- glob ---------------------------------------------------------------- */
-
-typedef struct {
-  size_t gl_pathc;
-  char **gl_pathv;
-  size_t gl_offs;
-} glob_t;
-#ifndef GLOB_NOSORT
-#define GLOB_NOSORT 0
-#define GLOB_MARK 0
-#define GLOB_NOMATCH 3
-#define GLOB_TILDE 0
-#endif
-int sl_glob(const char *pat, int flags, int (*errfn)(const char *, int),
-            glob_t *g);
-void sl_globfree(glob_t *g);
-
 /* ---- directory watching (in place of inotify / kqueue) ------------------- */
 
 /* One watcher: a socket you can poll, fed by a ReadDirectoryChangesW thread.
@@ -334,14 +304,6 @@ const char *sl_path_native(const char *in, char *out, size_t cap);
 #define send sl_send
 #define recv sl_recv
 #endif
-
-#define dlopen sl_dlopen
-#define dlsym sl_dlsym
-#define dlclose sl_dlclose
-#define dlerror sl_dlerror
-
-#define glob sl_glob
-#define globfree sl_globfree
 
 /* ssize_t is what the callers assign our long returns to. */
 #ifndef _SSIZE_T_DEFINED
