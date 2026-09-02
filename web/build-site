@@ -40,7 +40,7 @@ if [ "${FULL:-0}" != 1 ]; then
 fi
 
 # The front page. Its recordings are below; there is no video.
-cp "$here/index.html" "$here/site.css" "$here/install.sh" "$out/"
+cp "$here/index.html" "$here/site.css" "$out/"
 
 # The docs, rendered by the same generator `make docs` uses.
 python3 "$root/contrib/gen-docs" "$out/docs"
