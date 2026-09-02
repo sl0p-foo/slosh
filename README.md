@@ -88,12 +88,4 @@ by name.
 
 ## Docs
 
-**[docs/](docs/index.md)**: [keys](docs/keys.md) ·
-[panes](docs/panes.md) · [configuration](docs/config.md) ·
-[actions](docs/actions) · [windows](docs/windows.md) ·
-[shaders](docs/shaders.md) · [chrome](docs/chrome.md) ·
-[layouts](docs/layouts.md) · [scripting](docs/scripting.md) ·
-
-`make docs` renders the same pages as a static site into `build/docs`, with no
-dependencies: one file of Python and one stylesheet.
-
+For more comprehensive documentation see [docs/] or [browse it online](https://slosh.foo/docs/).
