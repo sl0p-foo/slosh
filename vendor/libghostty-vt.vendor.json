@@ -1,9 +1,9 @@
 {
   "upstream": "https://github.com/ghostty-org/ghostty",
-  "source_commit": "bedb6f2ff9d2c65456a7b1e98a5a04a702b77f27",
-  "source_date": "2026-08-13T21:36:32+02:00",
-  "dist_archive": "libghostty-vt-1.3.2-main-+bedb6f2.tar.gz",
-  "version": "1.3.2-main-+bedb6f2",
+  "source_commit": "3c1ef5b32fc5ea6b93d28493fabf193f595139cf",
+  "source_date": "2026-09-01T10:25:35-07:00",
+  "dist_archive": "libghostty-vt-1.3.2-HEAD-+3c1ef5b32.tar.gz",
+  "version": "1.3.2-HEAD-+3c1ef5b32",
   "built_with_zig": "0.16.0",
   "patches": [
     "patches/0001-keep-kitty-images-across-a-screen-clear.patch"

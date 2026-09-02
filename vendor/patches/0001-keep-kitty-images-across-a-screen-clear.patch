@@ -1,44 +1,38 @@
-diff --git a/vendor/libghostty-vt/src/terminal/Terminal.zig b/vendor/libghostty-vt/src/terminal/Terminal.zig
-index b157994..e10132a 100644
---- a/vendor/libghostty-vt/src/terminal/Terminal.zig
-+++ b/vendor/libghostty-vt/src/terminal/Terminal.zig
-@@ -3341,12 +3341,17 @@ pub fn eraseDisplay(
-             self.screens.active.cursor.pending_wrap = false;
+--- a/vendor/libghostty-vt/src/terminal/kitty/graphics_storage.zig	2026-09-01 19:25:35.000000000 +0200
++++ b/vendor/libghostty-vt/src/terminal/kitty/graphics_storage.zig	2026-09-02 15:41:50.671153167 +0200
+@@ -1163,9 +1163,14 @@
+         return min_delay;
+     }
  
-             if (comptime build_options.kitty_graphics) {
--                // Clear all Kitty graphics state for this screen
-+                // Clear the placements on this screen, but keep the images
-+                // themselves: a client transmits with `a=t` once and places
-+                // with `a=p` per frame, and freeing the data on a screen clear
-+                // makes every later placement of that id draw nothing. The
-+                // storage limit (320MB, LRU) is what bounds this, which is why
-+                // it exists. slosh patch; see vendor/patches.
-                 self.screens.active.kitty_images.delete(
-                     self.io(),
-                     self.screens.active.alloc,
-                     self,
--                    .{ .all = true },
-+                    .{ .all = false },
-                 );
-             }
-         },
-@@ -3399,12 +3404,17 @@ pub fn eraseDisplay(
-             self.screens.active.cursor.pending_wrap = false;
+-    /// Clear placements intersecting the active screen, then reclaim every
+-    /// image with no remaining placement. Unlike protocol d=A, a terminal
+-    /// clear also reclaims images that were already unplaced.
++    /// Clear placements intersecting the active screen. slosh patch 0001:
++    /// upstream also reclaims every image with no remaining placement here,
++    /// but the kitty protocol separates transmitting (a=t, once) from
++    /// placing (a=p, per frame) precisely so a client can upload up front --
++    /// freeing the data on a screen clear makes every later placement of
++    /// that id draw nothing. Clearing the screen should clear what is *on*
++    /// it; the storage limit and LRU eviction are what bound retained data,
++    /// which is exactly the mechanism that makes keeping it safe.
+     pub fn clearScreen(
+         self: *ImageStorage,
+         io: std.Io,
+@@ -1175,15 +1180,10 @@
+         const placements_before = self.placements.count();
+         const images_before = self.images.count();
  
-             if (comptime build_options.kitty_graphics) {
--                // Clear all Kitty graphics state for this screen
-+                // Clear the placements on this screen, but keep the images
-+                // themselves: a client transmits with `a=t` once and places
-+                // with `a=p` per frame, and freeing the data on a screen clear
-+                // makes every later placement of that id draw nothing. The
-+                // storage limit (320MB, LRU) is what bounds this, which is why
-+                // it exists. slosh patch; see vendor/patches.
-                 self.screens.active.kitty_images.delete(
-                     self.io(),
-                     self.screens.active.alloc,
-                     self,
--                    .{ .all = true },
-+                    .{ .all = false },
-                 );
-             }
+-        // Delete unused placements and images. Orphaned relative
+-        // placements must be reaped before the image sweep so that
+-        // their images are reclaimable too.
++        // Delete visible placements and reap orphaned relative placements;
++        // the image data itself stays (see above).
+         self.deleteVisiblePlacements(alloc, t, true);
+         _ = self.removeOrphans(t.screens.active, null);
+-        var image_it = self.images.iterator();
+-        while (image_it.next()) |entry| {
+-            self.deleteIfUnused(alloc, entry.key_ptr.*);
+-        }
  
+         // Mark mutated only if things changed.
+         if (self.placements.count() != placements_before or
