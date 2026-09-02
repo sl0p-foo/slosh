@@ -351,16 +351,49 @@ static bool push_clients(server_t *s) {
   return ok;
 }
 
-static void apply_client_size(server_t *s, conn_t *c) {
-  bool changed = c->cols != s->screen.cols || c->rows != s->screen.rows;
+/* Size the canonical screen by policy (size_follows). "active" takes the
+ * active client's size; "smallest"/"largest" fold every attached display, so
+ * any attach, resize or departure can move the canvas. The active client
+ * still supplies the cell pixel size either way: graphics go to terminals,
+ * and the active one is the best guess at what a cell is worth. */
+static void apply_canvas(server_t *s) {
+  conn_t *a = active_conn(s);
+  int policy = app_cfg_size_follows();
+  uint16_t cols = 0, rows = 0;
+  if (policy == SIZE_FOLLOWS_ACTIVE) {
+    if (a) {
+      cols = a->cols;
+      rows = a->rows;
+    }
+  } else {
+    for (size_t i = 0; i < s->nconns; i++) {
+      conn_t *c = &s->conns[i];
+      if (!c->display || !c->cols || !c->rows) continue;
+      if (!cols) {
+        cols = c->cols;
+        rows = c->rows;
+      } else if (policy == SIZE_FOLLOWS_SMALLEST) {
+        if (c->cols < cols) cols = c->cols;
+        if (c->rows < rows) rows = c->rows;
+      } else {
+        if (c->cols > cols) cols = c->cols;
+        if (c->rows > rows) rows = c->rows;
+      }
+    }
+  }
+  if (!cols || !rows) { /* nobody is looking: leave the canvas standing */
+    request_paint(s, true);
+    return;
+  }
+  bool changed = cols != s->screen.cols || rows != s->screen.rows;
   uint16_t old_w = 0, old_h = 0;
   app_cell_px(s->app, &old_w, &old_h);
-  uint16_t cell_w = c->cell_w ? c->cell_w : s->fallback_cell_w;
-  uint16_t cell_h = c->cell_h ? c->cell_h : s->fallback_cell_h;
+  uint16_t cell_w = a && a->cell_w ? a->cell_w : s->fallback_cell_w;
+  uint16_t cell_h = a && a->cell_h ? a->cell_h : s->fallback_cell_h;
   bool px_changed = cell_w != old_w || cell_h != old_h;
   if (changed) {
-    screen_resize(&s->screen, c->cols, c->rows);
-    app_resize(s->app, c->cols, c->rows);
+    screen_resize(&s->screen, cols, rows);
+    app_resize(s->app, cols, rows);
   }
   if (px_changed) app_set_cell_px(s->app, cell_w, cell_h);
   if (changed || px_changed) app_compose(s->app, &s->screen);
@@ -371,7 +404,7 @@ static void make_active(server_t *s, conn_t *c, bool new_activity) {
   if (s->active_fd != c->fd) app_cancel_client_interaction(s->app);
   s->active_fd = c->fd;
   if (new_activity) c->activity = ++s->activity_seq;
-  apply_client_size(s, c);
+  apply_canvas(s);
 }
 
 static void promote_latest(server_t *s) {
@@ -387,15 +420,24 @@ static void promote_latest(server_t *s) {
     return;
   }
   s->active_fd = latest->fd;
-  apply_client_size(s, latest);
+  apply_canvas(s);
 }
 
+/* A non-active departure changes nothing under "active", but under
+ * "smallest"/"largest" the canvas may have been sized by the very client
+ * that just left. */
 static void close_conn(server_t *s, size_t i) {
-  if (conn_close(s, i)) promote_latest(s);
+  if (conn_close(s, i))
+    promote_latest(s);
+  else
+    apply_canvas(s);
 }
 
 static void drop_conn(server_t *s, size_t i, uint8_t reason) {
-  if (conn_drop(s, i, reason)) promote_latest(s);
+  if (conn_drop(s, i, reason))
+    promote_latest(s);
+  else
+    apply_canvas(s);
 }
 
 static void drop_fd(server_t *s, int fd, uint8_t reason) {
@@ -451,7 +493,7 @@ static bool feed_client(server_t *s, conn_t *c, const uint8_t *data, size_t len,
     input_timeout(c->in, client_event, &ctx);
   else
     input_feed(c->in, data, len, client_event, &ctx);
-  if (ctx.activity) apply_client_size(s, c);
+  if (ctx.activity) apply_canvas(s);
   if (input_pending(c->in)) c->esc_due = now_ms() + ESC_MS;
   return ctx.activity;
 }
@@ -830,6 +872,22 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
           bool first_viewer = fresh && display_count(&s) == 0;
           if (!c->display && !fresh) break;
 
+          /* multi_attach false is the classic rule: the new client displaces
+           * every display before it (EXIT_REPLACED, which old clients already
+           * understand). Dropping compacts the array, so the index -- and the
+           * pointer taken from it -- are re-derived afterwards. */
+          if (fresh && !app_cfg_multi_attach()) {
+            for (size_t j = 0; j < s.nconns;) {
+              if (j != ci && s.conns[j].display) {
+                conn_drop(&s, j, EXIT_REPLACED);
+                if (j < ci) ci--; /* the array compacted under us */
+              } else
+                j++;
+            }
+            c = &s.conns[ci];
+            first_viewer = display_count(&s) == 0;
+          }
+
           uint16_t cols = c->cols ? c->cols : s.screen.cols;
           uint16_t rows = c->rows ? c->rows : s.screen.rows;
           if (m.len >= 4) {
@@ -868,7 +926,10 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
             c->cell_w = cell_w;
             c->cell_h = cell_h;
             if (local_resize) screen_resize(&c->view, cols, rows);
-            if (c->fd == s.active_fd) apply_client_size(&s, c);
+            /* Unconditional: under "active" a non-active resize changes
+             * nothing (apply_canvas reads the active client), but under
+             * "smallest"/"largest" every display's size is a vote. */
+            apply_canvas(&s);
           }
           update_viewport(c, &s.screen);
           request_paint(&s, true);
@@ -960,6 +1021,19 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
          * include becomes ten minutes of wondering. */
         const char *why = app_config_complaint();
         app_toast(s.app, why && *why ? why : "config reloaded");
+        /* The knobs this loop lives by may have moved. multi_attach turned
+         * off evicts every display but the active one -- the reloaded config
+         * says one client, so one client it is -- and a changed size_follows
+         * re-sizes the canvas to the policy now in force. */
+        if (!app_cfg_multi_attach()) {
+          for (size_t i = 0; i < s.nconns;) {
+            if (s.conns[i].display && s.conns[i].fd != s.active_fd)
+              drop_conn(&s, i, EXIT_REPLACED);
+            else
+              i++;
+          }
+        }
+        apply_canvas(&s);
       } else {
         app_toast(s.app, err[0] ? err : "config reload failed");
       }

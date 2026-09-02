@@ -56,7 +56,12 @@ then the client with the most recent keyboard or mouse activity, sets the
 shared screen size.  Resizing that active client resizes the session; resizing
 another client changes only its view.  A smaller view follows the cursor over
 the shared screen, and a larger one is filled with blank cells.  Detaching
-leaves the other clients attached.
+leaves the other clients attached.  Both halves are configurable:
+.B multi_attach
+restores the old displacing attach, and
+.B size_follows
+picks whose size rules \(em see
+.BR slosh (5).
 .PP
 A trailing
 .B \-\-

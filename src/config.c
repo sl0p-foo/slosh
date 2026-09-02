@@ -918,6 +918,8 @@ void config_defaults(config_t *c) {
    * than as another row of it. */
   c->status_pad = 4;
   c->focus_follows_mouse = true;
+  c->multi_attach = true;
+  c->size_follows = SIZE_FOLLOWS_ACTIVE;
   c->in_band_shaders = false;
   /* Windows has no VEOF for the line discipline to act on, so ^D there is a
    * key that does nothing until we make it mean something. POSIX already has
@@ -1607,6 +1609,14 @@ char *config_render(const config_t *c) {
 
   cb_add(&b, "\n// ---- behaviour ----\n");
   cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
+  cb_add(&b,
+         "multi_attach %s        // several terminals at once; off: a new "
+         "client displaces the old\n",
+         yesno(c->multi_attach));
+  cb_add(&b, "size_follows \"%s\"  // or \"smallest\" / \"largest\"\n",
+         c->size_follows == SIZE_FOLLOWS_SMALLEST  ? "smallest"
+         : c->size_follows == SIZE_FOLLOWS_LARGEST ? "largest"
+                                                   : "active");
   cb_add(&b, "in_band_shaders %s\n", yesno(c->in_band_shaders));
   cb_add(&b,
          "ctrl_d_exits %s        // ^D at an idle prompt exits the shell; "
@@ -1861,6 +1871,7 @@ static const char *const KNOWN_TOP[] = {
     "keys",
     "min_mark",
     "min_pane",
+    "multi_attach",
     "min_split",
     "modal_scrim",
     "newtab_mark",
@@ -1875,6 +1886,7 @@ static const char *const KNOWN_TOP[] = {
     "select_scroll_ms",
     "shaders",
     "shell",
+    "size_follows",
     "splash_ms",
     "states",
     "status_bar",
@@ -2081,6 +2093,21 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       (uint16_t)kdl_arg_int(kdl_child(root, "status_pad"), 0, c->status_pad);
   c->focus_follows_mouse = kdl_arg_bool(kdl_child(root, "focus_follows_mouse"),
                                         0, c->focus_follows_mouse);
+  c->multi_attach =
+      kdl_arg_bool(kdl_child(root, "multi_attach"), 0, c->multi_attach);
+  const char *sizef = kdl_arg(kdl_child(root, "size_follows"), 0, NULL);
+  if (sizef) {
+    if (strcmp(sizef, "active") == 0)
+      c->size_follows = SIZE_FOLLOWS_ACTIVE;
+    else if (strcmp(sizef, "smallest") == 0)
+      c->size_follows = SIZE_FOLLOWS_SMALLEST;
+    else if (strcmp(sizef, "largest") == 0)
+      c->size_follows = SIZE_FOLLOWS_LARGEST;
+    else
+      complain(c, err, errcap, 0,
+               "size_follows wants active, smallest or largest, not \"%s\"",
+               sizef);
+  }
   c->in_band_shaders =
       kdl_arg_bool(kdl_child(root, "in_band_shaders"), 0, c->in_band_shaders);
   c->ctrl_d_exits =

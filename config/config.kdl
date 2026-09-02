@@ -287,6 +287,22 @@ status_pad 4
 // expands a collapsed pane just because the pointer crossed its header.
 focus_follows_mouse true
 
+// Several terminals may attach to one session at once. Turning this off
+// restores the classic rule: a new client displaces the one before it --
+// which is what "move my session over here, and close it over there"
+// actually wants.
+multi_attach true
+
+// Whose size the shared screen takes when several clients are attached:
+//   "active"     the newest attachment, then the last client to type or
+//                click. Smaller clients see a cursor-following crop,
+//                larger ones get blank filler.
+//   "smallest"   the smallest attached terminal (the tmux rule): nobody is
+//                ever cropped, and the roomiest terminal pays in filler.
+//   "largest"    the largest one: the big display gets everything, small
+//                ones follow the cursor over a crop.
+size_follows "active"
+
 // Ctrl-D at an idle shell prompt exits that shell.
 //
 // On POSIX the tty does this: ^D on an empty line is EOF, the shell reads it

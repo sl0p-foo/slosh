@@ -88,6 +88,16 @@ size_t app_config_files(const char **out, size_t max) {
   return config_files(&CFG, out, max);
 }
 
+bool app_cfg_multi_attach(void) {
+  ensure_config();
+  return CFG.multi_attach;
+}
+
+int app_cfg_size_follows(void) {
+  ensure_config();
+  return CFG.size_follows;
+}
+
 /* ---- tree --------------------------------------------------------------- */
 #include "app_internal.h"
 

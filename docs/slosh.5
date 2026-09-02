@@ -147,6 +147,22 @@ The glyphs themselves, each one string.
 Hovering focuses \(em never at the cost of what you were doing: not
 during a prefix, a drag, or a modal.
 .TP
+.BI multi_attach\  bool
+Several terminals may attach to one session at once (the default).
+Off, a new client displaces the previous one, which is the classic
+\[dq]move my session here and close it there\[dq].
+.TP
+.BI size_follows\  active\ |\ smallest\ |\ largest
+Whose size the shared screen takes when several clients are attached.
+.B active
+(the default) follows the newest attachment, then the last client to type or
+click; smaller clients see a cursor-following crop and larger ones blank
+filler.
+.B smallest
+is the tmux rule: nobody is cropped, the roomiest terminal pays in filler.
+.B largest
+gives the big display everything and the small ones a crop.
+.TP
 .BI ctrl_d_exits\  bool
 Ctrl-D at an idle shell prompt sends
 .B exit

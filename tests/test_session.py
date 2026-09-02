@@ -286,6 +286,61 @@ def main():
         except ProcessLookupError:
             pass
 
+    # --- the config knobs -----------------------------------------------
+    # multi_attach false restores the displacing attach; size_follows
+    # "smallest" sizes the shared screen to the tightest attached terminal.
+    # Each knob gets a fresh session, whose config exists before its server
+    # starts (the server reads it once at startup, plus on reload).
+    with open(CONFIG, "w") as f:
+        f.write("splash_ms 0\nmulti_attach false\n")
+    name_x = "t" + uuid.uuid4().hex[:8]
+    pid_a, fd_a = attach(name_x)
+    drain(fd_a)
+    pid_b, fd_b = attach(name_x)
+    drain(fd_b)
+    tail = drain(fd_a, idle=0.2, limit=2.0)
+    check(
+        "multi_attach false: the old client is displaced",
+        b"replaced" in tail or wait_gone(pid_a, 1.0),
+        repr(tail[-60:]),
+    )
+    check("multi_attach false: the new client is attached", running(pid_b))
+    control(name_x, "quit")
+    drain(fd_b, idle=0.2, limit=2.0)
+
+    with open(CONFIG, "w") as f:
+        f.write('splash_ms 0\nsize_follows "smallest"\n')
+    name_y = "t" + uuid.uuid4().hex[:8]
+    pid_c, fd_c = attach(name_y, cols=80, rows=24)
+    drain(fd_c)
+    pid_d, fd_d = attach(name_y, cols=50, rows=12)
+    drain(fd_d)
+    drain(fd_c)
+    check(
+        "size_follows smallest: the tightest client sizes the screen",
+        screen_size(name_y) == (50, 12),
+    )
+    os.write(fd_c, b"x")  # input on the big client must not steal the size
+    drain(fd_c)
+    check(
+        "size_follows smallest: input does not steal the size",
+        screen_size(name_y) == (50, 12),
+    )
+    os.write(fd_d, b"\x01d")  # the small client leaves; the floor rises
+    drain(fd_d, idle=0.2, limit=2.0)
+    check(
+        "size_follows smallest: a departing client raises the floor",
+        screen_size(name_y) == (80, 24),
+    )
+    control(name_y, "quit")
+    drain(fd_c, idle=0.2, limit=2.0)
+
+    for p in (pid_a, pid_b, pid_c, pid_d):
+        try:
+            os.kill(p, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
     print(f"\n{'FAILED' if fails else 'all green'} ({fails} failures)")
     return 1 if fails else 0
 
