@@ -1,4 +1,4 @@
-# slosh — see docs/design.md
+# slosh
 #
 # zig is the C compiler: it is already required to build libghostty-vt, and it
 # gives us static musl linking and cross-compilation for free (D12).

@@ -77,6 +77,5 @@ goes away. Reattach with the same command.
 - **[Layouts](layouts.md)**: a session as a file you check in.
 - **[Workspaces](workspaces.md)**: projects on disk, opened by name.
 - **[Scripting](scripting.md)**: the control socket, and what a pane can draw.
-- **[How it works](design.md)**: the two decisions that shape the rest.
 
 About 15k lines of C, no dependencies beyond libc and the vendored core.

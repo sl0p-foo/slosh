@@ -1,7 +1,6 @@
 # Layouts
 
-A session can be a file, so a project's window layout is checked in with the
-project.
+A project's window layout can be defined programatiicaly (and checked in/managed with version control):
 
 ```kdl
 layout {
@@ -22,28 +21,14 @@ slosh --layout project.layout
 ## What to call them
 
 **`*.layout`**, and a project's is `slosh.layout`. The syntax is the same KDL
-subset the config uses — one parser reads both files — but the extension is
-not `.kdl`: zellij speaks KDL layouts with a different schema, and naming the
-wrong owner is worse than not naming the parser. Point your editor's KDL
-highlighting at `*.layout`. The old `*.layout.kdl` spelling is still found by
-the project scan, never written.
+subset the config uses. Point your editor's KDL highlighting at `*.layout`.
 
-A filename cannot enforce anything, so **the document decides which schema it is
-held to, not the flag that read it**. `slosh --check` reads what is in front of
-it: a file with `layout` or `tab` at the top is checked as a layout, a config
-handed to the same flag is still checked as a config, and a file too broken to
-parse at all is judged by its name, there being nothing else left to read.
+## How to verify them
 
 ```
 $ slosh --check project.layout
 project.layout: ok, a layout
 ```
-
-A clean layout says which schema it passed, because otherwise a layout nothing
-could open and a layout with nothing wrong in it read the same. A broken one
-reports every problem it found, one indented `file:line: what` per line, then a
-summary, and exits 1: the shape [checking a config](config.md#checking-one)
-already has, so one editor compile step and one pre-commit hook read both:
 
 ```
 $ slosh --check broken.layout
@@ -70,7 +55,7 @@ slosh: config.kdl: this is a config, not a layout: `gap` is a setting
 A config handed to `--layout` is named for what it is instead of refused for
 having no tabs, which is true of it in the least useful way.
 
-## The shape
+## The layout nodes
 
 - `tab`: one per tab, in strip order. `name=`, `cwd=`, `purpose=`,
   `active=true` for the one you land in.
@@ -84,18 +69,12 @@ having no tabs, which is true of it in the least useful way.
   _would_ run.
 - `focus=true`: the pane you start in, within its tab.
 - `floating=true`: the pane starts [floating](panes.md#floating-a-pane), with
-  `x=` `y=` `w=` `h=` as its wanted rect in cells. All four absent takes the
-  centred default; `w=` `h=` alone is that size, centred — and centred again
-  on every resize, until an explicit move or resize pins it. The rect is
-  intent: a smaller screen clamps it, and the place you asked for survives. It still holds a seat in the tree: its `weight=` and
-  position are where un-floating lands it. A file whose every pane floats
-  lands one as the backdrop, because an overlay needs something to be over.
+  `x=` `y=` `w=` `h=` as its wanted rect in cells. All four absent takes the centred default.
 - `purpose=`: a label for tooling; see below.
 
 **A relative `cwd=` in a layout _file_ resolves against that file's own
 directory**, never against the directory you started the session from. It is
-the rule [`include`](config.md#include) already follows, applied to the other
-half of the same syntax. A layout with no `cwd=` anywhere
+the same rule [`include`](config.md#include) already follows. A layout with no `cwd=` anywhere
 starts in the file's directory too, so the common case needs no `cwd=` at all. An
 absolute path is unchanged, and `~` is still your home directory.
 
@@ -115,122 +94,7 @@ layout {
 }
 ```
 
-Clone that repo somewhere else and the tab still opens on the checkout, with the
-pane that said `src` still in the checkout's `src`.
-
-A layout that arrives as _text_ over the socket has no file, and so no
-directory to be relative to; relative paths in it resolve against wherever the
-session is.
-
-A full annotated example is
-`config/example.layout`.
-
-## Writing one back out
-
-```bash
-slosh -s work cmd '{"cmd":"dump-layout"}' > project.layout
-```
-
-writes the session as a layout file: tabs, splits, proportions, directories,
-commands, which pane you were in. So a session can be checked in, or put back
-after a restart.
-`contrib/slosh-dev`
-is that loop, for when the thing you are rebuilding is slosh itself.
-
-**A pane is dumped with the command it is running**, whether a layout gave it one
-or you typed it. `label`, what a layout said, comes first and outlives the
-program that ran it, so a project's `command="npm run dev"` stays that in the file
-after the server has exited. Failing that, the pane's terminal is asked what owns
-it: a pty has a foreground process group, and that group _is_ the job running in
-the pane. So arranging a project by hand and writing it down are one job rather
-than two: split, start the dev server and the log tailer, `C-a W`, done.
-
-Three things are deliberately not a command. **A shell at a prompt**, because
-`command="zsh"` on every idle pane would restore a session where each shell runs
-inside a shell. **A background job**, because it does not own the terminal and a
-layout that resurrected `&` jobs in the foreground would describe a session nobody
-had. And **an [ephemeral](panes.md#panes-that-were-given-a-command) pane** (the
-editor `C-a e` opened) because restoring one reopens a file somebody finished
-with.
-
-Argv is joined with shell quoting, since `command=` is handed to `/bin/sh -c`:
-`python3 -c 'import x; x.go()'` comes back as one argument rather than three.
-
-What a dump can honestly restore is the _shape_, and the command that made it.
-What it cannot is the state inside a program (a shell's history, a half-written
-commit message, an editor's undo) and it does not pretend otherwise. A pane
-running the session's default shell is dumped as a pane with no command, so
-restoring gives you a fresh one.
-
-Three arguments shape what comes out:
-
-```bash
-slosh -s work cmd '{"cmd":"dump-layout","tab":3}'
-slosh -s work cmd '{"cmd":"dump-layout","relative_to":"~/dev/api","suspend":"commands"}'
-```
-
-| argument      | what it says                                             |
-| ------------- | -------------------------------------------------------- |
-| `tab`         | a tab **id**, or `0` (the default) for the whole session |
-| `relative_to` | a directory every `cwd=` is written relative to          |
-| `suspend`     | which panes come back laid out but not running           |
-
-`relative_to` is the writing end of the reading rule above: point it at the
-project and the dump comes out with `cwd="."` and `cwd="src"` in it rather than
-your home directory, which is what makes the file committable without an edit
-afterwards. `suspend` takes four words:
-
-| word       | means                                                                                                            |
-| ---------- | ---------------------------------------------------------------------------------------------------------------- |
-| `as-is`    | what is suspended in the session right now, the default here, because a session dump should describe the session |
-| `none`     | everything comes back running                                                                                    |
-| `commands` | every pane that was given a command                                                                              |
-| `all`      | nothing starts until you touch it                                                                                |
-
-`commands` is the one you want for a layout you will open often, and it is what
-[workspaces](workspaces.md) saves with: the pane running this morning's dev server
-belongs in the file asleep, or opening the project starts a dev server every time.
-
-The reply carries the document as `kdl` and counts beside it (`panes` and
-`suspended`) so a caller can report "4 panes, 2 suspended" without parsing back
-the document it was handed. A `tab` that does not exist is an error rather than an
-empty document, because an empty layout is a plausible answer for a tab you closed
-a minute ago and a silent one for a typo in an id.
-
-A dump records `focus=true` in **every** tab, not only the one you were looking
-at, so restoring a six-tab session puts you back where you were in all six.
-
-## Applying one to a running session
-
-```bash
-slosh -s work cmd '{"cmd":"apply-layout","path":"project.layout"}'
-slosh -s work cmd '{"cmd":"apply-layout","kdl":"layout { tab { pane } }","replace":true}'
-```
-
-Without `replace`, the tabs the file describes are added to what is already
-there.
-
-## Moving a pane between tabs
-
-```bash
-slosh cmd '{"cmd":"move-pane","id":3,"tab":2}'              # beside that tab's focus
-slosh cmd '{"cmd":"move-pane","id":3,"tab":2,"dir":"rows"}' # under it instead
-slosh cmd '{"cmd":"move-pane","id":3,"tab":0,"name":"logs"}' # into a tab of its own
-```
-
-The pane keeps running: same pty, same scrollback, same process. A move is tree
-surgery, not a new pane and a funeral. The destination is a tab **id** rather than
-an index, because a tab whose last pane leaves is removed and every index after it
-shifts; an id survives that.
-
-Two things a move deliberately drops, both of them the old tab's opinion rather
-than the pane's: a zoom that named it, and its minimised flag. Carried across, the
-first would zoom a pane that has left and the second would file the arrival in a
-strip nobody asked for. Which tab you are _looking_ at does not change.
-
-`C-a >` and `C-a <` push the focused pane one tab along, `C-a b` gives it a tab of
-its own, and a pane can be dragged onto a tab in the strip; see
-[keys](keys.md#defaults) and [the mouse](panes.md#the-mouse).
+A full annotated example is `config/example.layout`.
 
 ## Purposes
 

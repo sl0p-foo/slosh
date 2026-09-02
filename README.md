@@ -81,10 +81,9 @@ split, `C-a ?` for the keys, `C-a p` for every command by name.
 
 **[docs/](docs/index.md)**: [keys](docs/keys.md) ·
 [panes](docs/panes.md) · [configuration](docs/config.md) ·
-[windows](docs/windows.md) ·
+[actions](docs/actions) · [windows](docs/windows.md) ·
 [shaders](docs/shaders.md) · [chrome](docs/chrome.md) ·
 [layouts](docs/layouts.md) · [scripting](docs/scripting.md) ·
-[how it works](docs/design.md)
 
 `make docs` renders the same pages as a static site into `build/docs`, with no
 dependencies: one file of Python and one stylesheet.
@@ -107,5 +106,3 @@ dependencies: one file of Python and one stylesheet.
 - **Scriptable to the same depth it is usable**: one JSON object per line over
   the session's socket, and a pane can draw its own status bar and buttons with
   an escape sequence.
-
-Design notes: [how it works](docs/design.md).
