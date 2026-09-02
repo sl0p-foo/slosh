@@ -198,19 +198,20 @@
 <span class="prompt">$</span> sudo pacman-key --lsign-key 0F67C909938CFFA8A76B59FD8D69B55A0E9056B9</code></pre>
         <button class="copy" type="button" aria-label="Copy commands">copy</button>
       </div>
-      <div class="cmd" data-copy="sudo pacman -Sy slosh">
-        <pre><code><span class="c"># /etc/pacman.conf</span>
+      <div class="cmd" data-copy="[slosh]
+Server = https://slosh.foo/arch/$arch">
+        <pre><code><span class="c"># add to /etc/pacman.conf</span>
 [slosh]
-Server = https://slosh.foo/arch/$arch
-
-<span class="prompt">$</span> sudo pacman -Sy slosh</code></pre>
+Server = https://slosh.foo/arch/$arch</code></pre>
+        <button class="copy" type="button" aria-label="Copy pacman.conf section">copy</button>
+      </div>
+      <div class="cmd" data-copy="sudo pacman -Sy slosh">
+        <pre><code><span class="prompt">$</span> sudo pacman -Sy slosh
+<span class="prompt">$</span> sudo pacman -S ghostty-terminfo   <span class="c"># optional, x86_64 only: the TERM entry</span>
+                                     <span class="c"># system-wide; slosh self-installs it otherwise</span></code></pre>
         <button class="copy" type="button" aria-label="Copy command">copy</button>
       </div>
-      <p class="aside">Built, signed packages. Add
-      <code>extra/ghostty-terminfo</code> if you want the
-      <code>xterm-ghostty</code> entry system-wide; without it slosh quietly
-      installs its own copy into <code>~/.terminfo</code>.
-      The fingerprint to check before
+      <p class="aside">Built, signed packages. The fingerprint to check before
       the <code>--lsign-key</code>: the same key is
       <a href="https://github.com/sl0p-foo/slosh/blob/master/contrib/arch/slosh.asc">contrib/arch/slosh.asc</a>
       in git, so the file fetched from the website can be compared against the
