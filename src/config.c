@@ -662,6 +662,8 @@ static const struct {
     {"rename_bg", offsetof(config_t, rename_bg)},
     {"toast_fg", offsetof(config_t, toast_fg)},
     {"toast_bg", offsetof(config_t, toast_bg)},
+    {"attach_fg", offsetof(config_t, attach_fg)},
+    {"attach_bg", offsetof(config_t, attach_bg)},
 };
 
 #define THEME_COLOR(c, i) ((color_t *)((char *)(c) + THEME_COLORS[i].off))
@@ -1053,6 +1055,11 @@ void config_defaults(config_t *c) {
 
   c->toast_fg = ink;
   c->toast_bg = accent;
+
+  /* Quiet on purpose: gray ink on the terminal's own background. The toast
+   * colours announce; this one merely mentions. */
+  c->attach_fg = dim;
+  c->attach_bg = (color_t){0};
 
   c->prefix_key = GHOSTTY_KEY_A;
   c->prefix_mods = MOD_CTRL;

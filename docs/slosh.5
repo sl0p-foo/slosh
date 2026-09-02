@@ -153,11 +153,13 @@ Off, a new client displaces the previous one, which is the classic
 \[dq]move my session here and close it there\[dq].
 .TP
 .BI attach_indicator\  bool
-When several clients are attached, each shows a tag in its own top-right
-corner: the viewer count, and on a cropped view its offset into the shared
-screen
-.RB ( \[dq]2\ clients\ +12+4\[dq] ),
-so a view being panned by somebody else's cursor says where it is.
+When several clients are attached, each shows a
+.RB ( \[dq]2\ clients\[dq] )
+tag in its own top-right corner, so a view being panned by somebody
+else's cursor is not a mystery.  Its colours are the theme's
+.B attach_fg
+and
+.BR attach_bg .
 .TP
 .BI size_follows\  active\ |\ smallest\ |\ largest
 Whose size the shared screen takes when several clients are attached.

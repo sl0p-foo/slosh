@@ -320,20 +320,15 @@ static void stamp_indicator(server_t *s, conn_t *c) {
   if (!app_cfg_attach_indicator()) return;
   size_t viewers = display_count(s);
   if (viewers < 2) return;
-  char tag[48];
-  if (c->view_x || c->view_y)
-    /* The crop's origin in the shared screen: "you are at +col+row of
-     * something bigger", which is the disorienting case the tag exists for. */
-    snprintf(tag, sizeof tag, " %zu clients +%u+%u ", viewers,
-             (unsigned)c->view_x, (unsigned)c->view_y);
-  else
-    snprintf(tag, sizeof tag, " %zu clients ", viewers);
+  char tag[32];
+  snprintf(tag, sizeof tag, " %zu clients ", viewers);
   size_t len = strlen(tag);
   if (len >= c->view.cols) return; /* a view too narrow to say it in */
+  color_t fg, bg;
+  app_cfg_attach_colors(&fg, &bg);
   uint16_t x0 = (uint16_t)(c->view.cols - len);
   for (size_t i = 0; i < len; i++)
-    screen_put_utf8(&c->view, (uint16_t)(x0 + i), 0, &tag[i], 1, (color_t){0},
-                    (color_t){0}, ATTR_DIM | ATTR_INVERSE);
+    screen_put_utf8(&c->view, (uint16_t)(x0 + i), 0, &tag[i], 1, fg, bg, 0);
 }
 
 static bool push_frame(server_t *s, conn_t *c) {

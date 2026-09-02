@@ -445,6 +445,10 @@ typedef struct {
   /* announcements */
   color_t toast_fg, toast_bg;
 
+  /* the multi-client tag ("2 clients", per-client top-right chrome). Muted
+   * by default: it is standing information, not an announcement. */
+  color_t attach_fg, attach_bg;
+
   /* keys */
   int prefix_key;
   uint16_t prefix_mods;

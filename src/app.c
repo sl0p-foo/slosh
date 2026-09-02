@@ -98,6 +98,12 @@ bool app_cfg_attach_indicator(void) {
   return CFG.attach_indicator;
 }
 
+void app_cfg_attach_colors(color_t *fg, color_t *bg) {
+  ensure_config();
+  if (fg) *fg = CFG.attach_fg;
+  if (bg) *bg = CFG.attach_bg;
+}
+
 int app_cfg_size_follows(void) {
   ensure_config();
   return CFG.size_follows;

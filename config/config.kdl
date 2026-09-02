@@ -882,6 +882,12 @@ theme {
     // ── announcements ───────────────────────────────────────────────────────
     toast_fg "#141418"
     toast_bg "#7aa2f7"
+
+    // The "2 clients" tag when several terminals share the session. Muted by
+    // default -- standing information, not an announcement. attach_bg unset
+    // means the terminal's own background.
+    attach_fg "#45454a"
+    // attach_bg "#141418"
 }
 
 // ── keys ────────────────────────────────────────────────────────────────────
