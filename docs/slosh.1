@@ -152,12 +152,9 @@ Write the
 .B xterm-ghostty
 terminfo entry the binary carries into
 .I ~/.terminfo
-(no root, no package), so panes on a machine without ghostty's entry
-get the full
-.B TERM
-instead of the
-.B xterm-256color
-fallback.
+(no root, no package).
+Sessions do this on their own when the entry is missing everywhere; the
+flag is the by-hand spelling, for provisioning and for saying so.
 See ENVIRONMENT.
 .TP
 .BI \-\-server\  name
@@ -364,14 +361,16 @@ Set in every pane:
 .TP
 .B TERM
 .B xterm-ghostty
-when the machine's terminfo database has the entry (it ships with ghostty),
-.B xterm-256color
-when it does not: an entry curses cannot find makes editors exit on
-the spot and backspace guess.
-.B slosh \-\-install\-terminfo
-puts the real entry in
-.IR ~/.terminfo ;
-new sessions then use it.
+\(en found in the machine's terminfo database, or, when it is missing
+everywhere, installed into
+.I ~/.terminfo
+from the copy the binary carries (an entry curses cannot find makes
+editors exit on the spot and backspace guess).
+Only when even that write fails (no
+.BR $HOME ,
+read-only) do panes get
+.BR xterm-256color ,
+and everything still works.
 .TP
 .B SLOSH
 .B 1

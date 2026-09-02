@@ -162,6 +162,10 @@ typedef struct {
 /* `cell_w`/`cell_h` are the client's cell size in pixels, so the pty's
  * winsize carries real pixel dimensions: a program that draws images asks the
  * tty how big a cell is, and zeroes there mean it cannot size one. */
+/* Write the embedded xterm-ghostty terminfo into ~/.terminfo (0 on
+ * success). Panes do this on their own when the entry is missing
+ * everywhere; `slosh --install-terminfo` is the by-hand spelling. */
+int pty_terminfo_install(void);
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
               const char *cwd, uint16_t cell_w, uint16_t cell_h);
 int pty_resize(pty_t *p, uint16_t cols, uint16_t rows, uint16_t cell_w,

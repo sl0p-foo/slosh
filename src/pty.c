@@ -8,6 +8,9 @@
 #include "slosh.h"
 
 #include <errno.h>
+#include <sys/stat.h>
+
+#include "terminfo.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -33,6 +36,41 @@
  * lookup happens where it matters: panes run on the server's machine.
  *
  * Computed once, in the parent, before the first fork. */
+/* Write the embedded xterm-ghostty terminfo entry into ~/.terminfo, which
+ * is the first place curses looks: no root, no package, no conflict with a
+ * ghostty the machine may install later. Written under every name the
+ * entry answers to, in the letter layout and Darwin's hashed one, because
+ * the lookup is by filename. Quiet: pty_term() below calls this on its own
+ * when the entry is nowhere to be found, and `--install-terminfo` is the
+ * same write with a friendly report around it. */
+int pty_terminfo_install(void) {
+  const char *home = getenv("HOME");
+  if (!home || !*home) return -1;
+  static const char *const spots[][2] = {
+      {"x", "xterm-ghostty"},
+      {"78", "xterm-ghostty"},
+      {"g", "ghostty"},
+      {"67", "ghostty"},
+  };
+  char path[1024];
+  snprintf(path, sizeof path, "%s/.terminfo", home);
+  if (mkdir(path, 0755) != 0 && errno != EEXIST) return -1;
+  for (size_t i = 0; i < sizeof spots / sizeof *spots; i++) {
+    snprintf(path, sizeof path, "%s/.terminfo/%s", home, spots[i][0]);
+    if (mkdir(path, 0755) != 0 && errno != EEXIST) return -1;
+    snprintf(path, sizeof path, "%s/.terminfo/%s/%s", home, spots[i][0],
+             spots[i][1]);
+    FILE *f = fopen(path, "wb");
+    if (!f || fwrite(TERMINFO_GHOSTTY, 1, sizeof TERMINFO_GHOSTTY, f) !=
+                  sizeof TERMINFO_GHOSTTY) {
+      if (f) fclose(f);
+      return -1;
+    }
+    fclose(f);
+  }
+  return 0;
+}
+
 static bool term_add(char *dirs, size_t cap, size_t *n, const char *d) {
   if (!d || !*d) return false;
   int w = snprintf(dirs + *n, cap - *n, "%s%s", *n ? ":" : "", d);
@@ -74,6 +112,14 @@ static const char *pty_term(void) {
       break;
     }
   }
+
+  /* Nowhere at all: put our own copy in ~/.terminfo and use it. The write
+   * happens only when the entry is missing everywhere -- an entry that
+   * exists is somebody's, possibly newer than ours, and stays theirs. On a
+   * $HOME that cannot be written the fallback stands, and everything still
+   * works at xterm-256color. */
+  if (strcmp(cached, "xterm-256color") == 0 && pty_terminfo_install() == 0)
+    cached = "xterm-ghostty";
   return cached;
 }
 
