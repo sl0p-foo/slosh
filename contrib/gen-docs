@@ -334,7 +334,7 @@ def build(outdir):
             )
         section = next(name for name, files in sections if f in files)
         out = SHELL.format(
-            title=html.escape(p["title"] + (" — slosh" if f != "index.md" else "")),
+            title=html.escape(p["title"] + (" · slosh" if f != "index.md" else "")),
             crumb=html.escape(section),
             sidebar=sidebar(sections, pages, f),
             body=p["body"],
