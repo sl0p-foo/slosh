@@ -58,6 +58,9 @@ theme {
     rename_bg "#e4e4e4"
     toast_fg "#101010"
     toast_bg "#e4e4e4"
+
+    // the "N clients" tag: the theme's muted chrome tone, quiet on purpose
+    attach_fg "#585858"
     bell "#e4e4e4"
     dead "#9e9e9e"
     pane_button "#585858"
