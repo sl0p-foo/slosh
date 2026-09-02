@@ -105,7 +105,16 @@ build/logo.h: $(ROOT)/logo.txt | build
 	  sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g' -e 's/^/    "/' -e 's/$$/",/' $(ROOT)/logo.txt; \
 	  printf '};\n'; } > $@
 
-build/obj/%.o: $(ROOT)/src/%.c build/version.h build/logo.h $(VT_LIB) | build/obj
+# The embedded terminfo entry, exactly as the top-level Makefile bakes it:
+# pty.c includes it, and this Makefile compiles pty.c with its own rules.
+build/terminfo.h: $(ROOT)/contrib/terminfo/xterm-ghostty.terminfo | build
+	$(call say,[GEN],$@)
+	$(Q){ printf '/* generated from contrib/terminfo/xterm-ghostty.terminfo */\n'; \
+	  printf 'static const unsigned char TERMINFO_GHOSTTY[] = {\n'; \
+	  od -An -v -tx1 $< | sed -e 's/ \([0-9a-f][0-9a-f]\)/0x\1,/g'; \
+	  printf '};\n'; } > $@
+
+build/obj/%.o: $(ROOT)/src/%.c build/version.h build/logo.h build/terminfo.h $(VT_LIB) | build/obj
 	$(call say,[CC],$(notdir $<))
 	$(Q)$(CC) $(CFLAGS) -c $< -o $@
 
