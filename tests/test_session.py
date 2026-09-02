@@ -208,8 +208,13 @@ def main():
 
     # --- multiple attached clients share one session --------------------
     pid3, fd3 = attach(name, cols=50, rows=12)
-    drain(fd3)
+    out3 = drain(fd3)
     tail = drain(fd2, idle=0.2, limit=2.0)
+    check(
+        "both clients are told about each other",
+        b"2 clients" in tail and b"2 clients" in out3,
+        repr((tail[-80:], out3[-80:])),
+    )
     check(
         "a second client leaves the first attached",
         b"replaced" not in tail and running(pid2),
@@ -244,6 +249,17 @@ def main():
         repr((out2[-80:], out3[-80:])),
     )
     check("the last client to type owns the size", screen_size(name) == (80, 24))
+
+    # Push the shared cursor below the small client's 12 rows: its view has
+    # to pan down to follow, and the tag must say where it went.
+    os.write(fd2, b"\n" * 20)
+    drain(fd2)
+    panned = drain(fd3)
+    check(
+        "a cropped view names its offset into the shared screen",
+        b"clients +" in panned,
+        repr(panned[-100:]),
+    )
 
     resize(pid3, fd3, 40, 10)
     drain(fd3)

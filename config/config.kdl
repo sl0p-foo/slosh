@@ -293,6 +293,12 @@ focus_follows_mouse true
 // actually wants.
 multi_attach true
 
+// When several clients share the session, each one gets a small tag in its
+// own top-right corner: how many terminals are watching, and -- on a client
+// whose view is a crop panned to follow the active cursor -- where that
+// crop sits in the shared screen ("+col+row"). Off to hide it.
+attach_indicator true
+
 // Whose size the shared screen takes when several clients are attached:
 //   "active"     the newest attachment, then the last client to type or
 //                click. Smaller clients see a cursor-following crop,

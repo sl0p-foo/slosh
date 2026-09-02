@@ -919,6 +919,7 @@ void config_defaults(config_t *c) {
   c->status_pad = 4;
   c->focus_follows_mouse = true;
   c->multi_attach = true;
+  c->attach_indicator = true;
   c->size_follows = SIZE_FOLLOWS_ACTIVE;
   c->in_band_shaders = false;
   /* Windows has no VEOF for the line discipline to act on, so ^D there is a
@@ -1613,6 +1614,9 @@ char *config_render(const config_t *c) {
          "multi_attach %s        // several terminals at once; off: a new "
          "client displaces the old\n",
          yesno(c->multi_attach));
+  cb_add(&b,
+         "attach_indicator %s    // top-right tag when others are watching\n",
+         yesno(c->attach_indicator));
   cb_add(&b, "size_follows \"%s\"  // or \"smallest\" / \"largest\"\n",
          c->size_follows == SIZE_FOLLOWS_SMALLEST  ? "smallest"
          : c->size_follows == SIZE_FOLLOWS_LARGEST ? "largest"
@@ -1851,6 +1855,7 @@ const char *config_default_path(void) {
 static const char *const KNOWN_TOP[] = {
     "include", /* read before the rest, but a name this file understands */
     "anim_ms",
+    "attach_indicator",
     "bell_indicator",
     "bell_mark",
     "close_mark",
@@ -2095,6 +2100,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                                         0, c->focus_follows_mouse);
   c->multi_attach =
       kdl_arg_bool(kdl_child(root, "multi_attach"), 0, c->multi_attach);
+  c->attach_indicator =
+      kdl_arg_bool(kdl_child(root, "attach_indicator"), 0, c->attach_indicator);
   const char *sizef = kdl_arg(kdl_child(root, "size_follows"), 0, NULL);
   if (sizef) {
     if (strcmp(sizef, "active") == 0)

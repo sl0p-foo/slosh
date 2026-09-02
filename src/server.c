@@ -308,11 +308,40 @@ static void update_viewport(conn_t *c, const screen_t *src) {
   if (c->shown_rows > c->rows) c->shown_rows = c->rows;
 }
 
+/* The multi-client tag, stamped into one client's projected view: this is
+ * per-client chrome (every terminal has its own count of "others", its own
+ * crop offset), so it cannot live on the shared status bar, which is
+ * composed once and might be cropped out of a panned view anyway. Top-right
+ * of the client's own screen, which is always visible; toasts keep the
+ * bottom-right. Written after projection and before the diff, so it costs
+ * bytes only when it changes -- and when it disappears, the diff restores
+ * the shared cells beneath it on its own. */
+static void stamp_indicator(server_t *s, conn_t *c) {
+  if (!app_cfg_attach_indicator()) return;
+  size_t viewers = display_count(s);
+  if (viewers < 2) return;
+  char tag[48];
+  if (c->view_x || c->view_y)
+    /* The crop's origin in the shared screen: "you are at +col+row of
+     * something bigger", which is the disorienting case the tag exists for. */
+    snprintf(tag, sizeof tag, " %zu clients +%u+%u ", viewers,
+             (unsigned)c->view_x, (unsigned)c->view_y);
+  else
+    snprintf(tag, sizeof tag, " %zu clients ", viewers);
+  size_t len = strlen(tag);
+  if (len >= c->view.cols) return; /* a view too narrow to say it in */
+  uint16_t x0 = (uint16_t)(c->view.cols - len);
+  for (size_t i = 0; i < len; i++)
+    screen_put_utf8(&c->view, (uint16_t)(x0 + i), 0, &tag[i], 1, (color_t){0},
+                    (color_t){0}, ATTR_DIM | ATTR_INVERSE);
+}
+
 static bool push_frame(server_t *s, conn_t *c) {
   uint16_t old_x = c->view_x, old_y = c->view_y;
   uint16_t old_cols = c->shown_cols, old_rows = c->shown_rows;
   update_viewport(c, &s->screen);
   screen_project(&c->view, &s->screen, c->view_x, c->view_y);
+  stamp_indicator(s, c);
   screen_render(&c->view);
   if (!c->view.out_len) return true;
   if (!conn_send(c, MSG_OUTPUT, c->view.out, c->view.out_len)) {

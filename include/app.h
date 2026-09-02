@@ -63,6 +63,7 @@ size_t app_config_files(const char **out, size_t max);
  * a running session: may several clients attach at once, and whose size the
  * shared screen takes (SIZE_FOLLOWS_* in config.h). */
 bool app_cfg_multi_attach(void);
+bool app_cfg_attach_indicator(void);
 int app_cfg_size_follows(void);
 /* What the config in force complained about while loading, or "". A complaint is
  * not a failure -- an include that is not there, a shader nobody has heard of --

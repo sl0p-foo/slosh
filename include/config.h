@@ -318,6 +318,12 @@ typedef struct {
    * it, which is what anyone using attach-from-elsewhere as "move my session
    * here and *close it there*" actually wants. */
   bool multi_attach;
+  /* Say so when several clients share the session: a small tag in each
+   * client's own top-right corner with the viewer count, and -- on a client
+   * whose view is a crop being panned to follow the active cursor -- the
+   * crop's offset into the shared screen. Per-client chrome, stamped after
+   * projection, which is why it is not part of the shared status bar. */
+  bool attach_indicator;
   /* Whose size the shared screen takes when several clients are attached:
    * the active client (newest attach, then last input -- the default), or
    * the smallest / largest attached one. Smallest is the tmux rule: nobody

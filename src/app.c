@@ -93,6 +93,11 @@ bool app_cfg_multi_attach(void) {
   return CFG.multi_attach;
 }
 
+bool app_cfg_attach_indicator(void) {
+  ensure_config();
+  return CFG.attach_indicator;
+}
+
 int app_cfg_size_follows(void) {
   ensure_config();
   return CFG.size_follows;
