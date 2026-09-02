@@ -135,6 +135,82 @@ void screen_clear(screen_t *s) {
   memset(s->cur_link, 0, n * sizeof(uint16_t));
 }
 
+void screen_project(screen_t *dst, const screen_t *src, uint16_t x0,
+                    uint16_t y0) {
+  screen_clear(dst);
+  hit_reset(&dst->hits);
+  dst->cursor_visible = false;
+
+  for (uint16_t y = 0; y < dst->rows && (uint32_t)y0 + y < src->rows; y++) {
+    uint16_t sy = (uint16_t)(y0 + y);
+    for (uint16_t x = 0; x < dst->cols && (uint32_t)x0 + x < src->cols; x++) {
+      uint16_t sx = (uint16_t)(x0 + x);
+      size_t si = (size_t)sy * src->cols + sx;
+      size_t di = (size_t)y * dst->cols + x;
+      const cell_t *c = &src->cur[si];
+
+      /* A viewport cannot display half a wide grapheme. A tail at its left
+       * edge and a head at its right edge both remain filler rather than
+       * relying on terminal-dependent wrapping or replacement glyphs. */
+      if (c->width == 0) continue;
+      if (c->width == 2 &&
+          ((uint32_t)sx + 1 >= src->cols || (uint32_t)x + 1 >= dst->cols))
+        continue;
+
+      dst->cur[di] = *c;
+      uint16_t link = src->cur_link[si];
+      if (link && link <= src->nlinks) {
+        const char *uri = src->links[link - 1];
+        dst->cur_link[di] = screen_link_id(dst, uri, strlen(uri));
+      }
+      if (c->width == 2) {
+        dst->cur[di + 1] = src->cur[si + 1];
+        uint16_t tail_link = src->cur_link[si + 1];
+        if (tail_link && tail_link <= src->nlinks) {
+          const char *uri = src->links[tail_link - 1];
+          dst->cur_link[di + 1] = screen_link_id(dst, uri, strlen(uri));
+        }
+        x++;
+      }
+    }
+  }
+
+  if (src->cursor_visible && src->cursor_x >= x0 && src->cursor_y >= y0 &&
+      (uint32_t)src->cursor_x < (uint32_t)x0 + dst->cols &&
+      (uint32_t)src->cursor_y < (uint32_t)y0 + dst->rows) {
+    dst->cursor_visible = true;
+    dst->cursor_x = (uint16_t)(src->cursor_x - x0);
+    dst->cursor_y = (uint16_t)(src->cursor_y - y0);
+  }
+}
+
+void screen_follow_cursor(const screen_t *src, uint16_t cols, uint16_t rows,
+                          uint16_t *x, uint16_t *y) {
+  uint16_t vx = x ? *x : 0, vy = y ? *y : 0;
+  uint16_t max_x = src->cols > cols ? (uint16_t)(src->cols - cols) : 0;
+  uint16_t max_y = src->rows > rows ? (uint16_t)(src->rows - rows) : 0;
+  if (!max_x)
+    vx = 0;
+  else if (src->cursor_visible) {
+    if (src->cursor_x < vx)
+      vx = src->cursor_x;
+    else if ((uint32_t)src->cursor_x >= (uint32_t)vx + cols)
+      vx = (uint16_t)(src->cursor_x - cols + 1);
+  }
+  if (!max_y)
+    vy = 0;
+  else if (src->cursor_visible) {
+    if (src->cursor_y < vy)
+      vy = src->cursor_y;
+    else if ((uint32_t)src->cursor_y >= (uint32_t)vy + rows)
+      vy = (uint16_t)(src->cursor_y - rows + 1);
+  }
+  if (vx > max_x) vx = max_x;
+  if (vy > max_y) vy = max_y;
+  if (x) *x = vx;
+  if (y) *y = vy;
+}
+
 uint16_t screen_link_id(screen_t *s, const char *uri, size_t len) {
   if (!uri || !len || len > 1024) return 0;
   /* A URI is emitted verbatim inside an OSC, so a control byte in one is a

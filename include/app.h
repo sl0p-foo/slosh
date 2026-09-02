@@ -5,6 +5,7 @@
 #ifndef SLOSH_APP_H
 #define SLOSH_APP_H
 
+#include "graphics.h"
 #include "kdl.h"
 #include "project.h"
 #include "shader.h"
@@ -22,10 +23,16 @@ void app_event(app_t *a, const input_event_t *ev);
 /* Kitty graphics for this frame: the bytes the client's terminal needs, and
  * the same thing as JSON for tests. Bytes are borrowed until the next call. */
 const char *app_graphics(app_t *a, size_t *len);
+/* The same frame for one attached terminal. `state` is that terminal's own
+ * transmission/deletion history; the viewport is in canonical screen cells. */
+const char *app_graphics_view(app_t *a, graphics_t *state, uint16_t x,
+                              uint16_t y, uint16_t cols, uint16_t rows,
+                              size_t *len);
 void app_graphics_reset(app_t *a);
 /* Did the last app_graphics() stream reach the client? Undelivered frames
  * are regenerated: transmissions repeat and deletions stay owed. */
 void app_graphics_commit(app_t *a, bool delivered);
+void app_graphics_view_commit(graphics_t *state, bool delivered);
 char *app_graphics_json(app_t *a);
 
 /* Transient announcements, drawn bottom-right and expiring on their own. */
@@ -52,6 +59,11 @@ bool app_reload_config(char *err, size_t errcap);
 /* The files the config in force was read from: the one that was loaded and
  * everything it included, existing or not. What the watcher watches. */
 size_t app_config_files(const char **out, size_t max);
+/* The attach-sharing knobs, read fresh so a config reload changes policy on
+ * a running session: may several clients attach at once, and whose size the
+ * shared screen takes (SIZE_FOLLOWS_* in config.h). */
+bool app_cfg_multi_attach(void);
+int app_cfg_size_follows(void);
 /* What the config in force complained about while loading, or "". A complaint is
  * not a failure -- an include that is not there, a shader nobody has heard of --
  * so the session is running either way; this is for saying so. */
@@ -87,6 +99,12 @@ bool app_should_quit(const app_t *a);
 /* C-a d asks the client to leave while the session keeps running. */
 bool app_detach_requested(const app_t *a);
 void app_clear_detach(app_t *a);
+/* A different display took over the shared input stream. End state that cannot
+ * safely span clients (leader chord, pointer drag and hover position). */
+void app_cancel_client_interaction(app_t *a);
+/* A release over client-side filler has no canonical target, but still ends a
+ * pointer gesture without disturbing that client's keyboard leader state. */
+void app_cancel_client_pointer(app_t *a);
 size_t app_pane_count(const app_t *a);
 
 /* Tabs. A tab is a layout tree; panes in every tab keep running. */

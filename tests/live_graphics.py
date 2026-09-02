@@ -156,12 +156,29 @@ def main():
         str(back[:6]),
     )
 
-    os.write(fd, b"\x01q")
-    drain(fd, idle=0.2, limit=2.0)
-    try:
-        os.kill(pid, 9)
-    except ProcessLookupError:
-        pass
+    # A second terminal has its own kitty image namespace. The first client's
+    # `sent` bit must not make a new viewer receive only a placement for pixels
+    # its terminal has never seen.
+    pid2, fd2 = spawn()
+    second = drain(fd2, idle=0.6, limit=30.0)
+    second_cmds = gfx_commands(second)
+    ok &= check(
+        "a joining client receives its own image transmission",
+        any(c.startswith(b"a=t") for c, _ in second_cmds),
+        str(second_cmds[:8]),
+    )
+    ok &= check(
+        "and joining it leaves the first client attached",
+        os.waitpid(pid, os.WNOHANG) == (0, 0),
+    )
+
+    os.write(fd2, b"\x01q")
+    drain(fd2, idle=0.2, limit=2.0)
+    for child in (pid, pid2):
+        try:
+            os.kill(child, 9)
+        except ProcessLookupError:
+            pass
     return 0 if ok else 1
 
 

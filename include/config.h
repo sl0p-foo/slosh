@@ -112,6 +112,13 @@ typedef struct {
 
 typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
 
+/* size_follows: which attached client sizes the shared screen. */
+enum {
+  SIZE_FOLLOWS_ACTIVE = 0, /* newest attach, then last input */
+  SIZE_FOLLOWS_SMALLEST,   /* min over clients: filler, never a crop */
+  SIZE_FOLLOWS_LARGEST,    /* max over clients: crops, never filler */
+};
+
 /* How many files one config may be built from: itself plus its includes. Small
  * and fixed, because a config assembled from more than this many pieces is a
  * thing nobody can read. */
@@ -305,6 +312,18 @@ typedef struct {
    * to match by default and there is no reason they must. */
   uint16_t status_pad;
   bool focus_follows_mouse;
+
+  /* Several terminals may attach to one session at once (the default).
+   * false restores the classic rule: a new client displaces the one before
+   * it, which is what anyone using attach-from-elsewhere as "move my session
+   * here and *close it there*" actually wants. */
+  bool multi_attach;
+  /* Whose size the shared screen takes when several clients are attached:
+   * the active client (newest attach, then last input -- the default), or
+   * the smallest / largest attached one. Smallest is the tmux rule: nobody
+   * is cropped and the roomiest terminal pays in filler; largest gives the
+   * big display everything and small ones a cursor-following crop. */
+  int size_follows;
 
   /* Whether Ctrl-D at an idle shell prompt exits that shell, the way the tty
    * line discipline would do it on POSIX.

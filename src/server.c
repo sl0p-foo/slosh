@@ -1,6 +1,6 @@
-/* The server: owns the panes and the layout, renders, and talks to at most one
- * attached client (D10). It outlives every client, which is the entire point —
- * agents keep running while you are gone. */
+/* The server: owns the panes and shared layout, renders once, and projects that
+ * screen into every attached client. It outlives all of them, which is the
+ * entire point — agents keep running while you are gone. */
 #define _GNU_SOURCE
 #include "server.h"
 
@@ -87,6 +87,14 @@ typedef struct {
   int fd;
   msg_reader_t reader;
   bool display;
+  uint16_t cols, rows, cell_w, cell_h;
+  uint16_t view_x, view_y, shown_cols, shown_rows;
+  uint64_t activity;
+  input_parser_t *in;
+  int64_t esc_due;
+  screen_t view;
+  bool view_init;
+  graphics_t *gfx;
   uint8_t *out; /* queued bytes, already framed */
   size_t out_len, out_off, out_cap;
 } conn_t;
@@ -94,22 +102,41 @@ typedef struct {
 typedef struct {
   app_t *app;
   screen_t screen;
-  input_parser_t *in;
+  input_parser_t *cmd_in;
   conn_t conns[MAX_CONNS];
   size_t nconns;
+  int active_fd;
+  uint64_t activity_seq;
+  uint16_t fallback_cell_w, fallback_cell_h;
+  bool pending_paint;
+  int64_t next_frame;
 } server_t;
 
-static conn_t *display_conn(server_t *s) {
+static conn_t *active_conn(server_t *s) {
   for (size_t i = 0; i < s->nconns; i++)
-    if (s->conns[i].display) return &s->conns[i];
+    if (s->conns[i].display && s->conns[i].fd == s->active_fd)
+      return &s->conns[i];
   return NULL;
 }
 
-static void conn_close(server_t *s, size_t i) {
+static size_t display_count(const server_t *s) {
+  size_t n = 0;
+  for (size_t i = 0; i < s->nconns; i++)
+    if (s->conns[i].display) n++;
+  return n;
+}
+
+static bool conn_close(server_t *s, size_t i) {
+  bool active = s->conns[i].fd == s->active_fd;
   close(s->conns[i].fd);
   msg_reader_free(&s->conns[i].reader);
+  input_free(s->conns[i].in);
+  if (s->conns[i].view_init) screen_free(&s->conns[i].view);
+  gfx_free(s->conns[i].gfx);
   free(s->conns[i].out);
   s->conns[i] = s->conns[--s->nconns];
+  if (active) s->active_fd = -1;
+  return active;
 }
 
 /* Push what is queued. Returns false when the connection is finished with --
@@ -171,13 +198,14 @@ static bool conn_send(conn_t *c, uint8_t type, const void *data, size_t len) {
   return conn_flush(c);
 }
 
-static void conn_drop(server_t *s, size_t i, uint8_t reason) {
+static bool conn_drop(server_t *s, size_t i, uint8_t reason) {
   conn_send(&s->conns[i], MSG_EXIT, &reason, 1);
-  conn_close(s, i);
+  return conn_close(s, i);
 }
 
-static void srv_event(const input_event_t *ev, void *ud) {
-  app_event(((server_t *)ud)->app, ev);
+static void request_paint(server_t *s, bool immediate) {
+  s->pending_paint = true;
+  if (immediate || !s->next_frame) s->next_frame = now_ms();
 }
 
 static int listen_socket(const char *path) {
@@ -229,26 +257,25 @@ static char *b64(const char *in, size_t len, size_t *out_len) {
  * a frame here silently was how a scrolled-away screenshot stayed parked on
  * the screen: its deletion left with the dropped bytes and was never owed
  * again. */
-static bool push_graphics(server_t *s) {
-  conn_t *c = display_conn(s);
-  if (!c) return true;
+static bool push_graphics(server_t *s, conn_t *c) {
   size_t len = 0;
-  const char *bytes = app_graphics(s->app, &len);
+  const char *bytes = app_graphics_view(s->app, c->gfx, c->view_x, c->view_y,
+                                        c->cols, c->rows, &len);
   if (!len) {
-    app_graphics_commit(s->app, true);
+    app_graphics_view_commit(c->gfx, true);
     return true;
   }
   bool ok = conn_send(c, MSG_OUTPUT, bytes, len);
-  app_graphics_commit(s->app, ok);
+  app_graphics_view_commit(c->gfx, ok);
   return ok;
 }
 
 /* The clipboard lives on the client's machine, not ours, so a copy travels as
- * OSC 52 for the outer terminal to honour. */
-static void push_clipboard(server_t *s) {
+ * OSC 52 for the outer terminal to honour. Input-driven copies name their
+ * originating connection; asynchronous pane copies use the active one. */
+static void push_clipboard_to(server_t *s, conn_t *c) {
   char *text = app_take_clipboard(s->app);
   if (!text) return;
-  conn_t *c = display_conn(s);
   if (c) {
     size_t b64len = 0;
     char *enc = b64(text, strlen(text), &b64len);
@@ -262,31 +289,220 @@ static void push_clipboard(server_t *s) {
   free(text);
 }
 
-/* Send whatever the last compose produced to the display client. */
-/* Returns whether the client has the frame (or there is none to owe it to).
+static void push_clipboard(server_t *s) {
+  push_clipboard_to(s, active_conn(s));
+}
+
+/* Send whatever the last compose produced to one display client. */
+/* Returns whether this client has the frame.
  * A refused send is a full outbox, not a dead client: the diff that was not
  * queued is lost, so the client's cells are unknown from here on and the next
  * attempt must be a full repaint. The caller keeps the paint pending, and the
  * outbox drains on POLLOUT between frames; a client that truly went away
  * shows up as a write error there, not here. */
-static bool push_frame(server_t *s) {
-  conn_t *c = display_conn(s);
-  if (!c) return true;
-  screen_render(&s->screen);
-  if (!s->screen.out_len) return true;
-  if (!conn_send(c, MSG_OUTPUT, s->screen.out, s->screen.out_len)) {
-    s->screen.force_full = true;
+static void update_viewport(conn_t *c, const screen_t *src) {
+  screen_follow_cursor(src, c->cols, c->rows, &c->view_x, &c->view_y);
+  c->shown_cols = src->cols > c->view_x ? (uint16_t)(src->cols - c->view_x) : 0;
+  c->shown_rows = src->rows > c->view_y ? (uint16_t)(src->rows - c->view_y) : 0;
+  if (c->shown_cols > c->cols) c->shown_cols = c->cols;
+  if (c->shown_rows > c->rows) c->shown_rows = c->rows;
+}
+
+static bool push_frame(server_t *s, conn_t *c) {
+  uint16_t old_x = c->view_x, old_y = c->view_y;
+  uint16_t old_cols = c->shown_cols, old_rows = c->shown_rows;
+  update_viewport(c, &s->screen);
+  screen_project(&c->view, &s->screen, c->view_x, c->view_y);
+  screen_render(&c->view);
+  if (!c->view.out_len) return true;
+  if (!conn_send(c, MSG_OUTPUT, c->view.out, c->view.out_len)) {
+    /* The projection never entered this client's stream. Keep mouse mapping
+     * tied to the last viewport we did enqueue, then retry this one in full. */
+    c->view_x = old_x;
+    c->view_y = old_y;
+    c->shown_cols = old_cols;
+    c->shown_rows = old_rows;
+    c->view.force_full = true;
     return false;
   }
   return true;
 }
 
-static void drop_display(server_t *s, uint8_t reason) {
+static bool push_clients(server_t *s) {
+  /* cmd_exec(), config reloads and canonical resizes request a terminal reset
+   * on the canonical screen. It is never rendered directly now, so carry that
+   * request into every independently diffed client view and consume it here.
+   * A newly attached view starts force_full on its own, including when there
+   * were no displays around to receive an earlier request. */
+  if (s->screen.force_full) {
+    for (size_t i = 0; i < s->nconns; i++)
+      if (s->conns[i].display) s->conns[i].view.force_full = true;
+    s->screen.force_full = false;
+  }
+
+  bool ok = true;
+  for (size_t i = 0; i < s->nconns; i++) {
+    conn_t *c = &s->conns[i];
+    if (!c->display) continue;
+    bool frame_ok = push_frame(s, c);
+    bool gfx_ok = push_graphics(s, c);
+    if (!(frame_ok && gfx_ok)) ok = false;
+  }
+  return ok;
+}
+
+/* Size the canonical screen by policy (size_follows). "active" takes the
+ * active client's size; "smallest"/"largest" fold every attached display, so
+ * any attach, resize or departure can move the canvas. The active client
+ * still supplies the cell pixel size either way: graphics go to terminals,
+ * and the active one is the best guess at what a cell is worth. */
+static void apply_canvas(server_t *s) {
+  conn_t *a = active_conn(s);
+  int policy = app_cfg_size_follows();
+  uint16_t cols = 0, rows = 0;
+  if (policy == SIZE_FOLLOWS_ACTIVE) {
+    if (a) {
+      cols = a->cols;
+      rows = a->rows;
+    }
+  } else {
+    for (size_t i = 0; i < s->nconns; i++) {
+      conn_t *c = &s->conns[i];
+      if (!c->display || !c->cols || !c->rows) continue;
+      if (!cols) {
+        cols = c->cols;
+        rows = c->rows;
+      } else if (policy == SIZE_FOLLOWS_SMALLEST) {
+        if (c->cols < cols) cols = c->cols;
+        if (c->rows < rows) rows = c->rows;
+      } else {
+        if (c->cols > cols) cols = c->cols;
+        if (c->rows > rows) rows = c->rows;
+      }
+    }
+  }
+  if (!cols || !rows) { /* nobody is looking: leave the canvas standing */
+    request_paint(s, true);
+    return;
+  }
+  bool changed = cols != s->screen.cols || rows != s->screen.rows;
+  uint16_t old_w = 0, old_h = 0;
+  app_cell_px(s->app, &old_w, &old_h);
+  uint16_t cell_w = a && a->cell_w ? a->cell_w : s->fallback_cell_w;
+  uint16_t cell_h = a && a->cell_h ? a->cell_h : s->fallback_cell_h;
+  bool px_changed = cell_w != old_w || cell_h != old_h;
+  if (changed) {
+    screen_resize(&s->screen, cols, rows);
+    app_resize(s->app, cols, rows);
+  }
+  if (px_changed) app_set_cell_px(s->app, cell_w, cell_h);
+  if (changed || px_changed) app_compose(s->app, &s->screen);
+  request_paint(s, true);
+}
+
+static void make_active(server_t *s, conn_t *c, bool new_activity) {
+  if (s->active_fd != c->fd) app_cancel_client_interaction(s->app);
+  s->active_fd = c->fd;
+  if (new_activity) c->activity = ++s->activity_seq;
+  apply_canvas(s);
+}
+
+static void promote_latest(server_t *s) {
+  conn_t *latest = NULL;
+  for (size_t i = 0; i < s->nconns; i++) {
+    conn_t *c = &s->conns[i];
+    if (c->display && (!latest || c->activity > latest->activity)) latest = c;
+  }
+  app_cancel_client_interaction(s->app);
+  if (!latest) {
+    s->active_fd = -1;
+    request_paint(s, true);
+    return;
+  }
+  s->active_fd = latest->fd;
+  apply_canvas(s);
+}
+
+/* A non-active departure changes nothing under "active", but under
+ * "smallest"/"largest" the canvas may have been sized by the very client
+ * that just left. */
+static void close_conn(server_t *s, size_t i) {
+  if (conn_close(s, i))
+    promote_latest(s);
+  else
+    apply_canvas(s);
+}
+
+static void drop_conn(server_t *s, size_t i, uint8_t reason) {
+  if (conn_drop(s, i, reason))
+    promote_latest(s);
+  else
+    apply_canvas(s);
+}
+
+static void drop_fd(server_t *s, int fd, uint8_t reason) {
   for (size_t i = 0; i < s->nconns; i++)
-    if (s->conns[i].display) {
-      conn_drop(s, i, reason);
+    if (s->conns[i].fd == fd) {
+      drop_conn(s, i, reason);
       return;
     }
+}
+
+typedef struct {
+  server_t *server;
+  conn_t *conn;
+  bool activity;
+} client_input_t;
+
+static void client_event(const input_event_t *ev, void *ud) {
+  client_input_t *ctx = ud;
+  server_t *s = ctx->server;
+  conn_t *c = ctx->conn;
+  bool user =
+      ev->kind == EV_KEY || ev->kind == EV_MOUSE || ev->kind == EV_PASTE;
+  if (user && !ctx->activity) {
+    if (s->active_fd != c->fd) app_cancel_client_interaction(s->app);
+    s->active_fd = c->fd;
+    c->activity = ++s->activity_seq;
+    ctx->activity = true;
+  }
+
+  if (ev->kind == EV_MOUSE) {
+    /* The event names the frame this client actually saw. Filler has no target;
+     * a cropped cell maps back into the canonical screen before hit-testing. */
+    if (ev->mx >= c->shown_cols || ev->my >= c->shown_rows) {
+      /* Filler has no hit target, but a release there still has to terminate
+       * a drag that began over real content. Otherwise the shared app keeps a
+       * button logically held until somebody happens to press a key. */
+      if (ev->maction == MOUSE_RELEASE) app_cancel_client_pointer(s->app);
+      return;
+    }
+    input_event_t mapped = *ev;
+    mapped.mx = (uint16_t)(mapped.mx + c->view_x);
+    mapped.my = (uint16_t)(mapped.my + c->view_y);
+    app_event(s->app, &mapped);
+    return;
+  }
+  app_event(s->app, ev);
+}
+
+static bool feed_client(server_t *s, conn_t *c, const uint8_t *data, size_t len,
+                        bool timeout) {
+  client_input_t ctx = {.server = s, .conn = c};
+  if (timeout)
+    input_timeout(c->in, client_event, &ctx);
+  else
+    input_feed(c->in, data, len, client_event, &ctx);
+  if (ctx.activity) apply_canvas(s);
+  if (input_pending(c->in)) c->esc_due = now_ms() + ESC_MS;
+  return ctx.activity;
+}
+
+static void queue_detach(int fds[MAX_CONNS], size_t *n, int fd) {
+  if (fd < 0) return;
+  for (size_t i = 0; i < *n; i++)
+    if (fds[i] == fd) return;
+  if (*n < MAX_CONNS) fds[(*n)++] = fd;
 }
 
 /* What the config watcher is watching: a directory per config file, and the
@@ -501,10 +717,11 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   signal(SIGCHLD, SIG_DFL);
 #endif
 
-  server_t s = {0};
+  server_t s = {.active_fd = -1};
   s.app = app_new(argv, cols, rows);
   if (s.app) app_set_session(s.app, name);
   if (!s.app) return 1;
+  app_cell_px(s.app, &s.fallback_cell_w, &s.fallback_cell_h);
   if (layout) {
     char err[256] = {0};
     if (!app_apply_layout_file(s.app, layout, true, err, sizeof err))
@@ -512,7 +729,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   }
   app_resize(s.app, cols, rows);
   screen_init(&s.screen, cols, rows);
-  s.in = input_new();
+  s.cmd_in = input_new();
 
   app_compose(s.app, &s.screen); /* a click resolves against a painted frame */
 
@@ -552,9 +769,8 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     watch_config(&watches);
   }
 
-  bool pending_paint = true;
-  int64_t next_frame = now_ms();
-  int64_t esc_due = 0;
+  s.pending_paint = true;
+  s.next_frame = now_ms();
 
   while (!g_stop && !app_should_quit(s.app)) {
     int fds[MAX_PANES];
@@ -576,15 +792,16 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     if (inofd >= 0) pfds[n++] = (struct pollfd){.fd = inofd, .events = POLLIN};
 
     int timeout = -1;
-    if (pending_paint) {
-      int64_t due = next_frame - now_ms();
+    if (s.pending_paint) {
+      int64_t due = s.next_frame - now_ms();
       timeout = due <= 0 ? 0 : (int)due;
     }
-    if (input_pending(s.in)) {
-      int64_t due = esc_due - now_ms();
-      int t = due <= 0 ? 0 : (int)due;
-      if (timeout < 0 || t < timeout) timeout = t;
-    }
+    for (size_t i = 0; i < s.nconns; i++)
+      if (s.conns[i].display && input_pending(s.conns[i].in)) {
+        int64_t due = s.conns[i].esc_due - now_ms();
+        int t = due <= 0 ? 0 : (int)due;
+        if (timeout < 0 || t < timeout) timeout = t;
+      }
     /* some things happen without an event: a toast expiring, a hover guide
      * arming under a pointer that is deliberately not moving */
     if (reload_due >= 0) {
@@ -595,7 +812,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     int self_due = app_next_deadline_ms(s.app);
     if (self_due >= 0 && (timeout < 0 || self_due < timeout)) {
       timeout = self_due;
-      pending_paint = true;
+      s.pending_paint = true;
     }
 
     int r = poll(pfds, (nfds_t)n, timeout);
@@ -618,6 +835,8 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       }
     }
 
+    int detach_fds[MAX_CONNS];
+    size_t ndetach = 0;
     for (size_t ci = 0; ci < s.nconns;) {
       struct pollfd *pf = &pfds[conn_slot + ci];
       if (pf->fd != s.conns[ci].fd) {
@@ -626,7 +845,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       }
       if (pf->revents & POLLOUT) {
         if (!conn_flush(&s.conns[ci])) {
-          conn_close(&s,
+          close_conn(&s,
                      ci); /* gone, or too far behind to still be a display */
           continue;
         }
@@ -638,7 +857,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       uint8_t buf[65536];
       ssize_t got = read(s.conns[ci].fd, buf, sizeof buf);
       if (got <= 0) {
-        conn_close(&s, ci); /* gone: the session keeps running regardless */
+        close_conn(&s, ci); /* gone: the session keeps running regardless */
         continue;
       }
       msg_reader_feed(&s.conns[ci].reader, buf, (size_t)got);
@@ -647,49 +866,89 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       while (!closed && msg_reader_next(&s.conns[ci].reader, &m)) {
         switch (m.type) {
         case MSG_HELLO:
-        case MSG_RESIZE:
-          if (m.type == MSG_HELLO && !s.conns[ci].display) {
-            /* now it is a client: the previous display is displaced */
-            for (size_t j = 0; j < s.nconns; j++)
+        case MSG_RESIZE: {
+          conn_t *c = &s.conns[ci];
+          bool fresh = m.type == MSG_HELLO && !c->display;
+          bool first_viewer = fresh && display_count(&s) == 0;
+          if (!c->display && !fresh) break;
+
+          /* multi_attach false is the classic rule: the new client displaces
+           * every display before it (EXIT_REPLACED, which old clients already
+           * understand). Dropping compacts the array, so the index -- and the
+           * pointer taken from it -- are re-derived afterwards. */
+          if (fresh && !app_cfg_multi_attach()) {
+            for (size_t j = 0; j < s.nconns;) {
               if (j != ci && s.conns[j].display) {
                 conn_drop(&s, j, EXIT_REPLACED);
                 if (j < ci) ci--; /* the array compacted under us */
-                break;
-              }
-            s.conns[ci].display = true;
-            /* Someone is now looking, which is the one moment a greeting
-             * makes sense: a headless or scripted session never gets here. */
-            app_splash(s.app);
-          }
-          if (m.len >= 4 && s.conns[ci].display) {
-            uint16_t c = (uint16_t)(m.data[0] << 8 | m.data[1]);
-            uint16_t rr = (uint16_t)(m.data[2] << 8 | m.data[3]);
-            if (c && rr) {
-              screen_resize(&s.screen, c, rr);
-              app_resize(s.app, c, rr);
+              } else
+                j++;
             }
-            /* The cell size arrived with it, from a client new enough to
-               * send one and a terminal willing to say. Zero means neither,
-               * and app_set_cell_px leaves the default standing. */
-            if (m.len >= 8) {
-              uint16_t cw = (uint16_t)(m.data[4] << 8 | m.data[5]);
-              uint16_t ch = (uint16_t)(m.data[6] << 8 | m.data[7]);
-              app_set_cell_px(s.app, cw, ch);
+            c = &s.conns[ci];
+            first_viewer = display_count(&s) == 0;
+          }
+
+          uint16_t cols = c->cols ? c->cols : s.screen.cols;
+          uint16_t rows = c->rows ? c->rows : s.screen.rows;
+          if (m.len >= 4) {
+            uint16_t got_cols = (uint16_t)(m.data[0] << 8 | m.data[1]);
+            uint16_t got_rows = (uint16_t)(m.data[2] << 8 | m.data[3]);
+            if (got_cols && got_rows) {
+              cols = got_cols;
+              rows = got_rows;
             }
           }
-          s.screen.force_full = true; /* a fresh client knows nothing */
-          app_graphics_reset(s.app);  /* including any image we had sent */
-          pending_paint = true;
-          next_frame = now_ms();
+          uint16_t cell_w = c->cell_w, cell_h = c->cell_h;
+          if (m.len >= 8) {
+            cell_w = (uint16_t)(m.data[4] << 8 | m.data[5]);
+            cell_h = (uint16_t)(m.data[6] << 8 | m.data[7]);
+          }
+
+          if (fresh) {
+            c->display = true;
+            c->cols = cols;
+            c->rows = rows;
+            c->cell_w = cell_w;
+            c->cell_h = cell_h;
+            c->in = input_new();
+            c->gfx = gfx_new();
+            screen_init(&c->view, cols, rows);
+            c->view_init = true;
+            make_active(&s, c, true);
+            if (first_viewer) {
+              app_splash(s.app);
+              app_compose(s.app, &s.screen);
+            }
+          } else {
+            bool local_resize = cols != c->cols || rows != c->rows;
+            c->cols = cols;
+            c->rows = rows;
+            c->cell_w = cell_w;
+            c->cell_h = cell_h;
+            if (local_resize) screen_resize(&c->view, cols, rows);
+            /* Unconditional: under "active" a non-active resize changes
+             * nothing (apply_canvas reads the active client), but under
+             * "smallest"/"largest" every display's size is a vote. */
+            apply_canvas(&s);
+          }
+          update_viewport(c, &s.screen);
+          request_paint(&s, true);
           break;
+        }
         case MSG_INPUT:
-          if (!s.conns[ci].display) break; /* only the client types */
-          input_feed(s.in, m.data, m.len, srv_event, &s);
-          esc_due = now_ms() + ESC_MS;
-          pending_paint = true;
+          if (!s.conns[ci].display) break; /* only display clients type */
+          feed_client(&s, &s.conns[ci], m.data, m.len, false);
+          /* A selection copy belongs to the terminal whose mouse released it,
+           * even if another client types before this poll cycle is painted. */
+          push_clipboard_to(&s, &s.conns[ci]);
+          if (app_detach_requested(s.app)) {
+            app_clear_detach(s.app);
+            queue_detach(detach_fds, &ndetach, s.conns[ci].fd);
+          }
+          request_paint(&s, true);
           break;
         case MSG_DETACH:
-          conn_drop(&s, ci, EXIT_DETACHED);
+          drop_conn(&s, ci, EXIT_DETACHED);
           closed = true;
           break;
         case MSG_CMD: {
@@ -697,14 +956,17 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
              * script written against one works against the other. */
           bool q = false;
           char *reply =
-              cmd_exec(s.app, &s.screen, s.in, (const char *)m.data, &q);
+              cmd_exec(s.app, &s.screen, s.cmd_in, (const char *)m.data, &q);
           const char *body = reply ? reply : "{\"error\":\"unknown command\"}";
           conn_send(&s.conns[ci], MSG_REPLY, body, strlen(body));
           free(reply);
           if (q) g_stop = 1;
           s.screen.force_full = true; /* it may have changed the layout */
-          pending_paint = true;
-          next_frame = now_ms();
+          if (app_detach_requested(s.app)) {
+            app_clear_detach(s.app);
+            queue_detach(detach_fds, &ndetach, s.active_fd);
+          }
+          request_paint(&s, true);
           break;
         }
         default: break;
@@ -713,15 +975,27 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
       if (!closed) ci++;
     }
 
-    if (input_pending(s.in) && now_ms() >= esc_due)
-      input_timeout(s.in, srv_event, &s);
+    for (size_t i = 0; i < s.nconns; i++) {
+      conn_t *c = &s.conns[i];
+      if (c->display && input_pending(c->in) && now_ms() >= c->esc_due) {
+        feed_client(&s, c, NULL, 0, true);
+        push_clipboard_to(&s, c);
+        if (app_detach_requested(s.app)) {
+          app_clear_detach(s.app);
+          queue_detach(detach_fds, &ndetach, c->fd);
+        }
+        request_paint(&s, true);
+      }
+    }
+    for (size_t i = 0; i < ndetach; i++)
+      drop_fd(&s, detach_fds[i], EXIT_DETACHED);
 
     for (size_t i = 0; i < npanes; i++) {
       if (pfds[pane_slot + i].revents & (POLLIN | POLLHUP)) {
         app_pump_fd(s.app, pfds[pane_slot + i].fd);
-        if (!pending_paint) {
-          pending_paint = true;
-          next_frame = now_ms() + FRAME_MS;
+        if (!s.pending_paint) {
+          s.pending_paint = true;
+          s.next_frame = now_ms() + FRAME_MS;
         }
       }
     }
@@ -747,12 +1021,24 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
          * include becomes ten minutes of wondering. */
         const char *why = app_config_complaint();
         app_toast(s.app, why && *why ? why : "config reloaded");
+        /* The knobs this loop lives by may have moved. multi_attach turned
+         * off evicts every display but the active one -- the reloaded config
+         * says one client, so one client it is -- and a changed size_follows
+         * re-sizes the canvas to the policy now in force. */
+        if (!app_cfg_multi_attach()) {
+          for (size_t i = 0; i < s.nconns;) {
+            if (s.conns[i].display && s.conns[i].fd != s.active_fd)
+              drop_conn(&s, i, EXIT_REPLACED);
+            else
+              i++;
+          }
+        }
+        apply_canvas(&s);
       } else {
         app_toast(s.app, err[0] ? err : "config reload failed");
       }
       s.screen.force_full = true;
-      pending_paint = true;
-      next_frame = now_ms();
+      request_paint(&s, true);
     }
 
     app_reap(s.app);
@@ -760,35 +1046,34 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     /* The event-less work: a selection drag held past a pane's edge scrolls
      * on a clock (app_next_deadline_ms is what woke the poll for it), and a
      * step that moved anything is a frame the client is owed. */
-    if (app_tick(s.app) && !pending_paint) {
-      pending_paint = true;
-      next_frame = now_ms();
+    if (app_tick(s.app) && !s.pending_paint) {
+      s.pending_paint = true;
+      s.next_frame = now_ms();
     }
 
+    /* A detach raised by a non-display control command belongs to the active
+     * display. Display input records its own fd above before another client can
+     * become active. */
     if (app_detach_requested(s.app)) {
       app_clear_detach(s.app);
-      drop_display(&s, EXIT_DETACHED);
+      drop_fd(&s, s.active_fd, EXIT_DETACHED);
     }
 
-    if (pending_paint && now_ms() >= next_frame) {
+    if (s.pending_paint && now_ms() >= s.next_frame) {
       app_compose(s.app, &s.screen);
-      /* Either push can find the outbox full and drop its frame. The model
-       * remembers what the client is owed (a full repaint, the graphics
-       * deletions and transmissions), so the retry that this keeps pending
-       * is what eventually says it -- the outbox drains on POLLOUT between
-       * frames. */
-      bool frame_ok = push_frame(&s);
-      bool gfx_ok = push_graphics(&s);
+      /* Each client remembers its own full repaint and image transmissions.
+       * One full outbox keeps a retry pending without holding anybody else up. */
+      bool clients_ok = push_clients(&s);
       push_clipboard(&s);
-      pending_paint = !(frame_ok && gfx_ok);
-      next_frame = now_ms() + (pending_paint ? FRAME_MS : 0);
+      s.pending_paint = !clients_ok;
+      s.next_frame = now_ms() + (s.pending_paint ? FRAME_MS : 0);
     }
   }
 
   while (s.nconns) conn_drop(&s, 0, EXIT_SESSION_ENDED);
   unlink(path);
   close(lfd);
-  input_free(s.in);
+  input_free(s.cmd_in);
   screen_free(&s.screen);
   app_free(s.app);
   return 0;

@@ -66,6 +66,7 @@ typedef struct {
   uint32_t x_off, y_off;           /* offset within the first cell, in pixels */
   uint32_t sx, sy, sw, sh;         /* source rectangle, in image pixels */
   uint32_t px_w, px_h;             /* the image's own size */
+  uint32_t cell_px_w, cell_px_h;   /* canonical pixels represented by a cell */
   int format, compression;
   const uint8_t *data; /* NULL once the client has it */
   size_t data_len;

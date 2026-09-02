@@ -88,6 +88,16 @@ size_t app_config_files(const char **out, size_t max) {
   return config_files(&CFG, out, max);
 }
 
+bool app_cfg_multi_attach(void) {
+  ensure_config();
+  return CFG.multi_attach;
+}
+
+int app_cfg_size_follows(void) {
+  ensure_config();
+  return CFG.size_follows;
+}
+
 /* ---- tree --------------------------------------------------------------- */
 #include "app_internal.h"
 
@@ -870,6 +880,20 @@ void app_free(app_t *a) {
 bool app_should_quit(const app_t *a) { return a->quit || a->ntabs == 0; }
 bool app_detach_requested(const app_t *a) { return a->detach; }
 void app_clear_detach(app_t *a) { a->detach = false; }
+
+void app_cancel_client_pointer(app_t *a) {
+  if (a->drag.kind == DRAG_SELECT) {
+    node_t *n = pane_by_id(a, a->drag.src);
+    if (n) pane_select_done(n->pane);
+  }
+  memset(&a->drag, 0, sizeof a->drag);
+  a->ptr_valid = false;
+}
+
+void app_cancel_client_interaction(app_t *a) {
+  a->prefix = false;
+  app_cancel_client_pointer(a);
+}
 
 /* ---- walking ------------------------------------------------------------ */
 

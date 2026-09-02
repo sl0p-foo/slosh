@@ -51,6 +51,18 @@ creating it if nobody is home; detaching (or losing the connection)
 leaves the session and everything in it running, and the same command
 reattaches.
 .PP
+Several terminals may attach to one session at once.  The newest attachment,
+then the client with the most recent keyboard or mouse activity, sets the
+shared screen size.  Resizing that active client resizes the session; resizing
+another client changes only its view.  A smaller view follows the cursor over
+the shared screen, and a larger one is filled with blank cells.  Detaching
+leaves the other clients attached.  Both halves are configurable:
+.B multi_attach
+restores the old displacing attach, and
+.B size_follows
+picks whose size rules \(em see
+.BR slosh (5).
+.PP
 A trailing
 .B \-\-
 .I command\ ...
@@ -58,9 +70,9 @@ is run in the first pane instead of the configured shell.
 Every other pane runs the shell the configuration names, or
 .BR $SHELL .
 .PP
-Attaching from inside a pane of the same session is refused, because the
-new client would displace the very view it was typed into; the error
-message names the escape hatches.
+Attaching from inside a pane of the same session is refused, because it would
+draw the session recursively inside itself; the error message names the
+escape hatches.
 Attaching to a
 .I different
 session from inside a pane is nesting, and allowed.
@@ -123,7 +135,7 @@ This is what the test suite drives.
 .TP
 .BI \-\-cols\  n ,\ \-\-rows\  n
 The screen size for the headless modes (default 80\(mu24).
-When attaching from a terminal, the terminal's own size wins.
+When attaching from a terminal, its size enters the latest-active rule above.
 .TP
 .BI \-\-idle\-ms\  n
 How long

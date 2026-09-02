@@ -2219,7 +2219,9 @@ void draw_floats(app_t *a, screen_t *s) {
 
 struct gfx_ctx {
   app_t *a;
+  graphics_t *out;
   node_t *leaf;
+  rect_t viewport;
   /* The float rects drawn over this leaf's cells: every visible float for a
    * tiled pane, the higher-raised ones for a float. A placement is clipped
    * against them below, because kitty images are drawn by the client's
@@ -2228,6 +2230,84 @@ struct gfx_ctx {
   const rect_t *occ;
   size_t nocc;
 };
+
+/* Crop one canonical placement to an attached client's viewport, then move it
+ * into that client's coordinates. Kitty's c=/r= scale and source rectangle
+ * make this more than clipping four integers: losing cells must lose the
+ * corresponding source pixels, or the image is squeezed rather than cropped. */
+static void gfx_place_view(graphics_t *out, gfx_req_t r, rect_t v) {
+  uint32_t x1 = (uint32_t)r.col + r.cols;
+  uint32_t y1 = (uint32_t)r.row + r.rows;
+  uint32_t vx1 = (uint32_t)v.x + v.w;
+  uint32_t vy1 = (uint32_t)v.y + v.h;
+  if (x1 <= v.x || r.col >= vx1 || y1 <= v.y || r.row >= vy1) return;
+
+  if (r.col < v.x) {
+    uint16_t old = r.cols, cut = (uint16_t)(v.x - r.col);
+    if (r.scale_cols) {
+      uint32_t drop = old ? (uint32_t)((uint64_t)r.sw * cut / old) : 0;
+      r.sx += drop;
+      r.sw -= drop;
+    } else {
+      uint32_t px = (uint32_t)cut * r.cell_px_w;
+      px = px > r.x_off ? px - r.x_off : 0;
+      r.x_off = 0;
+      uint32_t drop = px < r.sw ? px : r.sw;
+      r.sx += drop;
+      r.sw -= drop;
+    }
+    r.col = v.x;
+    r.cols = (uint16_t)(old - cut);
+  }
+  if (r.row < v.y) {
+    uint16_t old = r.rows, cut = (uint16_t)(v.y - r.row);
+    if (r.scale_rows) {
+      uint32_t drop = old ? (uint32_t)((uint64_t)r.sh * cut / old) : 0;
+      r.sy += drop;
+      r.sh -= drop;
+    } else {
+      uint32_t px = (uint32_t)cut * r.cell_px_h;
+      px = px > r.y_off ? px - r.y_off : 0;
+      r.y_off = 0;
+      uint32_t drop = px < r.sh ? px : r.sh;
+      r.sy += drop;
+      r.sh -= drop;
+    }
+    r.row = v.y;
+    r.rows = (uint16_t)(old - cut);
+  }
+  if ((uint32_t)r.col + r.cols > vx1) {
+    uint16_t old = r.cols, keep = (uint16_t)(vx1 - r.col);
+    if (r.scale_cols)
+      r.sw = old ? (uint32_t)((uint64_t)r.sw * keep / old) : 0;
+    else {
+      uint32_t px = (uint32_t)keep * r.cell_px_w;
+      px = px > r.x_off ? px - r.x_off : 0;
+      if (r.sw > px) r.sw = px;
+    }
+    r.cols = keep;
+  }
+  if ((uint32_t)r.row + r.rows > vy1) {
+    uint16_t old = r.rows, keep = (uint16_t)(vy1 - r.row);
+    if (r.scale_rows)
+      r.sh = old ? (uint32_t)((uint64_t)r.sh * keep / old) : 0;
+    else {
+      uint32_t px = (uint32_t)keep * r.cell_px_h;
+      px = px > r.y_off ? px - r.y_off : 0;
+      if (r.sh > px) r.sh = px;
+    }
+    r.rows = keep;
+  }
+  /* Keep the old emitter's representability rule: a very small source scaled
+   * over many cells can round a cropped source extent to zero, but it is still
+   * a live placement and must not disappear from the model. */
+  if (!r.cols || !r.rows) return;
+  if (r.scale_cols) r.scale_cols = r.cols;
+  if (r.scale_rows) r.scale_rows = r.rows;
+  r.col = (uint16_t)(r.col - v.x);
+  r.row = (uint16_t)(r.row - v.y);
+  gfx_place(out, &r);
+}
 
 static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
   struct gfx_ctx *c = ud;
@@ -2360,9 +2440,9 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
     if (!cols || !rows || !sw || !sh) return;
   }
 
-  gfx_place(
-      c->a->gfx,
-      &(gfx_req_t){
+  gfx_place_view(
+      c->out,
+      (gfx_req_t){
           .pane = leaf->id,
           .src_id = g->image_id,
           .gen = g->generation,
@@ -2385,17 +2465,22 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
           .sh = sh,
           .px_w = g->src_w,
           .px_h = g->src_h,
+          .cell_px_w = g->cell_px_w,
+          .cell_px_h = g->cell_px_h,
           .format = g->format,
           .compression = g->compression,
           .data = g->data,
           .data_len = g->data_len,
-      });
+      },
+      c->viewport);
 }
 
 /* One frame's worth of "what covers what": the visible floats, so every
  * leaf's placements can be clipped by the ones above it. */
 struct gfx_walk {
   app_t *a;
+  graphics_t *out;
+  rect_t viewport;
   rect_t occ[64];
   uint32_t raised[64];
   size_t n;
@@ -2411,16 +2496,24 @@ static void gfx_leaf_cb(node_t *n, void *ud) {
   size_t k = 0;
   for (size_t i = 0; i < w->n; i++)
     if (!n->floating || w->raised[i] > n->raised) occ[k++] = w->occ[i];
-  struct gfx_ctx ctx = {w->a, n, occ, k};
+  struct gfx_ctx ctx = {.a = w->a,
+                        .out = w->out,
+                        .leaf = n,
+                        .viewport = w->viewport,
+                        .occ = occ,
+                        .nocc = k};
   pane_graphics(n->pane, gfx_from_pane, &ctx);
 }
 
 /* Walk the visible tab's panes and produce the bytes the client's terminal
  * needs this frame. Borrowed until the next call. */
-const char *app_graphics(app_t *a, size_t *len) {
-  gfx_begin(a->gfx);
+const char *app_graphics_view(app_t *a, graphics_t *state, uint16_t x,
+                              uint16_t y, uint16_t cols, uint16_t rows,
+                              size_t *len) {
+  gfx_begin(state);
   if (a->ntabs && cur(a)->root) {
-    struct gfx_walk w = {.a = a};
+    struct gfx_walk w = {
+        .a = a, .out = state, .viewport = (rect_t){x, y, cols, rows}};
     node_t *fl[64];
     size_t nf = collect_floating(cur(a)->root, fl, 64, 0);
     for (size_t i = 0; i < nf && w.n < 64; i++) {
@@ -2430,13 +2523,21 @@ const char *app_graphics(app_t *a, size_t *len) {
     }
     walk(cur(a)->root, gfx_leaf_cb, &w);
   }
-  return gfx_flush(a->gfx, len);
+  return gfx_flush(state, len);
+}
+
+const char *app_graphics(app_t *a, size_t *len) {
+  return app_graphics_view(a, a->gfx, 0, 0, a->cols, a->rows, len);
 }
 
 void app_graphics_reset(app_t *a) { gfx_reset(a->gfx); }
 
 void app_graphics_commit(app_t *a, bool delivered) {
   gfx_commit(a->gfx, delivered);
+}
+
+void app_graphics_view_commit(graphics_t *state, bool delivered) {
+  gfx_commit(state, delivered);
 }
 
 char *app_graphics_json(app_t *a) {

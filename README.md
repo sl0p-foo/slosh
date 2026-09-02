@@ -77,8 +77,11 @@ slosh -s work      # a named session
 slosh ls           # what is running
 ```
 
-Sessions survive detaching, and your ssh connection dying. Then `C-a \` to
-split, `C-a ?` for the keys, `C-a p` for every command by name.
+Sessions survive detaching and your ssh connection dying, and several terminals
+can share one at once. The last client to interact controls the layout size;
+smaller terminals follow the cursor over a crop and larger ones get blank
+filler. Then `C-a \` to split, `C-a ?` for the keys, `C-a p` for every command
+by name.
 
 ## Docs
 

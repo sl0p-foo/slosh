@@ -62,7 +62,9 @@ slosh ls           # what is running
 ```
 
 Sessions keep running when you detach, or when your terminal or ssh connection
-goes away. Reattach with the same command.
+goes away. Several terminals can attach at once: the last one to interact sets
+the shared layout size, while the others see a cursor-following crop or blank
+filler. Reattach with the same command.
 
 **TIP:** press `C-a ?` for the key combo cheatsheet, or `C-a p` for the command palette.
 

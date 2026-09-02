@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Running slosh from inside slosh.
 
-A new client displaces the current display, so `slosh` typed into a pane of
-the very session it would attach used to displace the client showing that
-pane — you watched your own session detach, from inside it. The pane's
+`slosh` typed into a pane of the very session it would attach would feed the
+session's display back through one of its own panes: a recursive view with no
+useful stopping point. The pane's
 environment (SLOSH, SLOSH_SESSION) says which session this is, so the attach
 path refuses that one name and only that one name: any other is deliberate
 nesting, and the control verbs (`cmd`, `ls`) are how a program in a pane is

@@ -170,6 +170,12 @@ $(EXPR_EVAL): tests/expr_eval.c src/expr.c | build
 
 SHADER_TEST := build/shader_test
 
+SCREEN_TEST := build/screen_test
+
+$(SCREEN_TEST): tests/screen_test.c src/screen.c src/json.c $(VT_LIB) | build
+	$(call say,[LD],$@)
+	$(Q)$(CC) $(CFLAGS) tests/screen_test.c src/screen.c src/json.c $(VT_LIB) -o $@
+
 $(SHADER_TEST): tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) | build
 	$(call say,[LD],$@)
 	$(Q)$(CC) $(CFLAGS) tests/shader_test.c src/shader.c src/screen.c src/json.c src/expr.c $(VT_LIB) -o $@
@@ -182,10 +188,11 @@ build/.pass-%: tests/%.py tests/harness.py $(BIN) | build
 	@printf '  ok   %-24s %s\n' "$(notdir $<)" "$$(grep -c '^ok' build/.log-$* 2>/dev/null || echo ?) checks"
 	@touch $@
 
-test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(EXPR_TEST) $(EXPR_EVAL) $(PATH_TEST) ## unit + headless checks (fast)
+test: $(BIN) $(TEST_BIN) $(KDL_TEST) $(SHADER_TEST) $(SCREEN_TEST) $(EXPR_TEST) $(EXPR_EVAL) $(PATH_TEST) ## unit + headless checks (fast)
 	@./$(TEST_BIN) >/dev/null && ./$(KDL_TEST) >/dev/null && ./$(SHADER_TEST) >/dev/null \
+	  && ./$(SCREEN_TEST) >/dev/null \
 	  && ./$(EXPR_TEST) >/dev/null && ./$(PATH_TEST) >/dev/null \
-	  && printf '  ok   %-24s %s\n' "C unit tests" "5 binaries"
+	  && printf '  ok   %-24s %s\n' "C unit tests" "6 binaries"
 	@$(MAKE) --no-print-directory -j$(JOBS) $(PY_STAMPS)
 	@printf '\nall green\n'
 
