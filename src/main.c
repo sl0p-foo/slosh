@@ -25,6 +25,63 @@
 #include "png.h"
 #include "version.h"
 
+#ifndef _WIN32
+#include <errno.h>
+#include <sys/stat.h>
+
+#include "terminfo.h"
+
+/* Write the embedded xterm-ghostty terminfo entry into ~/.terminfo, which
+ * is the first place curses looks: no root, no package, no conflict with a
+ * ghostty the machine may install later (its own entry in the system
+ * database simply stops being needed). Written under every name the entry
+ * answers to, in the letter layout and Darwin's hashed one, because the
+ * lookup is by filename. */
+static int install_terminfo(void) {
+  const char *home = getenv("HOME");
+  if (!home || !*home) {
+    fputs("slosh: no $HOME to install into\n", stderr);
+    return 1;
+  }
+  /* dir, then name inside it: x/ and 78/ for xterm-ghostty, g/ and 67/ for
+   * the ghostty alias. */
+  static const char *const spots[][2] = {
+      {"x", "xterm-ghostty"},
+      {"78", "xterm-ghostty"},
+      {"g", "ghostty"},
+      {"67", "ghostty"},
+  };
+  char path[1024];
+  snprintf(path, sizeof path, "%s/.terminfo", home);
+  if (mkdir(path, 0755) != 0 && errno != EEXIST) {
+    fprintf(stderr, "slosh: mkdir %s: %s\n", path, strerror(errno));
+    return 1;
+  }
+  for (size_t i = 0; i < sizeof spots / sizeof *spots; i++) {
+    snprintf(path, sizeof path, "%s/.terminfo/%s", home, spots[i][0]);
+    if (mkdir(path, 0755) != 0 && errno != EEXIST) {
+      fprintf(stderr, "slosh: mkdir %s: %s\n", path, strerror(errno));
+      return 1;
+    }
+    snprintf(path, sizeof path, "%s/.terminfo/%s/%s", home, spots[i][0],
+             spots[i][1]);
+    FILE *f = fopen(path, "wb");
+    if (!f || fwrite(TERMINFO_GHOSTTY, 1, sizeof TERMINFO_GHOSTTY, f) !=
+                  sizeof TERMINFO_GHOSTTY) {
+      fprintf(stderr, "slosh: write %s: %s\n", path, strerror(errno));
+      if (f) fclose(f);
+      return 1;
+    }
+    fclose(f);
+  }
+  printf("installed xterm-ghostty (and the ghostty alias) into %s/.terminfo\n"
+         "new sessions use it; a session already running keeps the TERM it\n"
+         "chose at startup until it is restarted\n",
+         home);
+  return 0;
+}
+#endif
+
 int run_headless(const char *const argv[], uint16_t cols, uint16_t rows,
                  int idle_ms, bool script, const char *layout);
 
@@ -131,7 +188,7 @@ static int check_config(const char *path) {
 static void usage(void) {
   fputs("usage: slosh [-s NAME] [--layout FILE] [--no-reload]\n"
         "                [--version] [--dump-config] [--check [FILE]]\n"
-        "                [ls | cmd LINE | -- CMD...]\n",
+        "                [--install-terminfo] [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
 
@@ -186,6 +243,14 @@ int main(int argc, char **argv) {
       fputs(text, stdout);
       free(text);
       return 0;
+    } else if (strcmp(a, "--install-terminfo") == 0) {
+#ifdef _WIN32
+      fputs("slosh: terminfo is not a Windows concept; nothing to install\n",
+            stderr);
+      return 1;
+#else
+      return install_terminfo();
+#endif
     } else if (strcmp(a, "--version") == 0) {
       /* The same string the status line shows, so "which build is this" has
        * one answer whether you ask the binary or the session. */

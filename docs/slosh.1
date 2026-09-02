@@ -147,6 +147,19 @@ Print the version and exit.
 It is the same string the status line shows, so \(lqwhich build is
 this\(rq has one answer whether you ask the binary or the session.
 .TP
+.B \-\-install\-terminfo
+Write the
+.B xterm-ghostty
+terminfo entry the binary carries into
+.I ~/.terminfo
+(no root, no package), so panes on a machine without ghostty's entry
+get the full
+.B TERM
+instead of the
+.B xterm-256color
+fallback.
+See ENVIRONMENT.
+.TP
 .BI \-\-server\  name
 Run a session's server in the foreground.
 Internal: attaching spawns this for you.
@@ -355,6 +368,10 @@ when the machine's terminfo database has the entry (it ships with ghostty),
 .B xterm-256color
 when it does not: an entry curses cannot find makes editors exit on
 the spot and backspace guess.
+.B slosh \-\-install\-terminfo
+puts the real entry in
+.IR ~/.terminfo ;
+new sessions then use it.
 .TP
 .B SLOSH
 .B 1

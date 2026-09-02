@@ -83,7 +83,7 @@ $(BIN): $(OBJ) $(VT_LIB)
 	$(call say,[LD],$@)
 	$(Q)$(CC) $(OBJ) $(VT_LIB) -o $@ $(LDFLAGS)
 
-build/%.o: src/%.c build/version.h build/logo.h $(VT_LIB) | build
+build/%.o: src/%.c build/version.h build/logo.h build/terminfo.h $(VT_LIB) | build
 	$(call say,[CC],$<)
 	$(Q)$(CC) $(CFLAGS) -c $< -o $@
 
@@ -104,6 +104,16 @@ build/logo.h: logo.txt | build
 	$(Q){ printf '/* generated from logo.txt; edit that, not this */\n'; \
 	  printf 'static const char *const LOGO[] = {\n'; \
 	  sed -e 's/\\\\/\\\\\\\\/g' -e 's/"/\\\\"/g' -e 's/^/    "/' -e 's/$$/",/' logo.txt; \
+	  printf '};\n'; } > $@
+
+# The compiled xterm-ghostty terminfo entry, as bytes the binary carries so
+# `slosh --install-terminfo` can hand it to a machine that lacks it. See
+# contrib/terminfo/README.md for where the entry comes from.
+build/terminfo.h: contrib/terminfo/xterm-ghostty.terminfo | build
+	$(call say,[GEN],$@)
+	$(Q){ printf '/* generated from contrib/terminfo/xterm-ghostty.terminfo */\n'; \
+	  printf 'static const unsigned char TERMINFO_GHOSTTY[] = {\n'; \
+	  od -An -v -tx1 $< | sed -e 's/ \([0-9a-f][0-9a-f]\)/0x\1,/g'; \
 	  printf '};\n'; } > $@
 
 build/version.h: FORCE | build
