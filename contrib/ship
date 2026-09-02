@@ -17,9 +17,9 @@
 #   5. gh release           the five artifacts + SHA256SUMS on GitHub
 #   6. brew-release         pin the formula, push the tap
 #   7. arch                 bump the PKGBUILD, rebuild + sign + rsync the repo
-#   8. website              rebuild + publish slosh.foo, demo included, so the
+#   8. paperwork            commit the formula + PKGBUILD, push
+#   9. website              rebuild + publish slosh.foo, demo included, so the
 #                           in-browser slosh is the released one
-#   9. paperwork            commit the formula + PKGBUILD, push
 #
 # Every step is skipped when its result already exists, so a run that died at
 # notarization resumes where it stopped instead of rebuilding artifacts whose
@@ -180,10 +180,26 @@ else
     say "published to $ARCH_DEST for: $arches"
 fi
 
-# ── 8. the website, so the in-browser demo runs what was just released ─────
+# ── 8. the paperwork ────────────────────────────────────────────────────────
+# The formula and the PKGBUILD pin the tag's tarball, so they can only change
+# *after* the tag exists -- they land on master behind it. Committed before
+# the website builds: steps 6 and 7 dirtied these files, and a site built
+# from a tag checkout with uncommitted pins stamps its demo -dirty (which
+# is how v0.1.4's demo first said 0.1.4-dirty+webdemo).
+step "paperwork"
+if git diff --quiet contrib/homebrew/slosh.rb contrib/arch/PKGBUILD; then
+    say "nothing to commit"
+else
+    git add contrib/homebrew/slosh.rb contrib/arch/PKGBUILD
+    git commit -q -m "release: $tag paperwork -- formula and PKGBUILD pinned"
+    git push origin master
+    say "committed and pushed"
+fi
+
+# ── 9. the website, so the in-browser demo runs what was just released ─────
 # The demo's slosh is cross-compiled from the tree the site is built in, and
-# its version comes from contrib/version -- built from the tag checkout, the
-# demo says exactly what the release says (v0.1.2 shipped while the demo
+# its version comes from contrib/version -- built from the (now clean)
+# tag checkout, the demo says exactly what the release says (v0.1.2 shipped while the demo
 # still announced 0.1.0, which is the drift this step removes). Old tags
 # predate web/publish; for those the site is built from master instead,
 # which is newer than the tag, not older.
@@ -197,19 +213,6 @@ if git show "$tag:web/publish" >/dev/null 2>&1; then
 else
     say "$tag has no web/publish -- building the site from master"
     web/publish
-fi
-
-# ── 9. the paperwork ────────────────────────────────────────────────────────
-# The formula and the PKGBUILD pin the tag's tarball, so they can only change
-# *after* the tag exists -- they land on master behind it.
-step "paperwork"
-if git diff --quiet contrib/homebrew/slosh.rb contrib/arch/PKGBUILD; then
-    say "nothing to commit"
-else
-    git add contrib/homebrew/slosh.rb contrib/arch/PKGBUILD
-    git commit -q -m "release: $tag paperwork -- formula and PKGBUILD pinned"
-    git push origin master
-    say "committed and pushed"
 fi
 
 printf '\nshipped %s:\n' "$tag"
