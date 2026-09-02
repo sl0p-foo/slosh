@@ -66,6 +66,10 @@ goes away. Reattach with the same command.
 
 **TIP:** press `C-a ?` for the key combo cheatsheet, or `C-a p` for the command palette.
 
+## Reporting issues
+
+You can submit issues/pull requests on our [github repository](https://github.com/sl0p-foo/slosh).
+
 ## Where to go
 
 - **[Keys](keys.md)**: the leader, the defaults, rebinding, the palette.
@@ -77,5 +81,3 @@ goes away. Reattach with the same command.
 - **[Layouts](layouts.md)**: a session as a file you check in.
 - **[Workspaces](workspaces.md)**: projects on disk, opened by name.
 - **[Scripting](scripting.md)**: the control socket, and what a pane can draw.
-
-About 15k lines of C, no dependencies beyond libc and the vendored core.
