@@ -57,7 +57,7 @@ and `pacman -Sy slosh`. Details, and the PKGBUILD for building it yourself:
 
 Windows 10/11, x86-64 and ARM64, as one `slosh.exe` with no runtime
 dependency beyond the OS. Panes are ConPTYs and sessions are AF_UNIX sockets,
-so everything below works there too — see [docs/windows.md](docs/windows.md).
+so everything below works there too; see [docs/windows.md](docs/windows.md).
 
 Cross-compiled from a mac or a Linux box, then copied across:
 

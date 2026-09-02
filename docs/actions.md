@@ -23,8 +23,8 @@ it one.
 | `float`            | `f`     | [float](panes.md#floating-a-pane) it, and back |
 | `new-float`        | `F`     | a new floating shell, the throwaway terminal   |
 | `set-purpose`      | `P`     | tag it with a [purpose](layouts.md#purposes)   |
-| `rename-pane`      | —       | rename this pane (double-click does it too)    |
-| `clear-shaders`    | —       | clear whatever the program painted on it       |
+| `rename-pane`      | (none)       | rename this pane (double-click does it too)    |
+| `clear-shaders`    | (none)       | clear whatever the program painted on it       |
 | `pane-to-next-tab` | `>`     | push it to the tab after                       |
 | `pane-to-prev-tab` | `<`     | push it to the tab before                      |
 | `pane-to-new-tab`  | `b`     | break it out into a tab of its own             |
@@ -58,7 +58,7 @@ it one.
 | action                          | key         | does            |
 | ------------------------------- | ----------- | --------------- |
 | `new-tab`                       | `c`         | new tab         |
-| `rename-tab`                    | —           | rename this tab |
+| `rename-tab`                    | (none)           | rename this tab |
 | `close-tab`                     | `X`         | close this tab  |
 | `next-tab`                      | `Tab`       | next tab        |
 | `prev-tab`                      | `shift+Tab` | previous tab    |
@@ -68,8 +68,8 @@ it one.
 
 | action             | key    | does                |
 | ------------------ | ------ | ------------------- |
-| `scroll-up`        | —      | up a line           |
-| `scroll-down`      | —      | down a line         |
+| `scroll-up`        | (none)      | up a line           |
+| `scroll-down`      | (none)      | down a line         |
 | `scroll-page-up`   | `PgUp` | up a page           |
 | `scroll-page-down` | `PgDn` | down a page         |
 | `scroll-top`       | `Home` | to the oldest line  |
@@ -95,8 +95,8 @@ it one.
 
 ## Notes
 
-`scroll-up` and `scroll-down` have no default key — the mouse wheel does that
-job — which is exactly the case the palette exists for. So does `clear-shaders`,
+`scroll-up` and `scroll-down` have no default key (the mouse wheel does that
+job), which is exactly the case the palette exists for. So does `clear-shaders`,
 which undoes whatever the program in a pane painted on it
 ([shaders](shaders.md#prototyping-in-a-pane)); bind it if you leave
 `in_band_shaders` on. `rename-pane` and `rename-tab` are unbound too, because a

@@ -18,8 +18,8 @@ The binary appears at `build/win-<arch>/slosh.exe`; copy that to the Windows
 machine.
 
 For a release, `make -f Makefile.windows ARCH=<arch> dist` stages the same
-build as `dist/slosh-<version>-windows-<arch>.zip` — the binary plus the same
-licensing paperwork the linux tarballs carry — and `make release` builds both
+build as `dist/slosh-<version>-windows-<arch>.zip` (the binary plus the same
+licensing paperwork the linux tarballs carry), and `make release` builds both
 architectures alongside the linux and macOS artifacts, covered by the same
 `SHA256SUMS`.
 
@@ -27,7 +27,7 @@ architectures alongside the linux and macOS artifacts, covered by the same
 
 Everything the POSIX build does: panes, splits, tabs, detachable sessions, the
 config file and its live reload, the control socket, the mouse. Panes run
-`cmd.exe` by default — `%ComSpec%` if you have pointed it elsewhere, and
+`cmd.exe` by default; `%ComSpec%` if you have pointed it elsewhere, and
 `shell` in the config file wins over both. `slosh ls`, `slosh -s NAME cmd ...`
 and `slosh --script` behave as documented.
 
@@ -49,8 +49,8 @@ Three decisions carry most of it.
 inotify descriptor and a unix socket are all file descriptors, so one `poll()`
 covers them. Windows has no such union: a ConPTY hands back pipe `HANDLE`s and
 `WSAPoll` waits on `SOCKET`s and nothing else. Rather than rewrite the loop
-around `WaitForMultipleObjects` — which caps at 64 objects and cannot express
-`POLLOUT` — each non-socket source gets a pump thread that copies it into one
+around `WaitForMultipleObjects` (which caps at 64 objects and cannot express
+`POLLOUT`), each non-socket source gets a pump thread that copies it into one
 end of a loopback socketpair. `server.c`'s loop is then byte-for-byte the
 POSIX one, and only what sits behind the descriptor differs. The config watcher
 (`ReadDirectoryChangesW`) and the client's console input reach the loop the
@@ -64,7 +64,7 @@ untagged descriptor escaping into the loop is the one failure mode this scheme
 has, and it is worth closing completely.
 
 **A pane is a ConPTY.** `src/pty_win.c` implements the same three functions as
-`src/pty.c` — spawn, resize, close — on `CreatePseudoConsole`, with the pty's
+`src/pty.c` (spawn, resize, close) on `CreatePseudoConsole`, with the pty's
 `fd` being the pollable end of its pump pair and its `pid` a real Windows
 process id, so the existing kill and wait paths work unchanged.
 
@@ -74,8 +74,8 @@ Two details are worth knowing, because both are invisible until they bite.
 attached to one is *supposed* to take its stdio from that console, but
 `CreateProcess` copies the parent's standard handles into the child when
 `STARTF_USESTDHANDLES` is absent, and those win. With slosh's own stdout
-redirected — a pipe under ssh, a file under `--script`, a log under the daemon
-— the shell wrote its banner into slosh's output instead of into the pane. The
+redirected (a pipe under ssh, a file under `--script`, a log under the
+daemon), the shell wrote its banner into slosh's output instead of into the pane. The
 symptom was a pane with a correct *title* and an empty *body*, because ConPTY
 emits the title itself. `pty_win.c` clears the three standard handles for the
 duration of the `CreateProcess` call, leaving the child nothing to inherit.
@@ -87,19 +87,19 @@ learns its program is gone. A ConPTY gives no such signal: the output pipe
 belongs to the *pseudoconsole*, not to the child, so it stays open after the
 child exits and the read never ends. A pane whose shell had been told `exit`
 sat there looking alive forever. So the exit is waited for explicitly, on the
-process handle, and `ClosePseudoConsole` is what then produces the EOF — the
+process handle, and `ClosePseudoConsole` is what then produces the EOF: the
 console flushes what the child left behind and closes its end, and the output
 pump sees the end of the stream exactly as it would on a pty.
 
 **There are two quoting conventions, and cmd.exe uses the other one.** Windows
 passes a command *string*, not a vector, so the quoting rules belong to whoever
-parses it at the far end — and there are two sets. Ordinary programs are parsed
+parses it at the far end, and there are two sets. Ordinary programs are parsed
 by `CommandLineToArgvW`, where a literal quote is written `\"`. `cmd.exe` is
 not: it has its own rules, in which `\"` is a backslash followed by the end of
 a quoted section. Applying the first set to the second turned
 `cmd /c notepad "C:\...\config.kdl"` into an editor being handed
 `\"C:\...\config.kdl\"`, backslashes and all. So `cmd /c` is given the rest of
-the line verbatim — the caller composed a complete command with its own
+the line verbatim: the caller composed a complete command with its own
 quoting, exactly as it composes one for `sh -c`, and cmd.exe is the thing that
 should parse it. Everything else is still quoted for `CommandLineToArgvW`.
 
@@ -108,7 +108,7 @@ throughout, because that is what it splits and compares on. The environment
 supplies `\`, so the moment a literal is joined to a variable the result is
 mixed: `$HOME` is `C:\Users\you`, and the config lands at
 `C:\Users\you/.config/slosh/config.kdl`. The CRT opens that without complaint,
-which is why `--check` reported it as fine — but a GUI file dialog rejects it
+which is why `--check` reported it as fine, but a GUI file dialog rejects it
 outright, and `C-a e` produced a notepad saying "Not a valid file name" about a
 path that unambiguously existed. Anything handed to another program now goes
 through `sl_path_native()` first, which canonicalises it and settles the
@@ -116,7 +116,7 @@ separators; the internal representation is left alone.
 
 The reference counting is also why the per-pty state is not simply freed by
 `pty_close`: two pumps, a exit watcher and the caller all reach
-it, and a pump blocked on a dead pipe must not be waited for — that would hang
+it, and a pump blocked on a dead pipe must not be waited for: that would hang
 the session on the one program that misbehaves. Whoever finishes last frees.
 
 ## What is different
@@ -128,7 +128,7 @@ the session on the one program that misbehaves. Whoever finishes last frees.
   reconstructs its arguments on the command line (`--server`), rather than as a
   copy of the process that asked for it.
 - **No process groups on a pty**, so "what is this pane running" is answered
-  with the most recently started descendant of the pane's shell — the process
+  with the most recently started descendant of the pane's shell: the process
   `tcgetpgrp()` would have named. Windows offers the image name rather than a
   full argv without reading another process's memory, so pane titles are
   correspondingly shorter.
@@ -136,7 +136,7 @@ the session on the one program that misbehaves. Whoever finishes last frees.
   no EOF character: `^D` reaches cmd.exe and PowerShell as an ordinary
   keystroke and they ignore it, so the key that closes a pane on every other
   platform does nothing at all. `ctrl_d_exits` (on by default here, off
-  elsewhere) sends the shell the word `exit` instead — which is what you would
+  elsewhere) sends the shell the word `exit` instead, which is what you would
   have typed, and what makes the pane end through the shell's own cleanup and
   exit status rather than by being closed from outside. It stays out of the
   way unless all three hold: the shell itself in the foreground, the primary
@@ -144,7 +144,7 @@ the session on the one program that misbehaves. Whoever finishes last frees.
   itself; in an editor or a pager `^D` is half a page down; and a line with
   something on it is not an EOF anywhere.
 - **No editor is guaranteed.** `C-a e` prefers whichever console editor is
-  actually installed — `nvim`, `vim`, `vi`, `nano`, `micro`, `hx`, `edit` —
+  actually installed (`nvim`, `vim`, `vi`, `nano`, `micro`, `hx`, `edit`),
   because `notepad` is a GUI program: a pane running it draws nothing and looks
   broken. Microsoft Edit (`edit`) ships from Windows 11 24H2 and fills a pane
   like any other editor; it comes last because it arrives on its own, and so

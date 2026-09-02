@@ -60,7 +60,7 @@ leaves the other clients attached.  Both halves are configurable:
 .B multi_attach
 restores the old displacing attach, and
 .B size_follows
-picks whose size rules \(em see
+picks whose size rules; see
 .BR slosh (5).
 .PP
 A trailing
@@ -98,7 +98,7 @@ By default a running session re-reads it when it changes on disk, and a
 file that no longer parses is reported and otherwise ignored.
 .TP
 .BI \-\-check\  [file]
-Read a configuration \(em or, if the file looks like one, a layout \(em
+Read a configuration (or, if the file looks like one, a layout)
 the way a session would, and print everything it could not honour, one
 problem per line as
 .IR file:line:\ what .
@@ -129,7 +129,7 @@ Useful for seeing what a program draws without attaching anything.
 .TP
 .B \-\-script
 The headless driver: the same compositor reading control commands from
-standard input, one per line, and answering on standard output \(em the
+standard input, one per line, and answering on standard output: the
 same vocabulary the control socket speaks, without a server or a socket.
 This is what the test suite drives.
 .TP
@@ -160,7 +160,7 @@ or
 (a socket whose server no longer answers).
 .TP
 .BI cmd\  line
-Send one control command \(em a JSON object \(em to the session named by
+Send one control command (a JSON object) to the session named by
 .B \-s
 and print the reply.
 A detached session answers exactly as an attached one does.
@@ -176,9 +176,8 @@ slosh \-s work cmd '{"cmd":"panes"}'
 .SH KEYS
 Everything is the
 .B prefix
-\(em
-.B ctrl+a
-by default \(em and then one key.
+.RB ( ctrl+a
+by default), then one key.
 Pressing the prefix twice sends a literal
 .B ctrl+a
 to the program in the pane.
@@ -218,7 +217,7 @@ Minimise it into the strip along the bottom.
 .BR f ,\ F
 Float this pane above the layout, and back; a
 .I new
-floating shell \(em the throwaway terminal.
+floating shell: the throwaway terminal.
 .TP
 .B =\ (+),\ \-
 Grow / shrink a focused float about its centre
@@ -267,16 +266,16 @@ Detach, leaving the session running.
 .B q
 Quit the session.
 .PP
-Rebinding is one line of configuration \(em
+Rebinding is one line of configuration:
 .B keys { prefix "ctrl+b" }
-\(em and a
+and a
 .B keys
 block adds to the defaults rather than replacing them; binding a key to
 .B none
 takes it away.
 .SH MOUSE
 Clicking focuses.
-Dragging with the left button selects, and releasing copies \(em the
+Dragging with the left button selects, and releasing copies: the
 selection is the copy, sent to your terminal as an OSC\ 52 clipboard
 write.
 A drag held past a pane's top or bottom edge scrolls the viewport under
@@ -288,7 +287,7 @@ The middle button pastes the last selection.
 The wheel scrolls a pane's scrollback, or becomes arrow keys for a
 full-screen program without scrollback of its own.
 .PP
-A program that asks for the mouse gets it \(em clicks, wheel and all \(em
+A program that asks for the mouse gets it (clicks, wheel and all),
 and holding
 .B shift
 selects over it, the escape hatch every terminal shares.
@@ -300,8 +299,8 @@ Every button on the frame says what it does when the pointer rests on
 it.
 .SH SHADERS
 A pane can wear
-.I shaders
-\(em colour passes over its cells, each a pure function from (cell,
+.IR shaders :
+colour passes over its cells, each a pure function from (cell,
 position, strength) to that cell's colours.
 Text is never touched, only colour, so selection and copy read what was
 really there.
@@ -311,8 +310,8 @@ block in the configuration runs a chain over every pane
 .RB ( where=\(dqchrome\(dq
 runs a pass over the frame instead), a
 .B states { }
-block tints panes by what is true of them \(em dead, suspended,
-scrolled, unfocused, ringing a bell \(em and the strength of any pass
+block tints panes by what is true of them (dead, suspended,
+scrolled, unfocused, ringing a bell), and the strength of any pass
 can be an arithmetic expression over the cell's position, the cursor,
 focus and the clock, which is how scanlines, margins, spotlights and
 breathing frames are written in a config file without compiling
@@ -338,7 +337,7 @@ A running session re-reads the file when it changes (see
 .BR \-\-no\-reload ),
 keeping the working configuration when the new file is broken, and
 .B include
-composes files \(em a theme, a shared base \(em with the includer
+composes files (a theme, a shared base) with the includer
 winning.
 The format, every setting, and the layout files a session can be built
 from are
@@ -352,10 +351,10 @@ Set in every pane:
 .TP
 .B SLOSH
 .B 1
-\(em you are inside a pane.
+: you are inside a pane.
 .TP
 .B SLOSH_SESSION
-The name of the session this pane belongs to \(em which one of possibly
+The name of the session this pane belongs to: which one of possibly
 several, the part a program cannot work out for itself.
 Unset under
 .BR \-\-script ,

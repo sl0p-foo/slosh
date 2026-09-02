@@ -20,7 +20,7 @@ reads two kinds of document, sharing one syntax: a
 .I configuration
 (settings, colours, keys, shaders) and a
 .I layout
-(tabs, splits, commands \(em a session as a file).
+(tabs, splits, commands: a session as a file).
 Which schema a document is held to is decided by what is in it, not by
 which flag read it: a file with
 .B layout
@@ -36,8 +36,8 @@ prints them all, as a file you could have written, and
 reads yours back and reports every line it could not honour.
 A running session re-reads the configuration when it changes on disk: a
 file that no longer parses is refused whole (the running configuration
-stays), while anything smaller \(em an unknown setting, a binding that
-does not parse \(em skips that line, applies the rest, and says so.
+stays), while anything smaller (an unknown setting, a binding that
+does not parse) skips that line, applies the rest, and says so.
 Three settings are read at pane creation rather than reload, because of
 when they are needed:
 .BR shell ,
@@ -92,7 +92,7 @@ Every included file is watched for reload.
 .TP
 .BR gap\  \fIn\fR ,\ gap_aspect\  \fIn\fR
 Space between panes, in rows, and how many columns a row is worth
-(default 2, because a cell is about twice as tall as it is wide) \(em so
+(default 2, because a cell is about twice as tall as it is wide), so
 gaps and padding come out looking square.
 .TP
 .BI padding\  n\ ...
@@ -144,7 +144,7 @@ The glyphs themselves, each one string.
 .SH BEHAVIOUR
 .TP
 .BI focus_follows_mouse\  bool
-Hovering focuses \(em never at the cost of what you were doing: not
+Hovering focuses, never at the cost of what you were doing: not
 during a prefix, a drag, or a modal.
 .TP
 .BI multi_attach\  bool
@@ -179,7 +179,7 @@ to that shell, standing in for the EOF the tty would deliver on POSIX.
 On by default on Windows, which has no VEOF and so ignores the key
 entirely; off elsewhere, where the line discipline already does it.
 Only with the shell itself in the foreground, on the primary screen,
-and on an empty line \(em in an editor or a pager Ctrl-D is half a page
+and on an empty line; in an editor or a pager Ctrl-D is half a page
 down, and a line with something on it is not an EOF.
 .TP
 .BI scroll_lines\  n
@@ -187,7 +187,7 @@ Rows per wheel notch.
 .TP
 .BR scrollback\  \fIn\fR ,\ scrollback_bytes\  \fIn\fR
 Lines of history a pane keeps, and the per-pane byte ceiling that count
-runs into \(em whichever bites first wins, and 0 disables that limit.
+runs into: whichever bites first wins, and 0 disables that limit.
 Applied to the next pane you open: shrinking history retroactively
 would throw away output somebody is reading.
 .TP
@@ -205,7 +205,7 @@ so the hand is the throttle and this is the metronome.
 .TP
 .BR double_click_ms\  \fIn\fR ,\ word_separators\  \fIstring\fR
 How close two clicks must be to be a double, and what the word a
-double-click selects stops at \(em listed as separators, so CJK,
+double-click selects stops at, listed as separators, so CJK,
 accents and emoji need no table.
 Whitespace always separates.
 .TP
@@ -214,13 +214,13 @@ The frame clock while a shader animates.
 .TP
 .BR modal_scrim\  \fIn\fR ,\ dim_unfocused\  \fIn\fR ,\ float_shadow\  \fIn\fR
 How far everything behind a modal is pushed back, how far the panes you
-are not in are, and the shade a floating pane casts \(em each 0..255,
+are not in are, and the shade a floating pane casts: each 0..255,
 0 for off.
 .TP
 .BI keep_dead\  word
 Which finished panes stay on screen offering [re-run] and [close]:
 .B commands
-(panes that ran a real command \(em the default),
+(panes that ran a real command, the default),
 .BR all ,
 or
 .B none
@@ -250,8 +250,8 @@ A layout applied to projects that do not carry their own
 .IR slosh.layout .
 .SH THEME
 .B theme { }
-names every colour the compositor draws \(em frames, titles, tabs,
-buttons, modals, toasts \(em each its own entry, 48 of them, so one can
+names every colour the compositor draws (frames, titles, tabs,
+buttons, modals, toasts), each its own entry, 48 of them, so one can
 change without dragging thirty others along.
 .PP
 .EX
@@ -265,7 +265,7 @@ ship under
 .IR PREFIX/share/slosh/themes/ .
 .SH SHADERS
 A shader is a colour pass over a pane's cells: foreground, background,
-attributes \(em never the text, because rewriting text would desync
+attributes, never the text, because rewriting text would desync
 selection and copy.
 A
 .B shaders { }
@@ -292,7 +292,7 @@ the frame) and
 .PP
 .B amount
 may be an arithmetic expression instead of a number, evaluated per
-cell \(em how effects nobody built in are written without building
+cell: how effects nobody built in are written without building
 anything:
 .PP
 .EX
@@ -316,7 +316,7 @@ and
 .BR sin / cos
 taking degrees
 .RB ( PI
-is 180 \(em an angle, which is what it is here).
+is 180, an angle, which is what it is here).
 No loops, no recursion: a configuration cannot spin.
 An expression that does not compile drops that one pass with a warning,
 never the file.
@@ -324,7 +324,7 @@ never the file.
 .B states { }
 tints panes by what is
 .I true
-of them \(em the part you cannot discover by looking:
+of them, the part you cannot discover by looking:
 .PP
 .EX
 states {
@@ -334,7 +334,7 @@ states {
 }
 .EE
 .PP
-The states, most urgent first \(em exactly one wins:
+The states, most urgent first (exactly one wins):
 .BR dragging ,\  drop_hover ,\  drop_target ,\  dead ,\  suspended ,\  bell ,\  scrolled ,\  floating ,\  unfocused .
 Naming a state replaces its default outright, including with nothing,
 which is how one is turned off.
@@ -354,7 +354,7 @@ keys {
 A
 .B keys
 block adds to the defaults rather than replacing them.
-Actions are named words \(em the same names the command palette shows,
+Actions are named words: the same names the command palette shows,
 where any of them can be run without being bound at all.
 Bindings in a
 .B direct
@@ -363,7 +363,7 @@ program in every pane; the cheatsheet lists them apart, so its
 .I prefix then:
 caption stays true.
 .SH LAYOUT FILES
-A session as a document \(em what
+A session as a document: what
 .B slosh \-\-layout
 builds,
 .B dump\-layout
@@ -413,8 +413,8 @@ resolves against the file's own directory, so a checked-in layout means
 the same thing from any working directory.
 .TP
 .B suspended=true
-Laid out but running nothing until touched, showing what it would run
-\(em so twelve checked-out projects are not twelve running dev servers.
+Laid out but running nothing until touched, showing what it would run,
+so twelve checked-out projects are not twelve running dev servers.
 .TP
 .BR focus=true ,\ floating=true
 The pane you start in, within its tab; a pane that starts floating,
@@ -435,7 +435,7 @@ for the full search order).
 .TP
 .I PREFIX/share/slosh/
 The annotated default configuration and an example layout, plus the
-shipped themes, chrome presets and shader presets \(em each a file to
+shipped themes, chrome presets and shader presets, each a file to
 copy or
 .BR include .
 .SH SEE ALSO
