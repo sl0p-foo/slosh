@@ -5,6 +5,9 @@ in C on top of [libghostty-vt](https://github.com/ghostty-org/ghostty).
 
 ## Install
 
+Prebuilt binaries for every platform are on the
+[latest release](https://github.com/sl0p-foo/slosh/releases/latest) page.
+
 ### macOS
 
 With [Homebrew](https://brew.sh):

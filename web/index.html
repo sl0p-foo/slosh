@@ -155,45 +155,21 @@
   <h2>install</h2>
 
   <p>
-    Prebuilt binaries for the popular platforms live at
-    <a href="dist/">slosh.foo/dist</a> — one static file each, checksummed. The
-    tabs below are the short roads to one: an installer for linux, a brew formula
-    for macos, a signed pacman repo for arch, a zip for windows. Building from
-    source works too, but you never need to.
+    Prebuilt static binaries for Linux, macOS and Windows — x86-64 and ARM64 —
+    are on the
+    <a href="https://github.com/sl0p-foo/slosh/releases/latest">latest release</a>
+    page, checksummed. The macOS binary is signed and notarized.
   </p>
 
   <div class="install">
-    <input class="os" type="radio" name="os" id="os-linux" checked>
-    <input class="os" type="radio" name="os" id="os-macos">
+    <input class="os" type="radio" name="os" id="os-macos" checked>
     <input class="os" type="radio" name="os" id="os-arch">
-    <input class="os" type="radio" name="os" id="os-windows">
     <input class="os" type="radio" name="os" id="os-source">
 
     <div class="os-tabs">
-      <label for="os-linux">linux</label>
-      <label for="os-macos">macos</label>
+      <label for="os-macos">homebrew</label>
       <label for="os-arch">arch</label>
-      <label for="os-windows">windows</label>
       <label for="os-source">source</label>
-    </div>
-
-    <div class="os-panel" id="install-linux">
-      <div class="cmd" data-copy="curl -fsSL https://slosh.foo/install.sh | sudo sh">
-        <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | sudo sh</code></pre>
-        <button class="copy" type="button" aria-label="Copy command">copy</button>
-      </div>
-      <div class="cmd" data-copy="curl -fsSL https://slosh.foo/install.sh | PREFIX=$HOME/.local sh">
-        <pre><code><span class="prompt">$</span> curl -fsSL https://slosh.foo/install.sh | PREFIX=$HOME/.local sh   <span class="c"># no root</span></code></pre>
-        <button class="copy" type="button" aria-label="Copy command">copy</button>
-      </div>
-      <p class="aside">Piping a URL into a shell should make you flinch —
-      <a href="install.sh">read it first</a>, it is short: it picks the
-      prebuilt static binary for your architecture from
-      <a href="dist/">dist/</a>, checks it against the published SHA256SUMS,
-      and puts the one file in <code>PREFIX/bin</code>. The sudo in the first
-      line is only for writing to <code>/usr/local/bin</code>; the second line
-      needs no root at any step and lands it in <code>~/.local/bin</code>.
-      Nothing compiled, nothing else touched.</p>
     </div>
 
     <div class="os-panel" id="install-macos">
@@ -202,10 +178,9 @@
 <span class="prompt">$</span> brew install slosh</code></pre>
         <button class="copy" type="button" aria-label="Copy commands">copy</button>
       </div>
-      <p class="aside">No Homebrew? The linux tab's installer works here too —
-      on Apple silicon it fetches the signed prebuilt binary from
-      <a href="dist/">dist/</a>, verifies it, and installs that. No Xcode, no
-      build.</p>
+      <p class="aside">Works on macOS and Linux wherever Homebrew is installed.
+      Builds from source in under a minute — the only dependency is
+      <a href="https://ziglang.org">zig</a>, which the formula pulls in.</p>
     </div>
 
     <div class="os-panel" id="install-arch">
@@ -223,18 +198,6 @@ Server = https://slosh.foo/arch/$arch
       the same instructions at <a href="arch/">arch/</a>.</p>
     </div>
 
-    <div class="os-panel" id="install-windows">
-      <div class="cmd">
-        <pre><code><span class="prompt">&gt;</span> curl.exe -LO https://slosh.foo/dist/slosh-&lt;version&gt;-windows-x86_64.zip
-<span class="prompt">&gt;</span> tar xf slosh-*-windows-x86_64.zip   <span class="c"># tar ships with Windows 10+</span></code></pre>
-      </div>
-      <p class="aside">Pick the newest zip from <a href="dist/">dist/</a> —
-      x86-64 and ARM64, Windows 10/11. Inside is the same one binary:
-      <code>slosh.exe</code>, no runtime dependency beyond the OS. Panes are
-      ConPTYs, sessions are AF_UNIX sockets, everything on this page works
-      there — <a href="docs/windows.html">the details</a>.</p>
-    </div>
-
     <div class="os-panel" id="install-source">
       <div class="cmd">
         <pre><code><span class="prompt">$</span> git clone https://slosh.foo/src slosh &amp;&amp; cd slosh
@@ -242,10 +205,11 @@ Server = https://slosh.foo/arch/$arch
 <span class="prompt">$</span> make           <span class="c"># about a second</span>
 <span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
       </div>
-      <p class="aside">For the curious — the tabs above hand you this same
-      binary prebuilt. Needs <a href="https://ziglang.org">zig</a> 0.16 and
+      <p class="aside">Needs <a href="https://ziglang.org">zig</a> 0.16 and
       nothing else: no cmake, no autotools, no libraries. The result is one
-      static binary.</p>
+      static binary. Windows cross-compilation is
+      <code>make&nbsp;-f&nbsp;Makefile.windows</code> —
+      <a href="docs/windows.html">the details</a>.</p>
     </div>
   </div>
 </section>
