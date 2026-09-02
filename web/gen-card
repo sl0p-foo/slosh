@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Render the social-embed card, web/card.png, from logo.txt.
+
+The card is what Discord/X/Slack show when someone pastes slosh.foo: a
+1200x630 PNG of the logo in the site's palette (contrib/themes/sl0p.kdl --
+hot pink on near-black) over the tagline. The logo is drawn as geometry,
+exactly like web/gen-logo-mask does for the page (half-block cells, 6x10
+units, horizontal runs merged, EPS overlap against seam pinstripes), so the
+card can never disagree with the mask.
+
+Like gen-logo-mask this is run by hand when logo.txt or the palette moves,
+and the result is committed; build-site only copies it. Needs Pillow.
+"""
+
+import os
+import sys
+
+from PIL import Image, ImageDraw, ImageFont
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+LOGO = os.path.join(os.path.dirname(HERE), "logo.txt")
+OUT = os.path.join(HERE, "card.png")
+
+# site.css :root, verbatim.
+BG = "#0b0b0e"
+FG = "#e8e8ea"
+DIM = "#8a8a95"
+PINK = "#ff5fd7"
+
+W, H = 1200, 630
+SS = 2  # supersample, for crisp downscaled edges and text
+
+# One logo cell in device pixels (at 1x). 6x10 units in the mask; the same
+# ratio here, just bigger.
+CW, CH, EPS = 19, 32, 1.0
+
+TAGLINE = "a modern terminal multiplexer"
+SUBLINE = "bringing the bling back to your shells"
+SITE = "https://slosh.foo"
+
+
+def runs(row, want):
+    out, start = [], None
+    for i, ch in enumerate(row + " "):
+        hit = ch in want
+        if hit and start is None:
+            start = i
+        if not hit and start is not None:
+            out.append((start, i))
+            start = None
+    return out
+
+
+def font(size, *names):
+    for name in names:
+        for d in ("/usr/share/fonts/TTF", "/usr/share/fonts/truetype/dejavu"):
+            p = os.path.join(d, name)
+            if os.path.exists(p):
+                return ImageFont.truetype(p, size)
+    sys.exit(f"gen-card: none of {names} found -- install DejaVu fonts")
+
+
+lines = open(LOGO).read().rstrip("\n").splitlines()
+cols = max(len(l) for l in lines)
+
+img = Image.new("RGB", (W * SS, H * SS), BG)
+draw = ImageDraw.Draw(img)
+
+cw, ch, eps = CW * SS, CH * SS, EPS * SS
+lw, lh = cols * cw, len(lines) * ch
+lx, ly = (W * SS - lw) // 2, 150 * SS
+
+for j, row in enumerate(lines):
+    for a, b in runs(row, "\u2580\u2588"):  # top halves
+        draw.rectangle(
+            [lx + a * cw, ly + j * ch - eps, lx + b * cw, ly + j * ch + ch / 2 + eps],
+            fill=PINK,
+        )
+    for a, b in runs(row, "\u2584\u2588"):  # bottom halves
+        draw.rectangle(
+            [
+                lx + a * cw,
+                ly + j * ch + ch / 2 - eps,
+                lx + b * cw,
+                ly + (j + 1) * ch + eps,
+            ],
+            fill=PINK,
+        )
+
+mono = font(36 * SS, "DejaVuSansMono.ttf")
+mono_sm = font(27 * SS, "DejaVuSansMono.ttf")
+
+
+def centred(text, y, fnt, fill):
+    tw = draw.textlength(text, font=fnt)
+    draw.text(((W * SS - tw) / 2, y * SS), text, font=fnt, fill=fill)
+
+
+centred(TAGLINE, 442, mono, FG)
+centred(SUBLINE, 502, mono_sm, DIM)
+centred(SITE, 560, mono_sm, PINK)
+
+img = img.resize((W, H), Image.LANCZOS)
+img.save(OUT, optimize=True)
+print(
+    f"gen-card: {W}x{H}, logo {lw // SS}x{lh // SS} at ({lx // SS},{ly // SS}) -> {os.path.relpath(OUT, HERE)}"
+)

@@ -37,6 +37,11 @@ publish() {
 sed "s/@VERSION@/v$(cat "$root/VERSION")/g" "$here/index.html" > "$out/index.html"
 cp "$here/site.css" "$out/"
 
+# The social-embed card (og:image / twitter:image). Rendered by hand with
+# web/gen-card when logo.txt or the palette changes, committed, and only
+# copied here -- regenerating would make Pillow a build dependency.
+cp "$here/card.png" "$out/"
+
 # The docs, rendered by the same generator `make docs` uses.
 python3 "$root/contrib/gen-docs" "$out/docs"
 
