@@ -10,19 +10,13 @@
 </head>
 <body>
 
-<!-- The little logo: the big one, shrunk into the corner the stage's
-     v-centering leaves empty. It fades in when the hero scrolls away
-     (the observer at the bottom of the page) and is a road back up. -->
 <a class="logo-float" href="#" aria-label="slosh — back to top">
-<span class="logo-art"></span>
+    <span class="logo-art"></span>
 </a>
 
 <main>
 
 <header class="hero">
-<!-- The logo as geometry (a masked div; see .logo-art in site.css): the
-     ascii original lives in logo.txt, but block glyphs do not survive every
-     platform's font fallback, and rects do. -->
 <div class="logo logo-art" role="img" aria-label="slosh"></div>
   <p class="tagline">a modern terminal multiplexer written in C on top of
   <a href="https://github.com/ghostty-org/ghostty">libghostty-vt</a>.</p>
@@ -35,10 +29,6 @@
 </header>
 
 <section id="different" style='margin-top:0;'>
-  <!-- The feature tour: a terminal pinned on the left, the features scrolling
-       by on the right. The step under the middle of the viewport is the
-       active one, and its data-cast picks which recording the terminal
-       replays (web/recordings/demos/, one script per step). -->
   <div class="scrolly">
     <div class="scrolly-stage">
       <div class="stage-pin">
@@ -54,15 +44,13 @@
 
     <div class="scrolly-steps">
       <article class="step active" data-cast="panes">
-        <h3>Panes and tabs, the way your hands expect.</h3>
-        <p>One chord to split — or just click, because everything drawn is a
-        real target.</p>
+        <h3>Panes and tabs, what else?</h3>
+        <p>One keycombo to split — or just click, because we don't hate the mouse.</p>
         <ul>
           <li>click the middle of a border to split toward it</li>
           <li>drag the gap to move the boundary</li>
-          <li>drag a pane by its title — the middle swaps, an edge band
-          tucks it in beside</li>
-          <li>zoom, tab away, come back — nothing lost</li>
+          <li>drag a pane by its title </li>
+          <li>zoom, tab away, come back — nothing lost!</li>
         </ul>
       </article>
 
@@ -72,16 +60,14 @@
         exactly where you left it.</p>
         <ul>
           <li>detach mid-thought, reattach mid-thought</li>
-          <li>keep separate sessions for separate lives — hop between them</li>
-          <li>a command that died while you were away keeps its output, its
-          exit status, and offers <code>[re-run]</code></li>
+          <li>keep separate sessions for separate lives; hop between them</li>
+          <li>a command that died while you were away keeps its output and exit status</li>
         </ul>
       </article>
 
       <article class="step" data-cast="reflow">
-        <h3>Layouts that reflow the way you expect.</h3>
-        <p>The arrangement is derived from the window, never stored — so every
-        size gets a sensible layout, and nothing drifts.</p>
+        <h3>Responsive terminal layouts.</h3>
+        <p>Layouts (re)flow in the way you expect, nothing drifts.</p>
         <ul>
           <li>quarter-turn the whole layout in place</li>
           <li>shrink until boxes become a tidy list</li>
@@ -91,17 +77,17 @@
 
       <article class="step" data-cast="config">
         <h3>Make it yours, live.</h3>
-        <p>One config file, re-read the moment you save — and <kbd>C-a</kbd>
-        <kbd>e</kbd> opens it right there, in a pane.</p>
+        <p>One config file, hot-reloaded. Press <kbd>C-a</kbd>
+        <kbd>e</kbd> to $EDITOR it in place.</p>
         <ul>
-          <li>retheme the whole session in one substitution</li>
-          <li>padding, gaps, titles — every knob, applied as you watch</li>
-          <li><code>compact true</code>: a different school of borders entirely</li>
+          <li>retheme the whole session with one magic vimfu substitution</li>
+          <li>padding, gaps, titles: every knob, applied as you watch</li>
+          <li><code>compact true</code>: for those who value their terminal real estate.</li>
         </ul>
       </article>
 
       <article class="step" data-cast="shaders">
-        <h3>Colour passes, written as expressions.</h3>
+        <h3>Nifty visual effects, written as expressions.</h3>
         <p>Dim, tint, rulers, spotlights — over a pane's cells or over its
         frame, with strengths computed from <code>x</code>, <code>y</code>, the
         cursor, the clock.</p>
@@ -129,7 +115,6 @@
         <p><kbd>C-a</kbd> <kbd>F</kbd> drops a throwaway shell on top of
         whatever you are doing — a monitor, a man page, a quick command.</p>
         <ul>
-          <li>it casts a shadow, so it never passes for a tile</li>
           <li>move it with the keys that move boundaries; grow it about its
           centre</li>
           <li><kbd>C-a</kbd> <kbd>?</kbd> — a cheatsheet built from the
@@ -139,16 +124,6 @@
           flinched</li>
         </ul>
       </article>
-
-                        <!--
-      <article class="step step-cta">
-        <h3>Convinced?</h3>
-        <p class="hero-links">
-          <a class="btn" href="#install">install</a>
-          <a class="btn ghost" href="demo/">try it in the browser</a>
-        </p>
-      </article>
--->
     </div>
   </div>
 
@@ -164,12 +139,6 @@
   — reload for a fresh one. About 11&nbsp;MiB streams in while it boots.
   <a href="demo/">Prefer a whole tab?</a></p>
 
-  <!-- The facade: this section costs a poster until the button is pushed.
-       The click swaps in an iframe on demo/ -- an iframe because the
-       emulator's emscripten glue owns its globals by name, and isolation is
-       what keeps this page's scripts and that blob out of each other's
-       namespaces. Phones navigate to the page instead (the script at the
-       bottom): wasm under a soft keyboard in an iframe helps nobody. -->
   <div class="try-stage" id="try_stage">
     <button class="boot" type="button" id="boot_btn">boot the machine</button>
     <p class="aside">riscv64 · TinyEMU, compiled to wasm · yours until you reload</p>
@@ -185,16 +154,14 @@
 <section id="install">
   <h2>install</h2>
 
-<p>Prebuilt binaries for the popular platforms live at
-<a href="dist/">slosh.foo/dist</a> — one static file each, checksummed. The
-tabs below are the short roads to one: an installer for linux, a brew formula
-for macos, a signed pacman repo for arch, a zip for windows. Building from
-source works too, but you never need to.</p>
+  <p>
+    Prebuilt binaries for the popular platforms live at
+    <a href="dist/">slosh.foo/dist</a> — one static file each, checksummed. The
+    tabs below are the short roads to one: an installer for linux, a brew formula
+    for macos, a signed pacman repo for arch, a zip for windows. Building from
+    source works too, but you never need to.
+  </p>
 
-  <!-- Pure CSS tabs: hidden radios, labels drawn like a slosh tab strip,
-       one panel per platform. The only JavaScript is the preselect at the
-       bottom of the page, which checks the radio for the platform reading
-       this; without it the linux tab is simply checked in the HTML. -->
   <div class="install">
     <input class="os" type="radio" name="os" id="os-linux" checked>
     <input class="os" type="radio" name="os" id="os-macos">
@@ -289,16 +256,10 @@ Server = https://slosh.foo/arch/$arch
 </footer>
 
 <script>
-// One knob: every cast on this page plays this much faster than authored.
-// The scripts under web/recordings/demos/ keep their own pacing; this is
-// the front page deciding its visitors' time is short.
 window.SLOSHCAST_SPEED = 1.75;
 </script>
 <script src="recordings/player.js"></script>
 <script>
-// The scripts on the page: the copy buttons, the install preselect and the
-// feature tour. No framework, no tracker, nothing fetched from anywhere but
-// here.
 for (const box of document.querySelectorAll(".cmd[data-copy]")) {
   const btn = box.querySelector(".copy");
   btn.addEventListener("click", async () => {
@@ -312,17 +273,6 @@ for (const box of document.querySelectorAll(".cmd[data-copy]")) {
   });
 }
 
-// The little logo in the corner: on while the tour is what you are looking
-// at. The whole hero scrolling away opens the show (the whole hero, not
-// just the big logo: the buttons sit below it, and the little one was
-// arriving on top of them); the try section arriving closes it -- the dead
-// space the little one floats in is the tour's, and over the demo box or
-// the install tabs it is just in the way. The tour itself is the wrong
-// closing signal: its negative bottom margin leaves its border box under
-// the sections that follow. The rootMargin keeps the last tour step from
-// tripping it (the try section already rides high in the viewport there,
-// pulled up by the tour's exit margin), and a section already scrolled
-// past counts as arrived, not as gone.
 const heroEl = document.querySelector(".hero");
 const littleLogo = document.querySelector(".logo-float");
 const tryEl = document.getElementById("try");
@@ -346,11 +296,6 @@ if (heroEl && littleLogo && "IntersectionObserver" in window) {
       { rootMargin: "0px 0px -45% 0px" }
     ).observe(tryEl);
 
-  // The observers watch sections; this watches the terminal itself. At the
-  // tour's exit the stage unpins and is dragged up through the logo's air
-  // before the try section crosses its line, and no section boundary says
-  // so -- but two rects do. Whenever the player would touch the logo, the
-  // logo yields; one rAF-throttled measure per scroll frame.
   const stagePinEl = document.querySelector(".stage-pin");
   let measuring = false;
   const collide = () => {
@@ -375,11 +320,6 @@ if (heroEl && littleLogo && "IntersectionObserver" in window) {
   collide();
 }
 
-// ...and vertically centred in the air between the viewport top and the
-// pinned terminal's top edge. That edge is (viewport - the stage's lift
-// padding) / 2 - half the player, which moves with both the window and the
-// player's own height -- so it is measured, not guessed in CSS. Hidden when
-// the air runs out rather than allowed to overlap the terminal.
 const stagePin = document.querySelector(".stage-pin");
 function placeLittleLogo() {
   const player = stagePin && stagePin.querySelector(".stage-active");
@@ -393,41 +333,30 @@ function placeLittleLogo() {
 if (stagePin && littleLogo) {
   placeLittleLogo();
   window.addEventListener("resize", placeLittleLogo);
-  // The players size themselves when their casts arrive -- and the pin is a
-  // 100vh box that never resizes, so watch the players, not the pin.
   const ro = new ResizeObserver(placeLittleLogo);
   for (const el of stagePin.querySelectorAll("[data-sloshcast]")) ro.observe(el);
 }
 
-// The demo, booted on request: the iframe exists only after the click, so
-// the front page keeps costing two files until someone asks for a machine.
-// Small screens go to the page itself instead of embedding it.
 const bootBtn = document.getElementById("boot_btn");
 if (bootBtn) {
   const stage = document.getElementById("try_stage");
   const live = document.getElementById("try_live");
-  const poster = [...stage.children]; // stashed while the machine runs
+  const poster = [...stage.children];
   bootBtn.addEventListener("click", () => {
     if (matchMedia("(max-width: 54rem)").matches) {
       location.href = "demo/";
       return;
     }
-    stage.classList.add("booted"); // full height first: the guest reads the
-    const frame = document.createElement("iframe"); // room once, at boot
+    stage.classList.add("booted");
+    const frame = document.createElement("iframe");
     frame.src = "demo/?embed=1";
     frame.className = "try-frame";
     frame.title = "slosh, running in a riscv64 machine in this page";
     stage.replaceChildren(frame);
-    // The stage just grew from a strip to most of a viewport, which shoves
-    // the layout around under the reader; follow it, and land the machine
-    // centred. Smooth for free -- the page scrolls smooth globally.
     stage.scrollIntoView({ block: "center" });
     frame.addEventListener("load", () => frame.contentWindow.focus());
     live.hidden = false;
   });
-  // Power off: dropping the iframe out of the DOM tears the whole machine
-  // down -- emulator, kernel, disk cache, the lot -- and the poster returns
-  // from the stash, offering to do it all again.
   document.getElementById("kill_btn").addEventListener("click", () => {
     stage.classList.remove("booted");
     stage.replaceChildren(...poster);
@@ -436,27 +365,18 @@ if (bootBtn) {
   });
 }
 
-// The install box opens on the platform reading it; the tabs are CSS.
 const ua = navigator.userAgent;
 const os = /Windows/i.test(ua) ? "windows" : /Mac/i.test(ua) ? "macos" : "linux";
 const radio = document.getElementById("os-" + os);
 if (radio) radio.checked = true;
 
-// The feature tour: the step under the middle of the viewport is active,
-// and picks which recording plays on the pinned terminal.
 const tour = document.querySelector(".scrolly");
 if (tour) {
   const mounts = [...tour.querySelectorAll(".stage-pin [data-sloshcast]")];
   const steps = [...tour.querySelectorAll(".step")];
   const ctl = (el) => el._sloshcast;
-  let current = null; // the first activation always plays
+  let current = null;
 
-  // A step is a road to itself: clicking anywhere in a dimmed article
-  // glides it to the middle of the viewport, the exact spot where the
-  // observer below activates it -- so the click also switches the
-  // recording, through the same door scrolling uses. The active step does
-  // not react: clicks there are for reading and selecting, not going where
-  // you already are. A selection is not a click, and a link is a link.
   for (const s of steps) {
     s.addEventListener("click", (ev) => {
       if (s.classList.contains("active")) return;
@@ -472,7 +392,7 @@ if (tour) {
     for (const el of mounts) {
       const on = el.dataset.name === name;
       el.classList.toggle("stage-active", on);
-      if (!ctl(el)) continue; // still fetching; the sloshcast event catches up
+      if (!ctl(el)) continue;
       if (on) {
         ctl(el).restart();
         ctl(el).play();
@@ -492,7 +412,6 @@ if (tour) {
   );
   for (const s of steps) mid.observe(s);
 
-  // Nothing plays while the tour is off screen.
   new IntersectionObserver((entries) => {
     for (const e of entries) {
       const active = mounts.find((m) => m.classList.contains("stage-active"));
@@ -502,7 +421,6 @@ if (tour) {
     }
   }).observe(tour);
 
-  // A cast that finished loading while its step was already active.
   tour.addEventListener("sloshcast", (e) => {
     if (e.target.classList.contains("stage-active")) {
       ctl(e.target).fit();
