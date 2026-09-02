@@ -12,6 +12,11 @@ lists them under `patches`.
 Re-vendoring is therefore: drop in the new upstream tree, apply each patch in
 order, resolve anything that has moved, rebuild, run `make test`.
 
+`contrib/vendor-check` says when that is worth doing: it compares the pin in
+`vendor/*.vendor.json` against upstream and lists the commits touching the
+terminal core, so watching upstream is one command rather than a browser tab.
+`ship` mentions it after every release.
+
 ## 0001 — keep kitty images across a screen clear
 
 `Terminal.eraseDisplay` called `kitty_images.delete(..., .{ .all = true })`

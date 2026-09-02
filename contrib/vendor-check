@@ -1,0 +1,66 @@
+#!/bin/sh
+# vendor-check -- how far behind upstream the vendored libghostty-vt is.
+#
+#   contrib/vendor-check            # summary + the commits that matter
+#   contrib/vendor-check -q         # one line, for scripts and reminders
+#
+# Vendoring is pinned by commit on purpose (D12): upstream has no stable
+# release channel for the lib, so the pin moves when we move it. This is the
+# tool that makes "keeping an eye on upstream" one command instead of a
+# browser tab: it reads the pin from vendor/libghostty-vt.vendor.json, asks
+# the GitHub API what has happened since, and shows the commits touching the
+# parts we actually ship -- the terminal core, not ghostty's app shell.
+#
+# Read-only, no working-tree changes. Re-vendoring itself stays the
+# documented manual process (vendor/patches/README.md): drop in the new
+# tree, re-apply the patches, run make test.
+set -eu
+
+UPSTREAM="${SLOSH_VT_UPSTREAM:-ghostty-org/ghostty}"
+# What the vendored build actually compiles: the VT core and the lib entry
+# points. Churn in ghostty's app, GUI and packaging is noise to us.
+PATHS="${SLOSH_VT_PATHS:-src/terminal src/lib include}"
+VJ="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/vendor/libghostty-vt.vendor.json"
+
+fail() { printf 'vendor-check: %s\n' "$*" >&2; exit 1; }
+
+quiet=0
+[ "${1:-}" = "-q" ] && quiet=1
+
+[ -f "$VJ" ] || fail "no $VJ"
+command -v gh >/dev/null 2>&1 || fail "needs gh (for the GitHub API)"
+
+pin="$(sed -n 's/.*"source_commit": "\([a-f0-9]*\)".*/\1/p' "$VJ")"
+date="$(sed -n 's/.*"source_date": "\([^"]*\)".*/\1/p' "$VJ")"
+npatch="$(grep -c 'patches/' "$VJ" || true)"
+[ -n "$pin" ] || fail "no source_commit in $VJ"
+
+total="$(gh api "repos/$UPSTREAM/compare/$pin...HEAD" --jq .total_commits)" \
+    || fail "compare failed -- is the pin still reachable upstream?"
+
+# Per relevant path: commits since the snapshot date. Date rather than commit
+# because a path-filtered listing may never contain the pin itself; the hour
+# of slack this costs is nothing to a watch tool. The + in a timezone must
+# not reach the URL as a space.
+since="$(printf '%s' "$date" | sed 's/+/%2B/')"
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT INT TERM
+for p in $PATHS; do
+    gh api "repos/$UPSTREAM/commits?sha=HEAD&path=$p&since=$since&per_page=100" \
+        --jq '.[] | .sha[0:9] + " " + (.commit.message | split("\n")[0])' \
+        2>/dev/null || true
+done | sort -u > "$tmp"
+relevant="$(wc -l < "$tmp" | tr -d ' ')"
+
+if [ "$quiet" = 1 ]; then
+    printf 'libghostty-vt: %s commits behind %s, %s touching the VT core (pinned %.7s, %s)\n' \
+        "$total" "$UPSTREAM" "$relevant" "$pin" "${date%%T*}"
+    exit 0
+fi
+
+printf 'vendored   %.7s (%s), %s local patch(es)\n' "$pin" "${date%%T*}" "$npatch"
+printf 'upstream   %s is %s commits ahead\n' "$UPSTREAM" "$total"
+printf 'relevant   %s commits touch %s:\n\n' "$relevant" "$(echo $PATHS | tr ' ' ',')"
+head -25 "$tmp" | sed 's/^/  /'
+[ "$relevant" -gt 25 ] && printf '  ... and %s more\n' "$((relevant - 25))"
+printf '\nre-vendoring is documented in vendor/patches/README.md\n'
