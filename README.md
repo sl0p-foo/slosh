@@ -88,4 +88,4 @@ by name.
 
 ## Docs
 
-For more comprehensive documentation see [docs/] or [browse it online](https://slosh.foo/docs/).
+For more comprehensive documentation see [docs/](docs/) or [browse it online](https://slosh.foo/docs/).
