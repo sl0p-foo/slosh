@@ -97,21 +97,3 @@ by name.
 `make docs` renders the same pages as a static site into `build/docs`, with no
 dependencies: one file of Python and one stylesheet.
 
-## What is different about it
-
-- **The mouse works properly.** Click the middle of a border to split toward it,
-  drag a gap to move a boundary, drag a pane by its title to swap it. Everything
-  drawn registers what it is as it is drawn, so a click and a preview cannot
-  disagree. That is also how the split target can be *part* of an edge without
-  the highlight and the hit ever drifting apart.
-- **The layout is recomputed, never stored.** Small terminal? The tab becomes a
-  list of headers, and comes back to exactly the arrangement you had.
-- **A pane told to run something keeps its output when that thing exits**, with
-  `[re-run]` and `[close]` in its frame.
-- **Configuration is one KDL file** that reloads on save, can be built from
-  `include`d pieces, and refuses a broken file instead of half-applying it.
-- **Colour passes over cells**: dim, tint, rulers, spotlights, and a border that
-  can flash when a pane rings, with strengths written as expressions.
-- **Scriptable to the same depth it is usable**: one JSON object per line over
-  the session's socket, and a pane can draw its own status bar and buttons with
-  an escape sequence.
