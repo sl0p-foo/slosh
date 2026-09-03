@@ -89,6 +89,23 @@
   background: #ff5fd7;
 }
 
+/* Dragging: the button is down and the pointer has left the cell it went
+ * down in (the player works this out from the ptr track; a still click
+ * never triggers it). The arrow gives way to a four-way move cursor,
+ * centred on the old tip so the grip point does not jump -- a pane carried
+ * by its title, or a gap in tow, reads as "dragging" at a glance. */
+.sloshcast .sc-pointer.sc-dragging {
+  width: 1.35em;
+  height: 1.35em;
+  transform: translate(-50%, -50%);
+  clip-path: polygon(
+    50% 0%, 66% 18%, 56% 18%, 56% 44%, 82% 44%, 82% 34%, 100% 50%,
+    82% 66%, 82% 56%, 56% 56%, 56% 82%, 66% 82%, 50% 100%, 34% 82%,
+    44% 82%, 44% 56%, 18% 56%, 18% 66%, 0% 50%, 18% 34%, 18% 44%,
+    44% 44%, 44% 18%, 34% 18%
+  );
+}
+
 /* The big play glyph over the poster; gone while playing. */
 .sloshcast .sc-play {
   position: absolute;

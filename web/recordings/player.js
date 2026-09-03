@@ -241,6 +241,8 @@ function mountSloshcast(el, data, opts = {}) {
 
   let rowEls = [];
   let rowsData = []; // retained [text, runs] per row: the canvas reads it
+  let ptrDown = null; // cell where the button went down, while it is down
+  let ptrDrag = false; // it went down and then moved: a drag, not a click
   let gcols = data.cols, grows = data.rows;
   let cellW = 8, cellH = 17, dpr = 1;
   let canvasDirty = false;
@@ -285,8 +287,27 @@ function mountSloshcast(el, data, opts = {}) {
         pointer.style.top = rowEls[ev.ptr[1]]
           ? rowEls[ev.ptr[1]].offsetTop + "px"
           : "0";
-        pointer.classList.toggle("sc-pressed", !!ev.ptr[2]);
-      } else pointer.style.display = "none";
+        // A drag is a press that has moved: the cast marks the button
+        // ([x, y, 1]), and the cell where it went down is remembered, so
+        // the moment the pointer leaves it the cursor can say "carrying"
+        // -- a pane re-order or a gap drag -- instead of a stuck click.
+        const down = !!ev.ptr[2];
+        if (down) {
+          if (!ptrDown) ptrDown = [ev.ptr[0], ev.ptr[1]];
+          else if (ev.ptr[0] !== ptrDown[0] || ev.ptr[1] !== ptrDown[1])
+            ptrDrag = true;
+        } else {
+          ptrDown = null;
+          ptrDrag = false;
+        }
+        pointer.classList.toggle("sc-pressed", down);
+        pointer.classList.toggle("sc-dragging", ptrDrag);
+      } else {
+        pointer.style.display = "none";
+        ptrDown = null;
+        ptrDrag = false;
+        pointer.classList.remove("sc-pressed", "sc-dragging");
+      }
     }
     canvasDirty = true;
   }
@@ -400,6 +421,9 @@ function mountSloshcast(el, data, opts = {}) {
     idx = 0;
     t = to;
     pointer.style.display = "none";
+    ptrDown = null;
+    ptrDrag = false;
+    pointer.classList.remove("sc-pressed", "sc-dragging");
     grid(data.cols, data.rows);
     while (idx < data.events.length && data.events[idx].t <= to)
       apply(data.events[idx++]);
