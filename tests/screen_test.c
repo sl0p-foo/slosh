@@ -72,6 +72,31 @@ int main(void) {
   screen_project(&view, &src, 5, 0);
   ok("a wide-glyph tail cut at the left edge is blank", at(&view, 0, 0) == ' ');
 
+  /* The diff must not trust a wide glyph's tail column. Rule, then a wide
+   * glyph over it, then rule again: overwriting the head makes the terminal
+   * blank the tail cell, so the third frame has to repaint that column even
+   * though its content matches what the diff last painted there. Skipping it
+   * is a one-cell hole in a border, where a wide title glyph used to be. */
+  screen_t d;
+  screen_init(&d, 6, 1);
+  for (uint16_t x = 0; x < 6; x++)
+    screen_put_utf8(&d, x, 0, "-", 1, (color_t){0}, (color_t){0}, 0);
+  screen_render(&d); /* frame 1: the rule */
+  screen_put_utf8(&d, 2, 0, "\xe6\x97\xa5", 3, (color_t){0}, (color_t){0},
+                  0); /* frame 2: 日 over columns 2-3 */
+  screen_render(&d);
+  screen_put_utf8(&d, 2, 0, "-", 1, (color_t){0}, (color_t){0}, 0);
+  screen_put_utf8(&d, 3, 0, "-", 1, (color_t){0}, (color_t){0}, 0);
+  screen_render(&d); /* frame 3: the rule again */
+  /* Both rule cells must go out: an explicit CUP to column 4, or the run
+   * that starts at the head's CUP simply carrying on into it. Counting the
+   * plain '-' bytes in the frame answers both shapes at once. */
+  size_t dashes = 0;
+  for (size_t i = 0; i < d.out_len; i++)
+    if (d.out[i] == '-') dashes++;
+  ok("an overwritten wide glyph's tail column is repainted", dashes == 2);
+
+  screen_free(&d);
   screen_free(&view);
   screen_free(&src);
   printf("\n%s (%d failures)\n", fails ? "FAILED" : "all green", fails);

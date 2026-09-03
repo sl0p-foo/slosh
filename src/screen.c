@@ -483,6 +483,16 @@ void screen_render(screen_t *s) {
 
       *p = *c;
       s->prev_link[idx] = s->cur_link[idx];
+      /* A wide cell owns two columns but only its head is ever compared or
+       * painted, so commit the tail to prev here as well. Leave it stale and
+       * a later frame that puts back what that column used to hold skips it
+       * as unchanged -- while the terminal blanked it the moment the head
+       * was overwritten. The difference is a one-cell hole in a border,
+       * sitting where a wide glyph's second half used to be. */
+      if (c->width == 2 && (size_t)x + 1 < s->cols) {
+        s->prev[idx + 1] = s->cur[idx + 1];
+        s->prev_link[idx + 1] = s->cur_link[idx + 1];
+      }
       cx += c->width ? c->width : 1;
       if (cx >= s->cols) have_pos = false; /* wrap is terminal-dependent */
     }
