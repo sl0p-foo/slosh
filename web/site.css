@@ -117,9 +117,8 @@ kbd {
  * (the global a:hover) is a mess, and a colour flash is not much better.
  * The pointer cursor alone says clickable. */
 .logo-float:hover { text-decoration: none; }
-.logo-float .logo-art { width: 318px; } /* what 44 columns of 12px mono came to */
-.logo-float .logo-art,
-.logo-stage .logo-art {
+.logo-float .logo-art {
+  width: 318px; /* what 44 columns of 12px mono came to */
   /* The colour cycles, slowly: a gradient of the pink's neighbours clipped
    * to the ink and slid along it -- the logo's own little colour pass, in
    * the spirit of the shaders it advertises. Horizontal on purpose: the
@@ -146,8 +145,7 @@ kbd {
  * rotation is the motion Safari does honour: filters run post-paint on the
  * compositor, so every pixel cycles the wheel even over the cached clip.
  * Chrome and Firefox get both, WebKit gets the rotation alone. */
-.logo-float.show .logo-art,
-.logo-stage .logo-art {
+.logo-float.show .logo-art {
   animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite;
 }
 /* One set of keyframes drives both layers: the colour slide moves linearly
@@ -171,26 +169,11 @@ kbd {
   /* The preference is about motion, not colour: the slide and the shine --
    * patterns that travel -- go; the hue rotation, colour changing in
    * place, stays. Nothing moves, everything still breathes. */
-  .logo-float.show .logo-art,
-  .logo-stage .logo-art { animation: logo-hue 5s linear infinite; }
+  .logo-float.show .logo-art { animation: logo-hue 5s linear infinite; }
 }
-
-/* ---- the stage logo (one-column screens) ----------------------------- */
-/* The floating logo's stand-in where the float is hidden: a small copy
- * inside the sticky stage, above the terminal, always visible -- no
- * observer, no collision test, it just rides with the terminal. The same
- * link back to the top, the same dress. */
-
-.logo-stage {
-  display: none;
-  width: clamp(120px, 34vw, 176px);
-  margin: 0 auto 0.4rem;
-}
-.logo-stage:hover { text-decoration: none; }
 
 @media (max-width: 54rem) {
   .logo-float { display: none; }
-  .logo-stage { display: block; }
 }
 
 /* ---- the hero ------------------------------------------------------- */
@@ -567,14 +550,35 @@ section > p:last-child { margin-bottom: 0; }
 .step-cta .hero-links { margin-top: 1.5rem; }
 
 @media (max-width: 54rem) {
-  /* One column: the terminal sticks under the nav, the features scroll
-   * beneath it. The sticky moves up to .scrolly-stage here: in block layout
-   * .stage-pin's parent is only as tall as the player, so a sticky inside it
-   * has nowhere to stick; .scrolly-stage is bounded by the whole tour. */
+  /* One column: no floating logo here -- the hero itself hovers instead.
+   * Logo and buttons, sticky at the top, full-bleed (the negative margins
+   * undo main's gutter) so the steps scrolling under never peek out at the
+   * sides. The tagline yields the room: with the header on screen at all
+   * times, every line it keeps is a line the tour loses. Compact paddings
+   * for the same reason. */
+  .hero {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    margin: 0 -1.25rem;
+    padding: 0.9rem 1.25rem 0.7rem;
+    background: var(--bg);
+  }
+  .hero .logo { width: min(44vw, 200px); }
+  .hero .tagline { display: none; }
+  .hero .hero-links { margin: 0.8rem 0 0; }
+  .hero .btn { margin-right: 0.4rem; padding: 0.25rem 0.8rem; font-size: 13px; }
+
+  /* The terminal sticks under the hovering hero (--hero-h, measured by the
+   * page script -- wrapping buttons make it no fixed number), the features
+   * scroll beneath it. The sticky moves up to .scrolly-stage here: in block
+   * layout .stage-pin's parent is only as tall as the player, so a sticky
+   * inside it has nowhere to stick; .scrolly-stage is bounded by the whole
+   * tour. */
   .scrolly { display: block; margin-top: 0; margin-bottom: 0; pointer-events: auto; }
   .scrolly-stage {
     position: sticky;
-    top: 0;
+    top: var(--hero-h, 0px);
     z-index: 2;
     padding: 0.6rem 0;
     background: var(--bg);

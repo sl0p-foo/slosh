@@ -47,12 +47,6 @@
 <section id="different" style='margin-top:0;'>
   <div class="scrolly">
     <div class="scrolly-stage">
-      <!-- The floating logo's one-column stand-in: on small screens the fixed
-           corner it floats in is content, not air, so the logo rides inside
-           the sticky stage instead -- above the terminal, at all times. -->
-      <a class="logo-stage" href="#" aria-label="slosh: back to top">
-        <span class="logo-art"></span>
-      </a>
       <div class="stage-pin">
         <div data-sloshcast="recordings/panes.json" data-loop data-name="panes" class="stage-active"></div>
         <div data-sloshcast="recordings/sessions.json" data-loop data-name="sessions"></div>
@@ -339,6 +333,20 @@ if (heroEl && littleLogo && "IntersectionObserver" in window) {
     { passive: true }
   );
   collide();
+}
+
+// One column: the hero itself hovers (position: sticky, in site.css), and
+// the stage sticks just under it -- at the hero's height, which wrapping
+// buttons keep from being any fixed number. Measured here, spent in the
+// stylesheet as --hero-h.
+if (heroEl) {
+  const setHeroH = () =>
+    document.documentElement.style.setProperty(
+      "--hero-h",
+      heroEl.offsetHeight + "px"
+    );
+  setHeroH();
+  new ResizeObserver(setHeroH).observe(heroEl);
 }
 
 const stagePin = document.querySelector(".stage-pin");
