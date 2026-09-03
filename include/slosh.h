@@ -261,6 +261,10 @@ bool pane_dirty(pane_t *p);
 /* Ask for a repaint without having changed a cell: what is drawn *over* the
  * pane changed, and composing is the only thing that can see that. */
 void pane_touch(pane_t *p);
+/* Free the pane's retained render snapshot (~140KB for 80x24). Safe at any
+ * time: the next render rebuilds it from the terminal. Called for panes on
+ * tabs that are not on screen. */
+void pane_render_cache_drop(pane_t *p);
 /* Scrollback. Negative delta scrolls up (towards older output). */
 void pane_scroll(pane_t *p, int delta);
 void pane_scroll_edge(pane_t *p, bool top);

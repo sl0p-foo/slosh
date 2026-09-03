@@ -985,6 +985,11 @@ bool rename_key(app_t *a, const input_event_t *ev) {
   return true;
 }
 
+static void drop_render_cb(node_t *n, void *ud) {
+  (void)ud;
+  if (n->pane) pane_render_cache_drop(n->pane);
+}
+
 void app_compose(app_t *a, screen_t *s) {
   screen_clear(s); /* every frame starts blank: no ghosts in the gap ring */
   hit_reset(&s->hits);
@@ -993,6 +998,16 @@ void app_compose(app_t *a, screen_t *s) {
   /* Re-derived by the shader passes below, every frame, from what they ran. */
   a->animating = false;
   if (!a->ntabs || !cur(a)->root) return;
+
+  /* Only the current tab is composed, but a composed pane retains a viewport
+   * copy inside its render state (~140KB at 80x24) that nothing will read
+   * until its tab is looked at again -- at which point it is rebuilt from the
+   * terminal anyway. Dropping it here, rather than on the tab switch, catches
+   * every route a tab can leave the screen by; for a pane already dropped it
+   * is a pointer test. */
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (i != a->cur && a->tabs[i].root)
+      walk(a->tabs[i].root, drop_render_cb, NULL);
 
   /* Looking at a pane is the acknowledgement, and it happens before anything
    * is drawn rather than while the pane itself is: the tab strip is painted

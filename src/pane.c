@@ -341,11 +341,12 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
 
   if (ghostty_terminal_new(NULL, &p->term, cols, rows) != GHOSTTY_SUCCESS)
     goto fail;
-  if (ghostty_render_state_new(NULL, &p->rstate) != GHOSTTY_SUCCESS) goto fail;
-  if (ghostty_render_state_row_iterator_new(NULL, &p->rows) != GHOSTTY_SUCCESS)
-    goto fail;
-  if (ghostty_render_state_row_cells_new(NULL, &p->cells) != GHOSTTY_SUCCESS)
-    goto fail;
+  /* rstate/rows/cells are made on first use (ensure_render) and dropped when
+   * the pane's tab leaves the screen (pane_render_cache_drop): an updated
+   * render state retains a full copy of the viewport -- measured at ~140KB
+   * for 80x24 -- which for a pane nobody is looking at is pure ballast. Every
+   * consumer starts with ghostty_render_state_update(), so a dropped state is
+   * rebuilt, not missed. */
   if (ghostty_key_encoder_new(NULL, &p->kenc) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_key_event_new(NULL, &p->kev) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_mouse_encoder_new(NULL, &p->menc) != GHOSTTY_SUCCESS) goto fail;
@@ -418,6 +419,37 @@ void pane_free(pane_t *p) {
   if (p->rstate) ghostty_render_state_free(p->rstate);
   if (p->term) ghostty_terminal_free(p->term);
   free(p);
+}
+
+/* The render objects, on demand. An updated GhosttyRenderState keeps a full
+ * copy of the viewport (rows, cells, styles) so it can be read without the
+ * terminal lock; that copy is ~140KB for an 80x24 pane, which dwarfs the
+ * terminal itself. So it exists only while somebody renders this pane, and
+ * failure here is failure to render, not failure of the pane. */
+static bool ensure_render(pane_t *p) {
+  if (p->rstate) return true;
+  if (ghostty_render_state_new(NULL, &p->rstate) != GHOSTTY_SUCCESS) goto fail;
+  if (ghostty_render_state_row_iterator_new(NULL, &p->rows) != GHOSTTY_SUCCESS)
+    goto fail;
+  if (ghostty_render_state_row_cells_new(NULL, &p->cells) != GHOSTTY_SUCCESS)
+    goto fail;
+  return true;
+fail:
+  pane_render_cache_drop(p);
+  return false;
+}
+
+/* Called for every pane whose tab is not on screen, every frame, so it is a
+ * pointer test almost always. The next compose rebuilds from the terminal,
+ * which is where the truth lives anyway. */
+void pane_render_cache_drop(pane_t *p) {
+  if (!p || !p->rstate) return;
+  if (p->cells) ghostty_render_state_row_cells_free(p->cells);
+  if (p->rows) ghostty_render_state_row_iterator_free(p->rows);
+  ghostty_render_state_free(p->rstate);
+  p->cells = NULL;
+  p->rows = NULL;
+  p->rstate = NULL;
 }
 
 int pane_fd(const pane_t *p) { return p->pty.fd; }
@@ -1041,8 +1073,8 @@ static bool word_cell(const char *utf8, size_t len, const char *seps) {
  * forward. Which is enough: the run containing `x` is bounded by the separator
  * before it and the one after it, and both are met on that single pass. */
 bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps) {
-  if (!p || !p->term || !p->rstate || x >= p->cols || y >= p->rows_n)
-    return false;
+  if (!p || !p->term || x >= p->cols || y >= p->rows_n) return false;
+  if (!ensure_render(p)) return false;
   if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS)
     return false;
   if (ghostty_render_state_get(p->rstate,
@@ -1271,6 +1303,7 @@ static uint16_t cell_link_id(pane_t *p, screen_t *s, uint16_t x, uint16_t y,
 
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused) {
+  if (!ensure_render(p)) return;
   if (ghostty_render_state_update(p->rstate, p->term) != GHOSTTY_SUCCESS)
     return;
 
