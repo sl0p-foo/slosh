@@ -117,8 +117,9 @@ kbd {
  * (the global a:hover) is a mess, and a colour flash is not much better.
  * The pointer cursor alone says clickable. */
 .logo-float:hover { text-decoration: none; }
-.logo-float .logo-art {
-  width: 318px; /* what 44 columns of 12px mono came to */
+.logo-float .logo-art { width: 318px; } /* what 44 columns of 12px mono came to */
+.logo-float .logo-art,
+.logo-stage .logo-art {
   /* The colour cycles, slowly: a gradient of the pink's neighbours clipped
    * to the ink and slid along it -- the logo's own little colour pass, in
    * the spirit of the shaders it advertises. Horizontal on purpose: the
@@ -145,7 +146,8 @@ kbd {
  * rotation is the motion Safari does honour: filters run post-paint on the
  * compositor, so every pixel cycles the wheel even over the cached clip.
  * Chrome and Firefox get both, WebKit gets the rotation alone. */
-.logo-float.show .logo-art {
+.logo-float.show .logo-art,
+.logo-stage .logo-art {
   animation: logo-cycle 5s linear infinite, logo-hue 4s linear infinite;
 }
 /* One set of keyframes drives both layers: the colour slide moves linearly
@@ -169,11 +171,26 @@ kbd {
   /* The preference is about motion, not colour: the slide and the shine --
    * patterns that travel -- go; the hue rotation, colour changing in
    * place, stays. Nothing moves, everything still breathes. */
-  .logo-float.show .logo-art { animation: logo-hue 5s linear infinite; }
+  .logo-float.show .logo-art,
+  .logo-stage .logo-art { animation: logo-hue 5s linear infinite; }
 }
+
+/* ---- the stage logo (one-column screens) ----------------------------- */
+/* The floating logo's stand-in where the float is hidden: a small copy
+ * inside the sticky stage, above the terminal, always visible -- no
+ * observer, no collision test, it just rides with the terminal. The same
+ * link back to the top, the same dress. */
+
+.logo-stage {
+  display: none;
+  width: clamp(120px, 34vw, 176px);
+  margin: 0 auto 0.4rem;
+}
+.logo-stage:hover { text-decoration: none; }
 
 @media (max-width: 54rem) {
   .logo-float { display: none; }
+  .logo-stage { display: block; }
 }
 
 /* ---- the hero ------------------------------------------------------- */

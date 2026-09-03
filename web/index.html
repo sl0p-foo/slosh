@@ -47,6 +47,12 @@
 <section id="different" style='margin-top:0;'>
   <div class="scrolly">
     <div class="scrolly-stage">
+      <!-- The floating logo's one-column stand-in: on small screens the fixed
+           corner it floats in is content, not air, so the logo rides inside
+           the sticky stage instead -- above the terminal, at all times. -->
+      <a class="logo-stage" href="#" aria-label="slosh: back to top">
+        <span class="logo-art"></span>
+      </a>
       <div class="stage-pin">
         <div data-sloshcast="recordings/panes.json" data-loop data-name="panes" class="stage-active"></div>
         <div data-sloshcast="recordings/sessions.json" data-loop data-name="sessions"></div>
