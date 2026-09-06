@@ -289,6 +289,26 @@ def test_sub_cell_offsets_survive_to_the_client():
         )
 
 
+def test_a_placement_says_it_sits_above_the_text():
+    """z=0 is kitty's default, so saying it changes nothing on a terminal.
+
+    It is the whole picture for anything mirroring the stream, which cannot
+    otherwise tell "the emitter wants this over the text" from "the emitter
+    said nothing" -- and one that guesses "under" loses the image behind the
+    first background painted over those cells, dim_unfocused being the one
+    that paints over every cell of a pane at once.
+    """
+    with Session(sends_image(), cols=44, rows=10) as s:
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        place = [c for c in raw.split("\x1b") if c.startswith("_Ga=p")]
+        check(
+            "the placement states its z",
+            place and "z=0" in place[0],
+            str(place),
+        )
+
+
 def test_a_placement_with_no_offset_emits_none():
     with Session(transmits_then_places("p,i=7,p=1,q=2,c=6,r=2"), cols=44, rows=10) as s:
         s.settle(200)
@@ -661,6 +681,7 @@ if __name__ == "__main__":
     test_an_image_outlives_a_screen_clear()
     test_a_screen_clear_still_removes_what_is_on_screen()
     test_sub_cell_offsets_survive_to_the_client()
+    test_a_placement_says_it_sits_above_the_text()
     test_a_placement_with_no_offset_emits_none()
     test_a_natural_image_is_never_rescaled_as_it_moves()
     test_a_scaled_image_keeps_the_cell_count_it_asked_for()

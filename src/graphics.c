@@ -342,7 +342,15 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
     g->placed[g->nplaced++] = i;
     p->shown = true;
     out_fmt(g, "\x1b[%u;%uH", p->row + 1, p->col + 1);
-    out_fmt(g, "\x1b_Ga=p,q=2,C=1,i=%u,p=%u", p->out_id, p->place_id);
+    /* z=0 is kitty's own default, so saying it changes nothing on a terminal
+     * -- and it is the whole picture for anything mirroring the stream, which
+     * cannot otherwise tell "the emitter wants this over the text" from "the
+     * emitter said nothing". Left unsaid, a mirror is free to paint the image
+     * under the cells, and the first pane-wide background to land on those
+     * cells (dim_unfocused paints one over every cell it touches) hides the
+     * picture completely -- on the mirrored copy only, while the terminal,
+     * which took the default, still shows it. */
+    out_fmt(g, "\x1b_Ga=p,q=2,C=1,z=0,i=%u,p=%u", p->out_id, p->place_id);
     /* c=/r= mean *scale into this many cells*, so they are passed on only
      * when the program asked for them. Sending the cell count a natural-size
      * image happens to cover looks identical in a still picture and makes a
