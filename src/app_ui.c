@@ -189,10 +189,14 @@ static rect_t modal_frame(app_t *a, screen_t *s, uint16_t w, uint16_t h,
   uint16_t x1 = (uint16_t)(x + w - 1), y1 = (uint16_t)(y + h - 1);
 
   /* Opaque, or the panes underneath read through it: a modal you can see a
-   * shell prompt through is a modal nobody trusts. */
+   * shell prompt through is a modal nobody trusts. Opaque for the cells is
+   * this loop; opaque for an image under it is the registration, without
+   * which the terminal draws the picture over the modal and the cheatsheet
+   * reads through a screenshot. */
   for (uint16_t yy = y; yy < y + h; yy++)
     for (uint16_t xx = x; xx < x + w; xx++)
       screen_text(s, xx, yy, " ", NO_COLOR, MODAL_BG, 0);
+  app_overlay(a, (rect_t){x, y, w, h});
 
   const char *tl = CFG.rounded ? "\u256d" : "\u250c",
              *tr = CFG.rounded ? "\u256e" : "\u2510";
@@ -993,6 +997,7 @@ static void drop_render_cb(node_t *n, void *ud) {
 void app_compose(app_t *a, screen_t *s) {
   screen_clear(s); /* every frame starts blank: no ghosts in the gap ring */
   hit_reset(&s->hits);
+  a->noverlays = 0; /* re-registered by whatever draws over the panes below */
   s->cursor_visible = false;
   a->painted = s;
   /* Re-derived by the shader passes below, every frame, from what they ran. */

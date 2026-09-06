@@ -2520,11 +2520,16 @@ static void gfx_leaf_cb(node_t *n, void *ud) {
   if (n->hidden || n->collapsed) return; /* not drawn: images included */
   /* Above this leaf: every float for a tiled pane, the higher-raised for a
    * float — the same order draw_floats paints in, so an image is clipped by
-   * exactly what its cells are covered by. */
-  rect_t occ[64];
+   * exactly what its cells are covered by. Then the frame's overlays, which
+   * are above the floats too: the cheatsheet, a toast, the splash. They are
+   * drawn as cells and a placement is not, so without this the terminal puts
+   * the picture back over the top of them -- the cheatsheet appearing under
+   * an image is what asked for this. */
+  rect_t occ[64 + APP_MAX_OVERLAYS];
   size_t k = 0;
   for (size_t i = 0; i < w->n; i++)
     if (!n->floating || w->raised[i] > n->raised) occ[k++] = w->occ[i];
+  for (size_t i = 0; i < w->a->noverlays; i++) occ[k++] = w->a->overlays[i];
   struct gfx_ctx ctx = {.a = w->a,
                         .out = w->out,
                         .leaf = n,
@@ -2817,6 +2822,10 @@ void draw_splash(app_t *a, screen_t *s) {
   uint16_t x0 = (uint16_t)((s->cols - bw) / 2);
   uint16_t y0 = (uint16_t)((s->rows - bh) / 2);
 
+  /* A cleared backdrop, so the logo reads over whatever a pane put there --
+   * including an image, which is cleared by being cut out of its placement
+   * rather than by writing cells over it. */
+  app_overlay(a, (rect_t){x0, y0, bw, bh});
   /* A cleared backdrop, so the logo reads over whatever a pane put there. */
   char blank[512];
   size_t nb = bw < sizeof blank - 1 ? bw : sizeof blank - 1;

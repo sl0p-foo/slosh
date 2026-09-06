@@ -701,6 +701,49 @@ def test_a_float_occludes_a_placement():
         )
 
 
+def test_a_modal_is_not_drawn_under_an_image():
+    """The cheatsheet, a toast and the splash are painted over the panes, and
+    a placement is not painted at all -- the client's terminal draws the image
+    over the cells whatever order they arrived in. So an overlay has to be cut
+    out of the image underneath it, the way a float is, or it reads through a
+    picture that is drawn on top of it."""
+    with Session(sends_image(cols=60, rows=16, after="cat"), cols=100, rows=28) as s:
+        s.settle(200)
+        base = places(s)
+        check("placed to begin with", len(base) == 1, str(base))
+        if not base:
+            return
+        img = base[0]
+        mid = (img["x"] + img["cols"] // 2, img["y"] + img["rows"] // 2)
+        covers = lambda x, y: any(
+            p["x"] <= x < p["x"] + p["cols"] and p["y"] <= y < p["y"] + p["rows"]
+            for p in places(s)
+        )
+        check("the image covers the middle of itself", covers(*mid), str(base))
+
+        s.send(r"\x01?")  # the cheatsheet, centred over everything
+        s.settle()
+        check(
+            "the cheatsheet is cut out of the image",
+            not covers(*mid) and places(s) != [],
+            str(places(s)),
+        )
+        check(
+            "and what is beside it is still placed",
+            covers(img["x"], img["y"]),
+            str(places(s)),
+        )
+
+        s.send("q")  # anything dismisses it
+        s.settle()
+        got = places(s)
+        check(
+            "the image is whole again once it is dismissed",
+            len(got) == 1 and got[0]["cols"] == img["cols"],
+            str(got),
+        )
+
+
 if __name__ == "__main__":
     test_a_pane_image_reaches_the_screen()
     test_a_png_is_decoded_and_placed()
@@ -729,4 +772,5 @@ if __name__ == "__main__":
     test_scrolled_away_placements_are_dropped()
     test_an_undelivered_frame_stays_owed()
     test_a_float_occludes_a_placement()
+    test_a_modal_is_not_drawn_under_an_image()
     sys.exit(report())
