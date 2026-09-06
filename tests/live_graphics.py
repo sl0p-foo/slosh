@@ -87,6 +87,28 @@ def drain(fd, idle=0.4, limit=8.0):
     return buf
 
 
+def unsynced(buf):
+    """kitty commands that reach the client outside a synchronized update.
+
+    A frame is a cell diff and then the placements that sit on top of it. A
+    terminal that presents the diff before the placements arrive draws the
+    cells under a picture with no picture on them, so every image blinks once
+    per frame -- which is what happens the moment anything re-chunks the
+    stream on the way out (a mirror reading the pty a few KB at a time). The
+    markers are what stop the halves being presented separately, so every
+    image command has to be inside a pair.
+    """
+    depth, out = 0, []
+    for m in re.finditer(rb"\x1b\[\?2026h|\x1b\[\?2026l|\x1b_G([^\x1b]*)\x1b", buf):
+        if m.group() == b"\x1b[?2026h":
+            depth += 1
+        elif m.group() == b"\x1b[?2026l":
+            depth -= 1
+        elif depth <= 0:
+            out.append(m.group(1)[:40])
+    return out
+
+
 def check(name, cond, detail=""):
     print(f"{'ok  ' if cond else 'FAIL'} {name}{'' if cond else '  <- ' + detail}")
     return cond
@@ -129,6 +151,13 @@ def main():
     cmds = gfx_commands(buf)
     placed = any(ctl.startswith(b"a=p") for ctl, _ in cmds)
     ok &= check("and the image is placed while visible", placed, repr(buf[-300:]))
+
+    loose = unsynced(buf)
+    ok &= check(
+        "every image command travels inside a synchronized update",
+        not loose,
+        f"{len(loose)} outside: {loose[:4]}",
+    )
 
     # The child's flood scrolled it away while nothing was being read: the
     # deletion rode a frame the full outbox may well have dropped, and it must
