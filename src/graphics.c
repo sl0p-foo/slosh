@@ -18,7 +18,7 @@
  * pinned to a spot on the screen no scrolling will move. The queue survives
  * until gfx_commit() says the client actually heard it. */
 typedef struct {
-  uint32_t out_id, place_id;
+  uint32_t out_id, wire_id;
 } gfx_dead_t;
 
 struct graphics {
@@ -27,6 +27,7 @@ struct graphics {
   gfx_place_t *places;
   size_t nplaces, placecap;
   uint32_t next_out_id;
+  uint32_t next_wire_id; /* placement ids we hand out; see gfx_place_t */
 
   gfx_dead_t *dead; /* deletions owed to the client */
   size_t ndead, deadcap;
@@ -85,6 +86,7 @@ static void out_b64(graphics_t *g, const uint8_t *in, size_t len) {
 graphics_t *gfx_new(void) {
   graphics_t *g = calloc(1, sizeof *g);
   g->next_out_id = OUT_ID_BASE;
+  g->next_wire_id = 1;
   return g;
 }
 
@@ -223,7 +225,8 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
   uint32_t pid = req->place_id ? req->place_id : 1;
   gfx_place_t *slot = NULL;
   for (size_t i = 0; i < g->nplaces; i++)
-    if (g->places[i].out_id == img->out_id && g->places[i].place_id == pid)
+    if (g->places[i].out_id == img->out_id && g->places[i].place_id == pid &&
+        g->places[i].piece == req->piece)
       slot = &g->places[i];
   if (!slot) {
     if (g->nplaces == g->placecap) {
@@ -234,6 +237,8 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
     memset(slot, 0, sizeof *slot);
     slot->out_id = img->out_id;
     slot->place_id = pid;
+    slot->piece = req->piece;
+    slot->wire_id = g->next_wire_id++;
   }
   /* What the client is holding, against what it should be holding. A
    * placement that has not moved, resized or re-cropped is left alone: see
@@ -299,14 +304,14 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
     }
     bool queued = false;
     for (size_t j = 0; j < g->ndead; j++)
-      if (g->dead[j].out_id == p->out_id && g->dead[j].place_id == p->place_id)
+      if (g->dead[j].out_id == p->out_id && g->dead[j].wire_id == p->wire_id)
         queued = true;
     if (!queued) {
       if (g->ndead == g->deadcap) {
         g->deadcap = g->deadcap ? g->deadcap * 2 : 8;
         g->dead = realloc(g->dead, g->deadcap * sizeof *g->dead);
       }
-      g->dead[g->ndead++] = (gfx_dead_t){p->out_id, p->place_id};
+      g->dead[g->ndead++] = (gfx_dead_t){p->out_id, p->wire_id};
     }
   }
   g->nplaces = keep;
@@ -315,7 +320,7 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
    * came back is deleted and re-placed in the same stream, which nets out. */
   for (size_t i = 0; i < g->ndead; i++)
     out_fmt(g, "\x1b_Ga=d,d=i,q=2,i=%u,p=%u\x1b\\", g->dead[i].out_id,
-            g->dead[i].place_id);
+            g->dead[i].wire_id);
 
   /* Then place what the client is not already holding. C=1 keeps the cursor
    * where the text renderer left it, which matters because we are
@@ -350,7 +355,7 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
      * cells (dim_unfocused paints one over every cell it touches) hides the
      * picture completely -- on the mirrored copy only, while the terminal,
      * which took the default, still shows it. */
-    out_fmt(g, "\x1b_Ga=p,q=2,C=1,z=0,i=%u,p=%u", p->out_id, p->place_id);
+    out_fmt(g, "\x1b_Ga=p,q=2,C=1,z=0,i=%u,p=%u", p->out_id, p->wire_id);
     /* c=/r= mean *scale into this many cells*, so they are passed on only
      * when the program asked for them. Sending the cell count a natural-size
      * image happens to cover looks identical in a still picture and makes a

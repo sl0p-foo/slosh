@@ -26,10 +26,20 @@ typedef struct {
   bool sent;
 } gfx_image_t;
 
-/* One placement on screen this frame. */
+/* One placement on screen this frame -- or one visible piece of it, when
+ * something on top has cut it into more than one rectangle. */
 typedef struct {
   uint32_t out_id;
-  uint32_t place_id;
+  uint32_t place_id; /* the id the program chose */
+  /* Which visible rectangle of that placement this is. A placement nothing
+   * covers has one piece; a float across the middle of an image leaves two,
+   * and a float in a corner leaves two or three -- each of them a placement
+   * of its own on the wire, which is the only shape the protocol has. */
+  uint16_t piece;
+  /* The placement id the client is told, ours to hand out: the pieces of one
+   * placement need an id each, and the program's own id is one number that
+   * cannot be several. */
+  uint32_t wire_id;
   uint16_t col, row; /* screen cells */
   uint16_t cols, rows;
   /* Where the image starts *inside* its first cell, in pixels. This is what
@@ -63,6 +73,7 @@ typedef struct {
   uint32_t src_id; /* the id the program chose */
   uint64_t gen;    /* image generation, so a changed image is re-sent */
   uint32_t place_id;
+  uint16_t piece;                  /* which visible rectangle of it */
   uint16_t col, row;               /* screen cells */
   uint16_t cols, rows;             /* cells covered */
   uint16_t scale_cols, scale_rows; /* cells to scale into, 0 for natural */
