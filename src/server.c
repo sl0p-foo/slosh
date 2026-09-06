@@ -353,7 +353,14 @@ static bool push_display(server_t *s, conn_t *c) {
   update_viewport(c, &s->screen);
   screen_project(&c->view, &s->screen, c->view_x, c->view_y);
   stamp_indicator(s, c);
+  bool full = c->view.force_full; /* consumed by the render below */
   screen_render(&c->view);
+
+  /* A full repaint clears the screen, and "the clear screen escape code
+   * should also clear all images" -- so every placement the client was
+   * holding went with it. Owe them again: without this the picture would
+   * survive only as long as nothing forced a repaint under it. */
+  if (full) app_graphics_view_repaint(c->gfx);
 
   size_t glen = 0;
   const char *gfx = app_graphics_view(s->app, c->gfx, c->view_x, c->view_y,

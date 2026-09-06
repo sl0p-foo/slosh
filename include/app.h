@@ -29,6 +29,9 @@ const char *app_graphics_view(app_t *a, graphics_t *state, uint16_t x,
                               uint16_t y, uint16_t cols, uint16_t rows,
                               size_t *len);
 void app_graphics_reset(app_t *a);
+/* One client's own graphics state, after its screen was cleared: the
+ * placements it was holding went with the clear and are owed again. */
+void app_graphics_view_repaint(graphics_t *state);
 /* Did the last app_graphics() stream reach the client? Undelivered frames
  * are regenerated: transmissions repeat and deletions stay owed. */
 void app_graphics_commit(app_t *a, bool delivered);

@@ -58,12 +58,30 @@ time.sleep(30)
 """
 
 
-def spawn(cols=80, rows=24):
+# A small image that stays put while the screen around it changes: the counter
+# repaints one line in place (\r, no newline), so nothing scrolls and the
+# picture neither moves nor changes. Every frame it provokes is a frame that
+# must NOT say the placement again.
+STILL = r"""
+import base64, sys, time
+px = base64.b64encode(bytes([255, 0, 0] * 8)).decode()  # 4x2 RGB
+sys.stdout.write("\x1b_Ga=T,f=24,q=2,s=4,v=2,i=7,c=6,r=2;%s\x1b\\\r\n" % px)
+sys.stdout.flush()
+for i in range(120):
+    sys.stdout.write("tick %d   \r" % i)
+    sys.stdout.flush()
+    time.sleep(0.02)
+time.sleep(30)
+"""
+
+
+def spawn(cols=80, rows=24, child=None, session=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
         os.environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
-        os.execv(BIN, [BIN, "-s", SESSION, "--", "python3", "-c", CHILD])
+        os.execv(BIN, [BIN, "-s", session or SESSION, "--", "python3", "-c",
+                       child or CHILD])
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     return pid, fd
@@ -200,6 +218,22 @@ def main():
         "and joining it leaves the first client attached",
         os.waitpid(pid, os.WNOHANG) == (0, 0),
     )
+
+    # A placement is a standing instruction, not a per-frame one: a picture
+    # that has not moved must not be re-sent while the screen around it
+    # repaints. Re-sending it is invisible on a terminal that keeps the pixels
+    # and ruinous on anything mirroring the stream, which re-decodes the image
+    # and rebuilds its view every time it hears the placement again.
+    pid3, fd3 = spawn(child=STILL, session=SESSION + "-still")
+    still = drain(fd3, idle=0.6, limit=20.0)
+    places = [ctl for ctl, _ in gfx_commands(still) if ctl.startswith(b"a=p")]
+    frames = still.count(b"\x1b[?2026h")
+    ok &= check(
+        "a still picture is placed once, however much repaints around it",
+        len(places) == 1 and frames > 10,
+        f"{len(places)} placements across {frames} frames",
+    )
+    os.kill(pid3, 9)
 
     os.write(fd2, b"\x01q")
     drain(fd2, idle=0.2, limit=2.0)

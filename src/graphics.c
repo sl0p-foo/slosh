@@ -32,6 +32,10 @@ struct graphics {
   size_t ndead, deadcap;
   size_t *txed; /* imgs[] indices transmitted in the frame being built */
   size_t ntxed, txedcap;
+  /* places[] indices emitted in the frame being built, for the same reason:
+   * a placement the client never heard is one it is not holding. */
+  size_t *placed;
+  size_t nplaced, placedcap;
 
   char *out;
   size_t len, cap;
@@ -90,6 +94,7 @@ void gfx_free(graphics_t *g) {
   free(g->places);
   free(g->dead);
   free(g->txed);
+  free(g->placed);
   free(g->out);
   free(g);
 }
@@ -100,6 +105,16 @@ void gfx_reset(graphics_t *g) {
   /* A fresh client has no placements to delete and has seen no frame. */
   g->ndead = 0;
   g->ntxed = 0;
+  g->nplaced = 0;
+}
+
+void gfx_repaint(graphics_t *g) {
+  /* The client's screen was cleared, so it is holding no placements: say them
+   * all again. Not gfx_reset(): the terminal keeps the pixels it was sent
+   * (an id-keyed image survives a clear; only its placements go), and a
+   * deletion still owed from a dropped frame is still owed -- forgetting one
+   * here is a picture parked on the client's screen for good. */
+  for (size_t i = 0; i < g->nplaces; i++) g->places[i].shown = false;
 }
 
 void gfx_forget_pane(graphics_t *g, uint32_t pane) {
@@ -113,7 +128,7 @@ void gfx_begin(graphics_t *g) {
   /* A flushed frame nobody committed was never delivered: the `graphics`
    * control command renders the stream for a CLI, not for the client, and
    * anything it claimed to transmit the client still has not seen. */
-  if (g->ntxed) gfx_commit(g, false);
+  if (g->ntxed || g->nplaced) gfx_commit(g, false);
   for (size_t i = 0; i < g->nplaces; i++) g->places[i].live = false;
   g->len = 0;
   if (g->out) g->out[0] = 0;
@@ -198,9 +213,12 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
     img->gen = gen;
     img->sent = false;
   }
-  if (!img->sent)
+  bool transmitted = false;
+  if (!img->sent) {
     transmit(g, img, req->px_w, req->px_h, req->format, req->compression,
              req->data, req->data_len);
+    transmitted = img->sent;
+  }
 
   uint32_t pid = req->place_id ? req->place_id : 1;
   gfx_place_t *slot = NULL;
@@ -217,6 +235,22 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
     slot->out_id = img->out_id;
     slot->place_id = pid;
   }
+  /* What the client is holding, against what it should be holding. A
+   * placement that has not moved, resized or re-cropped is left alone: see
+   * gfx_flush() for why saying it again is not free. A retransmit invalidates
+   * it too -- kitty deletes an image's placements when its data is replaced,
+   * so the picture is gone until we place it once more.
+   *
+   * Field by field rather than a memcmp of the struct: the padding a compiler
+   * is free to leave between these members is not initialised by an
+   * assignment, so a memcmp compares it and reports a change that isn't one --
+   * which here would mean re-placing every image every frame, silently, again. */
+  bool same = slot->shown && !transmitted && slot->col == req->col &&
+              slot->row == req->row && slot->cols == req->cols &&
+              slot->rows == req->rows && slot->x_off == req->x_off &&
+              slot->y_off == req->y_off && slot->scale_cols == req->scale_cols &&
+              slot->scale_rows == req->scale_rows && slot->sx == req->sx &&
+              slot->sy == req->sy && slot->sw == req->sw && slot->sh == req->sh;
   slot->col = req->col;
   slot->row = req->row;
   slot->cols = req->cols;
@@ -230,6 +264,7 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
   slot->sw = req->sw;
   slot->sh = req->sh;
   slot->live = true;
+  slot->shown = same;
 }
 
 char *gfx_flush(graphics_t *g, size_t *out_len) {
@@ -282,10 +317,30 @@ char *gfx_flush(graphics_t *g, size_t *out_len) {
     out_fmt(g, "\x1b_Ga=d,d=i,q=2,i=%u,p=%u\x1b\\", g->dead[i].out_id,
             g->dead[i].place_id);
 
-  /* Then (re)place everything that is. C=1 keeps the cursor where the text
-   * renderer left it, which matters because we are interleaving with a diff. */
+  /* Then place what the client is not already holding. C=1 keeps the cursor
+   * where the text renderer left it, which matters because we are
+   * interleaving with a diff.
+   *
+   * Only the placements that changed. A kitty placement is a standing
+   * instruction, not a per-frame one: "the other commands to erase text must
+   * have no effect on graphics", so a repaint of the cells under a picture
+   * does not disturb it and re-placing it says nothing new. It is not free,
+   * though. A terminal mirroring the stream cannot know that the identical
+   * placement is identical -- it re-decodes the image and holds the picture
+   * back until that finishes, so re-placing at frame rate meant the mirrored
+   * copy was mid-decode nearly always and flickered or vanished, while the
+   * local terminal (which keeps the pixels) looked fine. That was the bug
+   * this diff exists for, and it costs nothing on the terminal path either:
+   * a still picture on a busy screen now costs zero bytes. */
   for (size_t i = 0; i < g->nplaces; i++) {
     gfx_place_t *p = &g->places[i];
+    if (p->shown) continue;
+    if (g->nplaced == g->placedcap) {
+      g->placedcap = g->placedcap ? g->placedcap * 2 : 8;
+      g->placed = realloc(g->placed, g->placedcap * sizeof *g->placed);
+    }
+    g->placed[g->nplaced++] = i;
+    p->shown = true;
     out_fmt(g, "\x1b[%u;%uH", p->row + 1, p->col + 1);
     out_fmt(g, "\x1b_Ga=p,q=2,C=1,i=%u,p=%u", p->out_id, p->place_id);
     /* c=/r= mean *scale into this many cells*, so they are passed on only
@@ -326,12 +381,16 @@ void gfx_commit(graphics_t *g, bool delivered) {
   } else {
     /* The transmissions in that frame never happened as far as the client
      * is concerned; forget we made them so the next frame sends them again.
-     * Deletions stay queued for the same reason. Placements need nothing:
-     * every live one is re-emitted every frame anyway. */
+     * Deletions stay queued for the same reason, and so do the placements:
+     * now that a placement is said once rather than every frame, a placement
+     * that left with a dropped frame is a picture the client never draws. */
     for (size_t i = 0; i < g->ntxed; i++)
       if (g->txed[i] < g->nimgs) g->imgs[g->txed[i]].sent = false;
+    for (size_t i = 0; i < g->nplaced; i++)
+      if (g->placed[i] < g->nplaces) g->places[g->placed[i]].shown = false;
   }
   g->ntxed = 0;
+  g->nplaced = 0;
 }
 
 size_t gfx_placements(const graphics_t *g, const gfx_place_t **out) {

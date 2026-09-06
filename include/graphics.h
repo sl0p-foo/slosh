@@ -41,6 +41,9 @@ typedef struct {
   uint16_t scale_cols, scale_rows;
   uint32_t sx, sy, sw, sh; /* source rectangle, in image pixels */
   bool live;
+  /* The client is holding this placement, exactly as described above. A
+   * placement the terminal already has is not re-sent: see gfx_flush(). */
+  bool shown;
 } gfx_place_t;
 
 graphics_t *gfx_new(void);
@@ -86,8 +89,14 @@ char *gfx_flush(graphics_t *g, size_t *out_len);
  * commits counts as undelivered at the next gfx_begin(). */
 void gfx_commit(graphics_t *g, bool delivered);
 
-/* Forget what the client has seen (it is a different client now). */
+/* Forget what the client has seen (it is a different client now, or its screen
+ * was cleared -- ESC[2J takes the images with it). Everything still on screen
+ * is transmitted and placed again on the next frame. */
 void gfx_reset(graphics_t *g);
+/* The client's screen was cleared (a full repaint takes the images with it):
+ * every placement is owed again, while transmitted pixels and owed deletions
+ * stand. */
+void gfx_repaint(graphics_t *g);
 /* Drop everything belonging to a pane that is gone. */
 void gfx_forget_pane(graphics_t *g, uint32_t pane);
 
