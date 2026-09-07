@@ -75,13 +75,36 @@ time.sleep(30)
 """
 
 
+# One image, two placements, then the pixels replaced -- which deletes both
+# placements on the client, so the program says them again, same geometry.
+# Both must reach the client again: "unchanged" is measured against what the
+# client is holding, and after a retransmit it is holding neither.
+REPLACED = r"""
+import base64, sys, time
+px1 = base64.b64encode(bytes([255, 0, 0] * 8)).decode()  # 4x2 red
+px2 = base64.b64encode(bytes([0, 255, 0] * 8)).decode()  # 4x2 green
+def both(px):
+    sys.stdout.write("\x1b[1;1H")
+    sys.stdout.write("\x1b_Ga=t,f=24,q=2,s=4,v=2,i=7;%s\x1b\\" % px)
+    sys.stdout.write("\x1b_Ga=p,i=7,p=1,q=2,c=6,r=2\x1b\\")
+    sys.stdout.write("\x1b[1;20H")
+    sys.stdout.write("\x1b_Ga=p,i=7,p=2,q=2,c=6,r=2\x1b\\")
+    sys.stdout.flush()
+both(px1)
+time.sleep(2)
+both(px2)
+time.sleep(30)
+"""
+
+
 def spawn(cols=80, rows=24, child=None, session=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
         os.environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
-        os.execv(BIN, [BIN, "-s", session or SESSION, "--", "python3", "-c",
-                       child or CHILD])
+        os.execv(
+            BIN, [BIN, "-s", session or SESSION, "--", "python3", "-c", child or CHILD]
+        )
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     return pid, fd
@@ -234,6 +257,26 @@ def main():
         f"{len(places)} placements across {frames} frames",
     )
     os.kill(pid3, 9)
+
+    # The other edge of "place once": a retransmit invalidates every placement
+    # of the image (kitty deletes them all when the data is replaced), not
+    # just the one that rode in the same call as the transmit. Un-invalidated,
+    # the second placement is judged unchanged and never said again -- a
+    # picture the client deleted and we believe it still has.
+    pid4, fd4 = spawn(child=REPLACED, session=SESSION + "-replaced")
+    replaced = drain(fd4, idle=3.5, limit=20.0)
+    transmits = [m.start() for m in re.finditer(rb"\x1b_Ga=t,", replaced)]
+    replaces = (
+        [c for c, _ in gfx_commands(replaced[transmits[1] :]) if c.startswith(b"a=p")]
+        if len(transmits) >= 2
+        else []
+    )
+    ok &= check(
+        "a retransmit re-places every placement of the image",
+        len(transmits) >= 2 and len(replaces) == 2,
+        f"{len(transmits)} transmits, then {len(replaces)} placements: {replaces[:4]}",
+    )
+    os.kill(pid4, 9)
 
     os.write(fd2, b"\x01q")
     drain(fd2, idle=0.2, limit=2.0)

@@ -220,6 +220,14 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
     transmit(g, img, req->px_w, req->px_h, req->format, req->compression,
              req->data, req->data_len);
     transmitted = img->sent;
+    /* Replacing an image's data deletes every placement of it on the client,
+     * not just the one this call is about to make: kitty drops them all. The
+     * other placements of this image -- the other pieces of a cut one, a
+     * second placement in another spot -- are invalidated here, or a `same`
+     * verdict below leaves them un-said while the client no longer has them. */
+    if (transmitted)
+      for (size_t i = 0; i < g->nplaces; i++)
+        if (g->places[i].out_id == img->out_id) g->places[i].shown = false;
   }
 
   uint32_t pid = req->place_id ? req->place_id : 1;
@@ -253,7 +261,8 @@ void gfx_place(graphics_t *g, const gfx_req_t *req) {
   bool same = slot->shown && !transmitted && slot->col == req->col &&
               slot->row == req->row && slot->cols == req->cols &&
               slot->rows == req->rows && slot->x_off == req->x_off &&
-              slot->y_off == req->y_off && slot->scale_cols == req->scale_cols &&
+              slot->y_off == req->y_off &&
+              slot->scale_cols == req->scale_cols &&
               slot->scale_rows == req->scale_rows && slot->sx == req->sx &&
               slot->sy == req->sy && slot->sw == req->sw && slot->sh == req->sh;
   slot->col = req->col;
