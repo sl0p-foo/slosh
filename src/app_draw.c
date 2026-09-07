@@ -2309,6 +2309,94 @@ static void gfx_place_view(graphics_t *out, gfx_req_t r, rect_t v) {
   gfx_place(out, &r);
 }
 
+/* The most rectangles one image is cut into. One float leaves at most four
+ * pieces, so this is two floats' worth; past it the image is dropped rather
+ * than shredded, which is what the old emitter did for every cut. */
+#define GFX_MAX_PIECES 8
+
+/* What is left of `r` once the occluders are taken out of it, as rectangles.
+ * Zero when nothing is left, or when saying it would take more than `max`. */
+static size_t rect_subtract(rect_t r, const rect_t *occ, size_t nocc,
+                            rect_t *out, size_t max) {
+  if (!r.w || !r.h) return 0;
+  if (max > GFX_MAX_PIECES) max = GFX_MAX_PIECES; /* `next` below is that big */
+  size_t n = 0;
+  out[n++] = r;
+  for (size_t i = 0; i < nocc; i++) {
+    rect_t next[GFX_MAX_PIECES];
+    size_t m = 0;
+    for (size_t j = 0; j < n; j++) {
+      int px0 = out[j].x, py0 = out[j].y;
+      int px1 = px0 + out[j].w, py1 = py0 + out[j].h;
+      int ox0 = occ[i].x, oy0 = occ[i].y;
+      int ox1 = ox0 + occ[i].w, oy1 = oy0 + occ[i].h;
+      if (ox1 <= px0 || ox0 >= px1 || oy1 <= py0 || oy0 >= py1) {
+        if (m == max) return 0;
+        next[m++] = out[j];
+        continue;
+      }
+      int cx0 = ox0 > px0 ? ox0 : px0, cx1 = ox1 < px1 ? ox1 : px1;
+      int cy0 = oy0 > py0 ? oy0 : py0, cy1 = oy1 < py1 ? oy1 : py1;
+      /* The strips around the covered part: the full width above and below
+       * it, and what is beside it between those two. Four at most, and each
+       * of them empty when the cover reaches that edge. */
+      const int strips[4][4] = {
+          {px0, py0, px1, cy0},
+          {px0, cy1, px1, py1},
+          {px0, cy0, cx0, cy1},
+          {cx1, cy0, px1, cy1},
+      };
+      for (size_t k = 0; k < 4; k++) {
+        int x0 = strips[k][0], y0 = strips[k][1];
+        int x1 = strips[k][2], y1 = strips[k][3];
+        if (x1 <= x0 || y1 <= y0) continue;
+        if (m == max) return 0;
+        next[m++] = (rect_t){(uint16_t)x0, (uint16_t)y0, (uint16_t)(x1 - x0),
+                             (uint16_t)(y1 - y0)};
+      }
+    }
+    memcpy(out, next, m * sizeof *out);
+    n = m;
+    if (!n) return 0;
+  }
+  return n;
+}
+
+/* One axis of one piece: the source rectangle for the `n` cells that start
+ * `d` cells into a placement `total` cells wide, and the offset the piece
+ * begins at inside its own first cell.
+ *
+ * Scaled and natural are different sums, for the reason the pane-edge crop
+ * gives: with c=/r= a cell is worth source/cells pixels, and at natural size
+ * a cell is worth its own pixels -- measured from where the image starts,
+ * which is `off` into the first cell and nowhere else. */
+static void axis_crop(bool scaled, uint16_t total, uint16_t d, uint16_t n,
+                      uint32_t cell_px, uint32_t *src, uint32_t *len,
+                      uint32_t *off) {
+  if (!total || !n) return;
+  if (scaled) {
+    uint32_t s0 = (uint32_t)((uint64_t)*len * d / total);
+    uint32_t s1 = (uint32_t)((uint64_t)*len * (d + n) / total);
+    *src += s0;
+    *len = s1 - s0;
+    /* Scaling does not move where the image starts inside its first cell,
+     * so the first piece keeps that offset and a later one starts on a cell
+     * boundary by construction. */
+    if (d) *off = 0;
+    return;
+  }
+  uint32_t edge = (uint32_t)d * cell_px;
+  uint32_t skip = d ? (edge > *off ? edge - *off : 0) : 0;
+  if (skip > *len) skip = *len;
+  uint32_t keep = d ? 0 : *off;
+  uint32_t avail = (uint32_t)n * cell_px;
+  avail = avail > keep ? avail - keep : 0;
+  *src += skip;
+  *len -= skip;
+  if (*len > avail) *len = avail;
+  *off = keep;
+}
+
 static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
   struct gfx_ctx *c = ud;
   node_t *leaf = c->leaf;
@@ -2358,121 +2446,62 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
 
   /* The floats above this pane. The cell compositor gets occlusion free from
    * paint order; placements are sent after the diff and get it from this:
-   * what one clean edge can express is cropped — the same source-rectangle
-   * arithmetic as the pane-edge clipping, aimed at another clipper — and a
-   * float in the *middle* of an image is a shape one placement cannot
-   * express, so that placement is suppressed for the frame and returns when
-   * the float moves. A corner overlap leaves an L, which is two rects, which
-   * is the same refusal. */
-  uint16_t col = g->col, row = g->row;
-  uint32_t sx = g->sx, sy = g->sy;
-  uint32_t xo = g->x_off, yo = g->y_off;
-  for (size_t i = 0; i < c->nocc; i++) {
-    int px0 = leaf->content.x + col, py0 = leaf->content.y + row;
-    int px1 = px0 + cols, py1 = py0 + rows;
-    int ox0 = c->occ[i].x, oy0 = c->occ[i].y;
-    int ox1 = ox0 + c->occ[i].w, oy1 = oy0 + c->occ[i].h;
-    if (ox1 <= px0 || ox0 >= px1 || oy1 <= py0 || oy0 >= py1) continue;
-    bool spans_x = ox0 <= px0 && ox1 >= px1;
-    bool spans_y = oy0 <= py0 && oy1 >= py1;
-    if (spans_x && spans_y) return; /* fully covered */
-    if (spans_x) {
-      if (oy0 <= py0) { /* trimmed from the top: the source origin moves */
-        uint16_t cut = (uint16_t)(oy1 - py0);
-        if (g->req_rows) {
-          uint32_t drop = rows ? (uint32_t)((uint64_t)sh * cut / rows) : 0;
-          sy += drop;
-          sh -= drop;
-        } else {
-          uint32_t px = (uint32_t)cut * g->cell_px_h;
-          px = px > yo ? px - yo : 0;
-          yo = 0;
-          sy += px < sh ? px : sh;
-          sh = px < sh ? sh - px : 0;
-        }
-        row = (uint16_t)(row + cut);
-        rows = (uint16_t)(rows - cut);
-      } else if (oy1 >= py1) { /* trimmed from the bottom, like the edge */
-        uint16_t keep = (uint16_t)(oy0 - py0);
-        if (g->req_rows) {
-          sh = rows ? (uint32_t)((uint64_t)sh * keep / rows) : sh;
-        } else {
-          uint32_t px = (uint32_t)keep * g->cell_px_h;
-          px = px > yo ? px - yo : 0;
-          if (sh > px) sh = px;
-        }
-        rows = keep;
-      } else {
-        return; /* a strip across the middle */
-      }
-    } else if (spans_y) {
-      if (ox0 <= px0) {
-        uint16_t cut = (uint16_t)(ox1 - px0);
-        if (g->req_cols) {
-          uint32_t drop = cols ? (uint32_t)((uint64_t)sw * cut / cols) : 0;
-          sx += drop;
-          sw -= drop;
-        } else {
-          uint32_t px = (uint32_t)cut * g->cell_px_w;
-          px = px > xo ? px - xo : 0;
-          xo = 0;
-          sx += px < sw ? px : sw;
-          sw = px < sw ? sw - px : 0;
-        }
-        col = (uint16_t)(col + cut);
-        cols = (uint16_t)(cols - cut);
-      } else if (ox1 >= px1) {
-        uint16_t keep = (uint16_t)(ox0 - px0);
-        if (g->req_cols) {
-          sw = cols ? (uint32_t)((uint64_t)sw * keep / cols) : sw;
-        } else {
-          uint32_t px = (uint32_t)keep * g->cell_px_w;
-          px = px > xo ? px - xo : 0;
-          if (sw > px) sw = px;
-        }
-        cols = keep;
-      } else {
-        return;
-      }
-    } else {
-      return; /* a corner: the remainder is an L, not a rect */
-    }
-    if (!cols || !rows || !sw || !sh) return;
+   * what is left of the image once the floats above it are taken away.
+   *
+   * That remainder is not always one rectangle -- a float across the middle
+   * of an image leaves two, a float in a corner leaves two, a float wholly
+   * inside it leaves four -- and a placement is one rectangle. So the
+   * remainder is cut into rectangles and each one is placed in its own
+   * right, which is a shape the protocol does have. It used to be suppressed
+   * instead, on the grounds that an L is not a rect: the whole image vanished
+   * the moment a floating pane crossed it, on the terminal and in anything
+   * mirroring it, and came back when the float moved off. */
+  rect_t whole = {(uint16_t)(leaf->content.x + g->col),
+                  (uint16_t)(leaf->content.y + g->row), cols, rows};
+  rect_t vis[GFX_MAX_PIECES];
+  size_t nvis = rect_subtract(whole, c->occ, c->nocc, vis, GFX_MAX_PIECES);
+  for (size_t i = 0; i < nvis; i++) {
+    /* Where the piece starts inside the placement, in cells, is all the
+     * source rectangle needs -- the pane-edge arithmetic again, aimed at a
+     * cut that can be on any side now. */
+    uint32_t psx = g->sx, psy = g->sy, psw = sw, psh = sh;
+    uint32_t pxo = g->x_off, pyo = g->y_off;
+    axis_crop(g->req_cols != 0, cols, (uint16_t)(vis[i].x - whole.x), vis[i].w,
+              g->cell_px_w, &psx, &psw, &pxo);
+    axis_crop(g->req_rows != 0, rows, (uint16_t)(vis[i].y - whole.y), vis[i].h,
+              g->cell_px_h, &psy, &psh, &pyo);
+    gfx_place_view(c->out,
+                   (gfx_req_t){
+                       .pane = leaf->id,
+                       .src_id = g->image_id,
+                       .gen = g->generation,
+                       .place_id = g->place_id,
+                       .piece = (uint16_t)i,
+                       .col = vis[i].x,
+                       .row = vis[i].y,
+                       .cols = vis[i].w,
+                       .rows = vis[i].h,
+                       .x_off = pxo,
+                       .y_off = pyo,
+                       /* Zero when the program never asked to scale; when it
+                        * did, the piece scales into the cells it covers. */
+                       .scale_cols = g->req_cols ? vis[i].w : 0,
+                       .scale_rows = g->req_rows ? vis[i].h : 0,
+                       .sx = psx,
+                       .sy = psy,
+                       .sw = psw,
+                       .sh = psh,
+                       .px_w = g->src_w,
+                       .px_h = g->src_h,
+                       .cell_px_w = g->cell_px_w,
+                       .cell_px_h = g->cell_px_h,
+                       .format = g->format,
+                       .compression = g->compression,
+                       .data = g->data,
+                       .data_len = g->data_len,
+                   },
+                   c->viewport);
   }
-
-  gfx_place_view(
-      c->out,
-      (gfx_req_t){
-          .pane = leaf->id,
-          .src_id = g->image_id,
-          .gen = g->generation,
-          .place_id = g->place_id,
-          .col = (uint16_t)(leaf->content.x + col),
-          .row = (uint16_t)(leaf->content.y + row),
-          .cols = cols,
-          .rows = rows,
-          /* The offsets survive the pane's own clipping untouched; an
-       * occlusion trim from the left or top zeroes the one it consumed. */
-          .x_off = xo,
-          .y_off = yo,
-          /* Clipped the same way the cell counts were, and zero when the program
-       * never asked to scale. */
-          .scale_cols = g->req_cols ? cols : 0,
-          .scale_rows = g->req_rows ? rows : 0,
-          .sx = sx,
-          .sy = sy,
-          .sw = sw,
-          .sh = sh,
-          .px_w = g->src_w,
-          .px_h = g->src_h,
-          .cell_px_w = g->cell_px_w,
-          .cell_px_h = g->cell_px_h,
-          .format = g->format,
-          .compression = g->compression,
-          .data = g->data,
-          .data_len = g->data_len,
-      },
-      c->viewport);
 }
 
 /* One frame's worth of "what covers what": the visible floats, so every
@@ -2491,11 +2520,16 @@ static void gfx_leaf_cb(node_t *n, void *ud) {
   if (n->hidden || n->collapsed) return; /* not drawn: images included */
   /* Above this leaf: every float for a tiled pane, the higher-raised for a
    * float — the same order draw_floats paints in, so an image is clipped by
-   * exactly what its cells are covered by. */
-  rect_t occ[64];
+   * exactly what its cells are covered by. Then the frame's overlays, which
+   * are above the floats too: the cheatsheet, a toast, the splash. They are
+   * drawn as cells and a placement is not, so without this the terminal puts
+   * the picture back over the top of them -- the cheatsheet appearing under
+   * an image is what asked for this. */
+  rect_t occ[64 + APP_MAX_OVERLAYS];
   size_t k = 0;
   for (size_t i = 0; i < w->n; i++)
     if (!n->floating || w->raised[i] > n->raised) occ[k++] = w->occ[i];
+  for (size_t i = 0; i < w->a->noverlays; i++) occ[k++] = w->a->overlays[i];
   struct gfx_ctx ctx = {.a = w->a,
                         .out = w->out,
                         .leaf = n,
@@ -2532,6 +2566,8 @@ const char *app_graphics(app_t *a, size_t *len) {
 
 void app_graphics_reset(app_t *a) { gfx_reset(a->gfx); }
 
+void app_graphics_view_repaint(graphics_t *state) { gfx_repaint(state); }
+
 void app_graphics_commit(app_t *a, bool delivered) {
   gfx_commit(a->gfx, delivered);
 }
@@ -2552,6 +2588,9 @@ char *app_graphics_json(app_t *a) {
     json_obj_open(&j, NULL);
     json_int(&j, "image", places[i].out_id);
     json_int(&j, "placement", places[i].place_id);
+    /* Which rectangle of that placement: a float lying across an image
+     * leaves more than one, and they are only told apart by this. */
+    json_int(&j, "piece", places[i].piece);
     json_int(&j, "x", places[i].col);
     json_int(&j, "y", places[i].row);
     json_int(&j, "cols", places[i].cols);
@@ -2783,6 +2822,10 @@ void draw_splash(app_t *a, screen_t *s) {
   uint16_t x0 = (uint16_t)((s->cols - bw) / 2);
   uint16_t y0 = (uint16_t)((s->rows - bh) / 2);
 
+  /* A cleared backdrop, so the logo reads over whatever a pane put there --
+   * including an image, which is cleared by being cut out of its placement
+   * rather than by writing cells over it. */
+  app_overlay(a, (rect_t){x0, y0, bw, bh});
   /* A cleared backdrop, so the logo reads over whatever a pane put there. */
   char blank[512];
   size_t nb = bw < sizeof blank - 1 ? bw : sizeof blank - 1;

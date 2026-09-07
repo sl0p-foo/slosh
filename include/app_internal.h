@@ -10,6 +10,10 @@
 #include "expr.h"
 #include "shader.h"
 
+/* How many overlays one frame can have cut out of its images: the modal box
+ * (one at a time), three toasts, the splash, and room to spare. */
+#define APP_MAX_OVERLAYS 8
+
 /* A chain attached to one pane, with the programs its expressions compiled to
  * kept beside it. Together because they are one lifetime: freeing the chain
  * without the programs leaks, and freeing the programs without the chain leaves
@@ -229,6 +233,16 @@ struct app {
   } toasts[3];
   size_t ntoasts;
 
+  /* Where this frame's overlays landed: a modal's box, a toast, the splash.
+   * The compositor needs no such list -- painted later is on top -- but an
+   * image is not painted, it is placed, and the client's terminal draws it
+   * over the cells whatever order they arrived in. So the graphics pass cuts
+   * the overlays out of a placement the way it cuts out a float, and this is
+   * how it learns where they were. Rebuilt every compose; a rect that is not
+   * re-registered is one that is no longer on screen. */
+  rect_t overlays[APP_MAX_OVERLAYS];
+  size_t noverlays;
+
   /* What a selection put on the clipboard, kept for middle-click paste (the
    * X11 primary-selection habit) and handed to the client as OSC 52. */
   char *clipboard;
@@ -444,6 +458,8 @@ void rename_begin(app_t *a, uint32_t id);
 void rename_tab_begin(app_t *a, uint32_t id);
 
 void draw_splash(app_t *a, screen_t *s);
+/* Say that a rect was painted over the panes this frame; see `overlays`. */
+void app_overlay(app_t *a, rect_t r);
 
 /* round two */
 void drop_pane_on_strip(app_t *a);

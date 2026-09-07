@@ -289,6 +289,26 @@ def test_sub_cell_offsets_survive_to_the_client():
         )
 
 
+def test_a_placement_says_it_sits_above_the_text():
+    """z=0 is kitty's default, so saying it changes nothing on a terminal.
+
+    It is the whole picture for anything mirroring the stream, which cannot
+    otherwise tell "the emitter wants this over the text" from "the emitter
+    said nothing" -- and one that guesses "under" loses the image behind the
+    first background painted over those cells, dim_unfocused being the one
+    that paints over every cell of a pane at once.
+    """
+    with Session(sends_image(), cols=44, rows=10) as s:
+        s.settle(200)
+        raw = s.api("graphics", format="bytes")["bytes"]
+        place = [c for c in raw.split("\x1b") if c.startswith("_Ga=p")]
+        check(
+            "the placement states its z",
+            place and "z=0" in place[0],
+            str(place),
+        )
+
+
 def test_a_placement_with_no_offset_emits_none():
     with Session(transmits_then_places("p,i=7,p=1,q=2,c=6,r=2"), cols=44, rows=10) as s:
         s.settle(200)
@@ -592,10 +612,12 @@ def test_scrolled_away_placements_are_dropped():
 
 def test_a_float_occludes_a_placement():
     """The cell compositor gets occlusion free from paint order; placements
-    are sent after the diff and get it from clipping (D22): a clean edge
-    crops -- the pane-edge arithmetic aimed at another clipper -- and a
-    float in the middle is a shape one placement cannot express, so that
-    placement is suppressed for the frame and returns when the float moves.
+    are sent after the diff and get it from clipping (D22): what is left of
+    the image once the float is taken out of it. A clean edge leaves one
+    rectangle, and anything else leaves several -- each placed in its own
+    right, because a placement is one rectangle and the remainder need not
+    be. Suppressing the image instead, which is what this used to do, meant
+    a floating pane crossing a picture erased all of it.
 
     Every pane here runs the same command, so the float shows the image too;
     the tiled pane's placement is told apart by the image id it had before
@@ -622,10 +644,22 @@ def test_a_float_occludes_a_placement():
             str(got),
         )
 
-        # Across the middle: no single rect can say what remains.
+        # Across the middle: what is left is the columns on either side of it.
         s.api("float", x=img["x"] + 10, y=0, w=30, h=28)
         s.settle(20)
-        check("a middle strip suppresses it", mine() == [], str(places(s)))
+        got = sorted(mine(), key=lambda p: p["x"])
+        check(
+            "a middle strip leaves the columns beside it",
+            len(got) == 2
+            and (got[0]["x"], got[0]["cols"]) == (img["x"], 10)
+            and (got[1]["x"], got[1]["cols"]) == (img["x"] + 40, img["cols"] - 40),
+            str(got),
+        )
+        check(
+            "and each piece crops to the cells it covers",
+            all(p["cols"] and p["rows"] == img["rows"] for p in got),
+            str(got),
+        )
 
         # Moved clear: the placement returns whole.
         s.api("float", x=img["x"], y=14, w=30, h=12)
@@ -637,6 +671,25 @@ def test_a_float_occludes_a_placement():
             str(got),
         )
 
+        # Landing inside it: what is left is the strips around the float, and
+        # they tile exactly the image minus what the float covers -- the
+        # float's rect being its frame's, not the content's.
+        s.api("float", x=img["x"] + 10, y=img["y"] + 1, w=20, h=3)
+        s.settle(20)
+        got = mine()
+        fl = [p for p in s.api("panes")["panes"] if p["floating"]][0]
+        ox0, oy0 = max(img["x"], fl["x"]), max(img["y"], fl["y"])
+        ox1 = min(img["x"] + img["cols"], fl["x"] + fl["w"])
+        oy1 = min(img["y"] + img["rows"], fl["y"] + fl["h"])
+        hidden = max(0, ox1 - ox0) * max(0, oy1 - oy0)
+        covered = sum(p["cols"] * p["rows"] for p in got)
+        check(
+            "a float over the middle of an image leaves the strips around it",
+            len(got) > 1 and covered == img["cols"] * img["rows"] - hidden,
+            f"{len(got)} pieces covering {covered} of "
+            f"{img['cols'] * img['rows'] - hidden}: {got}",
+        )
+
         # Over the top rows: cropped from the top, the source origin moving.
         s.api("float", x=0, y=0, w=100, h=img["y"] + 3)
         s.settle(20)
@@ -644,6 +697,49 @@ def test_a_float_occludes_a_placement():
         check(
             "a top cover crops from the top",
             len(got) == 1 and got[0]["y"] > img["y"] and got[0]["rows"] < img["rows"],
+            str(got),
+        )
+
+
+def test_a_modal_is_not_drawn_under_an_image():
+    """The cheatsheet, a toast and the splash are painted over the panes, and
+    a placement is not painted at all -- the client's terminal draws the image
+    over the cells whatever order they arrived in. So an overlay has to be cut
+    out of the image underneath it, the way a float is, or it reads through a
+    picture that is drawn on top of it."""
+    with Session(sends_image(cols=60, rows=16, after="cat"), cols=100, rows=28) as s:
+        s.settle(200)
+        base = places(s)
+        check("placed to begin with", len(base) == 1, str(base))
+        if not base:
+            return
+        img = base[0]
+        mid = (img["x"] + img["cols"] // 2, img["y"] + img["rows"] // 2)
+        covers = lambda x, y: any(
+            p["x"] <= x < p["x"] + p["cols"] and p["y"] <= y < p["y"] + p["rows"]
+            for p in places(s)
+        )
+        check("the image covers the middle of itself", covers(*mid), str(base))
+
+        s.send(r"\x01?")  # the cheatsheet, centred over everything
+        s.settle()
+        check(
+            "the cheatsheet is cut out of the image",
+            not covers(*mid) and places(s) != [],
+            str(places(s)),
+        )
+        check(
+            "and what is beside it is still placed",
+            covers(img["x"], img["y"]),
+            str(places(s)),
+        )
+
+        s.send("q")  # anything dismisses it
+        s.settle()
+        got = places(s)
+        check(
+            "the image is whole again once it is dismissed",
+            len(got) == 1 and got[0]["cols"] == img["cols"],
             str(got),
         )
 
@@ -661,6 +757,7 @@ if __name__ == "__main__":
     test_an_image_outlives_a_screen_clear()
     test_a_screen_clear_still_removes_what_is_on_screen()
     test_sub_cell_offsets_survive_to_the_client()
+    test_a_placement_says_it_sits_above_the_text()
     test_a_placement_with_no_offset_emits_none()
     test_a_natural_image_is_never_rescaled_as_it_moves()
     test_a_scaled_image_keeps_the_cell_count_it_asked_for()
@@ -675,4 +772,5 @@ if __name__ == "__main__":
     test_scrolled_away_placements_are_dropped()
     test_an_undelivered_frame_stays_owed()
     test_a_float_occludes_a_placement()
+    test_a_modal_is_not_drawn_under_an_image()
     sys.exit(report())

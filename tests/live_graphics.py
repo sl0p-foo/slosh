@@ -58,12 +58,30 @@ time.sleep(30)
 """
 
 
-def spawn(cols=80, rows=24):
+# A small image that stays put while the screen around it changes: the counter
+# repaints one line in place (\r, no newline), so nothing scrolls and the
+# picture neither moves nor changes. Every frame it provokes is a frame that
+# must NOT say the placement again.
+STILL = r"""
+import base64, sys, time
+px = base64.b64encode(bytes([255, 0, 0] * 8)).decode()  # 4x2 RGB
+sys.stdout.write("\x1b_Ga=T,f=24,q=2,s=4,v=2,i=7,c=6,r=2;%s\x1b\\\r\n" % px)
+sys.stdout.flush()
+for i in range(120):
+    sys.stdout.write("tick %d   \r" % i)
+    sys.stdout.flush()
+    time.sleep(0.02)
+time.sleep(30)
+"""
+
+
+def spawn(cols=80, rows=24, child=None, session=None):
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["TERM"] = "xterm-ghostty"
         os.environ["SLOSH_CONFIG"] = "/nonexistent/slosh.kdl"
-        os.execv(BIN, [BIN, "-s", SESSION, "--", "python3", "-c", CHILD])
+        os.execv(BIN, [BIN, "-s", session or SESSION, "--", "python3", "-c",
+                       child or CHILD])
         os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     return pid, fd
@@ -85,6 +103,28 @@ def drain(fd, idle=0.4, limit=8.0):
         elif time.time() - last > idle:
             break
     return buf
+
+
+def unsynced(buf):
+    """kitty commands that reach the client outside a synchronized update.
+
+    A frame is a cell diff and then the placements that sit on top of it. A
+    terminal that presents the diff before the placements arrive draws the
+    cells under a picture with no picture on them, so every image blinks once
+    per frame -- which is what happens the moment anything re-chunks the
+    stream on the way out (a mirror reading the pty a few KB at a time). The
+    markers are what stop the halves being presented separately, so every
+    image command has to be inside a pair.
+    """
+    depth, out = 0, []
+    for m in re.finditer(rb"\x1b\[\?2026h|\x1b\[\?2026l|\x1b_G([^\x1b]*)\x1b", buf):
+        if m.group() == b"\x1b[?2026h":
+            depth += 1
+        elif m.group() == b"\x1b[?2026l":
+            depth -= 1
+        elif depth <= 0:
+            out.append(m.group(1)[:40])
+    return out
 
 
 def check(name, cond, detail=""):
@@ -130,6 +170,13 @@ def main():
     placed = any(ctl.startswith(b"a=p") for ctl, _ in cmds)
     ok &= check("and the image is placed while visible", placed, repr(buf[-300:]))
 
+    loose = unsynced(buf)
+    ok &= check(
+        "every image command travels inside a synchronized update",
+        not loose,
+        f"{len(loose)} outside: {loose[:4]}",
+    )
+
     # The child's flood scrolled it away while nothing was being read: the
     # deletion rode a frame the full outbox may well have dropped, and it must
     # be said again until it lands -- or the client draws the placement at a
@@ -171,6 +218,22 @@ def main():
         "and joining it leaves the first client attached",
         os.waitpid(pid, os.WNOHANG) == (0, 0),
     )
+
+    # A placement is a standing instruction, not a per-frame one: a picture
+    # that has not moved must not be re-sent while the screen around it
+    # repaints. Re-sending it is invisible on a terminal that keeps the pixels
+    # and ruinous on anything mirroring the stream, which re-decodes the image
+    # and rebuilds its view every time it hears the placement again.
+    pid3, fd3 = spawn(child=STILL, session=SESSION + "-still")
+    still = drain(fd3, idle=0.6, limit=20.0)
+    places = [ctl for ctl, _ in gfx_commands(still) if ctl.startswith(b"a=p")]
+    frames = still.count(b"\x1b[?2026h")
+    ok &= check(
+        "a still picture is placed once, however much repaints around it",
+        len(places) == 1 and frames > 10,
+        f"{len(places)} placements across {frames} frames",
+    )
+    os.kill(pid3, 9)
 
     os.write(fd2, b"\x01q")
     drain(fd2, idle=0.2, limit=2.0)

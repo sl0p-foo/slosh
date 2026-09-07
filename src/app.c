@@ -668,6 +668,15 @@ void draw_status_line(app_t *a, screen_t *s) {
   screen_text(s, (uint16_t)from, y, middle, middle_fg, NO_COLOR, 0);
 }
 
+/* Register something painted over the panes, so the graphics pass can cut it
+ * out of any image underneath it. Opaque things only: a scrim tints what is
+ * behind it and an image under one should stay on screen, undimmed and wrong
+ * rather than gone. */
+void app_overlay(app_t *a, rect_t r) {
+  if (!a || !r.w || !r.h || a->noverlays >= APP_MAX_OVERLAYS) return;
+  a->overlays[a->noverlays++] = r;
+}
+
 void draw_toasts(app_t *a, screen_t *s) {
   toasts_expire(a);
   if (!a->ntoasts) return;
@@ -706,6 +715,7 @@ void draw_toasts(app_t *a, screen_t *s) {
     char clipped[160];
     snprintf(clipped, sizeof clipped, "%.*s", (int)w, line);
     screen_text(s, x, y, clipped, TOAST_FG, TOAST_BG, ATTR_BOLD);
+    app_overlay(a, (rect_t){x, y, (uint16_t)cells(clipped), 1});
   }
 }
 

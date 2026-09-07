@@ -110,6 +110,11 @@ typedef struct {
   uint16_t fallback_cell_w, fallback_cell_h;
   bool pending_paint;
   int64_t next_frame;
+  /* One frame, assembled for whichever client is being pushed to: cells,
+   * images and the synchronized-update markers around them. Server-wide
+   * rather than per-connection because it never outlives the send. */
+  char *frame;
+  size_t frame_cap;
 } server_t;
 
 static conn_t *active_conn(server_t *s) {
@@ -247,29 +252,6 @@ static char *b64(const char *in, size_t len, size_t *out_len) {
   return out;
 }
 
-/* Images go out after the cell diff, so a repainted cell cannot land on top
- * of a placement we just made.
- *
- * Returns whether the client is caught up. The stream is indivisible -- half
- * a frame is a dangling APC that eats whatever follows it -- so a full outbox
- * drops the whole frame, the model is told (deletions stay owed, transmits
- * are re-sent), and the caller keeps a repaint pending until it lands. Losing
- * a frame here silently was how a scrolled-away screenshot stayed parked on
- * the screen: its deletion left with the dropped bytes and was never owed
- * again. */
-static bool push_graphics(server_t *s, conn_t *c) {
-  size_t len = 0;
-  const char *bytes = app_graphics_view(s->app, c->gfx, c->view_x, c->view_y,
-                                        c->cols, c->rows, &len);
-  if (!len) {
-    app_graphics_view_commit(c->gfx, true);
-    return true;
-  }
-  bool ok = conn_send(c, MSG_OUTPUT, bytes, len);
-  app_graphics_view_commit(c->gfx, ok);
-  return ok;
-}
-
 /* The clipboard lives on the client's machine, not ours, so a copy travels as
  * OSC 52 for the outer terminal to honour. Input-driven copies name their
  * originating connection; asynchronous pane copies use the active one. */
@@ -331,15 +313,84 @@ static void stamp_indicator(server_t *s, conn_t *c) {
     screen_put_utf8(&c->view, (uint16_t)(x0 + i), 0, &tag[i], 1, fg, bg, 0);
 }
 
-static bool push_frame(server_t *s, conn_t *c) {
+/* Synchronized output (DEC private mode 2026): the terminal buffers
+ * everything between the two markers and presents it as one update.
+ *
+ * A frame is a cell diff and then the image placements that belong on top of
+ * it -- and a terminal that draws the diff *before* the placements arrive
+ * shows, for one refresh, the cells where the picture is with no picture on
+ * them. Direct on a tty the two halves usually land in one read and nobody
+ * sees the gap; put anything that re-chunks the stream in between (a mirror
+ * like shellglass reads the pty 8KB at a time and writes each read straight
+ * through) and the gap becomes a refresh of its own. Every image on screen
+ * then blinks once per frame, which is how it was reported: "unstable, as if
+ * constantly redrawn".
+ *
+ * Terminals that do not implement 2026 ignore the private mode, which is why
+ * this can go out unconditionally. */
+#define SYNC_BEGIN "\x1b[?2026h"
+#define SYNC_END "\x1b[?2026l"
+
+/* One client's whole frame: the cell diff, then the images that belong on top
+ * of it, in a single message.
+ *
+ * One message rather than the two this used to be, because the two are one
+ * picture: split across messages they are split across writes at the client,
+ * and everything downstream is then free to present the halves separately.
+ * Images last within it, so a repainted cell cannot land on top of a
+ * placement we just made.
+ *
+ * Returns whether the client is caught up. The message is indivisible -- half
+ * a frame is a dangling APC that eats whatever follows it -- so a full outbox
+ * drops the whole frame, the model is told (deletions stay owed, transmits
+ * are re-sent), and the caller keeps a repaint pending until it lands. Losing
+ * a frame here silently was how a scrolled-away screenshot stayed parked on
+ * the screen: its deletion left with the dropped bytes and was never owed
+ * again. */
+static bool push_display(server_t *s, conn_t *c) {
   uint16_t old_x = c->view_x, old_y = c->view_y;
   uint16_t old_cols = c->shown_cols, old_rows = c->shown_rows;
   update_viewport(c, &s->screen);
   screen_project(&c->view, &s->screen, c->view_x, c->view_y);
   stamp_indicator(s, c);
+  bool full = c->view.force_full; /* consumed by the render below */
   screen_render(&c->view);
-  if (!c->view.out_len) return true;
-  if (!conn_send(c, MSG_OUTPUT, c->view.out, c->view.out_len)) {
+
+  /* A full repaint clears the screen, and "the clear screen escape code
+   * should also clear all images" -- so every placement the client was
+   * holding went with it. Owe them again: without this the picture would
+   * survive only as long as nothing forced a repaint under it. */
+  if (full) app_graphics_view_repaint(c->gfx);
+
+  size_t glen = 0;
+  const char *gfx = app_graphics_view(s->app, c->gfx, c->view_x, c->view_y,
+                                      c->cols, c->rows, &glen);
+  if (!c->view.out_len && !glen) { /* nothing changed: not one byte */
+    app_graphics_view_commit(c->gfx, true);
+    return true;
+  }
+
+  const size_t pre = sizeof SYNC_BEGIN - 1, post = sizeof SYNC_END - 1;
+  size_t len = pre + c->view.out_len + glen + post;
+  if (len > s->frame_cap) {
+    size_t cap = s->frame_cap ? s->frame_cap : 8192;
+    while (cap < len) cap *= 2;
+    char *grown = realloc(s->frame, cap);
+    if (!grown) return false;
+    s->frame = grown;
+    s->frame_cap = cap;
+  }
+  size_t off = 0;
+  memcpy(s->frame + off, SYNC_BEGIN, pre);
+  off += pre;
+  memcpy(s->frame + off, c->view.out, c->view.out_len);
+  off += c->view.out_len;
+  memcpy(s->frame + off, gfx, glen);
+  off += glen;
+  memcpy(s->frame + off, SYNC_END, post);
+
+  bool ok = conn_send(c, MSG_OUTPUT, s->frame, len);
+  if (!ok) {
     /* The projection never entered this client's stream. Keep mouse mapping
      * tied to the last viewport we did enqueue, then retry this one in full. */
     c->view_x = old_x;
@@ -347,9 +398,9 @@ static bool push_frame(server_t *s, conn_t *c) {
     c->shown_cols = old_cols;
     c->shown_rows = old_rows;
     c->view.force_full = true;
-    return false;
   }
-  return true;
+  app_graphics_view_commit(c->gfx, ok);
+  return ok;
 }
 
 static bool push_clients(server_t *s) {
@@ -368,9 +419,7 @@ static bool push_clients(server_t *s) {
   for (size_t i = 0; i < s->nconns; i++) {
     conn_t *c = &s->conns[i];
     if (!c->display) continue;
-    bool frame_ok = push_frame(s, c);
-    bool gfx_ok = push_graphics(s, c);
-    if (!(frame_ok && gfx_ok)) ok = false;
+    if (!push_display(s, c)) ok = false;
   }
   return ok;
 }
@@ -1099,6 +1148,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
   close(lfd);
   input_free(s.cmd_in);
   screen_free(&s.screen);
+  free(s.frame);
   app_free(s.app);
   return 0;
 }
