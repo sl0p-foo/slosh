@@ -2377,6 +2377,10 @@ static void axis_crop(bool scaled, uint16_t total, uint16_t d, uint16_t n,
   if (scaled) {
     uint32_t s0 = (uint32_t)((uint64_t)*len * d / total);
     uint32_t s1 = (uint32_t)((uint64_t)*len * (d + n) / total);
+    /* A piece so narrow its share of the source rounds to nothing still
+     * shows something: give it the pixel it is inside. Saying 0 would be
+     * worse than wrong -- w=0 on the wire means "the whole image". */
+    if (s1 == s0 && s0 < *len) s1 = s0 + 1;
     *src += s0;
     *len = s1 - s0;
     /* Scaling does not move where the image starts inside its first cell,
@@ -2389,12 +2393,23 @@ static void axis_crop(bool scaled, uint16_t total, uint16_t d, uint16_t n,
   uint32_t skip = d ? (edge > *off ? edge - *off : 0) : 0;
   if (skip > *len) skip = *len;
   uint32_t keep = d ? 0 : *off;
-  uint32_t avail = (uint32_t)n * cell_px;
-  avail = avail > keep ? avail - keep : 0;
   *src += skip;
   *len -= skip;
-  if (*len > avail) *len = avail;
   *off = keep;
+  /* Bound the far side by cells only when the cut is interior -- a piece
+   * that reaches the placement's last cell keeps everything that remains.
+   * `cell_px` is pixels-per-cell derived from the placement itself
+   * (pixel_width / grid_cols, floored, the grid including the cell the
+   * sub-cell offset spills into), so it is a shade small, and clamping the
+   * whole placement by it shaved the source rect by up to a cell -- by a
+   * different amount each frame for anything moving sub-cell, which made a
+   * smooth bounce shimmer. The far edge of the image needs no cell
+   * arithmetic at all: it is where the source runs out. */
+  if (d + n < total) {
+    uint32_t avail = (uint32_t)n * cell_px;
+    avail = avail > keep ? avail - keep : 0;
+    if (*len > avail) *len = avail;
+  }
 }
 
 static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
@@ -2470,6 +2485,13 @@ static void gfx_from_pane(pane_t *p, const pane_gfx_t *g, void *ud) {
               g->cell_px_w, &psx, &psw, &pxo);
     axis_crop(g->req_rows != 0, rows, (uint16_t)(vis[i].y - whole.y), vis[i].h,
               g->cell_px_h, &psy, &psh, &pyo);
+    /* A cut piece whose source came out empty is cells the image never
+     * reaches: place nothing there. The uncut placement is exempt -- the
+     * pane-edge crop can leave sw or sh at 0 meaning "the rest of it", which
+     * is what it has always sent. */
+    bool cut = vis[i].x != whole.x || vis[i].y != whole.y ||
+               vis[i].w != whole.w || vis[i].h != whole.h;
+    if (cut && (!psw || !psh)) continue;
     gfx_place_view(c->out,
                    (gfx_req_t){
                        .pane = leaf->id,
