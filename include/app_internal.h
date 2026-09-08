@@ -268,6 +268,17 @@ struct app {
   char query[64];
   size_t sel;
 
+  /* The search bar: an inline editor like the rename, not a modal like the
+   * picker, because the whole point is watching the pane while you drive it.
+   * It lives on the searched pane's status row, owns the keyboard while open,
+   * and the query is pushed to the pane's GhosttySearch per keystroke -- the
+   * results live in the pane (they are terminal state), only the typing lives
+   * here. `search_id` rather than "the focused pane" so a click that moves
+   * focus commits the search instead of quietly re-aiming it. */
+  bool searching;
+  uint32_t search_id;
+  char search_buf[128];
+
   /* Renaming in place: the title cell becomes the editor, so the name is typed
    * where it will live rather than in a dialog somewhere else. A pane's title
    * and a tab's label are the same gesture on two different things, so this is
@@ -387,6 +398,10 @@ extern config_t CFG;
 #define FINDER_BG (CFG.finder_bg)
 #define FINDER_SEL_FG (CFG.finder_sel_fg)
 #define FINDER_SEL_BG (CFG.finder_sel_bg)
+#define SEARCH_FG (CFG.search_fg)
+#define SEARCH_BG (CFG.search_bg)
+#define SEARCH_CUR_FG (CFG.search_cur_fg)
+#define SEARCH_CUR_BG (CFG.search_cur_bg)
 #define TOAST_FG (CFG.toast_fg)
 #define TOAST_BG (CFG.toast_bg)
 #define RENAME_FG (CFG.rename_fg)
@@ -456,6 +471,9 @@ void picker_accept(app_t *a, const char *action);
 void purpose_begin(app_t *a, uint32_t id);
 void rename_begin(app_t *a, uint32_t id);
 void rename_tab_begin(app_t *a, uint32_t id);
+void search_begin(app_t *a);
+void search_end(app_t *a, bool keep_view);
+bool search_key(app_t *a, const input_event_t *ev);
 
 void draw_splash(app_t *a, screen_t *s);
 /* Say that a rect was painted over the panes this frame; see `overlays`. */

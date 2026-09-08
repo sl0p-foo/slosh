@@ -875,6 +875,16 @@ theme {
     finder_sel_fg "#141418"
     finder_sel_bg "#7aa2f7"      // the row enter would take
 
+    // ── scrollback search (the `/` bar) ────────────────────────────────
+    // Every match on screen is tinted `search_*`; the one the bar is on gets
+    // `search_cur_*` instead, so "this one" reads apart from "all of them".
+    // Warm gold by default, because a match is a different thing from a
+    // selection (finder) or focus (accent) and should not be mistaken for one.
+    search_fg "#ffffff"
+    search_bg "#4d4124"          // the other matches
+    search_cur_fg "#141418"
+    search_cur_bg "#f2c97a"      // the one ↑↓ and enter act on
+
     // ── the in-place editor a double-click opens on a pane title ────────────
     rename_fg "#141418"
     rename_bg "#7aa2f7"
@@ -907,7 +917,7 @@ theme {
 // focus-down focus-next resize-left resize-right resize-up resize-down equalize
 // rotate-layout clear-shaders pane-to-next-tab pane-to-prev-tab pane-to-new-tab
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
-// scroll-bottom zoom minimize float new-float float-grow float-shrink rerun
+// scroll-bottom search zoom minimize float new-float float-grow float-shrink rerun
 // set-purpose rename-pane rename-tab new-tab next-tab prev-tab
 // select-tab-1..9 finder palette help detach quit
 // literal-prefix none

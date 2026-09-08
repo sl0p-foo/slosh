@@ -1598,6 +1598,7 @@ bool run_action(app_t *a, action_t act) {
   case ACT_SCROLL_BOTTOM:
     pane_scroll_edge(cur(a)->focus->pane, false);
     return true;
+  case ACT_SEARCH: search_begin(a); return true;
   case ACT_FINDER:
   case ACT_PALETTE:
     a->picker = act == ACT_PALETTE ? PICK_PALETTE : PICK_FINDER;
@@ -1680,6 +1681,10 @@ void app_event(app_t *a, const input_event_t *ev) {
    * picker's own rows. */
   if (a->renaming && ev->kind == EV_KEY) {
     rename_key(a, ev);
+    return;
+  }
+  if (a->searching && ev->kind == EV_KEY) {
+    search_key(a, ev);
     return;
   }
   if (a->picker && ev->kind == EV_KEY) {
@@ -1769,6 +1774,18 @@ void app_event(app_t *a, const input_event_t *ev) {
                a->renaming == RENAME_PANE ? "panetitle:%u" : "tab:%u",
                a->rename_id);
       if (!action || strcmp(action, own) != 0) rename_end(a, true);
+    }
+
+    /* The same rule for the search bar, and for the same reason: clicking
+     * away is how leaving a field commits it. Accepts (keeps the viewport)
+     * rather than cancels -- the click says "done here", not "undo it". The
+     * wheel is not a click: scrolling the pane you are searching is part of
+     * searching it, and must not swallow the bar. */
+    if (a->searching && ev->maction == MOUSE_PRESS && ev->button != MBTN_FOUR &&
+        ev->button != MBTN_FIVE) {
+      char own[48];
+      snprintf(own, sizeof own, "search:%u", a->search_id);
+      if (!action || strcmp(action, own) != 0) search_end(a, true);
     }
 
     if (!a->ptr_valid || ev->mx != a->ptr_x || ev->my != a->ptr_y)

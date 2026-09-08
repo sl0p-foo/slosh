@@ -270,6 +270,30 @@ void pane_scroll(pane_t *p, int delta);
 void pane_scroll_edge(pane_t *p, bool top);
 bool pane_scrolled(const pane_t *p);
 void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total);
+/* Scrollback search, on lib-vt's machinery. Set a needle to search for it
+ * (empty or NULL clears); the viewport follows the current match as it moves.
+ * `step` moves through the matches -- `older` is up into history -- wrapping
+ * at either end. `refresh` catches up with a terminal that has kept printing,
+ * once per composed frame while a search is open. `pos` is the "k of n": true
+ * with `idx` (0-based, newest first) when a match is selected, `total` filled
+ * either way. */
+void pane_search_set(pane_t *p, const char *needle);
+bool pane_search_step(pane_t *p, bool older);
+void pane_search_refresh(pane_t *p);
+bool pane_search_pos(const pane_t *p, size_t *idx, size_t *total);
+void pane_search_close(pane_t *p);
+
+/* One on-screen match, in the pane's viewport coordinates: a run of columns
+ * `x0`..`x1` on `row`. A match that wraps a row comes back as one mark per
+ * row it covers. `current` is the one the bar is on -- the one the counter
+ * counts to and the keys step from -- so a caller can tint it apart from the
+ * rest. Fill `out` up to `max`; returns how many. Read after a refresh, drawn
+ * before the terminal changes again. */
+typedef struct {
+  uint16_t row, x0, x1;
+  bool current;
+} pane_mark_t;
+size_t pane_search_marks(const pane_t *p, pane_mark_t *out, size_t max);
 bool pane_alt_screen(const pane_t *p);
 /* Whether the line being typed looks empty, counted from the keys forwarded
  * since the last Enter. An estimate: the shell's line editor is on the far

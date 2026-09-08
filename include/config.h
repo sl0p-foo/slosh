@@ -82,6 +82,7 @@ typedef enum {
   ACT_SCROLL_PAGE_DOWN,
   ACT_SCROLL_TOP,
   ACT_SCROLL_BOTTOM,
+  ACT_SEARCH,
   ACT_RESIZE_LEFT,
   ACT_RESIZE_RIGHT,
   ACT_RESIZE_UP,
@@ -412,6 +413,11 @@ typedef struct {
 
   /* the pane finder */
   color_t finder_fg, finder_bg, finder_sel_fg, finder_sel_bg;
+
+  /* scrollback search: every match on screen is tinted `search_*`, and the one
+   * the bar is on is tinted `search_cur_*` instead, so "all of them" and "this
+   * one" read as two things rather than one. */
+  color_t search_fg, search_bg, search_cur_fg, search_cur_bg;
 
   /* the in-place editor a double-click opens on a pane's title */
   color_t rename_fg, rename_bg;

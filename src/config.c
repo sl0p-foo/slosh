@@ -50,6 +50,7 @@ static const struct {
     {"scroll-page-down", ACT_SCROLL_PAGE_DOWN},
     {"scroll-top", ACT_SCROLL_TOP},
     {"scroll-bottom", ACT_SCROLL_BOTTOM},
+    {"search", ACT_SEARCH},
     {"new-tab", ACT_NEW_TAB},
     {"next-tab", ACT_NEXT_TAB},
     {"close-tab", ACT_CLOSE_TAB},
@@ -645,6 +646,10 @@ static const struct {
     {"finder_bg", offsetof(config_t, finder_bg)},
     {"finder_sel_fg", offsetof(config_t, finder_sel_fg)},
     {"finder_sel_bg", offsetof(config_t, finder_sel_bg)},
+    {"search_fg", offsetof(config_t, search_fg)},
+    {"search_bg", offsetof(config_t, search_bg)},
+    {"search_cur_fg", offsetof(config_t, search_cur_fg)},
+    {"search_cur_bg", offsetof(config_t, search_cur_bg)},
     {"bell", offsetof(config_t, bell)},
     {"modal_fg", offsetof(config_t, modal_fg)},
     {"modal_bg", offsetof(config_t, modal_bg)},
@@ -1022,6 +1027,16 @@ void config_defaults(config_t *c) {
   c->finder_sel_fg = ink;
   c->finder_sel_bg = accent;
 
+  /* Match highlighting reaches for the pager's convention rather than the
+   * accent: warm gold, because "found" is a different kind of thing from
+   * "selected" or "focused" and should not read as either. Every on-screen
+   * match gets the dim slab; the one the bar is on gets the bright gold with
+   * dark ink over it, so it is plainly the one ↑↓ and Enter act on. */
+  c->search_fg = bright;
+  c->search_bg = rgb(0x4d, 0x41, 0x24);
+  c->search_cur_fg = ink;
+  c->search_cur_bg = rgb(0xf2, 0xc9, 0x7a);
+
   /* The two colours that mean something rather than match something: a bell
    * is attention, so amber, not the accent -- painted in the focus colour it
    * said nothing -- and a dead pane is warm red-orange. Both sit apart from
@@ -1070,12 +1085,15 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_BACKSLASH, 0, ACT_SPLIT_COLS, false);
   bind_add(c, GHOSTTY_KEY_MINUS, 0, ACT_SPLIT_ROWS, false);
   bind_add(c, GHOSTTY_KEY_X, 0, ACT_CLOSE_PANE, false);
-  /* `?` twice, because whether it arrives with shift depends on the outer
-   * terminal: as a plain byte there is no modifier to be had, and under the
-   * kitty keyboard protocol (which the client asks for) there is. Binding one
-   * of them is a binding that works on the author's machine. */
+  /* `?` is help and `/` is search: the pair every pager taught. The two
+   * shared help for a while, because a legacy `?` used to decode with no
+   * modifier and the two keys could not be told apart. The decoder now reads
+   * the shift out of the character itself (`?` is shift+slash on the keyboard
+   * the legacy protocol assumes, the same inference a capital letter always
+   * got), so the pair can finally mean two things -- and the bare slash goes
+   * to the verb with the muscle memory. */
   bind_add(c, GHOSTTY_KEY_SLASH, MOD_SHIFT, ACT_HELP, false);
-  bind_add(c, GHOSTTY_KEY_SLASH, 0, ACT_HELP, false);
+  bind_add(c, GHOSTTY_KEY_SLASH, 0, ACT_SEARCH, false);
   bind_add(c, GHOSTTY_KEY_R, 0, ACT_RERUN, false);
   bind_add(c, GHOSTTY_KEY_Z, 0, ACT_ZOOM, false);
   bind_add(c, GHOSTTY_KEY_E, 0, ACT_EDIT_CONFIG, false);
@@ -1256,6 +1274,7 @@ static const struct {
     {ACT_SCROLL_PAGE_DOWN, "scroll", "down a page"},
     {ACT_SCROLL_TOP, "scroll", "to the oldest line"},
     {ACT_SCROLL_BOTTOM, "scroll", "back to the present"},
+    {ACT_SEARCH, "scroll", "search the scrollback"},
 
     /* Their own group: a project is neither a pane nor this session, and the
      * two verbs are the same pair -- go to one, write one down. */

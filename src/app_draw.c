@@ -194,8 +194,97 @@ struct row_btn {
   char action[48];
 };
 
+/* The search bar, on the row the epitaph and the OSC 5577 status use: the
+ * bottom border on a classic frame, the last content row in compact. It wins
+ * the whole row while it is up -- a query and a status would be two sentences
+ * on one line -- and comes back the moment the search closes.
+ *
+ * Left, the field: `/ query█`, in the rename editor's colours, because it is
+ * the same kind of thing (typing that is not going to the program) and should
+ * announce itself the same way. Right, the answer: `k of n`, or `no matches`,
+ * which is the difference between "narrow it" and "it is not there". */
+static bool draw_search_bar(app_t *a, screen_t *s, node_t *leaf) {
+  if (!a->searching || a->search_id != leaf->id) return false;
+  rect_t r = leaf->rect;
+  if (r.w < 8 || r.h < 3) return true; /* too small to draw, still claimed */
+  uint16_t y = (uint16_t)(r.y + r.h - 1);
+  uint16_t left = (uint16_t)(r.x + 1), right = (uint16_t)(r.x + r.w - 1);
+
+  /* The counter first, so the field knows what is left. Only when there is a
+   * needle: `0 of 0` under an empty field would be an answer to a question
+   * nobody asked yet. */
+  uint16_t cx = right;
+  if (a->search_buf[0]) {
+    size_t idx = 0, total = 0;
+    bool selected = pane_search_pos(leaf->pane, &idx, &total);
+    char count[48];
+    if (selected)
+      snprintf(count, sizeof count, " %zu of %zu ", idx + 1, total);
+    else if (total)
+      snprintf(count, sizeof count, " %zu ", total);
+    else
+      snprintf(count, sizeof count, " no matches ");
+    uint16_t cw = cells(count);
+    if (left + cw + 6 < right) { /* only when a usable field remains */
+      cx = (uint16_t)(right - cw);
+      screen_text(s, cx, y, count, total ? HINT_C : DEAD_C, NO_COLOR,
+                  total ? 0 : ATTR_BOLD);
+    }
+  }
+
+  /* The field: head scrolled off when too long, whole characters only --
+   * the cursor is the one thing that must stay on screen while typing. */
+  char buf[160];
+  int len = snprintf(buf, sizeof buf, " / %s\u2588 ", a->search_buf);
+  if (len < 0) len = 0;
+  if ((size_t)len >= sizeof buf) len = (int)strlen(buf);
+  uint16_t avail = (uint16_t)(cx > left ? cx - left : 0);
+  if (len > (int)avail) {
+    size_t off = (size_t)(len - (int)avail);
+    while (off < (size_t)len && ((unsigned char)buf[off] & 0xC0) == 0x80) off++;
+    memmove(buf, buf + off, (size_t)len - off + 1);
+    len = (int)((size_t)len - off);
+  }
+  uint16_t drawn = screen_text(s, left, y, buf, RENAME_FG, RENAME_BG, 0);
+  /* Claims its cells, like the epitaph: not a button, but owning the row is
+   * what keeps the armed split guide from ruling a line through the query --
+   * and what lets a click on the bar be "not away", so it does not commit. */
+  if (drawn) {
+    char action[48];
+    snprintf(action, sizeof action, "search:%u", leaf->id);
+    hit_add(&s->hits, left, y, drawn, 1, action);
+  }
+  return true;
+}
+
+/* Tint the pane's on-screen search matches. The current match is painted in
+ * its own colour and made bold; the rest share the plain match colour. Our
+ * own inverse is cleared on the cells we touch, so a match landing on selected
+ * text reads as a match rather than a double-negative. */
+static void draw_search_marks(app_t *a, screen_t *s, node_t *n) {
+  if (!a->searching || a->search_id != n->id || !n->pane) return;
+  pane_mark_t marks[256];
+  size_t nm = pane_search_marks(n->pane, marks, 256);
+  for (size_t i = 0; i < nm; i++) {
+    if (marks[i].row >= n->content.h) continue;
+    uint16_t y = (uint16_t)(n->content.y + marks[i].row);
+    color_t fg = marks[i].current ? SEARCH_CUR_FG : SEARCH_FG;
+    color_t bg = marks[i].current ? SEARCH_CUR_BG : SEARCH_BG;
+    for (uint16_t x = marks[i].x0; x <= marks[i].x1 && x < n->content.w; x++) {
+      cell_t *c = screen_at(s, (uint16_t)(n->content.x + x), y);
+      if (!c) continue;
+      c->fg = fg;
+      c->bg = bg;
+      c->attrs &= (uint16_t)~ATTR_INVERSE;
+      if (marks[i].current) c->attrs |= ATTR_BOLD;
+    }
+  }
+}
+
 static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
                              bool focused) {
+  if (draw_search_bar(a, s, leaf)) return;
+
   struct row_btn row[8];
   size_t nbtn = 0;
   char status[256] = {0};
@@ -1647,6 +1736,12 @@ static void draw_cb(node_t *n, void *ud) {
    * is not decoration and must not be dimmed along with the thing it is
    * offered on. */
   shade_leaf(d->a, d->s, n);
+  /* Search match highlights, after the shader pass rather than before it: a
+   * match is on screen because it was searched for, so it wants to be crisp,
+   * not washed by the `scrolled` fade over the very history it sits in. Every
+   * on-screen match in `search`; the one the bar is on in `search_cur`, which
+   * is what tells "this one" from "all of them". */
+  draw_search_marks(d->a, d->s, n);
   /* A compact pane's chrome is the ring of shared line it sits inside — one
    * cell out on every side — rather than the rect's own edge; the state
    * passes (a bell's flash, a theme's chrome chain) land there instead. The

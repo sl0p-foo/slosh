@@ -989,6 +989,112 @@ bool rename_key(app_t *a, const input_event_t *ev) {
   return true;
 }
 
+/* ---- searching a pane's scrollback -------------------------------------- *
+ *
+ * The third inline editor, beside the rename and the purpose: a query typed
+ * where its answer is, not a modal over it. The bar draws on the searched
+ * pane's status row (draw_pane_status), the results are the pane's own: every
+ * on-screen match is tinted (draw_search_marks), the current one apart from
+ * the rest, and the viewport follows the current match as it moves -- so the
+ * scrolled state, the ▲ indicator and the edge fades all say what the search
+ * did without being told.
+ */
+
+void search_begin(app_t *a) {
+  node_t *n = cur(a)->focus;
+  if (!n || !n->pane) return;
+  a->searching = true;
+  a->search_id = n->id;
+  /* Seeded empty, unlike a rename: a rename edits a label that exists, a
+   * search starts with a question that does not. A remembered last query
+   * would be one keystroke saved and one "why did it jump" per reopening. */
+  a->search_buf[0] = 0;
+}
+
+/* Close the bar. `keep_view` is the difference between the two ways out:
+ * Enter accepts -- you searched to read something, so the viewport stays on
+ * it -- while Escape cancels and snaps back to the live view, the place the
+ * search lifted you from. The needle and the highlight go either way; the
+ * match found is a place, not a selection somebody asked to keep. */
+void search_end(app_t *a, bool keep_view) {
+  if (!a->searching) return;
+  node_t *n = pane_by_id(a, a->search_id);
+  if (n && n->pane) {
+    pane_search_close(n->pane);
+    if (!keep_view && pane_scrolled(n->pane)) pane_scroll_edge(n->pane, false);
+  }
+  a->searching = false;
+  a->search_id = 0;
+  a->search_buf[0] = 0;
+}
+
+/* Returns true when the search bar consumed the event. Like the picker it
+ * consumes everything while open: it is a text field, and an unrecognised
+ * key that fell through would type into the pane behind it. */
+bool search_key(app_t *a, const input_event_t *ev) {
+  if (!a->searching) return false;
+  if (ev->kind != EV_KEY || ev->action == KEY_RELEASE) return true;
+
+  node_t *n = pane_by_id(a, a->search_id);
+  if (!n || !n->pane) { /* the subject went away mid-question */
+    a->searching = false;
+    a->search_id = 0;
+    a->search_buf[0] = 0;
+    return true;
+  }
+  pane_t *p = n->pane;
+  bool ctrl = (ev->mods & MOD_CTRL) != 0;
+
+  /* The same C-u the picker and the rename answer to: the program's places
+   * you type into clear the same way, or none of them can be trusted. */
+  if (ctrl && (ev->key == GHOSTTY_KEY_U || ev->unshifted == 'u')) {
+    a->search_buf[0] = 0;
+    pane_search_set(p, "");
+    return true;
+  }
+  /* The emacs pair, the way the picker has it: next is *older* -- up into
+   * history, the direction a search from the prompt means. */
+  if (ctrl && (ev->key == GHOSTTY_KEY_N || ev->unshifted == 'n')) {
+    pane_search_step(p, true);
+    return true;
+  }
+  if (ctrl && (ev->key == GHOSTTY_KEY_P || ev->unshifted == 'p')) {
+    pane_search_step(p, false);
+    return true;
+  }
+
+  switch (ev->key) {
+  case GHOSTTY_KEY_ESCAPE: search_end(a, false); return true;
+  case GHOSTTY_KEY_ENTER: search_end(a, true); return true;
+  /* Up is older and Down is newer, which is what the arrows mean while the
+   * matches run bottom-to-top through the scrollback. */
+  case GHOSTTY_KEY_ARROW_UP: pane_search_step(p, true); return true;
+  case GHOSTTY_KEY_ARROW_DOWN: pane_search_step(p, false); return true;
+  case GHOSTTY_KEY_BACKSPACE: {
+    /* A character, not a byte (the rename editor's lesson). */
+    size_t l = strlen(a->search_buf);
+    while (l && ((unsigned char)a->search_buf[l - 1] & 0xC0) == 0x80) l--;
+    if (l) l--;
+    a->search_buf[l] = 0;
+    pane_search_set(p, a->search_buf);
+    return true;
+  }
+  default: break;
+  }
+  if (!ctrl && ev->text_len && (unsigned char)ev->text[0] >= 0x20) {
+    size_t l = strlen(a->search_buf);
+    if (l + ev->text_len < sizeof a->search_buf) {
+      memcpy(a->search_buf + l, ev->text, ev->text_len);
+      a->search_buf[l + ev->text_len] = 0;
+      /* Per keystroke: lib-vt keeps the results when the needle is merely
+       * resubmitted, so incremental typing costs a restart only when the
+       * needle actually changed -- which it did. */
+      pane_search_set(p, a->search_buf);
+    }
+  }
+  return true;
+}
+
 static void drop_render_cb(node_t *n, void *ud) {
   (void)ud;
   if (n->pane) pane_render_cache_drop(n->pane);
@@ -1020,6 +1126,18 @@ void app_compose(app_t *a, screen_t *s) {
    * been answered. Done here so that every route to "this pane is focused"
    * clears it, not only the ones that thought to. */
   if (cur(a)->focus) pane_clear_bell(cur(a)->focus->pane);
+
+  /* A search over a pane whose program keeps printing: catch the results up
+   * before the pane composes, so the highlight painted this frame is the
+   * highlight the counts describe. After the compose it would lag a frame --
+   * derive, then draw. */
+  if (a->searching) {
+    node_t *sn = pane_by_id(a, a->search_id);
+    if (sn && sn->pane)
+      pane_search_refresh(sn->pane);
+    else
+      search_end(a, false); /* the subject went away: no keyboard traps */
+  }
 
   layout(a);
   find_corners(a);

@@ -470,6 +470,25 @@ static size_t parse_one(input_parser_t *p, input_cb_t cb, void *ud) {
   if (cp < 128 && cp >= 'A' && cp <= 'Z') mods |= MOD_SHIFT;
   uint32_t unshifted = cp;
   if (cp >= 'A' && cp <= 'Z') unshifted = cp + 32;
+  /* Shifted punctuation says shift the way a capital letter does. The legacy
+   * protocol reports no modifiers, so the character is the only witness --
+   * and without this `?` and `/` decode identically (SLASH, no mods), which
+   * makes them unbindable as two keys anywhere the kitty protocol is not.
+   * The kitty path never comes here; it carries real modifiers. The pane is
+   * unaffected either way: re-encoding to a legacy pane sends the text, and
+   * to a kitty pane says exactly what a real terminal would have. */
+  static const char SHIFT_PAIRS[][2] = {
+      {'~', '`'}, {'_', '-'},  {'+', '='}, {'{', '['}, {'}', ']'}, {'|', '\\'},
+      {':', ';'}, {'"', '\''}, {'<', ','}, {'>', '.'}, {'?', '/'}, {'!', '1'},
+      {'@', '2'}, {'#', '3'},  {'$', '4'}, {'%', '5'}, {'^', '6'}, {'&', '7'},
+      {'*', '8'}, {'(', '9'},  {')', '0'},
+  };
+  for (size_t i = 0; i < sizeof SHIFT_PAIRS / sizeof *SHIFT_PAIRS; i++)
+    if (cp == (uint32_t)SHIFT_PAIRS[i][0]) {
+      mods |= MOD_SHIFT;
+      unshifted = (uint32_t)SHIFT_PAIRS[i][1];
+      break;
+    }
   emit_key(cb, ud, key, mods, KEY_PRESS, (const char *)b, ulen, unshifted);
   return ulen;
 }

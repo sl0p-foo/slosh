@@ -74,6 +74,7 @@ it one.
 | `scroll-page-down` | `PgDn` | down a page         |
 | `scroll-top`       | `Home` | to the oldest line  |
 | `scroll-bottom`    | `End`  | back to the present |
+| `search`           | `/`    | search the scrollback: type, `↑` `↓` between matches, Enter keeps your place, Esc snaps back |
 
 ## Projects
 

@@ -35,6 +35,7 @@ leader twice sends it to the program in the pane.
 | `W`                              | write this tab out as this project's layout ([workspaces](workspaces.md))                               |
 | `p`                              | the command palette                                                                                     |
 | `PgUp` `PgDn` `Home` `End`       | [scrollback](config.md#scrollback) (the wheel works too)                                                |
+| `/`                              | search the scrollback: type, `↑` `↓` between matches, Enter keeps your place, Esc snaps back            |
 | `e`                              | edit the config, in a pane                                                                              |
 | `?`                              | this list                                                                                               |
 | `d`                              | detach, leave it running                                                                                |

@@ -90,6 +90,13 @@ struct pane {
   bool selecting;
   GhosttyTrackedGridRef sel_anchor;
 
+  /* Scrollback search (lib-vt's GhosttySearch). Created lazily on the first
+   * needle and kept for the pane's life: the search borrows the terminal and
+   * tracks its own state through resize, reflow and screen switches, which is
+   * exactly the state we do not want to rebuild per opening. NULL until then,
+   * so a pane that is never searched pays nothing. */
+  GhosttySearch search;
+
   osc_scan_t scan;
   char status[256];
   pane_button_t buttons[8];
@@ -414,6 +421,7 @@ void pane_free(pane_t *p) {
   if (p->kev) ghostty_key_event_free(p->kev);
   if (p->kenc) ghostty_key_encoder_free(p->kenc);
   ghostty_tracked_grid_ref_free(p->sel_anchor);
+  if (p->search) ghostty_search_free(p->search);
   if (p->cells) ghostty_render_state_row_cells_free(p->cells);
   if (p->rows) ghostty_render_state_row_iterator_free(p->rows);
   if (p->rstate) ghostty_render_state_free(p->rstate);
@@ -1229,6 +1237,161 @@ void pane_scroll_pos(const pane_t *p, uint32_t *above, uint32_t *total) {
     return;
   *above = (uint32_t)sb.offset;
   *total = (uint32_t)(sb.total > sb.len ? sb.total - sb.len : 0);
+}
+
+/* ---- search ------------------------------------------------------------- *
+ *
+ * lib-vt owns the machinery (D4's pattern: the hard half is free): a
+ * GhosttySearch finds a needle in the active area and the scrollback of both
+ * screens, survives resize/reflow/alt-screen, and hands every match back as a
+ * GhosttySelection. What we own is when to feed it, which match is current,
+ * and -- because we tint every on-screen match ourselves rather than through
+ * the terminal's one selection -- where they all are (pane_search_marks).
+ */
+
+static bool ensure_search(pane_t *p) {
+  if (p->search) return true;
+  if (!p->term) return false;
+  return ghostty_search_new(NULL, &p->search, p->term) == GHOSTTY_SUCCESS;
+}
+
+/* Set (or clear) what the search is looking for, and land on the nearest
+ * match. Setting the same needle again is free -- lib-vt keeps the results --
+ * so incremental typing can resubmit per keystroke.
+ *
+ * The catch-up is ghostty_search_run(), which blocks until the scrollback has
+ * been walked. That is a deliberate simplicity: the default caps (10k lines,
+ * a 16MB ceiling) keep it in single milliseconds, and the incremental
+ * feed/tick split exists for the day a config raises them. */
+void pane_search_set(pane_t *p, const char *needle) {
+  if (!p || !ensure_search(p)) return;
+  if (needle && *needle) {
+    GhosttyString str = {.ptr = (const uint8_t *)needle, .len = strlen(needle)};
+    if (ghostty_search_set(p->search, GHOSTTY_SEARCH_OPT_NEEDLE, &str) !=
+        GHOSTTY_SUCCESS)
+      return;
+    ghostty_search_run(p->search);
+    /* From idle, the first "next" is the newest match: the bottom of the
+     * screen, nearest to where the eye already is. It also scrolls the
+     * viewport to the match (the select's own doing). With a selection
+     * already standing (the needle was resubmitted), it is kept, not
+     * advanced -- lib-vt treats an equal needle as the same search. */
+    size_t idx = 0;
+    if (ghostty_search_get(p->search, GHOSTTY_SEARCH_DATA_SELECTED_INDEX,
+                           &idx) != GHOSTTY_SUCCESS)
+      ghostty_search_set(p->search, GHOSTTY_SEARCH_OPT_SELECT_NEXT, NULL);
+  } else {
+    ghostty_search_set(p->search, GHOSTTY_SEARCH_OPT_NEEDLE, NULL);
+  }
+  p->dirty = true;
+}
+
+/* Step the current match: `older` moves up into history (the direction a
+ * search from the prompt almost always wants), wrapping at either end. False
+ * when there is nothing to step to. The viewport follows the match on its own
+ * -- lib-vt's select scrolls it when the match is not already visible. */
+bool pane_search_step(pane_t *p, bool older) {
+  if (!p || !p->search) return false;
+  GhosttySearchOption opt =
+      older ? GHOSTTY_SEARCH_OPT_SELECT_NEXT : GHOSTTY_SEARCH_OPT_SELECT_PREV;
+  bool moved = ghostty_search_set(p->search, opt, NULL) == GHOSTTY_SUCCESS;
+  p->dirty = true;
+  return moved;
+}
+
+/* Catch the search up with a terminal that has kept printing. Called once per
+ * compose while a search is open: a feed with nothing new is cheap, and it is
+ * what keeps the counts and the on-screen match list current -- lib-vt learns
+ * of terminal changes only through a feed. */
+void pane_search_refresh(pane_t *p) {
+  if (!p || !p->search) return;
+  ghostty_search_run(p->search);
+  p->dirty = true;
+}
+
+/* Every match on the pages covering the viewport, in viewport cells, so a
+ * caller can tint them. A match that wraps a row is split into one span per
+ * row; a match straddling an edge whose start does not convert is skipped,
+ * which clips the list to what is visible (lib-vt's own renderer does the
+ * same). The one the bar is on is flagged `current`, found by matching the
+ * selected match's start cell -- both come from the same conversion, so the
+ * comparison is exact. */
+size_t pane_search_marks(const pane_t *p, pane_mark_t *out, size_t max) {
+  if (!p || !p->search || !p->term || !max) return 0;
+
+  bool have_cur = false;
+  uint16_t cur_x = 0, cur_y = 0;
+  GhosttySelection cur = GHOSTTY_INIT_SIZED(GhosttySelection);
+  if (ghostty_search_get(p->search, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &cur) ==
+      GHOSTTY_SUCCESS) {
+    GhosttyPointCoordinate pc;
+    if (ghostty_terminal_point_from_grid_ref(p->term, &cur.start,
+                                             GHOSTTY_POINT_TAG_VIEWPORT,
+                                             &pc) == GHOSTTY_SUCCESS) {
+      have_cur = true;
+      cur_x = pc.x;
+      cur_y = (uint16_t)pc.y;
+    }
+  }
+
+  GhosttySelection buf[256];
+  GhosttySelectionBuffer vb = {.ptr = buf, .cap = 256, .len = 0};
+  if (ghostty_search_get(p->search, GHOSTTY_SEARCH_DATA_VIEWPORT_MATCHES,
+                         &vb) != GHOSTTY_SUCCESS)
+    return 0;
+
+  size_t n = 0;
+  size_t got = vb.len < 256 ? vb.len : 256;
+  for (size_t i = 0; i < got && n < max; i++) {
+    GhosttyPointCoordinate a, b;
+    if (ghostty_terminal_point_from_grid_ref(p->term, &buf[i].start,
+                                             GHOSTTY_POINT_TAG_VIEWPORT,
+                                             &a) != GHOSTTY_SUCCESS)
+      continue;
+    if (ghostty_terminal_point_from_grid_ref(p->term, &buf[i].end,
+                                             GHOSTTY_POINT_TAG_VIEWPORT,
+                                             &b) != GHOSTTY_SUCCESS)
+      continue;
+    /* A snapshot's end may precede its start in terminal order; a span wants
+     * them the other way round. */
+    if (b.y < a.y || (b.y == a.y && b.x < a.x)) {
+      GhosttyPointCoordinate t = a;
+      a = b;
+      b = t;
+    }
+    bool current = have_cur && a.x == cur_x && a.y == cur_y;
+    uint16_t last_col = (uint16_t)(p->cols ? p->cols - 1 : 0);
+    for (uint32_t row = a.y; row <= b.y && n < max; row++) {
+      if (row >= p->rows_n) break;
+      out[n].row = (uint16_t)row;
+      out[n].x0 = row == a.y ? (uint16_t)a.x : 0;
+      out[n].x1 = row == b.y ? (uint16_t)b.x : last_col;
+      out[n].current = current;
+      n++;
+    }
+  }
+  return n;
+}
+
+/* How the "k of n" reads: true with `idx` filled when a match is selected.
+ * `total` is filled either way, so "no matches" and "27 matches, none chosen"
+ * can be told apart. */
+bool pane_search_pos(const pane_t *p, size_t *idx, size_t *total) {
+  *idx = *total = 0;
+  if (!p || !p->search) return false;
+  ghostty_search_get(p->search, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, total);
+  return ghostty_search_get(p->search, GHOSTTY_SEARCH_DATA_SELECTED_INDEX,
+                            idx) == GHOSTTY_SUCCESS;
+}
+
+/* Close: back to idle, which empties the match list and so takes every
+ * highlight with it. The GhosttySearch itself is kept -- it is small, and
+ * freeing it per close would rebuild tracked state on every reopening for no
+ * one's benefit. */
+void pane_search_close(pane_t *p) {
+  if (!p || !p->search) return;
+  ghostty_search_set(p->search, GHOSTTY_SEARCH_OPT_NEEDLE, NULL);
+  p->dirty = true;
 }
 
 bool pane_line_empty(const pane_t *p) { return p && p->line_len == 0; }
