@@ -180,6 +180,31 @@ def test_input_round_trip():
             s.snapshot().screen(),
         )
 
+    # Shift consumed by the character stays consumed. The decoder reads the
+    # shift out of `:` (shift+; on the layout the legacy protocol assumes),
+    # and the encoder must not let that inferred shift force a CSI u escape:
+    # nvim receives \e[59;2u as shift+semicolon and the command line never
+    # opens. Text the shift produced goes through as text; a chord whose
+    # shift is real (shift+up, ctrl+shift+a) keeps its escape.
+    kitty_dis = [
+        "/bin/sh",
+        "-c",
+        'stty raw -echo; printf "\\033[>1u"; cat -v',
+    ]
+    with Session(kitty_dis, cols=50, rows=8) as s:
+        s.settle()
+        s.send(":A")  # legacy shifted punctuation + capital
+        s.send(r"\e[59:58;2u")  # the same colon from a kitty outer
+        s.send(r"\e[1;2A")  # shift+up: not text, keeps the modifier
+        s.settle()
+        screen = s.snapshot().screen()
+        check(
+            "shifted text reaches a kitty pane as text",
+            ":A:" in screen and "59" not in screen,
+            screen,
+        )
+        check("real shift chords keep their escape", "^[[1;2A" in screen, screen)
+
 
 def test_terminal_replies():
     """WRITE_PTY: a query from the app must be answered on its own stdin.

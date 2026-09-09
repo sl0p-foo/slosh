@@ -794,6 +794,29 @@ void pane_send_key(pane_t *p, const input_event_t *ev) {
                              ev->text_len);
   ghostty_key_event_set_unshifted_codepoint(p->kev, ev->unshifted);
 
+  /* Shift that produced the character is consumed, and the encoder must be
+   * told so: its kitty path only passes text through as text when no
+   * unconsumed modifier remains. Without this, `:` (shift+; in the decoder's
+   * eyes) reaches a kitty-protocol pane as CSI 59;2u -- shift+semicolon, no
+   * text -- and nvim's command line never opens. A real terminal marks the
+   * shift consumed for exactly this case; so do we: text present, shift
+   * held, and the text is not the unshifted character. */
+  GhosttyMods consumed = 0;
+  if (ev->text_len && (ev->mods & MOD_SHIFT)) {
+    const uint8_t *t = (const uint8_t *)ev->text;
+    uint32_t cp = t[0];
+    if ((t[0] & 0xe0) == 0xc0 && ev->text_len >= 2)
+      cp = (uint32_t)(t[0] & 0x1f) << 6 | (t[1] & 0x3f);
+    else if ((t[0] & 0xf0) == 0xe0 && ev->text_len >= 3)
+      cp = (uint32_t)(t[0] & 0x0f) << 12 | (uint32_t)(t[1] & 0x3f) << 6 |
+           (t[2] & 0x3f);
+    else if ((t[0] & 0xf8) == 0xf0 && ev->text_len >= 4)
+      cp = (uint32_t)(t[0] & 0x07) << 18 | (uint32_t)(t[1] & 0x3f) << 12 |
+           (uint32_t)(t[2] & 0x3f) << 6 | (t[3] & 0x3f);
+    if (cp != ev->unshifted) consumed |= GHOSTTY_MODS_SHIFT;
+  }
+  ghostty_key_event_set_consumed_mods(p->kev, consumed);
+
   char out[128];
   size_t n = 0;
   if (ghostty_key_encoder_encode(p->kenc, p->kev, out, sizeof out, &n) ==
