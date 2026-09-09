@@ -2210,6 +2210,21 @@ void draw_compact_lines(app_t *a, screen_t *s) {
   if (!ar.x || !ar.y) return; /* no room for a ring: no lines to share */
   stroke_ring(s, ar, FRAME_IDLE, 0, true);
 
+  /* The line between the tree and the minimised bar: the bottom panes'
+   * shared border, on the row the layout reserved for it (a compact pane
+   * owns no border cells, so without this row the chips sat directly on the
+   * panes' content). Drawn before the divider end-extensions, so a vertical
+   * divider from above ends into it as a ┴ the same way it meets the ring,
+   * and re-strokable by a focused bottom pane like any shared line. */
+  rect_t bar = cur(a)->min_bar;
+  if (bar.h) {
+    uint16_t ly = (uint16_t)(bar.y - 1);
+    uint16_t x0 = (uint16_t)(ar.x - 1), x1 = (uint16_t)(ar.x + ar.w);
+    for (uint16_t x = x0; x <= x1; x++)
+      stroke(s, x, ly, (uint8_t)((x > x0 ? BX_L : 0) | (x < x1 ? BX_R : 0)),
+             FRAME_IDLE, 0, true);
+  }
+
   /* The dividers' own cells first, their end-extensions after: an end only
    * ever joins a line that is already there — the ring, or a perpendicular
    * divider — which is what makes the junction glyphs, and what keeps a

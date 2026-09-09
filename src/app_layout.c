@@ -482,8 +482,15 @@ void layout(app_t *a) {
   bool no_room = false;
   cur(a)->min_bar = (rect_t){0, 0, 0, 0};
   if (nmin) {
-    if (r.h >= (uint16_t)(MIN_PANE_ROWS + 5)) {
-      tree_r.h = (uint16_t)(r.h - 3);
+    /* Compact spends one row more: a compact pane's bottom border is the
+     * shared line one cell *outside* its rect, and with the bar directly
+     * below, that cell is the chips' top row -- the chips sat on the border.
+     * The extra row gives the line somewhere to live; draw_compact_lines
+     * strokes it. A classic pane carries its own bottom border and needs no
+     * such row. */
+    uint16_t bar_rows = CFG.compact ? 4 : 3;
+    if (r.h >= (uint16_t)(MIN_PANE_ROWS + 2 + bar_rows)) {
+      tree_r.h = (uint16_t)(r.h - bar_rows);
       cur(a)->min_bar = (rect_t){r.x, (uint16_t)(r.y + r.h - 3), r.w, 3};
     } else {
       no_room = true;

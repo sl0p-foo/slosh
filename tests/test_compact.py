@@ -300,6 +300,48 @@ def test_compact_float_keeps_the_classic_frame():
         s.settle(30)
 
 
+def test_compact_min_bar_sits_below_a_shared_line():
+    """The minimised bar and the bottom panes share no border row. A compact
+    pane's bottom border is the shared line one cell outside its rect; the
+    layout reserves that row above the bar and draw_compact_lines strokes it,
+    ring junctions included. Without it the chips sat directly on the panes'
+    content -- "the minimised rectangles overlap the bottom pane's border"."""
+    with Session(SH, cols=90, rows=24, config=COMPACT) as s:
+        s.settle(30)
+        s.key("\\\\")
+        s.settle(30)
+        s.key("-")
+        s.settle(30)
+        s.key("m")
+        s.settle(30)
+        snap = s.snapshot()
+        bar = min(
+            (h for h in snap.hits if h["action"].startswith("focus:") and h["h"] == 3),
+            key=lambda h: h["y"],
+            default=None,
+        )
+        check("a chip is in the hit list", bar is not None, str(snap.hits))
+        if not bar:
+            return
+        line = snap.line(bar["y"] - 1)
+        check(
+            "the row above the chips is the panes' bottom border",
+            line.startswith("\u251c") and line.rstrip().endswith("\u2524"),
+            repr(line),
+        )
+        check(
+            "the divider from above ends into it as a junction",
+            "\u2534" in line,
+            repr(line),
+        )
+        low = max(p["y"] + p["h"] for p in s.panes() if p["h"])
+        check(
+            "no pane reaches the line's row",
+            low <= bar["y"] - 1,
+            f"panes end {low}, line at {bar['y'] - 1}",
+        )
+
+
 def test_compact_is_a_config_key():
     import subprocess
 
@@ -334,5 +376,6 @@ if __name__ == "__main__":
     test_compact_focus_ring_wears_the_frame_colour()
     test_compact_dead_pane_epitaph_overlays_the_last_row()
     test_compact_float_keeps_the_classic_frame()
+    test_compact_min_bar_sits_below_a_shared_line()
     test_compact_is_a_config_key()
     sys.exit(report())
