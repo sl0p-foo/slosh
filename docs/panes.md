@@ -81,7 +81,11 @@ point — and a pane that died shows how instead (`exited: status 3`). At most
 `tab_bar_status` rows per tab (3 by default, 0 turns it off); more than that
 and the last row is an ellipsis rather than a status pretending the list is
 complete. **Clicking a status row jumps to the pane that said it**, across
-tabs. The top strip has one row and no room for any of this, which is half of
+tabs. A status is set in italic rather than indented under its tab — the slant
+says "this belongs to the row above" without spending columns a narrow sidebar
+has none of, and says it on a monochrome theme too. `tab_status_fg` and
+`tab_status_bg` are yours if you want colour as well; unset, the first follows
+`tab_count` and the second leaves your terminal's own background alone. The top strip has one row and no room for any of this, which is half of
 why the sidebar exists.
 
 **An unnamed tab borrows the directory its focused pane is in** — the

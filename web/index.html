@@ -237,12 +237,15 @@ Server = https://slosh.foo/arch/$arch</code></pre>
       <div class="cmd">
         <pre><code><span class="prompt">$</span> git clone https://github.com/sl0p-foo/slosh.git &amp;&amp; cd slosh
 <span class="prompt">$</span> make vendor    <span class="c"># the vendored terminal core, once</span>
-<span class="prompt">$</span> make           <span class="c"># about a second</span>
-<span class="prompt">$</span> sudo install build/slosh /usr/local/bin/</code></pre>
+<span class="prompt">$</span> make all       <span class="c"># about a second</span>
+<span class="prompt">$</span> sudo make install                  <span class="c"># or: make install PREFIX=$HOME/.local</span></code></pre>
       </div>
       <p class="aside">Needs <a href="https://ziglang.org">zig</a> 0.16 and
       nothing else: no cmake, no autotools, no libraries. The result is one
-      static binary. Windows cross-compilation is
+      static binary. Bare <code>make</code> prints the target list;
+      <code>make&nbsp;all</code> is the build, and <code>make&nbsp;install</code>
+      puts the binary in <code>$PREFIX/bin</code> along with the manpages and
+      the example configuration. Windows cross-compilation is
       <code>make&nbsp;-f&nbsp;Makefile.windows</code>;
       <a href="docs/windows.html">the details</a>.</p>
     </div>

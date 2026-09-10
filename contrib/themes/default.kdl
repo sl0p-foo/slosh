@@ -38,7 +38,7 @@ theme {
     header_hover "#7aa2f7"
     header_hover_title "#ffffff"
 
-    // the strip along the top
+    // the strip along the top, or the sidebar down the side
     tab_active_fg "#141418"
     tab_active_bg "#7aa2f7"
     tab_active_hover_fg "#ffffff"
@@ -47,6 +47,10 @@ theme {
     prefix_fg "#141418"
     prefix_bg "#7aa2f7"
     tab_count "#45454a"
+    // a sidebar's status rows: italic carries the distinction, so this only
+    // has to be ambient. Unset, it follows tab_count. tab_status_bg is unset
+    // -- a band is opt-in, and none leaves a translucent terminal alone.
+    tab_status_fg "#45454a"
 
     // the line along the bottom
     status "#45454a"

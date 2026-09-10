@@ -1783,6 +1783,17 @@ static bool tab_has_bell(tab_t *t) {
   return b.found;
 }
 
+/* Spaces out to `w` cells, so a row's fill -- an active tab's, a drop
+ * target's, a themed status band's -- is the row and not the word sitting on
+ * it. Three copies of this loop wanted to exist; this is the one. */
+static void pad_cells(char *text, size_t cap, uint16_t w) {
+  size_t len = strlen(text);
+  while (cells(text) < w && len + 1 < cap) {
+    text[len++] = ' ';
+    text[len] = 0;
+  }
+}
+
 /* One tab's cell, wherever the strip lives. Paints the label at (x, y) under
  * the shared rules -- active weight, hover colour, the rename editor, the
  * bell, the drop target -- and registers the hit. `max_w` is 0 for the top
@@ -1847,11 +1858,7 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
       while (len && (label[len] & 0xc0) == 0x80); /* whole UTF-8 sequences */
       label[len] = 0;
     }
-    size_t len = strlen(label);
-    while (cells(label) < budget && len + 1 < sizeof label) {
-      label[len++] = ' ';
-      label[len] = 0;
-    }
+    pad_cells(label, sizeof label, budget);
   }
 
   bool active = i == a->cur;
@@ -1930,13 +1937,7 @@ static void draw_newtab_button(app_t *a, screen_t *s, uint16_t x, uint16_t y,
     snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
   /* Padded out on a sidebar row for the same reason a tab's label is: the
    * hover and the drop fill are the row, not the word sitting on it. */
-  if (max_w) {
-    size_t len = strlen(btn);
-    while (cells(btn) < max_w && len + 1 < sizeof btn) {
-      btn[len++] = ' ';
-      btn[len] = 0;
-    }
-  }
+  if (max_w) pad_cells(btn, sizeof btn, max_w);
   uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
   uint16_t hit_w = max_w ? max_w : w;
   if (ptr_on(a, x, y, hit_w, 1))
@@ -2126,18 +2127,29 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
        * one more status pretending the list is complete. */
       bool more = ts.total > cap && j == (size_t)(cap - 1);
       char text[112];
+      /* One leading space, which is the label's own -- a status starts in the
+       * column its tab's name starts in, rather than indented under it.
+       *
+       * It used to be three. Indentation is a fine way to say "this belongs
+       * to the row above" and a poor way to spend a sixteen-column sidebar,
+       * where three columns is a fifth of everything a status has to say
+       * itself in. The slant below says the same thing in none of them. */
       if (more) {
-        snprintf(text, sizeof text, "   \u2026");
+        snprintf(text, sizeof text, " \u2026");
       } else {
-        snprintf(text, sizeof text, "   %s", ts.row[j].text);
+        snprintf(text, sizeof text, " %s", ts.row[j].text);
         fit_status(text, sizeof text, cw);
       }
-      /* Dim like the pane count: these are ambience until pointed at. The
-       * hover brightening doubles as the affordance that the row is a door;
-       * the hint under the pointer says where it leads. */
+      pad_cells(text, sizeof text, cw); /* so a themed band covers the row */
+      /* Italic, and ambient in colour: these are annotations until pointed
+       * at. The slant is what separates them from the labels, rather than a
+       * colour, because a monochrome theme has no colour to spare and would
+       * be left with none -- tab_status_fg/bg are there for themes that do.
+       * The hover brightening doubles as the affordance that the row is a
+       * door; the hint under the pointer says where it leads. */
       bool hot = !more && ptr_on(a, cx, y, cw, 1);
-      screen_text(s, cx, y, text, hot ? TAB_HOVER : TAB_COUNT, NO_COLOR,
-                  hot ? ATTR_BOLD : 0);
+      screen_text(s, cx, y, text, hot ? TAB_HOVER : TAB_STATUS_FG,
+                  TAB_STATUS_BG, hot ? ATTR_BOLD : ATTR_ITALIC);
       if (!more) {
         char act[24];
         snprintf(act, sizeof act, "find:%u", ts.row[j].pane);

@@ -640,6 +640,8 @@ static const struct {
     {"prefix_fg", offsetof(config_t, prefix_fg)},
     {"prefix_bg", offsetof(config_t, prefix_bg)},
     {"tab_count", offsetof(config_t, tab_count)},
+    {"tab_status_fg", offsetof(config_t, tab_status_fg)},
+    {"tab_status_bg", offsetof(config_t, tab_status_bg)},
     {"status", offsetof(config_t, status)},
     {"status_state", offsetof(config_t, status_state)},
     {"finder_fg", offsetof(config_t, finder_fg)},
@@ -1031,6 +1033,10 @@ void config_defaults(config_t *c) {
   c->prefix_fg = ink;
   c->prefix_bg = accent;
   c->tab_count = dim;
+  /* Ambient, like the count: the slant is what separates a status from the
+   * label above it, so the colour does not have to. */
+  c->tab_status_fg = dim;
+  c->tab_status_bg = (color_t){0}; /* none: the terminal's own background */
 
   c->status = dim;
   c->status_state = bright;
@@ -1526,6 +1532,16 @@ static void cb_chord(cfgbuf_t *b, int key, uint16_t mods) {
 }
 
 static void cb_color(cfgbuf_t *b, const char *name, color_t c) {
+  /* A colour that is not set is the terminal's own, and that has no spelling
+   * in a theme block -- parse_color takes #rrggbb and nothing else. So it is
+   * written commented out: the same trick the states block uses for what it
+   * wants re-derived rather than pinned. The dump still says the key exists,
+   * and `slosh --dump-config > config.kdl` does not quietly turn "none" into
+   * black, which is what writing #000000 here would have done. */
+  if (!c.set) {
+    cb_add(b, "    // %-19s (none: the terminal's own)\n", name);
+    return;
+  }
   cb_add(b, "    %-22s \"#%02x%02x%02x\"\n", name, c.r, c.g, c.b);
 }
 
@@ -2402,6 +2418,13 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
         complain(c, err, errcap, kdl_child(theme, THEME_COLORS[i].name)->line,
                  "bad colour for %s: %s", THEME_COLORS[i].name, v);
     }
+    /* A theme that restyles the ambient chrome but has never heard of the
+     * sidebar's status rows gets coherent ones anyway: they follow tab_count,
+     * which is the same class of thing. Named explicitly, it wins -- the same
+     * declared/derived split apply_scrolled makes. Without this every theme in
+     * contrib would need a line adding to it to avoid one grey among another
+     * theme's greys. */
+    if (!kdl_child(theme, "tab_status_fg")) c->tab_status_fg = c->tab_count;
   }
   /* After the theme, so the wash follows whatever scroll_bg the theme just
    * chose -- a config that wrote its own `scrolled` chain keeps it, whether

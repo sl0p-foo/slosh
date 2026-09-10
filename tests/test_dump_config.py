@@ -106,7 +106,16 @@ def test_every_theme_colour_is_in_it():
     src = open(SRC).read()
     colours = set(re.findall(r'\{"([a-z_]+)", offsetof\(config_t', src))
     text = dump()
-    missing = sorted(c for c in colours if f"    {c} " not in text)
+    # A colour that is *unset* is the terminal's own, and a theme block has no
+    # spelling for that -- parse_color takes #rrggbb and nothing else. Those
+    # are written commented out, so the dump still names the key while loading
+    # it back does not pin "none" to black. Same tolerance the settings check
+    # above already has.
+    missing = sorted(
+        c
+        for c in colours
+        if not re.search(r"^\s*(// )?%s[ \"]" % re.escape(c), text, re.M)
+    )
     check(
         f"all {len(colours)} colours are rendered",
         not missing,

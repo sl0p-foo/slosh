@@ -438,6 +438,12 @@ typedef struct {
   color_t tab_idle, tab_hover;
   color_t prefix_fg, prefix_bg; /* the "C-a" badge */
   color_t tab_count;            /* how many panes in the session */
+  /* The sidebar's status rows. Their distinction from the labels above them
+   * is carried by the slant (see draw_tab_sidebar), because a monochrome
+   * theme has no colour to spend on it; these are for themes that do. A bg of
+   * none leaves the terminal's own background alone, which is what a
+   * translucent one wants. */
+  color_t tab_status_fg, tab_status_bg;
 
   /* the line along the bottom */
   color_t status, status_state;

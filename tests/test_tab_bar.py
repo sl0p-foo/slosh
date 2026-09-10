@@ -171,6 +171,60 @@ def test_status_rows_sit_under_their_tab():
         )
 
 
+def test_status_rows_are_told_apart_by_the_slant_not_by_an_indent():
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        _status(s, "building 3/7")
+        snap = s.snapshot()
+        label, status = _row(snap, Y0), _row(snap, Y0 + 1)
+        # One leading space each: a status starts in the column its tab's name
+        # starts in. Three columns of indent is a fifth of this sidebar.
+        check(
+            "a status is not indented under its label",
+            status.index("building") == label.index("1:"),
+            f"{status.index('building')} vs {label.index('1:')}",
+        )
+        st = snap.style_at(CX + 1, Y0 + 1)
+        check("it is italic instead", "italic" in st["attrs"], str(st))
+        check(
+            "...and the label above it is not",
+            "italic" not in snap.style_at(CX + 1, Y0)["attrs"],
+            str(snap.style_at(CX + 1, Y0)),
+        )
+
+
+def test_status_rows_take_their_own_theme_colours():
+    themed = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        'theme { tab_status_fg "#00ff88"\n tab_status_bg "#202030" }\n'
+    )
+    with Session(SH, cols=90, rows=20, config=themed) as s:
+        s.settle(30)
+        _status(s, "building")
+        snap = s.snapshot()
+        st = snap.style_at(CX + 1, Y0 + 1)
+        check("the fg is the themed one", st["fg"] == "#00ff88", str(st))
+        end = snap.style_at(CX + CW - 1, Y0 + 1)
+        check(
+            "and the band covers the row, not just the words",
+            end and end["bg"] == "#202030",
+            str(end),
+        )
+
+
+def test_an_old_theme_gets_coherent_status_colours_anyway():
+    """A theme written before these rows existed names tab_count and nothing
+    about them; deriving from it beats one stock grey among its own greys."""
+    old = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\ntheme {{ tab_count "#ff8800" }}\n'
+    )
+    with Session(SH, cols=90, rows=20, config=old) as s:
+        s.settle(30)
+        _status(s, "building")
+        st = s.snapshot().style_at(CX + 1, Y0 + 1)
+        check("the status follows tab_count", st["fg"] == "#ff8800", str(st))
+
+
 def test_status_cap_spends_its_last_row_on_the_ellipsis():
     capped = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_status 1\n')
     with Session(SH, cols=90, rows=20, config=capped) as s:
@@ -380,6 +434,9 @@ if __name__ == "__main__":
     test_right_sidebar_takes_the_other_edge()
     test_pad_pushes_the_list_down()
     test_status_rows_sit_under_their_tab()
+    test_status_rows_are_told_apart_by_the_slant_not_by_an_indent()
+    test_status_rows_take_their_own_theme_colours()
+    test_an_old_theme_gets_coherent_status_colours_anyway()
     test_status_cap_spends_its_last_row_on_the_ellipsis()
     test_a_long_status_is_cut_and_says_so()
     test_a_dead_pane_reports_its_exit_instead()

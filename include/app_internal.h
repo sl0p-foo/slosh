@@ -392,6 +392,8 @@ extern config_t CFG;
 #define PREFIX_FG (CFG.prefix_fg)
 #define PREFIX_BG (CFG.prefix_bg)
 #define TAB_COUNT (CFG.tab_count)
+#define TAB_STATUS_FG (CFG.tab_status_fg)
+#define TAB_STATUS_BG (CFG.tab_status_bg)
 #define STATUS_C (CFG.status)
 #define STATUS_STATE (CFG.status_state)
 #define FINDER_FG (CFG.finder_fg)
