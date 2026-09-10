@@ -321,6 +321,11 @@ typedef struct {
    * untouched and keeps the full width either way. */
   int tab_bar_side;       /* TAB_BAR_* */
   uint16_t tab_bar_width; /* columns a sidebar takes; ignored for top */
+  /* Rows a sidebar leaves blank above its first tab. Air for anyone who finds
+   * a list starting in the very corner cramped -- or room for a terminal's
+   * own window buttons when the multiplexer fills a borderless window.
+   * Ignored for top, which has exactly one row and no air to give. */
+  uint16_t tab_bar_pad;
   bool status_line; /* the line along the bottom: what you are looking at */
   /* How far the strip and the line are held off the left and right edges.
    * Separate from `gap`, which is the space around the *panes*: the two happen

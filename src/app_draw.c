@@ -1960,25 +1960,32 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
   uint16_t x = app_tab_bar_side(a) == TAB_BAR_LEFT
                    ? 0
                    : (uint16_t)(s->cols > sw ? s->cols - sw : 0);
-  uint16_t y = CFG.compact ? 0 : CFG.gap; /* same rule as the strip's row */
+  /* The strip's row rule, plus the configured air above the list. The pad is
+   * where the drawing starts, not a layout fact: the panes' rect is the same
+   * with pad 0 and pad 5, so tuning it repaints without reflowing anyone. */
+  uint16_t y = (uint16_t)((CFG.compact ? 0 : CFG.gap) + CFG.tab_bar_pad);
   uint16_t limit = (uint16_t)(s->rows > (CFG.status_line ? 1 : 0)
                                   ? s->rows - (CFG.status_line ? 1 : 0)
                                   : 0);
 
-  /* Bottom rows first: what the horizontal strip keeps on its right. */
+  /* Bottom rows first: what the horizontal strip keeps on its right. Indented
+   * one cell to sit under the labels' own leading space -- at x exactly, the
+   * count reads flush against the screen edge on the left and against the
+   * compact ring's corner on the right. */
   char info[64];
   size_t np = app_pane_count(a);
   snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
-  if (limit > y && (uint16_t)strlen(info) <= sw) {
+  if (limit > y && (uint16_t)(strlen(info) + 1) <= sw) {
     limit--;
-    screen_text(s, x, limit, info, TAB_COUNT, NO_COLOR, 0);
+    screen_text(s, (uint16_t)(x + 1), limit, info, TAB_COUNT, NO_COLOR, 0);
   }
   if (a->prefix) { /* the prefix is a mode: say so, and say which key */
     char pfx[24];
     config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
-    if (limit > y && cells(pfx) <= sw) {
+    if (limit > y && (uint16_t)(cells(pfx) + 1) <= sw) {
       limit--;
-      screen_text(s, x, limit, pfx, PREFIX_FG, PREFIX_BG, ATTR_BOLD);
+      screen_text(s, (uint16_t)(x + 1), limit, pfx, PREFIX_FG, PREFIX_BG,
+                  ATTR_BOLD);
     }
   }
 
