@@ -119,6 +119,91 @@ def test_pad_pushes_the_list_down():
         )
 
 
+def _status(s, text):
+    s.send(rf"\e]5577;1;status;{text}\e\\")
+    s.settle(30)
+
+
+def test_status_rows_sit_under_their_tab():
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        pane = s.pane(0)["id"]
+        _status(s, "building 3/7")
+        s.api("new-tab")
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "a pane's OSC status is a row under its tab",
+            "building 3/7" in snap.line(3)[:W],
+            repr(snap.line(3)[:W]),
+        )
+        check(
+            "the other tab moved down to make room",
+            snap.hit_at(1, 4) == "tab:2",
+            str(snap.hit_at(1, 4)),
+        )
+        check(
+            "the row is a door to the pane that said it",
+            snap.hit_at(2, 3) == f"find:{pane}",
+            str(snap.hit_at(2, 3)),
+        )
+        # We are in tab 2: clicking the status row is a cross-tab jump.
+        s.click(2, 3)
+        s.until(lambda _: s.tabs()[0]["active"])
+        check("clicking it selects that tab", s.tabs()[0]["active"], str(s.tabs()))
+        check(
+            "...and focuses that pane",
+            s.focused()["id"] == pane,
+            str(s.focused()["id"]),
+        )
+
+
+def test_status_cap_spends_its_last_row_on_the_ellipsis():
+    capped = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_status 1\n')
+    with Session(SH, cols=90, rows=20, config=capped) as s:
+        s.settle(30)
+        _status(s, "first")
+        s.api("split", dir="cols")
+        s.settle(30)
+        _status(s, "second")
+        snap = s.snapshot()
+        check(
+            "over the cap, the row says there was more",
+            snap.line(3)[:W].strip() == "\u2026",
+            repr(snap.line(3)[:W]),
+        )
+        check(
+            "an ellipsis is not a door",
+            snap.hit_at(2, 3) is None,
+            str(snap.hit_at(2, 3)),
+        )
+        check(
+            "and only the cap's rows were spent",
+            snap.hit_at(1, 4) == "newtab",
+            str(snap.hit_at(1, 4)),
+        )
+
+
+def test_a_long_status_is_cut_and_says_so():
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        _status(s, "a status far too long for the sidebar")
+        row = s.snapshot().line(3)[:W]
+        check(
+            "the status stops at the sidebar's edge", row.endswith("\u2026"), repr(row)
+        )
+
+
+def test_a_dead_pane_reports_its_exit_instead():
+    # Wider than the default: "exited: status 3" plus the indent is 19 cells,
+    # and the point here is the words, not the (already tested) truncation.
+    kept = _cfg('tab_bar_side "left"\ntab_bar_width 24\nkeep_dead "all"\n')
+    with Session(["/bin/sh", "-c", "exit 3"], cols=90, rows=20, config=kept) as s:
+        s.until(lambda snap: "exited" in snap.line(3))
+        row = s.snapshot().line(3)[:24]
+        check("how it died replaces what it last said", "status 3" in row, repr(row))
+
+
 def test_narrow_terminal_falls_back_to_top():
     # 40 < width + min_pane cols + 4: the sidebar would leave no room for the
     # pane it is chrome for, so the strip goes back to the top row.
@@ -153,6 +238,10 @@ if __name__ == "__main__":
     test_sidebar_rows_click_like_the_strip()
     test_right_sidebar_takes_the_other_edge()
     test_pad_pushes_the_list_down()
+    test_status_rows_sit_under_their_tab()
+    test_status_cap_spends_its_last_row_on_the_ellipsis()
+    test_a_long_status_is_cut_and_says_so()
+    test_a_dead_pane_reports_its_exit_instead()
     test_narrow_terminal_falls_back_to_top()
     test_growing_back_restores_the_sidebar()
     sys.exit(report())

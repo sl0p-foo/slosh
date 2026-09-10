@@ -135,6 +135,12 @@ The strip's indicators move to the sidebar's bottom rows; the status line
 keeps the full width. A terminal too narrow to give up the columns falls
 back to \fBtop\fR until it grows.
 .TP
+.BI tab_bar_status\  n
+Under each of a sidebar's tabs, up to \fIn\fR rows of what the panes inside
+said through OSC 5577 status \(em or how they died \(em with an ellipsis when
+there was more. Clicking a status row jumps to the pane that said it.
+0 turns it off; \fBtop\fR has no room for it either way.
+.TP
 .BI hints\  bool
 What the pointer is resting on, said in the status line.
 .TP

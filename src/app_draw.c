@@ -1954,6 +1954,52 @@ void draw_tab_strip(app_t *a, screen_t *s) {
  * budgeting rule the horizontal strip applies from the right, so a long tab
  * list can never eat them. The status line below keeps the full width; the
  * sidebar stops above it. */
+/* The status rows a tab contributes to the sidebar: what each pane inside
+ * said through OSC 5577, or -- for a pane that is dead rather than suspended
+ * -- how it died, which is the same substitution the pane's own frame makes
+ * (draw_pane_status): a program that is gone cannot mean whatever it last
+ * asked us to show. Collected in tree order, pane id kept so the row can be
+ * a `find:` target: clicking a status jumps to the pane that said it. */
+struct tabstatus {
+  struct {
+    char text[96];
+    uint32_t pane;
+  } row[16];
+  size_t n;     /* rows kept */
+  size_t total; /* rows there were, so the cap can say "and more" */
+};
+
+static void tabstatus_cb(node_t *n, void *ud) {
+  struct tabstatus *ts = ud;
+  if (!n->pane) return;
+  char text[96] = {0};
+  if (!pane_alive(n->pane) && !pane_suspended(n->pane))
+    exit_words(n->pane, text, sizeof text);
+  else
+    snprintf(text, sizeof text, "%s", pane_status(n->pane));
+  if (!text[0]) return;
+  ts->total++;
+  if (ts->n >= sizeof ts->row / sizeof *ts->row) return;
+  snprintf(ts->row[ts->n].text, sizeof ts->row[0].text, "%s", text);
+  ts->row[ts->n].pane = n->id;
+  ts->n++;
+}
+
+/* Cut `text` to `budget` cells at a UTF-8 boundary, saying so: the last cell
+ * becomes an ellipsis, because a status cut silently reads as complete --
+ * "building 3" is a different fact than "building 3/7". */
+static void fit_status(char *text, size_t cap, uint16_t budget) {
+  if (cells(text) <= budget) return;
+  while (text[0] && cells(text) > (uint16_t)(budget > 0 ? budget - 1 : 0)) {
+    size_t len = strlen(text);
+    do len--;
+    while (len && (text[len] & 0xc0) == 0x80);
+    text[len] = 0;
+  }
+  size_t len = strlen(text);
+  if (len + 4 <= cap) memcpy(text + len, "\u2026", 4);
+}
+
 void draw_tab_sidebar(app_t *a, screen_t *s) {
   bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
   uint16_t sw = app_tab_bar_cols();
@@ -1989,8 +2035,40 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
     }
   }
 
-  for (size_t i = 0; i < a->ntabs && y < limit; i++, y++)
+  uint16_t cap = CFG.tab_bar_status;
+  if (cap > 16) cap = 16; /* the collector keeps no more than that */
+  for (size_t i = 0; i < a->ntabs && y < limit; i++) {
     draw_tab_cell(a, s, i, x, y, sw, dragging_pane);
+    y++;
+    if (!cap) continue;
+
+    struct tabstatus ts = {0};
+    walk(a->tabs[i].root, tabstatus_cb, &ts);
+    size_t show = ts.total > cap ? cap : ts.n;
+    for (size_t j = 0; j < show && y < limit; j++, y++) {
+      /* The cap's last row is spent on saying there was more, rather than on
+       * one more status pretending the list is complete. */
+      bool more = ts.total > cap && j == (size_t)(cap - 1);
+      char text[112];
+      if (more) {
+        snprintf(text, sizeof text, "   \u2026");
+      } else {
+        snprintf(text, sizeof text, "   %s", ts.row[j].text);
+        fit_status(text, sizeof text, sw);
+      }
+      /* Dim like the pane count: these are ambience until pointed at. The
+       * hover brightening doubles as the affordance that the row is a door;
+       * the hint under the pointer says where it leads. */
+      bool hot = !more && ptr_on(a, x, y, sw, 1);
+      screen_text(s, x, y, text, hot ? TAB_HOVER : TAB_COUNT, NO_COLOR,
+                  hot ? ATTR_BOLD : 0);
+      if (!more) {
+        char act[24];
+        snprintf(act, sizeof act, "find:%u", ts.row[j].pane);
+        hit_add(&s->hits, x, y, sw, 1, act);
+      }
+    }
+  }
 
   if (cells(CFG.newtab_mark) && y < limit)
     draw_newtab_button(a, s, x, y, dragging_pane);

@@ -326,6 +326,12 @@ typedef struct {
    * own window buttons when the multiplexer fills a borderless window.
    * Ignored for top, which has exactly one row and no air to give. */
   uint16_t tab_bar_pad;
+  /* Status rows under each of a sidebar's tabs: what the panes inside said
+   * through OSC 5577 (or how they died), at most this many rows per tab with
+   * an ellipsis when there was more. The sidebar is what makes this possible
+   * at all -- the top strip has one row and no room to say any of it. 0 turns
+   * it off. */
+  uint16_t tab_bar_status;
   bool status_line; /* the line along the bottom: what you are looking at */
   /* How far the strip and the line are held off the left and right edges.
    * Separate from `gap`, which is the space around the *panes*: the two happen

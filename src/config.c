@@ -927,6 +927,9 @@ void config_defaults(config_t *c) {
    * as cramped, and in compact mode the row lines the first tab up with the
    * pane content inside the ring rather than with the ring's top line. */
   c->tab_bar_pad = 1;
+  /* Three is enough for "the build, the tests, and one more thing" without a
+   * chatty tab pushing the list off the bottom. */
+  c->tab_bar_status = 3;
   c->status_line = true;
   /* Deliberately wider than the panes' own margin (gap * gap_aspect = 2), so
    * the strip and the line read as chrome sitting outside the layout rather
@@ -1631,6 +1634,9 @@ char *config_render(const config_t *c) {
          c->tab_bar_width);
   cb_add(&b, "tab_bar_pad %u        // blank rows above a sidebar's tabs\n",
          c->tab_bar_pad);
+  cb_add(&b,
+         "tab_bar_status %u     // pane status rows under each tab, 0 = off\n",
+         c->tab_bar_status);
   cb_add(&b, "status_line %s         // the line along the bottom\n",
          yesno(c->status_line));
   cb_add(&b, "status_pad %u\n", c->status_pad);
@@ -1941,6 +1947,7 @@ static const char *const KNOWN_TOP[] = {
     "status_pad",
     "tab_bar_pad",
     "tab_bar_side",
+    "tab_bar_status",
     "tab_bar_width",
     "theme",
     "title_align",
@@ -2154,6 +2161,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                                            c->tab_bar_width);
   c->tab_bar_pad =
       (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_bar_pad);
+  c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
+                                            0, c->tab_bar_status);
   c->status_line =
       kdl_arg_bool(kdl_child(root, "status_line"), 0, c->status_line);
   c->status_pad =
