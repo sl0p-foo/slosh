@@ -125,7 +125,13 @@ build/version.h: FORCE | build
 build:
 	@mkdir -p build
 
-$(VT_LIB):
+# The manifest is the prerequisite: contrib's re-vendor rewrites it every
+# time, so a vendor bump rebuilds the library and its installed headers.
+# Without it, an existing .a *was* the build -- and a machine whose zig-out
+# predated a bump compiled new code against old headers (the v0.1.7 macOS
+# leg failed exactly there: pane.c wanted GhosttySearch, the builder's
+# stale include/ had never heard of it).
+$(VT_LIB): $(VT).vendor.json
 	@$(MAKE) vendor
 
 # -Demit-xcframework=false: we only need libghostty-vt.a. In lib-vt mode the

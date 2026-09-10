@@ -152,6 +152,18 @@ else
         --exclude '/tests/fuzz/' \
         --exclude '.DS_Store' \
         "$root/" "$BUILDER:$DIR/" || fail "rsync failed"
+    # zig-pkg is excluded above (and protected from --delete) because it is
+    # 350M of vendored zig packages -- but it is an *input* to `make all`, not
+    # a cache: a vendor bump adds packages, and a builder missing one cannot
+    # build (v0.1.7 died on a translate_c that a once-interrupted sync had
+    # left as empty directories). So it is synced separately, additively:
+    # rsync sends only what changed, which after the first push is nothing,
+    # and no --delete means a partial local tree cannot maim the builder's.
+    if [ -d "$root/vendor/libghostty-vt/zig-pkg" ]; then
+        rsync -a "$root/vendor/libghostty-vt/zig-pkg/" \
+            "$BUILDER:$DIR/vendor/libghostty-vt/zig-pkg/" \
+            || fail "rsync of zig-pkg failed"
+    fi
     # web/ and tests/fuzz/ are excluded above but *tracked*, and .git went
     # over whole -- so the builder's stale copies of them read as local edits,
     # and `git describe --dirty` stamps a clean release tree -dirty (which is

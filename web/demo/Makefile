@@ -78,10 +78,20 @@ vendor/.stamp: fetch-vendor
 # for SIMD, does not compile for rv64gc -- it emits RVV intrinsics for a vector
 # extension this target does not have. The scalar paths are the same code
 # without the hand-vectorised fast path, which for a demo VM is free.
-$(VT_LIB):
+# -Dversion-string, as at the top level: the vendored tree has no .git, so
+# upstream's version detection runs `git describe` in *our* repository -- and
+# on a tag checkout (exactly where web/publish builds a release site) it
+# finds a slosh tag, which upstream treats as a fatal mismatch. The manifest
+# prerequisite is the top level's too: a vendor bump must rebuild this lib,
+# or the demo compiles new code against the old headers. Both stayed hidden
+# behind a stale build/vt until v0.1.7 cleared it.
+VT_VERSION := $(shell sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' $(VT)/build.zig.zon | head -1)
+
+$(VT_LIB): $(VT).vendor.json
 	$(call say,[ZIG],libghostty-vt $(TARGET))
 	$(Q)cd $(VT) && PATH="$(dir $(ZIG)):$$PATH" zig build \
 	    -Demit-lib-vt -Dsimd=false -Doptimize=ReleaseFast -Dtarget=$(TARGET) \
+	    -Dversion-string=$(VT_VERSION) \
 	    --prefix $(abspath $(VT_OUT)) --cache-dir $(abspath build/vt-cache)
 
 # FORCE, as at the top level: rewritten only when the value actually changes,
