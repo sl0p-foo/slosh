@@ -48,6 +48,40 @@ looking at is drawn.
 - **Click a tab to switch**, `+` to open one, a pane to focus it, and the marks in a
   frame's corner to minimise (`▬`), zoom (`□`) or close (`✕`) it.
 
+## The tab bar
+
+The strip of tabs sits along the top by default. It does not have to:
+
+```kdl
+tab_bar_side "left"   // or "right"; "top" is the default
+tab_bar_width 18      // columns the sidebar takes
+tab_bar_pad 1         // blank rows above the first tab
+```
+
+A **sidebar lists one tab per row** down the chosen edge, and the panes trade
+the strip's row for its columns. Everything the strip does travels with it:
+click to switch, double-click to rename in place, drag a pane onto a tab or
+onto the `+`, drag tabs to reorder. The pane count and the prefix badge move
+to the sidebar's bottom rows; the [status line](config.md) along the bottom
+keeps the full width. A terminal too narrow to give up the columns falls back
+to the top row until it grows.
+
+**Under each tab, the sidebar says what the panes inside are up to.** A pane
+that announced a status over [OSC 5577](scripting.md#a-pane-can-draw-its-own-chrome)
+puts that line under its tab — visible from every other tab, which is the
+point — and a pane that died shows how instead (`exited: status 3`). At most
+`tab_bar_status` rows per tab (3 by default, 0 turns it off); more than that
+and the last row is an ellipsis rather than a status pretending the list is
+complete. **Clicking a status row jumps to the pane that said it**, across
+tabs. The top strip has one row and no room for any of this, which is half of
+why the sidebar exists.
+
+**An unnamed tab borrows the directory its focused pane is in** — the
+kernel's answer, so a `cd` moves the label with you, and home shows as `~`.
+A real name or a [purpose](layouts.md#purposes) wins the moment one exists;
+when a tab's panes sit in different directories, the focused one names the
+tab. This holds wherever the bar sits, top row included.
+
 ## Floating a pane
 
 `C-a f` lifts a pane out of the layout and draws it on top of the tiled ones

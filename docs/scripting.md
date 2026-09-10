@@ -101,6 +101,12 @@ The status text appears in the pane's frame; the buttons are real targets in it.
 A program that wants to be asked something can ask *in place* rather than
 printing a prompt and hoping.
 
+With the tab bar [on a side](panes.md#the-tab-bar), the status is also a row
+under the pane's tab — visible from every other tab, and clicking it jumps to
+the pane that said it. A status is not decoration on your own frame; it is how
+a pane reports progress to somebody working elsewhere, which is a reason to
+keep it current and `clear` it when the work is done.
+
 `purpose` is the other verb: `printf '\033]5577;1;purpose;logs\033\\'`. A purpose
 declared by a layout or the control API wins and cannot be overwritten this way.
 

@@ -216,7 +216,12 @@ printf '\e]5577;1;purpose;task:build\e\\'
 printf '\e]5577;1;clear\e\\'
 ```
 
-The status shows in the pane's frame. The buttons are real click targets, and a
+The status shows in the pane's frame — and, when the session's tab bar is a
+sidebar (`tab_bar_side left/right`), as a row under your pane's tab, visible
+from every other tab. Treat it as your progress report to somebody working
+elsewhere: keep it current while you work ("building 3/7", "tests green"),
+and `clear` it when you are done, so a stale line never outlives the work.
+The buttons are real click targets, and a
 click arrives **on your stdin** as:
 
 ```
