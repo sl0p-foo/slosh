@@ -212,17 +212,50 @@ def test_status_rows_take_their_own_theme_colours():
         )
 
 
+def _rgb(hexs):
+    return tuple(int(hexs[i : i + 2], 16) for i in (1, 3, 5))
+
+
 def test_an_old_theme_gets_coherent_status_colours_anyway():
-    """A theme written before these rows existed names tab_count and nothing
-    about them; deriving from it beats one stock grey among its own greys."""
+    """A theme written before these rows existed names its own chrome and
+    nothing about them. Mixing two colours it *does* define beats dropping one
+    stock colour into somebody else's palette."""
+    count, hover = "#ff8800", "#0000ff"
     old = _cfg(
-        f'tab_bar_side "left"\ntab_bar_width {W}\ntheme {{ tab_count "#ff8800" }}\n'
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        f'theme {{ tab_count "{count}"\n tab_hover "{hover}" }}\n'
     )
     with Session(SH, cols=90, rows=20, config=old) as s:
         s.settle(30)
         _status(s, "building")
         st = s.snapshot().style_at(CX + 1, Y0 + 1)
-        check("the status follows tab_count", st["fg"] == "#ff8800", str(st))
+        got, a, b = _rgb(st["fg"]), _rgb(count), _rgb(hover)
+        check(
+            "the status is mixed from the theme's own two colours",
+            all(min(a[i], b[i]) <= got[i] <= max(a[i], b[i]) for i in range(3)),
+            f"{st['fg']} not between {count} and {hover}",
+        )
+        check(
+            "...and is neither of them outright",
+            st["fg"] not in (count, hover),
+            st["fg"],
+        )
+
+
+def test_a_monochrome_theme_stays_monochrome():
+    """The reason the distinction is a slant and the colour is mixed rather
+    than picked: mono has no colour to spend, and must not be given any."""
+    mono = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        'theme { tab_count "#585858"\n tab_hover "#e4e4e4" }\n'
+    )
+    with Session(SH, cols=90, rows=20, config=mono) as s:
+        s.settle(30)
+        _status(s, "building")
+        st = s.snapshot().style_at(CX + 1, Y0 + 1)
+        r, g, b = _rgb(st["fg"])
+        check("no hue arrived from anywhere", r == g == b, st["fg"])
+        check("but it is still italic", "italic" in st["attrs"], str(st))
 
 
 def test_status_cap_spends_its_last_row_on_the_ellipsis():
@@ -437,6 +470,7 @@ if __name__ == "__main__":
     test_status_rows_are_told_apart_by_the_slant_not_by_an_indent()
     test_status_rows_take_their_own_theme_colours()
     test_an_old_theme_gets_coherent_status_colours_anyway()
+    test_a_monochrome_theme_stays_monochrome()
     test_status_cap_spends_its_last_row_on_the_ellipsis()
     test_a_long_status_is_cut_and_says_so()
     test_a_dead_pane_reports_its_exit_instead()

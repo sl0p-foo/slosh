@@ -83,9 +83,14 @@ and the last row is an ellipsis rather than a status pretending the list is
 complete. **Clicking a status row jumps to the pane that said it**, across
 tabs. A status is set in italic rather than indented under its tab — the slant
 says "this belongs to the row above" without spending columns a narrow sidebar
-has none of, and says it on a monochrome theme too. `tab_status_fg` and
-`tab_status_bg` are yours if you want colour as well; unset, the first follows
-`tab_count` and the second leaves your terminal's own background alone. The top strip has one row and no room for any of this, which is half of
+has none of, and says it on a monochrome theme too. The colour is part way
+from `tab_count` to `tab_hover` — the live thing in the sidebar should not read
+in the flat grey of the chrome around it, and should not shout over the tab it
+belongs to either. Unset, `tab_status_fg` is mixed from those two, so a theme
+gets a status colour in its own family without naming one (a monochrome theme
+mixes two greys and stays grey). Name it, or `tab_status_bg` for a band, and
+yours wins; the band is unset by default, which leaves a translucent
+terminal's own background alone. The top strip has one row and no room for any of this, which is half of
 why the sidebar exists.
 
 **An unnamed tab borrows the directory its focused pane is in** — the

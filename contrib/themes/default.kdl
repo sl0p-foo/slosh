@@ -47,10 +47,13 @@ theme {
     prefix_fg "#141418"
     prefix_bg "#7aa2f7"
     tab_count "#45454a"
-    // a sidebar's status rows: italic carries the distinction, so this only
-    // has to be ambient. Unset, it follows tab_count. tab_status_bg is unset
-    // -- a band is opt-in, and none leaves a translucent terminal alone.
-    tab_status_fg "#45454a"
+    // a sidebar's status rows, part way from tab_count to tab_hover: the live
+    // thing in the sidebar, so not the flat grey of the chrome round it, and
+    // not the full accent either. Unset, it is mixed from those two, so a
+    // theme gets a status colour in its own family without naming one.
+    // tab_status_bg is unset -- a band is opt-in, and none leaves a
+    // translucent terminal's background alone.
+    tab_status_fg "#5a6a8f"
 
     // the line along the bottom
     status "#45454a"

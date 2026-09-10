@@ -246,6 +246,21 @@ static color_t rgb(uint8_t r, uint8_t g, uint8_t b) {
   return (color_t){true, r, g, b};
 }
 
+/* `pct` of the way from one colour to another.
+ *
+ * For deriving a colour that has to belong to a theme nobody wrote it into:
+ * mixing two colours the theme *does* define keeps the result in its family,
+ * whatever that family is -- a monochrome theme mixes two greys and stays
+ * monochrome, a green one stays green. Picking a nice constant instead would
+ * have put one house colour into all seven. */
+static color_t blend(color_t a, color_t b, uint8_t pct) {
+  if (!a.set) return b;
+  if (!b.set) return a;
+  return rgb((uint8_t)(a.r + (b.r - a.r) * pct / 100),
+             (uint8_t)(a.g + (b.g - a.g) * pct / 100),
+             (uint8_t)(a.b + (b.b - a.b) * pct / 100));
+}
+
 /* "#rrggbb" */
 static bool parse_color(const char *text, color_t *out) {
   if (!text || text[0] != '#' || strlen(text) != 7) return false;
@@ -1033,9 +1048,11 @@ void config_defaults(config_t *c) {
   c->prefix_fg = ink;
   c->prefix_bg = accent;
   c->tab_count = dim;
-  /* Ambient, like the count: the slant is what separates a status from the
-   * label above it, so the colour does not have to. */
-  c->tab_status_fg = dim;
+  /* Part way from the ambient grey to the accent: a status is the live thing
+   * in the sidebar and reading it in exactly the grey of the chrome around it
+   * sells it short, but at full accent it would shout over the tab it belongs
+   * to. The slant already says what it is; this says it is worth reading. */
+  c->tab_status_fg = blend(dim, accent, 40);
   c->tab_status_bg = (color_t){0}; /* none: the terminal's own background */
 
   c->status = dim;
@@ -2418,13 +2435,15 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
         complain(c, err, errcap, kdl_child(theme, THEME_COLORS[i].name)->line,
                  "bad colour for %s: %s", THEME_COLORS[i].name, v);
     }
-    /* A theme that restyles the ambient chrome but has never heard of the
-     * sidebar's status rows gets coherent ones anyway: they follow tab_count,
-     * which is the same class of thing. Named explicitly, it wins -- the same
-     * declared/derived split apply_scrolled makes. Without this every theme in
-     * contrib would need a line adding to it to avoid one grey among another
-     * theme's greys. */
-    if (!kdl_child(theme, "tab_status_fg")) c->tab_status_fg = c->tab_count;
+    /* A theme that restyles the chrome but has never heard of the sidebar's
+     * status rows gets coherent ones anyway, mixed from two colours it does
+     * define: its ambient grey and its accent. Every theme in contrib has
+     * both, so each one gets a status colour in its own family -- mono mixes
+     * two greys and stays grey, phosphor stays green -- without a line added
+     * to any of them. Named explicitly, it wins: the same declared/derived
+     * split apply_scrolled makes. */
+    if (!kdl_child(theme, "tab_status_fg"))
+      c->tab_status_fg = blend(c->tab_count, c->tab_hover, 40);
   }
   /* After the theme, so the wash follows whatever scroll_bg the theme just
    * chose -- a config that wrote its own `scrolled` chain keeps it, whether

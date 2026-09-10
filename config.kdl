@@ -1,0 +1,222 @@
+// slosh config, as it currently stands.
+//
+// Written by `slosh --dump-config`, so every value here is
+// the one in force rather than one somebody typed up. Delete
+// anything you do not want to pin; what is missing is a
+// default, and defaults are allowed to improve.
+//
+// The commented reference -- what each setting is for, and why
+// it exists -- is config/config.kdl in the source tree.
+
+// ---- geometry ----
+gap 1
+gap_aspect 2          // columns per row, so a gap looks square
+padding 0
+rounded true
+compact false            // shared 1-cell borders instead of gaps
+title_align "center"
+title_inset 2
+min_pane cols=24 rows=6   // below this a pane collapses
+min_split cols=32 rows=8  // below this a split is not offered
+
+// ---- what is on screen ----
+status_bar true          // the strip along the top
+status_line true         // the line along the bottom
+status_pad 4
+hints true               // what the pointer is on, in the middle
+version_banner true      // ...and which build this is, when idle
+pane_buttons true        // the marks in a frame's top-right
+bell_indicator true
+zoom_mark "□"
+zoom_on_mark "■"
+close_mark "✕"
+min_mark "▬"
+newtab_mark "+"
+bell_mark "[!]"
+
+// ---- behaviour ----
+focus_follows_mouse true
+in_band_shaders false
+ctrl_d_exits false        // ^D at an idle prompt exits the shell; default on Windows only
+scroll_lines 3
+scrollback 10000           // lines of history per pane; 0 for none
+scrollback_bytes 16777216  // the ceiling that count runs into; 0 for none
+toast_ms 2500
+splash_ms 900          // the logo, on attach; 0 for never
+hover_delay_ms 250
+select_scroll_ms 50      // drag past an edge: ms per scroll step
+double_click_ms 400
+word_separators "\"'`()[]{}<>;,|"  // what a double-click's word stops at
+anim_ms 50             // frame clock while a shader animates
+modal_scrim 120         // how far a modal pushes the rest back
+dim_unfocused 60       // ...and how far the panes you are not in
+float_shadow 110       // the shade a floating pane casts; 0 for none
+keep_dead "commands"  // which dead panes stay: commands, all, none
+// shell "/bin/zsh"     // unset: $SHELL
+// editor "nvim"        // unset: $EDITOR, then vi
+// shader_dir "~/.config/slosh/shaders"
+// project_roots "~/dev" "~/work" depth=2
+// project_layout "~/.config/slosh/project.layout"
+
+// ---- colour ----
+theme {
+    default_fg             "#ffffff"
+    default_bg             "#000000"
+    frame_focus            "#7aa2f7"
+    frame_idle             "#45454a"
+    title                  "#ffffff"
+    title_idle             "#45454a"
+    button_fg              "#141418"
+    button_bg              "#7aa2f7"
+    button_bg_idle         "#55555c"
+    guide                  "#7aa2f7"
+    resize                 "#7aa2f7"
+    drop_target            "#7aa2f7"
+    scroll_fg              "#141418"
+    scroll_bg              "#7aa2f7"
+    header                 "#45454a"
+    header_hover           "#7aa2f7"
+    header_hover_title     "#ffffff"
+    tab_active_fg          "#141418"
+    tab_active_bg          "#7aa2f7"
+    tab_active_hover_fg    "#ffffff"
+    tab_idle               "#45454a"
+    tab_hover              "#7aa2f7"
+    prefix_fg              "#141418"
+    prefix_bg              "#7aa2f7"
+    tab_count              "#45454a"
+    status                 "#45454a"
+    status_state           "#ffffff"
+    finder_fg              "#ffffff"
+    finder_bg              "#45454a"
+    finder_sel_fg          "#141418"
+    finder_sel_bg          "#7aa2f7"
+    bell                   "#e0af68"
+    modal_fg               "#e8e8ea"
+    modal_bg               "#1c1c22"
+    modal_border           "#7aa2f7"
+    modal_title            "#ffffff"
+    modal_button           "#8a8a95"
+    modal_button_hover     "#7aa2f7"
+    dead                   "#ff875f"
+    hint                   "#ffffff"
+    minbar                 "#45454a"
+    minbar_hover           "#7aa2f7"
+    pane_button            "#45454a"
+    pane_button_hover      "#7aa2f7"
+    rename_fg              "#141418"
+    rename_bg              "#7aa2f7"
+    toast_fg               "#141418"
+    toast_bg               "#7aa2f7"
+}
+
+// ---- colour passes over every pane ----
+// (contrib/shaders has thirty-odd to paste; contrib/shadertoy.html
+//  previews them. where="chrome" runs a pass over the frame
+//  instead of the contents)
+shaders {
+}
+
+// ---- what a pane looks like in a given state ----
+states {
+    dragging {
+    }
+    drop_hover {
+        grayscale amount=200
+        dim amount=140
+    }
+    drop_target {
+        grayscale amount=200
+        dim amount=140
+    }
+    dead {
+        grayscale amount=200
+        dim amount=90
+    }
+    suspended {
+        grayscale amount=170
+        dim amount=60
+    }
+    // bell {   // derived: a body shimmer, and a frame blink-then-breathe, in theme's bell colour
+    //     tint amount="(since < 900) * max(0, 95 - abs(x + 2 * y - since / 4) * (6 + sin(since / 2) / 96) - since / 64)" color="#efd7b3"
+    //     tint amount="since < 900 ? (since / 150 % 2 == 0) * 255 : 120 + sin(since / 8 + 158) / 3" color="#e0af68" where="chrome" channel="fg"
+    // }
+    // scrolled {   // derived: a wash of theme's scroll_bg, and edge fades where more content is
+    //     tint amount=22 color="#7aa2f7"
+    //     dim amount="(above > 0) * max(0, (min(4, rows / 4) - y) * 60)"
+    //     dim amount="(below > 0) * max(0, (y - rows + min(4, rows / 4) + 1) * 60)"
+    // }
+    floating {
+    }
+    // unfocused {   // derived: the dim_unfocused knob above
+    //     dim amount=60
+    // }
+}
+
+// ---- keys ----
+keys {
+    prefix "ctrl+a"
+
+    bind "enter" "split"
+    bind "backslash" "split-cols"
+    bind "minus" "split-rows"
+    bind "x" "close-pane"
+    bind "shift+slash" "help"
+    bind "slash" "help"
+    bind "r" "rerun"
+    bind "z" "zoom"
+    bind "e" "edit-config"
+    bind "m" "minimize"
+    bind "f" "float"
+    bind "h" "focus-left"
+    bind "l" "focus-right"
+    bind "k" "focus-up"
+    bind "j" "focus-down"
+    bind "left" "focus-left"
+    bind "right" "focus-right"
+    bind "up" "focus-up"
+    bind "down" "focus-down"
+    bind "o" "focus-next"
+    bind "shift+h" "resize-left"
+    bind "shift+l" "resize-right"
+    bind "shift+k" "resize-up"
+    bind "shift+j" "resize-down"
+    bind "shift+left" "resize-left"
+    bind "shift+right" "resize-right"
+    bind "shift+up" "resize-up"
+    bind "shift+down" "resize-down"
+    bind "=" "float-grow"
+    bind "shift+=" "float-grow"
+    bind "0" "equalize"
+    bind "shift+f" "new-float"
+    bind "space" "rotate-layout"
+    bind "shift+period" "pane-to-next-tab"
+    bind "shift+comma" "pane-to-prev-tab"
+    bind "period" "pane-to-next-tab"
+    bind "comma" "pane-to-prev-tab"
+    bind "b" "pane-to-new-tab"
+    bind "c" "new-tab"
+    bind "shift+x" "close-tab"
+    bind "tab" "next-tab"
+    bind "shift+tab" "prev-tab"
+    bind "w" "workspaces"
+    bind "shift+w" "save-workspace"
+    bind "s" "finder"
+    bind "p" "palette"
+    bind "shift+p" "set-purpose"
+    bind "pageup" "scroll-page-up"
+    bind "pagedown" "scroll-page-down"
+    bind "home" "scroll-top"
+    bind "end" "scroll-bottom"
+    bind "d" "detach"
+    bind "q" "quit"
+    bind "1" "select-tab-1"
+    bind "2" "select-tab-2"
+    bind "3" "select-tab-3"
+    bind "4" "select-tab-4"
+    bind "5" "select-tab-5"
+    bind "6" "select-tab-6"
+    bind "7" "select-tab-7"
+    bind "8" "select-tab-8"
+    bind "9" "select-tab-9"
+}
