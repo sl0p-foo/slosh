@@ -1903,29 +1903,50 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
   return hit_w;
 }
 
-/* A bare mark, spaced like the frame's own buttons rather than spelled out.
- * It used to read "+tab", because a pane frame carried a "+" for splitting
- * and two verbs that look identical is a UI bug the fork shipped. That "+"
- * went when the border became the button, so the collision it was avoiding
- * no longer exists and the word was left explaining itself to nobody.
+/* In the strip, a bare mark, spaced like the frame's own buttons rather than
+ * spelled out. It used to read "+tab", because a pane frame carried a "+" for
+ * splitting and two verbs that look identical is a UI bug the fork shipped.
+ * That "+" went when the border became the button, so the collision it was
+ * avoiding no longer exists and the word was left explaining itself to
+ * nobody: in the strip the mark sits at the end of a row of tabs, where what
+ * it does is plain from the company it keeps.
  *
- * Padded to three cells for the same reason the frame's buttons are: a
- * one-cell target is a thing you miss with a mouse. What it does is said by
- * the hint under the pointer, which is where every other one-character
- * affordance here says it. */
+ * A sidebar row is not that. It is a row of its own with columns to spare,
+ * and a lone glyph on it reads as decoration rather than as a button -- the
+ * hint under the pointer cannot rescue it either, because you have to suspect
+ * a thing is a button before you hover it. So given the room it says the
+ * word, and the word is the one `hint_for` already gives this action rather
+ * than a second name for the same thing.
+ *
+ * `max_w` is the row to fill; 0 is the strip's natural width. Three cells at
+ * minimum for the same reason the frame's buttons are: a one-cell target is a
+ * thing you miss with a mouse. */
 static void draw_newtab_button(app_t *a, screen_t *s, uint16_t x, uint16_t y,
-                               bool dragging_pane) {
-  char btn[24];
-  snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
+                               uint16_t max_w, bool dragging_pane) {
+  char btn[64];
+  if (max_w && (uint16_t)(cells(CFG.newtab_mark) + 10) <= max_w)
+    snprintf(btn, sizeof btn, " %s new tab ", CFG.newtab_mark);
+  else
+    snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
+  /* Padded out on a sidebar row for the same reason a tab's label is: the
+   * hover and the drop fill are the row, not the word sitting on it. */
+  if (max_w) {
+    size_t len = strlen(btn);
+    while (cells(btn) < max_w && len + 1 < sizeof btn) {
+      btn[len++] = ' ';
+      btn[len] = 0;
+    }
+  }
   uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
-  if (ptr_on(a, x, y, w, 1))
+  uint16_t hit_w = max_w ? max_w : w;
+  if (ptr_on(a, x, y, hit_w, 1))
     screen_text(s, x, y, btn, TAB_HOVER, NO_COLOR, ATTR_BOLD);
   /* The button that makes a tab is also a place to drop a pane into one. */
   if (dragging_pane)
     screen_text(s, x, y, btn,
                 a->drag.new_tab_target ? TAB_ACTIVE_HOVER_FG : DROP_C,
                 a->drag.new_tab_target ? DROP_C : NO_COLOR, ATTR_BOLD);
-  hit_add(&s->hits, x, y, w, 1, "newtab");
+  hit_add(&s->hits, x, y, hit_w, 1, "newtab");
 }
 
 void draw_tab_strip(app_t *a, screen_t *s) {
@@ -1968,7 +1989,7 @@ void draw_tab_strip(app_t *a, screen_t *s) {
   {
     uint16_t bw = (uint16_t)(cells(CFG.newtab_mark) + 2);
     if (bw > 2 && x + bw <= right)
-      draw_newtab_button(a, s, x, y, dragging_pane);
+      draw_newtab_button(a, s, x, y, 0, dragging_pane);
   }
 }
 
@@ -2126,7 +2147,7 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
   }
 
   if (cells(CFG.newtab_mark) && y < limit)
-    draw_newtab_button(a, s, cx, y, dragging_pane);
+    draw_newtab_button(a, s, cx, y, cw, dragging_pane);
 }
 
 /* The space between two of a split's children, or false if they are flush.

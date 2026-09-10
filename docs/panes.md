@@ -62,7 +62,8 @@ tab_bar_chrome true   // frame it like a pane
 A **sidebar lists one tab per row** down the chosen edge, and the panes trade
 the strip's row for its columns. Everything the strip does travels with it:
 click to switch, double-click to rename in place, drag a pane onto a tab or
-onto the `+`, drag tabs to reorder. The pane count and the prefix badge move
+onto the `+` — which, given a row of its own and the columns to spare, spells
+itself out as `+ new tab`. The pane count and the prefix badge move
 to the sidebar's bottom rows; the [status line](config.md) along the bottom
 keeps the full width. A terminal too narrow to give up the columns falls back
 to the top row until it grows.

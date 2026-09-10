@@ -303,6 +303,48 @@ def test_chrome_false_gives_the_columns_back():
         )
 
 
+def test_the_sidebar_button_says_what_it_does():
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(40)
+        snap = s.snapshot()
+        row = _row(snap, Y0 + 1)
+        check("a row of its own spells the verb out", "new tab" in row, repr(row))
+        check(
+            "and the whole row is the target, like a tab's",
+            snap.hit_at(CX + CW - 1, Y0 + 1) == "newtab",
+            str(snap.hit_at(CX + CW - 1, Y0 + 1)),
+        )
+
+
+def test_a_narrow_sidebar_keeps_the_bare_mark():
+    narrow = _cfg('tab_bar_side "left"\ntab_bar_width 10\n')
+    with Session(SH, cols=90, rows=20, config=narrow) as s:
+        s.settle(40)
+        snap = s.snapshot()
+        row = snap.line(Y0 + 1)[CX : CX + 8]
+        check(
+            "no room for the word, so it is not said", "new tab" not in row, repr(row)
+        )
+        check(
+            "...but the button is still there",
+            snap.hit_at(CX, Y0 + 1) == "newtab",
+            str(snap.hit_at(CX, Y0 + 1)),
+        )
+
+
+def test_the_strip_keeps_its_bare_mark():
+    """The word is a sidebar's affordance, not a new spelling everywhere: in
+    the strip the mark sits at the end of a row of tabs, where columns are
+    scarce and the company it keeps says what it is."""
+    with Session(SH, cols=90, rows=20) as s:
+        s.settle(40)
+        check(
+            "the strip is unchanged",
+            "new tab" not in s.snapshot().line(1),
+            repr(s.snapshot().line(1)),
+        )
+
+
 def test_narrow_terminal_falls_back_to_top():
     # 40 < width + min_pane cols + 4: the sidebar would leave no room for the
     # pane it is chrome for, so the strip goes back to the top row.
@@ -347,6 +389,9 @@ if __name__ == "__main__":
     test_the_sidebar_is_framed_like_a_pane()
     test_compact_shares_its_lines_with_the_ring()
     test_chrome_false_gives_the_columns_back()
+    test_the_sidebar_button_says_what_it_does()
+    test_a_narrow_sidebar_keeps_the_bare_mark()
+    test_the_strip_keeps_its_bare_mark()
     test_narrow_terminal_falls_back_to_top()
     test_growing_back_restores_the_sidebar()
     sys.exit(report())
