@@ -56,6 +56,7 @@ The strip of tabs sits along the top by default. It does not have to:
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
 tab_bar_pad 1         // blank rows above the first tab
+tab_bar_chrome true   // frame it like a pane
 ```
 
 A **sidebar lists one tab per row** down the chosen edge, and the panes trade
@@ -65,6 +66,12 @@ onto the `+`, drag tabs to reorder. The pane count and the prefix badge move
 to the sidebar's bottom rows; the [status line](config.md) along the bottom
 keeps the full width. A terminal too narrow to give up the columns falls back
 to the top row until it grows.
+
+**The sidebar is framed like a pane**, so it belongs to the chrome rather than
+floating beside it. Under [`compact`](config.md#compact) the frame's inner line
+_is_ the tab's outer ring: the two meet in real junctions (`┬`, `┴`) and read
+as one figure, the same way a divider running into the ring does. Set
+`tab_bar_chrome false` to give those two columns back to the labels.
 
 **Under each tab, the sidebar says what the panes inside are up to.** A pane
 that announced a status over [OSC 5577](scripting.md#a-pane-can-draw-its-own-chrome)

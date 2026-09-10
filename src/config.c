@@ -930,6 +930,7 @@ void config_defaults(config_t *c) {
   /* Three is enough for "the build, the tests, and one more thing" without a
    * chatty tab pushing the list off the bottom. */
   c->tab_bar_status = 3;
+  c->tab_bar_chrome = true;
   c->status_line = true;
   /* Deliberately wider than the panes' own margin (gap * gap_aspect = 2), so
    * the strip and the line read as chrome sitting outside the layout rather
@@ -1637,6 +1638,8 @@ char *config_render(const config_t *c) {
   cb_add(&b,
          "tab_bar_status %u     // pane status rows under each tab, 0 = off\n",
          c->tab_bar_status);
+  cb_add(&b, "tab_bar_chrome %s   // frame the sidebar like a pane\n",
+         yesno(c->tab_bar_chrome));
   cb_add(&b, "status_line %s         // the line along the bottom\n",
          yesno(c->status_line));
   cb_add(&b, "status_pad %u\n", c->status_pad);
@@ -1945,6 +1948,7 @@ static const char *const KNOWN_TOP[] = {
     "status_bar",
     "status_line",
     "status_pad",
+    "tab_bar_chrome",
     "tab_bar_pad",
     "tab_bar_side",
     "tab_bar_status",
@@ -2163,6 +2167,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_bar_pad);
   c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
                                             0, c->tab_bar_status);
+  c->tab_bar_chrome =
+      kdl_arg_bool(kdl_child(root, "tab_bar_chrome"), 0, c->tab_bar_chrome);
   c->status_line =
       kdl_arg_bool(kdl_child(root, "status_line"), 0, c->status_line);
   c->status_pad =

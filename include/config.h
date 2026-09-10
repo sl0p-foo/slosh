@@ -332,6 +332,12 @@ typedef struct {
    * at all -- the top strip has one row and no room to say any of it. 0 turns
    * it off. */
   uint16_t tab_bar_status;
+  /* Frame the sidebar the way panes are framed, so it reads as part of the
+   * chrome rather than as text floating beside it. In compact mode its lines
+   * are shared with the tab area's outer ring -- the same junction-forming
+   * strokes the dividers use -- so the two are one figure. Ignored for top,
+   * which has no chrome to flow into. */
+  bool tab_bar_chrome;
   bool status_line; /* the line along the bottom: what you are looking at */
   /* How far the strip and the line are held off the left and right edges.
    * Separate from `gap`, which is the space around the *panes*: the two happen

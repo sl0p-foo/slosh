@@ -2026,35 +2026,66 @@ static void fit_status(char *text, size_t cap, uint16_t budget) {
 
 void draw_tab_sidebar(app_t *a, screen_t *s) {
   bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
+  bool left = app_tab_bar_side(a) == TAB_BAR_LEFT;
   uint16_t sw = app_tab_bar_cols();
-  uint16_t x = app_tab_bar_side(a) == TAB_BAR_LEFT
-                   ? 0
-                   : (uint16_t)(s->cols > sw ? s->cols - sw : 0);
-  /* The strip's row rule, plus the configured air above the list. The pad is
-   * where the drawing starts, not a layout fact: the panes' rect is the same
-   * with pad 0 and pad 5, so tuning it repaints without reflowing anyone. */
-  uint16_t y = (uint16_t)((CFG.compact ? 0 : CFG.gap) + CFG.tab_bar_pad);
+  uint16_t x = left ? 0 : (uint16_t)(s->cols > sw ? s->cols - sw : 0);
+  uint16_t top = CFG.compact ? 0 : CFG.gap; /* the strip's own row rule */
   uint16_t limit = (uint16_t)(s->rows > (CFG.status_line ? 1 : 0)
                                   ? s->rows - (CFG.status_line ? 1 : 0)
                                   : 0);
 
+  /* The frame, when asked for: the sidebar framed the way panes are framed,
+   * so it reads as part of the chrome rather than as text floating beside
+   * it. Strokes, not glyphs picked by hand -- in compact mode the inner
+   * vertical lands on the tab area's own ring column and the union makes
+   * the junctions, so the sidebar and the ring come out as one figure. Too
+   * few rows or columns to afford the lines, and the frame is dropped
+   * before the list is: chrome must not displace what it is chrome for. */
+  uint16_t cx = x, cw = sw;
+  bool chrome = CFG.tab_bar_chrome && limit > (uint16_t)(top + 3) && sw >= 6;
+  if (chrome) {
+    rect_t in;
+    in.y = (uint16_t)(top + 1);
+    in.h = (uint16_t)(limit - top - 2);
+    if (CFG.compact) {
+      /* One vertical of our own (the screen edge); the other is the ring's. */
+      in.x = left ? 1 : x;
+      in.w = (uint16_t)(sw - 1);
+      cx = in.x;
+      cw = (uint16_t)(sw - 1);
+    } else {
+      in.x = (uint16_t)(x + 1);
+      in.w = (uint16_t)(sw - 2);
+      cx = in.x;
+      cw = (uint16_t)(sw - 2);
+    }
+    stroke_ring(s, in, FRAME_IDLE, 0, true);
+    limit--; /* the bottom line's row */
+  }
+
+  /* The strip's row rule, plus the frame's top line, plus the configured air
+   * above the list. The pad is where the drawing starts, not a layout fact:
+   * the panes' rect is the same with pad 0 and pad 5, so tuning it repaints
+   * without reflowing anyone. */
+  uint16_t y = (uint16_t)(top + (chrome ? 1 : 0) + CFG.tab_bar_pad);
+
   /* Bottom rows first: what the horizontal strip keeps on its right. Indented
-   * one cell to sit under the labels' own leading space -- at x exactly, the
-   * count reads flush against the screen edge on the left and against the
-   * compact ring's corner on the right. */
+   * one cell to sit under the labels' own leading space -- at cx exactly, the
+   * count reads flush against whatever the column starts with: the screen
+   * edge, the compact ring's corner, or the frame's own line. */
   char info[64];
   size_t np = app_pane_count(a);
   snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
-  if (limit > y && (uint16_t)(strlen(info) + 1) <= sw) {
+  if (limit > y && (uint16_t)(strlen(info) + 1) <= cw) {
     limit--;
-    screen_text(s, (uint16_t)(x + 1), limit, info, TAB_COUNT, NO_COLOR, 0);
+    screen_text(s, (uint16_t)(cx + 1), limit, info, TAB_COUNT, NO_COLOR, 0);
   }
   if (a->prefix) { /* the prefix is a mode: say so, and say which key */
     char pfx[24];
     config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
-    if (limit > y && (uint16_t)(cells(pfx) + 1) <= sw) {
+    if (limit > y && (uint16_t)(cells(pfx) + 1) <= cw) {
       limit--;
-      screen_text(s, (uint16_t)(x + 1), limit, pfx, PREFIX_FG, PREFIX_BG,
+      screen_text(s, (uint16_t)(cx + 1), limit, pfx, PREFIX_FG, PREFIX_BG,
                   ATTR_BOLD);
     }
   }
@@ -2062,7 +2093,7 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
   uint16_t cap = CFG.tab_bar_status;
   if (cap > 16) cap = 16; /* the collector keeps no more than that */
   for (size_t i = 0; i < a->ntabs && y < limit; i++) {
-    draw_tab_cell(a, s, i, x, y, sw, dragging_pane);
+    draw_tab_cell(a, s, i, cx, y, cw, dragging_pane);
     y++;
     if (!cap) continue;
 
@@ -2078,24 +2109,24 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
         snprintf(text, sizeof text, "   \u2026");
       } else {
         snprintf(text, sizeof text, "   %s", ts.row[j].text);
-        fit_status(text, sizeof text, sw);
+        fit_status(text, sizeof text, cw);
       }
       /* Dim like the pane count: these are ambience until pointed at. The
        * hover brightening doubles as the affordance that the row is a door;
        * the hint under the pointer says where it leads. */
-      bool hot = !more && ptr_on(a, x, y, sw, 1);
-      screen_text(s, x, y, text, hot ? TAB_HOVER : TAB_COUNT, NO_COLOR,
+      bool hot = !more && ptr_on(a, cx, y, cw, 1);
+      screen_text(s, cx, y, text, hot ? TAB_HOVER : TAB_COUNT, NO_COLOR,
                   hot ? ATTR_BOLD : 0);
       if (!more) {
         char act[24];
         snprintf(act, sizeof act, "find:%u", ts.row[j].pane);
-        hit_add(&s->hits, x, y, sw, 1, act);
+        hit_add(&s->hits, cx, y, cw, 1, act);
       }
     }
   }
 
   if (cells(CFG.newtab_mark) && y < limit)
-    draw_newtab_button(a, s, x, y, dragging_pane);
+    draw_newtab_button(a, s, cx, y, dragging_pane);
 }
 
 /* The space between two of a split's children, or false if they are flush.

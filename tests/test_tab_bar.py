@@ -25,54 +25,65 @@ def _cfg(text):
 W = 18
 LEFT = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\n')
 RIGHT = _cfg(f'tab_bar_side "right"\ntab_bar_width {W}\n')
+BARE = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_chrome false\n')
+
+# With tab_bar_chrome (the default) the frame takes a column each side and a
+# row top and bottom: content runs x 1..16, and gap 1 + frame 1 + pad 1 puts
+# the first tab on row 3. CX/CW/Y0 are that content box, so a geometry change
+# is one edit here rather than thirty coordinates below.
+CX, CW, Y0 = 1, W - 2, 3
 
 SH = ["/bin/sh", "-c", "stty raw -echo; cat"]
+
+
+def _row(snap, y):
+    """The sidebar's content on a row, without the frame either side."""
+    return snap.line(y)[CX : CX + CW]
 
 
 def test_left_sidebar_reserves_columns():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
         snap = s.snapshot()
-        # gap 1 + tab_bar_pad 1 (the defaults): the first tab is row 2.
         check(
             "the first tab is a row in the sidebar",
-            snap.hit_at(1, 2) == "tab:1",
-            str(snap.hit_at(1, 2)),
+            snap.hit_at(CX, Y0) == "tab:1",
+            str(snap.hit_at(CX, Y0)),
         )
         check(
             "the whole row is the target, not just the label",
-            snap.hit_at(W - 1, 2) == "tab:1",
-            str(snap.hit_at(W - 1, 2)),
+            snap.hit_at(CX + CW - 1, Y0) == "tab:1",
+            str(snap.hit_at(CX + CW - 1, Y0)),
         )
         check(
             "the + sits on the row after the last tab",
-            snap.hit_at(1, 3) == "newtab",
-            str(snap.hit_at(1, 3)),
+            snap.hit_at(CX, Y0 + 1) == "newtab",
+            str(snap.hit_at(CX, Y0 + 1)),
         )
         p = s.pane(0)
         check("panes give up the sidebar's columns", p["x"] >= W, str(p["x"]))
-        # rows 20, status line on 19: the count takes the sidebar's last row.
+        # rows 20, status line on 19, the frame's bottom line on 18.
         check(
             "the pane count moved to the sidebar's bottom",
-            "1 pane" in snap.line(18)[:W],
-            repr(snap.line(18)[:W]),
+            "1 pane" in _row(snap, 17),
+            repr(_row(snap, 17)),
         )
 
 
 def test_sidebar_rows_click_like_the_strip():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
-        s.click(1, 3)  # the + row: a new tab, which becomes the active one
+        s.click(CX, Y0 + 1)  # the + row: a new tab, which becomes the active one
         s.until(lambda _: len(s.tabs()) == 2)
         check("the + row makes a tab", len(s.tabs()) == 2, str(len(s.tabs())))
         check("...and it is the one you are in", s.tabs()[1]["active"], str(s.tabs()))
         snap = s.snapshot()
         check(
             "the new tab is the next row down",
-            snap.hit_at(1, 3) == "tab:2",
-            str(snap.hit_at(1, 3)),
+            snap.hit_at(CX, Y0 + 1) == "tab:2",
+            str(snap.hit_at(CX, Y0 + 1)),
         )
-        s.click(1, 2)  # the first tab's row
+        s.click(CX, Y0)  # the first tab's row
         s.until(lambda _: s.tabs()[0]["active"])
         check("clicking a row selects that tab", s.tabs()[0]["active"], str(s.tabs()))
 
@@ -84,8 +95,8 @@ def test_right_sidebar_takes_the_other_edge():
         x0 = 90 - W
         check(
             "the first tab is a row on the right edge",
-            snap.hit_at(x0 + 1, 2) == "tab:1",
-            str(snap.hit_at(x0 + 1, 2)),
+            snap.hit_at(x0 + CX, Y0) == "tab:1",
+            str(snap.hit_at(x0 + CX, Y0)),
         )
         p = s.pane(0)
         check(
@@ -100,16 +111,16 @@ def test_pad_pushes_the_list_down():
     with Session(SH, cols=90, rows=20, config=pad) as s:
         s.settle(30)
         snap = s.snapshot()
-        # gap 1 + pad 3: the first tab is on row 4, and the rows above are air.
+        # Two rows further down than the default pad of 1.
         check(
             "the pad rows are not targets",
-            snap.hit_at(1, 1) is None and snap.hit_at(1, 3) is None,
-            f"{snap.hit_at(1, 1)} / {snap.hit_at(1, 3)}",
+            snap.hit_at(CX, Y0) is None and snap.hit_at(CX, Y0 + 1) is None,
+            f"{snap.hit_at(CX, Y0)} / {snap.hit_at(CX, Y0 + 1)}",
         )
         check(
             "the first tab starts below the pad",
-            snap.hit_at(1, 4) == "tab:1",
-            str(snap.hit_at(1, 4)),
+            snap.hit_at(CX, Y0 + 2) == "tab:1",
+            str(snap.hit_at(CX, Y0 + 2)),
         )
         p = s.pane(0)
         check(
@@ -134,21 +145,21 @@ def test_status_rows_sit_under_their_tab():
         snap = s.snapshot()
         check(
             "a pane's OSC status is a row under its tab",
-            "building 3/7" in snap.line(3)[:W],
-            repr(snap.line(3)[:W]),
+            "building 3/7" in _row(snap, Y0 + 1),
+            repr(_row(snap, Y0 + 1)),
         )
         check(
             "the other tab moved down to make room",
-            snap.hit_at(1, 4) == "tab:2",
-            str(snap.hit_at(1, 4)),
+            snap.hit_at(CX, Y0 + 2) == "tab:2",
+            str(snap.hit_at(CX, Y0 + 2)),
         )
         check(
             "the row is a door to the pane that said it",
-            snap.hit_at(2, 3) == f"find:{pane}",
-            str(snap.hit_at(2, 3)),
+            snap.hit_at(CX + 1, Y0 + 1) == f"find:{pane}",
+            str(snap.hit_at(CX + 1, Y0 + 1)),
         )
         # We are in tab 2: clicking the status row is a cross-tab jump.
-        s.click(2, 3)
+        s.click(CX + 1, Y0 + 1)
         s.until(lambda _: s.tabs()[0]["active"])
         check("clicking it selects that tab", s.tabs()[0]["active"], str(s.tabs()))
         check(
@@ -169,18 +180,18 @@ def test_status_cap_spends_its_last_row_on_the_ellipsis():
         snap = s.snapshot()
         check(
             "over the cap, the row says there was more",
-            snap.line(3)[:W].strip() == "\u2026",
-            repr(snap.line(3)[:W]),
+            _row(snap, Y0 + 1).strip() == "\u2026",
+            repr(_row(snap, Y0 + 1)),
         )
         check(
             "an ellipsis is not a door",
-            snap.hit_at(2, 3) is None,
-            str(snap.hit_at(2, 3)),
+            snap.hit_at(CX + 1, Y0 + 1) is None,
+            str(snap.hit_at(CX + 1, Y0 + 1)),
         )
         check(
             "and only the cap's rows were spent",
-            snap.hit_at(1, 4) == "newtab",
-            str(snap.hit_at(1, 4)),
+            snap.hit_at(CX, Y0 + 2) == "newtab",
+            str(snap.hit_at(CX, Y0 + 2)),
         )
 
 
@@ -188,7 +199,7 @@ def test_a_long_status_is_cut_and_says_so():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
         _status(s, "a status far too long for the sidebar")
-        row = s.snapshot().line(3)[:W]
+        row = _row(s.snapshot(), Y0 + 1)
         check(
             "the status stops at the sidebar's edge", row.endswith("\u2026"), repr(row)
         )
@@ -199,8 +210,8 @@ def test_a_dead_pane_reports_its_exit_instead():
     # and the point here is the words, not the (already tested) truncation.
     kept = _cfg('tab_bar_side "left"\ntab_bar_width 24\nkeep_dead "all"\n')
     with Session(["/bin/sh", "-c", "exit 3"], cols=90, rows=20, config=kept) as s:
-        s.until(lambda snap: "exited" in snap.line(3))
-        row = s.snapshot().line(3)[:24]
+        s.until(lambda snap: "exited" in snap.line(Y0 + 1))
+        row = s.snapshot().line(Y0 + 1)[CX : CX + 22]
         check("how it died replaces what it last said", "status 3" in row, repr(row))
 
 
@@ -208,7 +219,7 @@ def test_an_unnamed_tab_borrows_its_directory():
     cd = ["/bin/sh", "-c", "cd /tmp && stty raw -echo; cat"]
     with Session(cd, cols=90, rows=20, config=LEFT) as s:
         s.settle(60)
-        row = s.snapshot().line(2)[:W]
+        row = _row(s.snapshot(), Y0)
         check("the label is the focused pane's dir", "1:tmp" in row, repr(row))
 
 
@@ -218,18 +229,75 @@ def test_a_real_name_beats_the_derived_one():
     lay.close()
     with Session(SH, cols=90, rows=20, config=LEFT, layout=lay.name) as s:
         s.settle(60)
-        row = s.snapshot().line(2)[:W]
+        row = _row(s.snapshot(), Y0)
         check("a declared name is not second-guessed", "1:api" in row, repr(row))
 
 
 def test_the_borrowed_name_follows_a_cd():
     loop = ["/bin/sh", "-c", 'cd /tmp && while IFS= read -r l; do eval "$l"; done']
     with Session(loop, cols=90, rows=20, config=LEFT) as s:
-        s.until(lambda snap: "1:tmp" in snap.line(2))
+        s.until(lambda snap: "1:tmp" in snap.line(Y0))
         s.send(r"cd /home\n")
-        s.until(lambda snap: "1:home" in snap.line(2))
-        row = s.snapshot().line(2)[:W]
+        s.until(lambda snap: "1:home" in snap.line(Y0))
+        row = _row(s.snapshot(), Y0)
         check("the kernel's answer moves the label", "1:home" in row, repr(row))
+
+
+def test_the_sidebar_is_framed_like_a_pane():
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(40)
+        snap = s.snapshot()
+        top, bottom = snap.line(1), snap.line(18)
+        check("a frame runs round the list", top[0] in "\u256d\u250c", repr(top[:W]))
+        check(
+            "...closed at the bottom, above the status line",
+            bottom[0] in "\u2570\u2514",
+            repr(bottom[:W]),
+        )
+        check(
+            "and the list sits inside it",
+            snap.line(Y0)[0] == "\u2502" and snap.line(Y0)[CX + CW] == "\u2502",
+            repr(snap.line(Y0)[:W]),
+        )
+
+
+def test_compact_shares_its_lines_with_the_ring():
+    """The point of the chrome: one figure, not a box beside a box.
+
+    The sidebar's inner vertical *is* the tab area's ring column, so the
+    stroke union turns the ring's top-left corner into a tee -- nobody
+    computes that, it falls out of the same machinery the dividers use.
+    """
+    conf = _cfg(f'compact true\ntab_bar_side "left"\ntab_bar_width {W}\n')
+    with Session(SH, cols=90, rows=20, config=conf) as s:
+        s.settle(40)
+        snap = s.snapshot()
+        check(
+            "the sidebar meets the ring in a junction, not a corner",
+            snap.line(0)[W] == "\u252c",
+            repr(snap.line(0)[: W + 2]),
+        )
+        check(
+            "...and again at the bottom",
+            snap.line(18)[W] == "\u2534",
+            repr(snap.line(18)[: W + 2]),
+        )
+
+
+def test_chrome_false_gives_the_columns_back():
+    with Session(SH, cols=90, rows=20, config=BARE) as s:
+        s.settle(40)
+        snap = s.snapshot()
+        check(
+            "no frame: the list starts in the first column",
+            snap.hit_at(0, 2) == "tab:1",
+            str(snap.hit_at(0, 2)),
+        )
+        check(
+            "and the whole width is the target",
+            snap.hit_at(W - 1, 2) == "tab:1",
+            str(snap.hit_at(W - 1, 2)),
+        )
 
 
 def test_narrow_terminal_falls_back_to_top():
@@ -251,11 +319,11 @@ def test_growing_back_restores_the_sidebar():
     with Session(SH, cols=40, rows=20, config=LEFT) as s:
         s.settle(30)
         s.resize(90, 20)
-        s.until(lambda snap: snap.hit_at(1, 2) == "tab:1")
+        s.until(lambda snap: snap.hit_at(CX, Y0) == "tab:1")
         check(
             "a resize moves the bar without anyone storing state",
-            s.snapshot().hit_at(1, 2) == "tab:1",
-            str(s.snapshot().hit_at(1, 2)),
+            s.snapshot().hit_at(CX, Y0) == "tab:1",
+            str(s.snapshot().hit_at(CX, Y0)),
         )
         p = s.pane(0)
         check("and the panes give the columns back", p["x"] >= W, str(p["x"]))
@@ -273,6 +341,9 @@ if __name__ == "__main__":
     test_an_unnamed_tab_borrows_its_directory()
     test_a_real_name_beats_the_derived_one()
     test_the_borrowed_name_follows_a_cd()
+    test_the_sidebar_is_framed_like_a_pane()
+    test_compact_shares_its_lines_with_the_ring()
+    test_chrome_false_gives_the_columns_back()
     test_narrow_terminal_falls_back_to_top()
     test_growing_back_restores_the_sidebar()
     sys.exit(report())

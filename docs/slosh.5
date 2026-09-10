@@ -135,6 +135,14 @@ The strip's indicators move to the sidebar's bottom rows; the status line
 keeps the full width. A terminal too narrow to give up the columns falls
 back to \fBtop\fR until it grows.
 .TP
+.BI tab_bar_chrome\  bool
+Frame a sidebar the way panes are framed, so it reads as part of the chrome
+rather than as text floating beside it. Under
+.B compact
+its inner line is the tab area's own ring, so the two meet in junctions and
+come out as one figure. On by default; off gives the two columns back to the
+labels.
+.TP
 .BI tab_bar_status\  n
 Under each of a sidebar's tabs, up to \fIn\fR rows of what the panes inside
 said through OSC 5577 status \(em or how they died \(em with an ellipsis when
