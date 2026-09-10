@@ -204,6 +204,34 @@ def test_a_dead_pane_reports_its_exit_instead():
         check("how it died replaces what it last said", "status 3" in row, repr(row))
 
 
+def test_an_unnamed_tab_borrows_its_directory():
+    cd = ["/bin/sh", "-c", "cd /tmp && stty raw -echo; cat"]
+    with Session(cd, cols=90, rows=20, config=LEFT) as s:
+        s.settle(60)
+        row = s.snapshot().line(2)[:W]
+        check("the label is the focused pane's dir", "1:tmp" in row, repr(row))
+
+
+def test_a_real_name_beats_the_derived_one():
+    lay = tempfile.NamedTemporaryFile("w", suffix=".layout", delete=False)
+    lay.write('layout {\n tab name="api" {\n  pane\n }\n}\n')
+    lay.close()
+    with Session(SH, cols=90, rows=20, config=LEFT, layout=lay.name) as s:
+        s.settle(60)
+        row = s.snapshot().line(2)[:W]
+        check("a declared name is not second-guessed", "1:api" in row, repr(row))
+
+
+def test_the_borrowed_name_follows_a_cd():
+    loop = ["/bin/sh", "-c", 'cd /tmp && while IFS= read -r l; do eval "$l"; done']
+    with Session(loop, cols=90, rows=20, config=LEFT) as s:
+        s.until(lambda snap: "1:tmp" in snap.line(2))
+        s.send(r"cd /home\n")
+        s.until(lambda snap: "1:home" in snap.line(2))
+        row = s.snapshot().line(2)[:W]
+        check("the kernel's answer moves the label", "1:home" in row, repr(row))
+
+
 def test_narrow_terminal_falls_back_to_top():
     # 40 < width + min_pane cols + 4: the sidebar would leave no room for the
     # pane it is chrome for, so the strip goes back to the top row.
@@ -242,6 +270,9 @@ if __name__ == "__main__":
     test_status_cap_spends_its_last_row_on_the_ellipsis()
     test_a_long_status_is_cut_and_says_so()
     test_a_dead_pane_reports_its_exit_instead()
+    test_an_unnamed_tab_borrows_its_directory()
+    test_a_real_name_beats_the_derived_one()
+    test_the_borrowed_name_follows_a_cd()
     test_narrow_terminal_falls_back_to_top()
     test_growing_back_restores_the_sidebar()
     sys.exit(report())

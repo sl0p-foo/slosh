@@ -4,6 +4,7 @@
 
 #include <ghostty/vt.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -1793,6 +1794,29 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
   tab_t *t = &a->tabs[i];
   char label[96];
   const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
+  /* An unnamed tab borrows the name of the directory its focused pane is in
+   * -- the kernel's answer, so a `cd` moves the label with you. The focused
+   * pane rather than any consensus of the tab's panes: when they disagree,
+   * the one you are typing into is what the tab is about, and a rule anyone
+   * can predict beats a cleverer one nobody can. Derived at draw time and
+   * never stored, so a real name or a purpose wins the moment one exists. */
+  char derived[80];
+  if (!nm[0]) {
+    node_t *f = t->focus ? t->focus : first_leaf_of(t->root);
+    char buf[PATH_MAX];
+    const char *cwd = f && f->pane ? live_cwd(f->pane, buf, sizeof buf) : NULL;
+    if (cwd && cwd[0]) {
+      const char *home = getenv("HOME");
+      if (home && home[0] && strcmp(cwd, home) == 0) {
+        nm = "~";
+      } else {
+        const char *base = strrchr(cwd, '/');
+        snprintf(derived, sizeof derived, "%s",
+                 base && base[1] ? base + 1 : cwd);
+        nm = derived;
+      }
+    }
+  }
   /* A pane that rang in a tab you are not looking at is invisible without
    * this, and that is the case the whole indicator exists for. */
   bool rang = CFG.bell_indicator && tab_has_bell(t);
