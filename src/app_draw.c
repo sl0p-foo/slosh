@@ -1782,6 +1782,128 @@ static bool tab_has_bell(tab_t *t) {
   return b.found;
 }
 
+/* One tab's cell, wherever the strip lives. Paints the label at (x, y) under
+ * the shared rules -- active weight, hover colour, the rename editor, the
+ * bell, the drop target -- and registers the hit. `max_w` is 0 for the top
+ * strip, where the label chooses its own width; the sidebar passes its row
+ * width, which truncates a long name and widens the click target to the whole
+ * row. Returns the width taken, which is what the strip advances by. */
+static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
+                              uint16_t y, uint16_t max_w, bool dragging_pane) {
+  tab_t *t = &a->tabs[i];
+  char label[96];
+  const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
+  /* A pane that rang in a tab you are not looking at is invisible without
+   * this, and that is the case the whole indicator exists for. */
+  bool rang = CFG.bell_indicator && tab_has_bell(t);
+  if (nm[0])
+    snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+  else
+    snprintf(label, sizeof label, " %zu ", i + 1);
+
+  /* Renaming: the tab's own cell becomes the editor, in the editor's
+   * colours, so a half-typed name can never be mistaken for the tab's real
+   * one. The caret is part of the label, so the width below — and therefore
+   * the hit — is the width of what is actually drawn. */
+  bool editing = a->renaming == RENAME_TAB && a->rename_id == t->id;
+  if (editing) snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
+
+  /* A pinned width cuts the label to fit -- bell budgeted first, so the mark
+   * survives the longest name -- and then pads it out, so the active fill and
+   * the hover read as the whole row rather than as the word on it. */
+  if (max_w) {
+    uint16_t budget = max_w;
+    if (rang) {
+      uint16_t bw = (uint16_t)(cells(CFG.bell_mark) + 1);
+      budget = budget > bw ? (uint16_t)(budget - bw) : 0;
+    }
+    while (label[0] && cells(label) > budget) {
+      size_t len = strlen(label);
+      do len--;
+      while (len && (label[len] & 0xc0) == 0x80); /* whole UTF-8 sequences */
+      label[len] = 0;
+    }
+    size_t len = strlen(label);
+    while (cells(label) < budget && len + 1 < sizeof label) {
+      label[len++] = ' ';
+      label[len] = 0;
+    }
+  }
+
+  bool active = i == a->cur;
+  uint16_t attrs = active ? ATTR_BOLD : 0;
+  /* Two independent signals: weight says which tab you are in, colour says
+   * where the pointer is. Drawn once to learn the width, then again in the
+   * hover colour if that width turns out to be under the pointer — which
+   * costs a repaint of a few cells and guarantees the lit cells are the
+   * registered ones. */
+  uint16_t w = screen_text(
+      s, x, y, label, editing ? RENAME_FG : (active ? TAB_ACTIVE_FG : TAB_IDLE),
+      editing ? RENAME_BG : (active ? TAB_ACTIVE_BG : NO_COLOR),
+      editing ? ATTR_BOLD : attrs);
+  /* Hovering keeps the active tab's fill — it is still the tab you are in —
+   * so its feedback lands on the text instead. An inactive tab has no fill
+   * to keep, and brightens. */
+  /* The bell keeps its own colour here too, rather than taking the tab's —
+   * an indicator drawn in the same dim grey as the label it sits next to is
+   * an indicator you have to already be looking for. */
+  if (rang) {
+    char mark[24];
+    snprintf(mark, sizeof mark, "%s ", CFG.bell_mark);
+    w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), y, mark, BELL_C,
+                                   active ? TAB_ACTIVE_BG : NO_COLOR,
+                                   ATTR_BOLD));
+  }
+  uint16_t hit_w = max_w ? max_w : w;
+  if (!editing && ptr_on(a, x, y, hit_w, 1))
+    screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
+                active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
+
+  /* While a pane is in your hand, every tab it does not already live in is
+   * somewhere it could go, and `ptr_on` says nothing during a drag by design --
+   * so the strip has to draw the drop states itself. Same two states the panes
+   * use: all the candidates in the drop colour, and the one under the pointer
+   * filled, because these are all targets and that is the one you are on. */
+  if (dragging_pane) {
+    node_t *held = pane_by_id(a, a->drag.src);
+    bool mine = held && tab_of(a, held) == i;
+    if (!mine) {
+      bool on = a->drag.tab_target == t->id;
+      screen_text(s, x, y, label, on ? TAB_ACTIVE_HOVER_FG : DROP_C,
+                  on ? DROP_C : NO_COLOR, attrs | ATTR_BOLD);
+    }
+  }
+  char action[48];
+  snprintf(action, sizeof action, "tab:%u", t->id);
+  hit_add(&s->hits, x, y, hit_w, 1, action);
+  return hit_w;
+}
+
+/* A bare mark, spaced like the frame's own buttons rather than spelled out.
+ * It used to read "+tab", because a pane frame carried a "+" for splitting
+ * and two verbs that look identical is a UI bug the fork shipped. That "+"
+ * went when the border became the button, so the collision it was avoiding
+ * no longer exists and the word was left explaining itself to nobody.
+ *
+ * Padded to three cells for the same reason the frame's buttons are: a
+ * one-cell target is a thing you miss with a mouse. What it does is said by
+ * the hint under the pointer, which is where every other one-character
+ * affordance here says it. */
+static void draw_newtab_button(app_t *a, screen_t *s, uint16_t x, uint16_t y,
+                               bool dragging_pane) {
+  char btn[24];
+  snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
+  uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
+  if (ptr_on(a, x, y, w, 1))
+    screen_text(s, x, y, btn, TAB_HOVER, NO_COLOR, ATTR_BOLD);
+  /* The button that makes a tab is also a place to drop a pane into one. */
+  if (dragging_pane)
+    screen_text(s, x, y, btn,
+                a->drag.new_tab_target ? TAB_ACTIVE_HOVER_FG : DROP_C,
+                a->drag.new_tab_target ? DROP_C : NO_COLOR, ATTR_BOLD);
+  hit_add(&s->hits, x, y, w, 1, "newtab");
+}
+
 void draw_tab_strip(app_t *a, screen_t *s) {
   /* A pane is being carried: the strip is a row of destinations for as long as
    * that is true. Worked out once rather than per tab. */
@@ -1816,100 +1938,55 @@ void draw_tab_strip(app_t *a, screen_t *s) {
     }
   }
 
-  for (size_t i = 0; i < a->ntabs && x < right; i++) {
-    tab_t *t = &a->tabs[i];
-    char label[80];
-    const char *nm = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : "");
-    /* A pane that rang in a tab you are not looking at is invisible without
-     * this, and that is the case the whole indicator exists for. */
-    bool rang = CFG.bell_indicator && tab_has_bell(t);
-    if (nm[0])
-      snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
-    else
-      snprintf(label, sizeof label, " %zu ", i + 1);
+  for (size_t i = 0; i < a->ntabs && x < right; i++)
+    x = (uint16_t)(x + draw_tab_cell(a, s, i, x, y, 0, dragging_pane));
 
-    /* Renaming: the tab's own cell becomes the editor, in the editor's
-     * colours, so a half-typed name can never be mistaken for the tab's real
-     * one. The caret is part of the label, so the width below — and therefore
-     * the hit — is the width of what is actually drawn. */
-    bool editing = a->renaming == RENAME_TAB && a->rename_id == t->id;
-    if (editing) snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
-
-    bool active = i == a->cur;
-    uint16_t attrs = active ? ATTR_BOLD : 0;
-    /* Two independent signals: weight says which tab you are in, colour says
-     * where the pointer is. Drawn once to learn the width, then again in the
-     * hover colour if that width turns out to be under the pointer — which
-     * costs a repaint of a few cells and guarantees the lit cells are the
-     * registered ones. */
-    uint16_t w =
-        screen_text(s, x, y, label,
-                    editing ? RENAME_FG : (active ? TAB_ACTIVE_FG : TAB_IDLE),
-                    editing ? RENAME_BG : (active ? TAB_ACTIVE_BG : NO_COLOR),
-                    editing ? ATTR_BOLD : attrs);
-    /* Hovering keeps the active tab's fill — it is still the tab you are in —
-     * so its feedback lands on the text instead. An inactive tab has no fill
-     * to keep, and brightens. */
-    /* The bell keeps its own colour here too, rather than taking the tab's —
-     * an indicator drawn in the same dim grey as the label it sits next to is
-     * an indicator you have to already be looking for. */
-    if (rang) {
-      char mark[24];
-      snprintf(mark, sizeof mark, "%s ", CFG.bell_mark);
-      w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), y, mark, BELL_C,
-                                     active ? TAB_ACTIVE_BG : NO_COLOR,
-                                     ATTR_BOLD));
-    }
-    if (!editing && ptr_on(a, x, y, w, 1))
-      screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
-                  active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
-
-    /* While a pane is in your hand, every tab it does not already live in is
-     * somewhere it could go, and `ptr_on` says nothing during a drag by design --
-     * so the strip has to draw the drop states itself. Same two states the panes
-     * use: all the candidates in the drop colour, and the one under the pointer
-     * filled, because these are all targets and that is the one you are on. */
-    if (dragging_pane) {
-      node_t *held = pane_by_id(a, a->drag.src);
-      bool mine = held && tab_of(a, held) == i;
-      if (!mine) {
-        bool on = a->drag.tab_target == t->id;
-        screen_text(s, x, y, label, on ? TAB_ACTIVE_HOVER_FG : DROP_C,
-                    on ? DROP_C : NO_COLOR, attrs | ATTR_BOLD);
-      }
-    }
-    char action[48];
-    snprintf(action, sizeof action, "tab:%u", t->id);
-    hit_add(&s->hits, x, y, w, 1, action);
-    x = (uint16_t)(x + w);
-  }
-
-  /* A bare mark, spaced like the frame's own buttons rather than spelled out.
-   * It used to read "+tab", because a pane frame carried a "+" for splitting
-   * and two verbs that look identical is a UI bug the fork shipped. That "+"
-   * went when the border became the button, so the collision it was avoiding
-   * no longer exists and the word was left explaining itself to nobody.
-   *
-   * Padded to three cells for the same reason the frame's buttons are: a
-   * one-cell target is a thing you miss with a mouse. What it does is said by
-   * the hint under the pointer, which is where every other one-character
-   * affordance here says it. */
   {
-    char btn[24];
-    snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
     uint16_t bw = (uint16_t)(cells(CFG.newtab_mark) + 2);
-    if (bw > 2 && x + bw <= right) {
-      uint16_t w = screen_text(s, x, y, btn, TAB_IDLE, NO_COLOR, 0);
-      if (ptr_on(a, x, y, w, 1))
-        screen_text(s, x, y, btn, TAB_HOVER, NO_COLOR, ATTR_BOLD);
-      /* The button that makes a tab is also a place to drop a pane into one. */
-      if (dragging_pane)
-        screen_text(s, x, y, btn,
-                    a->drag.new_tab_target ? TAB_ACTIVE_HOVER_FG : DROP_C,
-                    a->drag.new_tab_target ? DROP_C : NO_COLOR, ATTR_BOLD);
-      hit_add(&s->hits, x, y, w, 1, "newtab");
+    if (bw > 2 && x + bw <= right)
+      draw_newtab_button(a, s, x, y, dragging_pane);
+  }
+}
+
+/* The same strip stood on its side: one tab per row down the edge the config
+ * chose, the `+` on the row after the last tab, and the strip's indicators
+ * (pane count, prefix badge) on the bottom rows -- reserved first, the same
+ * budgeting rule the horizontal strip applies from the right, so a long tab
+ * list can never eat them. The status line below keeps the full width; the
+ * sidebar stops above it. */
+void draw_tab_sidebar(app_t *a, screen_t *s) {
+  bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
+  uint16_t sw = app_tab_bar_cols();
+  uint16_t x = app_tab_bar_side(a) == TAB_BAR_LEFT
+                   ? 0
+                   : (uint16_t)(s->cols > sw ? s->cols - sw : 0);
+  uint16_t y = CFG.compact ? 0 : CFG.gap; /* same rule as the strip's row */
+  uint16_t limit = (uint16_t)(s->rows > (CFG.status_line ? 1 : 0)
+                                  ? s->rows - (CFG.status_line ? 1 : 0)
+                                  : 0);
+
+  /* Bottom rows first: what the horizontal strip keeps on its right. */
+  char info[64];
+  size_t np = app_pane_count(a);
+  snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
+  if (limit > y && (uint16_t)strlen(info) <= sw) {
+    limit--;
+    screen_text(s, x, limit, info, TAB_COUNT, NO_COLOR, 0);
+  }
+  if (a->prefix) { /* the prefix is a mode: say so, and say which key */
+    char pfx[24];
+    config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
+    if (limit > y && cells(pfx) <= sw) {
+      limit--;
+      screen_text(s, x, limit, pfx, PREFIX_FG, PREFIX_BG, ATTR_BOLD);
     }
   }
+
+  for (size_t i = 0; i < a->ntabs && y < limit; i++, y++)
+    draw_tab_cell(a, s, i, x, y, sw, dragging_pane);
+
+  if (cells(CFG.newtab_mark) && y < limit)
+    draw_newtab_button(a, s, x, y, dragging_pane);
 }
 
 /* The space between two of a split's children, or false if they are flush.

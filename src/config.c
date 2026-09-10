@@ -919,6 +919,10 @@ void config_defaults(config_t *c) {
   c->anim_ms = 50;
   c->modal_scrim = 120;
   c->status_bar = true;
+  c->tab_bar_side = TAB_BAR_TOP;
+  /* Wide enough for " 12:a-real-name " plus a bell; narrow enough that a
+   * 100-column terminal keeps a working layout beside it. */
+  c->tab_bar_width = 18;
   c->status_line = true;
   /* Deliberately wider than the panes' own margin (gap * gap_aspect = 2), so
    * the strip and the line read as chrome sitting outside the layout rather
@@ -1615,6 +1619,12 @@ char *config_render(const config_t *c) {
   cb_add(&b, "\n// ---- what is on screen ----\n");
   cb_add(&b, "status_bar %s          // the strip along the top\n",
          yesno(c->status_bar));
+  cb_add(&b, "tab_bar_side \"%s\"     // top, or a sidebar: left / right\n",
+         c->tab_bar_side == TAB_BAR_LEFT    ? "left"
+         : c->tab_bar_side == TAB_BAR_RIGHT ? "right"
+                                            : "top");
+  cb_add(&b, "tab_bar_width %u      // columns a sidebar takes\n",
+         c->tab_bar_width);
   cb_add(&b, "status_line %s         // the line along the bottom\n",
          yesno(c->status_line));
   cb_add(&b, "status_pad %u\n", c->status_pad);
@@ -1923,6 +1933,8 @@ static const char *const KNOWN_TOP[] = {
     "status_bar",
     "status_line",
     "status_pad",
+    "tab_bar_side",
+    "tab_bar_width",
     "theme",
     "title_align",
     "title_inset",
@@ -2118,6 +2130,21 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
   c->compact = kdl_arg_bool(kdl_child(root, "compact"), 0, c->compact);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
+  const char *tbside = kdl_arg(kdl_child(root, "tab_bar_side"), 0, NULL);
+  if (tbside) {
+    if (strcmp(tbside, "top") == 0)
+      c->tab_bar_side = TAB_BAR_TOP;
+    else if (strcmp(tbside, "left") == 0)
+      c->tab_bar_side = TAB_BAR_LEFT;
+    else if (strcmp(tbside, "right") == 0)
+      c->tab_bar_side = TAB_BAR_RIGHT;
+    else
+      complain(c, err, errcap, kdl_child(root, "tab_bar_side")->line,
+               "tab_bar_side is \"top\", \"left\" or \"right\", not \"%s\"",
+               tbside);
+  }
+  c->tab_bar_width = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_width"), 0,
+                                           c->tab_bar_width);
   c->status_line =
       kdl_arg_bool(kdl_child(root, "status_line"), 0, c->status_line);
   c->status_pad =

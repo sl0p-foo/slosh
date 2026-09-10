@@ -322,6 +322,29 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
 #define STRIP_ROWS (CFG.status_bar ? 1 : 0)
 #define LINE_ROWS (CFG.status_line ? 1 : 0)
 
+/* The sidebar's width, held to a range where it is neither an unreadable
+ * sliver nor half the screen. Clamped at use rather than at parse so a config
+ * written for a big terminal degrades on a small one instead of erroring. */
+uint16_t app_tab_bar_cols(void) {
+  uint16_t w = CFG.tab_bar_width;
+  if (w < 8) w = 8;
+  if (w > 60) w = 60;
+  return w;
+}
+
+/* The side the strip actually lands on this frame. The configured side,
+ * except that a screen too narrow to give up the sidebar's columns falls
+ * back to the top row: a sidebar that leaves no room for a pane is chrome
+ * displacing the thing it is chrome for. Re-derived per frame like the
+ * layout itself, so a resize moves the bar without anyone storing state. */
+int app_tab_bar_side(const app_t *a) {
+  int side = CFG.tab_bar_side;
+  if (side == TAB_BAR_TOP || !CFG.status_bar) return TAB_BAR_TOP;
+  uint16_t sw = app_tab_bar_cols();
+  if (a->cols < sw + CFG.min_pane_cols + 4) return TAB_BAR_TOP;
+  return side;
+}
+
 node_t *pane_by_id(app_t *a, uint32_t id); /* defined below */
 size_t tab_of(app_t *a, node_t *n);
 
@@ -401,11 +424,19 @@ static rect_t tab_area(app_t *a) {
     gx = (uint16_t)(CFG.gap * CFG.gap_aspect);
     gy = CFG.gap;
   }
-  uint16_t top = (uint16_t)(gy + STRIP_ROWS);
-  return (rect_t){.x = gx,
+  /* A sidebar spends columns on one edge instead of the top row; the strip's
+   * row comes back to the panes. The status line below is untouched either
+   * way -- it keeps the full width (LINE_ROWS is subtracted from the height
+   * alone, never from the sidebar's rows: the sidebar stops above it). */
+  int side = app_tab_bar_side(a);
+  uint16_t sw = side != TAB_BAR_TOP ? app_tab_bar_cols() : 0;
+  uint16_t strip = side == TAB_BAR_TOP ? STRIP_ROWS : 0;
+  uint16_t top = (uint16_t)(gy + strip);
+  uint16_t lx = (uint16_t)(gx + (side == TAB_BAR_LEFT ? sw : 0));
+  uint16_t wsub = (uint16_t)(2 * gx + sw);
+  return (rect_t){.x = lx,
                   .y = top,
-                  .w =
-                      (uint16_t)(a->cols > 2 * gx ? a->cols - 2 * gx : a->cols),
+                  .w = (uint16_t)(a->cols > wsub ? a->cols - wsub : a->cols),
                   .h = (uint16_t)(a->rows > top + gy + LINE_ROWS
                                       ? a->rows - top - gy - LINE_ROWS
                                       : 1)};

@@ -449,6 +449,11 @@ void walk_all(app_t *a, leaf_fn fn, void *ud);
 /* src/app_layout.c */
 uint16_t eff_gap(split_dir_t dir);
 rect_t app_tab_area(app_t *a);
+/* Where the tab bar lands this frame (TAB_BAR_*), and how many columns a
+ * sidebar takes. The side is re-derived per frame: a screen too narrow for
+ * the sidebar falls back to the top row. */
+int app_tab_bar_side(const app_t *a);
+uint16_t app_tab_bar_cols(void);
 void close_leaf(app_t *a, node_t *leaf);
 node_t *first_leaf_of(node_t *n);
 void focus_dir(app_t *a, int dx, int dy);
@@ -509,6 +514,7 @@ void find_corners(app_t *a);
 void ensure_config(void);
 void draw_toasts(app_t *a, screen_t *s);
 void draw_tab_strip(app_t *a, screen_t *s);
+void draw_tab_sidebar(app_t *a, screen_t *s);
 void draw_status_line(app_t *a, screen_t *s);
 void draw_node(app_t *a, screen_t *s, node_t *n);
 void draw_min_bar(app_t *a, screen_t *s);

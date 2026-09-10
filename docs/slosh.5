@@ -127,6 +127,13 @@ a split is not offered in the first place.
 The tab strip along the top, the status line along the bottom, and the
 line's side margin.
 .TP
+.BR tab_bar_side\  \fIside\fR ,\ tab_bar_width\  \fIn\fR
+Where the tab strip lives: \fBtop\fR (the default), or a sidebar on the
+\fBleft\fR or \fBright\fR listing one tab per row, \fIn\fR columns wide.
+The strip's indicators move to the sidebar's bottom rows; the status line
+keeps the full width. A terminal too narrow to give up the columns falls
+back to \fBtop\fR until it grows.
+.TP
 .BI hints\  bool
 What the pointer is resting on, said in the status line.
 .TP

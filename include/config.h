@@ -113,6 +113,14 @@ typedef struct {
 
 typedef enum { ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT } align_t;
 
+/* tab_bar_side: where the strip of tabs lives. Top is the classic row; left
+ * and right turn it into a sidebar, one tab per row. */
+enum {
+  TAB_BAR_TOP = 0,
+  TAB_BAR_LEFT,
+  TAB_BAR_RIGHT,
+};
+
 /* size_follows: which attached client sizes the shared screen. */
 enum {
   SIZE_FOLLOWS_ACTIVE = 0, /* newest attach, then last input */
@@ -306,7 +314,13 @@ typedef struct {
    * sense that an animated shader then only advances when something else
    * causes a frame. */
   uint16_t anim_ms;
-  bool status_bar;  /* the strip along the top: tabs, prefix, pane count */
+  bool status_bar; /* the strip along the top: tabs, prefix, pane count */
+  /* Where the strip goes when it is on: the top row, or a sidebar on either
+   * edge. A sidebar lists one tab per row and moves the strip's indicators
+   * (pane count, prefix badge) to its bottom rows; the status line below is
+   * untouched and keeps the full width either way. */
+  int tab_bar_side;       /* TAB_BAR_* */
+  uint16_t tab_bar_width; /* columns a sidebar takes; ignored for top */
   bool status_line; /* the line along the bottom: what you are looking at */
   /* How far the strip and the line are held off the left and right edges.
    * Separate from `gap`, which is the space around the *panes*: the two happen

@@ -1141,7 +1141,15 @@ void app_compose(app_t *a, screen_t *s) {
 
   layout(a);
   find_corners(a);
-  if (CFG.status_bar) draw_tab_strip(a, s);
+  if (CFG.status_bar) {
+    /* The side is re-derived, not stored: a terminal that shrank below the
+     * sidebar's budget draws the strip on top this frame, and the layout
+     * above made the same call from the same numbers. */
+    if (app_tab_bar_side(a) == TAB_BAR_TOP)
+      draw_tab_strip(a, s);
+    else
+      draw_tab_sidebar(a, s);
+  }
   /* Compact's shared lines go down first, so every pane's title and buttons
    * land on top of them; the hover hints come after the panes, because each
    * hint cell asks the finished hit list whether the boundary still owns it. */
