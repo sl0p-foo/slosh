@@ -923,10 +923,11 @@ void config_defaults(config_t *c) {
   /* Wide enough for " 12:a-real-name " plus a bell; narrow enough that a
    * 100-column terminal keeps a working layout beside it. */
   c->tab_bar_width = 18;
-  /* One row of air by default: a list that starts in the very corner reads
-   * as cramped, and in compact mode the row lines the first tab up with the
-   * pane content inside the ring rather than with the ring's top line. */
-  c->tab_bar_pad = 1;
+  /* None by default: tab_bar_chrome's top line is the separation the air was
+   * standing in for, and a blank row inside the frame on top of it reads as
+   * a gap nobody asked for. Still there for a bare sidebar, or for anyone
+   * who wants room at the top for a borderless window's own buttons. */
+  c->tab_bar_pad = 0;
   /* Three is enough for "the build, the tests, and one more thing" without a
    * chatty tab pushing the list off the bottom. */
   c->tab_bar_status = 3;

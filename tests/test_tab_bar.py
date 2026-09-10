@@ -28,10 +28,10 @@ RIGHT = _cfg(f'tab_bar_side "right"\ntab_bar_width {W}\n')
 BARE = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_chrome false\n')
 
 # With tab_bar_chrome (the default) the frame takes a column each side and a
-# row top and bottom: content runs x 1..16, and gap 1 + frame 1 + pad 1 puts
-# the first tab on row 3. CX/CW/Y0 are that content box, so a geometry change
+# row top and bottom: content runs x 1..16, and gap 1 + frame 1 + pad 0 puts
+# the first tab on row 2. CX/CW/Y0 are that content box, so a geometry change
 # is one edit here rather than thirty coordinates below.
-CX, CW, Y0 = 1, W - 2, 3
+CX, CW, Y0 = 1, W - 2, 2
 
 SH = ["/bin/sh", "-c", "stty raw -echo; cat"]
 
@@ -107,20 +107,22 @@ def test_right_sidebar_takes_the_other_edge():
 
 
 def test_pad_pushes_the_list_down():
-    pad = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_pad 3\n')
+    # The default pad is 0, so Y0 is the unpadded first row and a pad of N
+    # moves the list exactly N rows down it.
+    n = 3
+    pad = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_pad {n}\n')
     with Session(SH, cols=90, rows=20, config=pad) as s:
         s.settle(30)
         snap = s.snapshot()
-        # Two rows further down than the default pad of 1.
         check(
             "the pad rows are not targets",
-            snap.hit_at(CX, Y0) is None and snap.hit_at(CX, Y0 + 1) is None,
-            f"{snap.hit_at(CX, Y0)} / {snap.hit_at(CX, Y0 + 1)}",
+            all(snap.hit_at(CX, Y0 + k) is None for k in range(n)),
+            str([snap.hit_at(CX, Y0 + k) for k in range(n)]),
         )
         check(
             "the first tab starts below the pad",
-            snap.hit_at(CX, Y0 + 2) == "tab:1",
-            str(snap.hit_at(CX, Y0 + 2)),
+            snap.hit_at(CX, Y0 + n) == "tab:1",
+            str(snap.hit_at(CX, Y0 + n)),
         )
         p = s.pane(0)
         check(
@@ -288,15 +290,16 @@ def test_chrome_false_gives_the_columns_back():
     with Session(SH, cols=90, rows=20, config=BARE) as s:
         s.settle(40)
         snap = s.snapshot()
+        # No frame row either, so the list starts on the gap's own row.
         check(
             "no frame: the list starts in the first column",
-            snap.hit_at(0, 2) == "tab:1",
-            str(snap.hit_at(0, 2)),
+            snap.hit_at(0, 1) == "tab:1",
+            str(snap.hit_at(0, 1)),
         )
         check(
             "and the whole width is the target",
-            snap.hit_at(W - 1, 2) == "tab:1",
-            str(snap.hit_at(W - 1, 2)),
+            snap.hit_at(W - 1, 1) == "tab:1",
+            str(snap.hit_at(W - 1, 1)),
         )
 
 

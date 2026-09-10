@@ -55,7 +55,7 @@ The strip of tabs sits along the top by default. It does not have to:
 ```kdl
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
-tab_bar_pad 1         // blank rows above the first tab
+tab_bar_pad 0         // blank rows above the first tab
 tab_bar_chrome true   // frame it like a pane
 ```
 
