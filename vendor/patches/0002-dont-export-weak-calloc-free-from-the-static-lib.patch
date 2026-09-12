@@ -1,0 +1,24 @@
+diff --git a/vendor/libghostty-vt/pkg/wuffs/src/main.zig b/vendor/libghostty-vt/pkg/wuffs/src/main.zig
+index ec9f8dac..9457df89 100644
+--- a/vendor/libghostty-vt/pkg/wuffs/src/main.zig
++++ b/vendor/libghostty-vt/pkg/wuffs/src/main.zig
+@@ -23,8 +23,18 @@ pub const ImageData = struct {
+ // they survive, so export stubs to satisfy the link. Weak so that any real
+ // definition wins. Hidden keeps them out of the export table where the
+ // format honors it (e.g. wasm).
++//
++// Only in a final executable, though. "Weak so that any real definition
++// wins" holds for dynamic linking, but not for a static archive: once the
++// linker pulls this member in for some other symbol, the weak `calloc` here
++// *satisfies* the reference, and it never searches libc.a for musl's strong
++// one. A C-API consumer that links libc itself then silently gets an
++// allocator that returns null for every request -- which is a crash at the
++// first store into the result, a long way from here. When we are the library
++// rather than the executable, the binary being built is the one that owns
++// the choice of allocator, so leave the symbols to it.
+ comptime {
+-    if (!builtin.link_libc) {
++    if (!builtin.link_libc and builtin.output_mode == .Exe) {
+         @export(&callocStub, .{
+             .name = "calloc",
+             .linkage = .weak,

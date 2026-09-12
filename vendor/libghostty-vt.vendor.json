@@ -6,6 +6,7 @@
   "version": "1.3.2-HEAD-+3c1ef5b32",
   "built_with_zig": "0.16.0",
   "patches": [
-    "patches/0001-keep-kitty-images-across-a-screen-clear.patch"
+    "patches/0001-keep-kitty-images-across-a-screen-clear.patch",
+    "patches/0002-dont-export-weak-calloc-free-from-the-static-lib.patch"
   ]
 }
