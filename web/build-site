@@ -8,6 +8,8 @@
 #     web/build-site               everything (or: make www)
 #     NO_DEMO=1 web/build-site     skip the demo (it cross-compiles a
 #                                  guest and needs zig + e2fsprogs)
+#     NO_BOOT_CHECK=1 web/build-site
+#                                  build the demo but do not boot it
 #
 # The output is only static files. Serve it with anything that serves a
 # directory; the one condition is .wasm as application/wasm, which
@@ -58,6 +60,25 @@ if [ "${NO_DEMO:-0}" = 1 ]; then
     echo "build-site: skipping demo (NO_DEMO=1)"
 else
     make -C "$here/demo" site
+
+    # Boot it before shipping it. The demo is the one artifact here whose
+    # build succeeding says nothing about it working: it is a cross-compiled
+    # riscv64 guest, so everything the rest of this script would notice --
+    # compiler errors, a missing file -- is not where its failures live. A
+    # guest that segfaults on startup links and packages perfectly, and the
+    # page then loads, draws a terminal, and sits there dead.
+    #
+    # That is not hypothetical: v0.1.7 shipped a demo whose every calloc()
+    # returned NULL (vendor/patches/0002), and the site was live and broken
+    # because nothing between `make` and rsync ever ran the binary. boot-check
+    # boots this exact image in a native emulator in about twenty seconds and
+    # fails if init does not reach a composed screen.
+    if [ "${NO_BOOT_CHECK:-0}" = 1 ]; then
+        echo "build-site: skipping demo boot-check (NO_BOOT_CHECK=1)"
+    else
+        make -C "$here/demo" check
+    fi
+
     mkdir -p "$out/demo"
     cp -R "$here/demo/build/site/." "$out/demo/"
 fi
