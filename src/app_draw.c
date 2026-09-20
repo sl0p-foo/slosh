@@ -2013,7 +2013,12 @@ void draw_tab_strip(app_t *a, screen_t *s) {
  * a `find:` target: clicking a status jumps to the pane that said it. */
 struct tabstatus {
   struct {
-    char text[96];
+    /* Matches pane_status's own slot (pane.c), so what a pane said is what
+     * gets here: at one line the drawing cuts it to the sidebar's width
+     * anyway, but wrapped over several it is the whole string that has to
+     * survive the trip, and a shorter buffer would silently decide how much
+     * of it could ever be shown. */
+    char text[256];
     uint32_t pane;
   } row[16];
   size_t n;     /* rows kept */
@@ -2023,7 +2028,7 @@ struct tabstatus {
 static void tabstatus_cb(node_t *n, void *ud) {
   struct tabstatus *ts = ud;
   if (!n->pane) return;
-  char text[96] = {0};
+  char text[256] = {0};
   if (!pane_alive(n->pane) && !pane_suspended(n->pane))
     exit_words(n->pane, text, sizeof text);
   else
@@ -2049,6 +2054,65 @@ static void fit_status(char *text, size_t cap, uint16_t budget) {
   }
   size_t len = strlen(text);
   if (len + 4 <= cap) memcpy(text + len, "\u2026", 4);
+}
+
+/* Force the ellipsis on, whether or not the row is full: fit_status only cuts
+ * a row that overflows, and a wrapped status can stop mid-sentence on a row
+ * with cells to spare. Silence there would read as "that is all it said". */
+static void mark_cut(char *row, size_t cap, uint16_t width) {
+  while (row[0] && (uint16_t)(cells(row) + 1) > width) {
+    size_t len = strlen(row);
+    do len--;
+    while (len && (row[len] & 0xc0) == 0x80);
+    row[len] = 0;
+  }
+  size_t len = strlen(row);
+  if (len + 4 <= cap) memcpy(row + len, "\u2026", 4);
+}
+
+#define STATUS_WRAP_MAX 8 /* rows one status may ever take */
+#define STATUS_ROW_CAP 256
+
+/* Break `text` into at most `max` rows of `width` cells, at a space where one
+ * offers itself and mid-word where none does -- a sixteen-cell column has
+ * words wider than itself in it (paths, hashes), and refusing to split them
+ * would leave the row empty. Returns rows written; the last is ellipsised if
+ * anything is left over. */
+static size_t wrap_cells(const char *text, uint16_t width, size_t max,
+                         char out[][STATUS_ROW_CAP]) {
+  if (!width || !max) return 0;
+  size_t n = 0;
+  const char *p = text;
+  while (*p && n < max) {
+    while (*p == ' ') p++; /* a row never starts with the break it came from */
+    if (!*p) break;
+    size_t len = 0, brk = 0;
+    uint16_t used = 0;
+    while (p[len]) {
+      size_t clen = 1;
+      while ((p[len + clen] & 0xc0) == 0x80) clen++;
+      char one[8];
+      size_t copy = clen < sizeof one ? clen : sizeof one - 1;
+      memcpy(one, p + len, copy);
+      one[copy] = 0;
+      uint16_t w = cells(one);
+      if ((uint16_t)(used + w) > width) break;
+      used = (uint16_t)(used + w);
+      len += clen;
+      if (p[len] == ' ') brk = len; /* the last break point that still fits */
+    }
+    if (!p[len]) brk = len;    /* what is left fits whole */
+    else if (!brk) brk = len;  /* one long word: split it rather than stall */
+    if (!brk) break;           /* not even one cell of room */
+    if (brk >= STATUS_ROW_CAP) brk = STATUS_ROW_CAP - 1;
+    memcpy(out[n], p, brk);
+    out[n][brk] = 0;
+    p += brk;
+    n++;
+  }
+  while (*p == ' ') p++;
+  if (*p && n) mark_cut(out[n - 1], STATUS_ROW_CAP, width);
+  return n;
 }
 
 void draw_tab_sidebar(app_t *a, screen_t *s) {
@@ -2151,42 +2215,96 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
      * The "and more" row is measured against the smaller of the two, so a
      * list cut short by the height still says it was cut. */
     size_t allow = cap < room ? cap : room;
-    size_t show = ts.total > allow ? allow : (ts.n < allow ? ts.n : allow);
-    for (size_t j = 0; j < show && y < limit; j++, y++) {
-      /* The allowance's last row is spent on saying there was more, rather
-       * than on one more status pretending the list is complete. Measured
-       * against `allow`, not the cap: a tab whose statuses were cut by the
-       * height rather than by the setting is just as incomplete. */
-      bool more = ts.total > allow && j == allow - 1;
-      char text[112];
-      /* One leading space, which is the label's own -- a status starts in the
-       * column its tab's name starts in, rather than indented under it.
-       *
-       * It used to be three. Indentation is a fine way to say "this belongs
-       * to the row above" and a poor way to spend a sixteen-column sidebar,
-       * where three columns is a fifth of everything a status has to say
-       * itself in. The slant below says the same thing in none of them. */
-      if (more) {
-        snprintf(text, sizeof text, " \u2026");
+
+    /* How many rows one status may wrap onto -- never more than this tab's
+     * whole allowance, since a paragraph that would push every other pane
+     * off the sidebar is not a paragraph anyone asked for. */
+    size_t lines = CFG.tab_bar_status_lines ? CFG.tab_bar_status_lines : 1;
+    if (lines > STATUS_WRAP_MAX) lines = STATUS_WRAP_MAX;
+    if (lines > allow) lines = allow;
+    /* The text column: everything but the leading space below. */
+    uint16_t tw = cw > 1 ? (uint16_t)(cw - 1) : 1;
+
+    /* Lay the statuses out before drawing any, because whether the last row
+     * has to become an ellipsis depends on what did not fit -- and with
+     * wrapping that is no longer "one row, one status". */
+    char rows[16][STATUS_WRAP_MAX][STATUS_ROW_CAP];
+    size_t nrows[16];
+    size_t want = 0;
+    for (size_t j = 0; j < ts.n; j++) {
+      if (lines <= 1) {
+        /* The unwrapped row, cut where the column ends rather than at the
+         * last word before it. A single line has no next row to move the
+         * word to, so breaking early would just spend cells on nothing --
+         * the reason to prefer a word boundary only exists once there is
+         * somewhere for the word to go. */
+        snprintf(rows[j][0], STATUS_ROW_CAP, "%s", ts.row[j].text);
+        fit_status(rows[j][0], STATUS_ROW_CAP, tw);
+        nrows[j] = 1;
       } else {
-        snprintf(text, sizeof text, " %s", ts.row[j].text);
-        fit_status(text, sizeof text, cw);
+        nrows[j] = wrap_cells(ts.row[j].text, tw, lines, rows[j]);
       }
-      pad_cells(text, sizeof text, cw); /* so a themed band covers the row */
-      /* Italic, and ambient in colour: these are annotations until pointed
-       * at. The slant is what separates them from the labels, rather than a
-       * colour, because a monochrome theme has no colour to spare and would
-       * be left with none -- tab_status_fg/bg are there for themes that do.
-       * The hover brightening doubles as the affordance that the row is a
-       * door; the hint under the pointer says where it leads. */
-      bool hot = !more && ptr_on(a, cx, y, cw, 1);
-      screen_text(s, cx, y, text, hot ? TAB_HOVER : TAB_STATUS_FG,
-                  TAB_STATUS_BG, hot ? ATTR_BOLD : ATTR_ITALIC);
-      if (!more) {
+      if (!nrows[j]) nrows[j] = 1, rows[j][0][0] = 0;
+      want += nrows[j];
+    }
+    /* Something was already dropped by the collector, or will not fit here. */
+    bool cut = ts.total > ts.n || want > allow;
+    size_t budget = cut && allow ? allow - 1 : allow; /* the "and more" row */
+    size_t nshow = 0, used = 0;
+    for (size_t j = 0; j < ts.n; j++) {
+      if (used + nrows[j] > budget) break;
+      used += nrows[j];
+      nshow++;
+    }
+    /* Only say "and more" if something really is missing: a status list that
+     * fits exactly must not claim otherwise. */
+    bool ell = nshow < ts.n || ts.total > ts.n;
+
+    for (size_t j = 0; j < nshow && y < limit; j++) {
+      /* Hover is tested over the whole status, not each row: the rows are
+       * one door between them, and lighting up only the line under the
+       * pointer would suggest they are separate ones. */
+      bool hot = ptr_on(a, cx, y, cw, (uint16_t)nrows[j]);
+      /* Alternate panes sit on alternate bands. Wrapped, the rows under a
+       * tab are a paragraph per pane rather than a line per pane, and the
+       * shape alone no longer says where one ends -- so the band does. At
+       * one line there is nothing to disambiguate and the row keeps the
+       * terminal's own background, which a translucent one cares about. */
+      color_t band = TAB_STATUS_BG;
+      if (lines > 1 && (j % 2)) band = TAB_STATUS_STRIPE;
+
+      for (size_t k = 0; k < nrows[j] && y < limit; k++, y++) {
+        char text[STATUS_ROW_CAP + 8];
+        /* One leading space, which is the label's own -- a status starts in
+         * the column its tab's name starts in, rather than indented under
+         * it.
+         *
+         * It used to be three. Indentation is a fine way to say "this
+         * belongs to the row above" and a poor way to spend a sixteen-column
+         * sidebar, where three columns is a fifth of everything a status has
+         * to say itself in. The slant below says the same thing in none of
+         * them, and the band says which pane said it. */
+        snprintf(text, sizeof text, " %s", rows[j][k]);
+        pad_cells(text, sizeof text, cw); /* so a themed band covers the row */
+        /* Italic, and ambient in colour: these are annotations until pointed
+         * at. The slant is what separates them from the labels, rather than
+         * a colour, because a monochrome theme has no colour to spare and
+         * would be left with none -- tab_status_fg/bg are there for themes
+         * that do. The hover brightening doubles as the affordance that the
+         * row is a door; the hint under the pointer says where it leads. */
+        screen_text(s, cx, y, text, hot ? TAB_HOVER : TAB_STATUS_FG, band,
+                    hot ? ATTR_BOLD : ATTR_ITALIC);
         char act[24];
         snprintf(act, sizeof act, "find:%u", ts.row[j].pane);
         hit_add(&s->hits, cx, y, cw, 1, act);
       }
+    }
+    if (ell && y < limit && used < allow) {
+      char text[STATUS_ROW_CAP + 8];
+      snprintf(text, sizeof text, " \u2026");
+      pad_cells(text, sizeof text, cw);
+      screen_text(s, cx, y, text, TAB_STATUS_FG, TAB_STATUS_BG, ATTR_ITALIC);
+      y++; /* an ellipsis is not a door: no hit */
     }
   }
 

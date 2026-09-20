@@ -657,6 +657,7 @@ static const struct {
     {"tab_count", offsetof(config_t, tab_count)},
     {"tab_status_fg", offsetof(config_t, tab_status_fg)},
     {"tab_status_bg", offsetof(config_t, tab_status_bg)},
+    {"tab_status_stripe", offsetof(config_t, tab_status_stripe)},
     {"status", offsetof(config_t, status)},
     {"status_state", offsetof(config_t, status_state)},
     {"finder_fg", offsetof(config_t, finder_fg)},
@@ -956,6 +957,10 @@ void config_defaults(config_t *c) {
   /* Three is enough for "the build, the tests, and one more thing" without a
    * chatty tab pushing the list off the bottom. */
   c->tab_bar_status = 3;
+  /* One row per pane, cut to the width: the shape the sidebar has always
+   * had. Raising it trades rows for words, which is a choice about how many
+   * tabs you keep more than about how much a pane has to say. */
+  c->tab_bar_status_lines = 1;
   c->tab_bar_chrome = true;
   c->status_line = true;
   /* Deliberately wider than the panes' own margin (gap * gap_aspect = 2), so
@@ -1062,6 +1067,10 @@ void config_defaults(config_t *c) {
    * to. The slant already says what it is; this says it is worth reading. */
   c->tab_status_fg = blend(dim, accent, 40);
   c->tab_status_bg = (color_t){0}; /* none: the terminal's own background */
+  /* Barely off the background: the stripe has to say "different pane", not
+   * "selected". Only drawn when statuses can wrap -- see tab_bar_status_lines
+   * -- so an unwrapped sidebar keeps its transparent rows. */
+  c->tab_status_stripe = blend(c->default_bg, accent, 12);
 
   c->status = dim;
   c->status_state = bright;
@@ -1680,6 +1689,10 @@ char *config_render(const config_t *c) {
   cb_add(&b,
          "tab_bar_status %u     // pane status rows under each tab, 0 = off\n",
          c->tab_bar_status);
+  cb_add(&b,
+         "tab_bar_status_lines %u // rows one status may wrap onto, 1 = cut "
+         "it\n",
+         c->tab_bar_status_lines);
   cb_add(&b, "tab_bar_chrome %s   // frame the sidebar like a pane\n",
          yesno(c->tab_bar_chrome));
   cb_add(&b, "status_line %s         // the line along the bottom\n",
@@ -2002,6 +2015,7 @@ static const char *const KNOWN_TOP[] = {
     "tab_bar_pad",
     "tab_bar_side",
     "tab_bar_status",
+    "tab_bar_status_lines",
     "tab_bar_width",
     "theme",
     "title_align",
@@ -2217,6 +2231,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_bar_pad);
   c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
                                             0, c->tab_bar_status);
+  c->tab_bar_status_lines = (uint16_t)kdl_arg_int(
+      kdl_child(root, "tab_bar_status_lines"), 0, c->tab_bar_status_lines);
   c->tab_bar_chrome =
       kdl_arg_bool(kdl_child(root, "tab_bar_chrome"), 0, c->tab_bar_chrome);
   c->status_line =
@@ -2464,6 +2480,11 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
      * split apply_scrolled makes. */
     if (!kdl_child(theme, "tab_status_fg"))
       c->tab_status_fg = blend(c->tab_count, c->tab_hover, 40);
+    /* The alternate band, on the same terms. A tenth of the way from the
+     * tab bar's own background toward the accent: enough to read as a
+     * different row at a glance, not enough to read as a highlight. */
+    if (!kdl_child(theme, "tab_status_stripe"))
+      c->tab_status_stripe = blend(c->default_bg, c->tab_hover, 12);
   }
   /* After the theme, so the wash follows whatever scroll_bg the theme just
    * chose -- a config that wrote its own `scrolled` chain keeps it, whether

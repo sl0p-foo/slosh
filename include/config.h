@@ -345,6 +345,17 @@ typedef struct {
    * at all -- the top strip has one row and no room to say any of it. 0 turns
    * it off. */
   uint16_t tab_bar_status;
+  /* How many rows one pane's status may wrap onto, rather than being cut at
+   * the sidebar's width. 1 is the old behaviour and the default: a status is
+   * one row, truncated with an ellipsis.
+   *
+   * Above 1 it is word-wrapped, which buys a narrow sidebar a great deal --
+   * three rows of sixteen cells is forty-eight, and the difference between
+   * "add a summary\u2026" and the whole sentence. The cost is that the rows
+   * under a tab stop being a list of panes and become a paragraph per pane,
+   * so the stripe below is what keeps one pane's status apart from the next
+   * one's. Counts against tab_bar_status the same as any other row. */
+  uint16_t tab_bar_status_lines;
   /* Frame the sidebar the way panes are framed, so it reads as part of the
    * chrome rather than as text floating beside it. In compact mode its lines
    * are shared with the tab area's outer ring -- the same junction-forming
@@ -457,6 +468,14 @@ typedef struct {
    * none leaves the terminal's own background alone, which is what a
    * translucent one wants. */
   color_t tab_status_fg, tab_status_bg;
+  /* The other stripe. With wrapped statuses, where one pane's rows end and
+   * the next one's begin is no longer obvious from the shape -- both are
+   * just italic text down the same column -- so alternate panes sit on
+   * alternate bands. Unset and derived from the theme, like tab_status_fg,
+   * and only ever drawn when a status can actually wrap: a single-row status
+   * has no ambiguity to resolve, and painting a band behind it would take a
+   * translucent terminal's own background away for nothing. */
+  color_t tab_status_stripe;
 
   /* the line along the bottom */
   color_t status, status_state;

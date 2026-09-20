@@ -349,6 +349,130 @@ def test_statuses_never_cost_a_tab_its_row():
         )
 
 
+def _two_talking(s, first, second):
+    """Two panes in one tab, each announcing. Returns their ids in row order."""
+    a = s.pane(0)["id"]
+    _status(s, first)
+    s.api("split", dir="rows")
+    s.settle(25)
+    b = s.focused()["id"]
+    _status(s, second)
+    return a, b
+
+
+LINES = _cfg(
+    f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_status 8\n'
+    "tab_bar_status_lines 3\n"
+)
+
+
+def test_a_status_can_be_given_more_than_one_row():
+    """Sixteen cells is not enough for a sentence, and a sentence is what a
+    pane has to say. Wrapped, the same column carries three times as much."""
+    with Session(SH, cols=90, rows=20, config=LINES) as s:
+        s.settle(30)
+        _status(s, "add a summary row to the tab bar")
+        snap = s.snapshot()
+        rows = [_row(snap, Y0 + 1 + k).strip() for k in range(3)]
+        check(
+            "the words carry on down the column",
+            " ".join(r for r in rows if r) == "add a summary row to the tab bar",
+            repr(rows),
+        )
+        check(
+            "and it broke at spaces, not mid-word",
+            all(not r.endswith("\u2026") for r in rows if r),
+            repr(rows),
+        )
+
+
+def test_one_line_still_cuts_at_the_column_not_the_word():
+    """The default is unchanged. With nowhere for the word to go, stopping
+    early would spend cells on nothing -- the reason to prefer a word boundary
+    only exists once there is a next row to move the word to."""
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        _status(s, "unwrapped statuses fill the column")
+        row = _row(s.snapshot(), Y0 + 1)
+        check("it is one row", not _row(s.snapshot(), Y0 + 2).strip(), repr(row))
+        check("cut with an ellipsis", row.rstrip().endswith("\u2026"), repr(row))
+        check(
+            "and it used the whole column",
+            len(row.rstrip()) >= CW - 1,
+            f"{len(row.rstrip())} of {CW}",
+        )
+
+
+def test_wrapped_statuses_are_striped_so_panes_stay_apart():
+    """Wrapped, the rows under a tab are a paragraph per pane rather than a
+    line per pane, and the shape no longer says where one ends. The band does.
+    At one line there is nothing to tell apart, so nothing is painted and a
+    translucent terminal keeps its own background."""
+    with Session(SH, cols=90, rows=20, config=LINES) as s:
+        s.settle(30)
+        _two_talking(s, "first pane says a fairly long thing", "second pane also")
+        snap = s.snapshot()
+        bgs = [snap.style_at(CX + 1, Y0 + 1 + k)["bg"] for k in range(4)]
+        check("the first pane's rows share one background", bgs[0] == bgs[1], str(bgs))
+        check("the next pane's is a different one", bgs[3] != bgs[0], str(bgs))
+
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        _two_talking(s, "first", "second")
+        snap = s.snapshot()
+        check(
+            "unwrapped, no band is painted at all",
+            snap.style_at(CX + 1, Y0 + 1)["bg"] is None
+            and snap.style_at(CX + 1, Y0 + 2)["bg"] is None,
+            str([snap.style_at(CX + 1, Y0 + 1 + k)["bg"] for k in range(2)]),
+        )
+
+
+def test_every_row_of_a_status_is_the_same_door():
+    """The rows are one status, so they are one target: clicking the second
+    line of a sentence means the pane that said the sentence."""
+    with Session(SH, cols=90, rows=20, config=LINES) as s:
+        s.settle(30)
+        pane = s.pane(0)["id"]
+        _status(s, "a status long enough to need three whole rows of the bar")
+        snap = s.snapshot()
+        hits = [snap.hit_at(CX + 1, Y0 + 1 + k) for k in range(3)]
+        check(
+            "every row points at the pane that said it",
+            hits == [f"find:{pane}"] * 3,
+            str(hits),
+        )
+
+
+def test_wrapping_still_says_when_a_status_did_not_fit():
+    """The allowance counts rows, so a wrapped status eats several of them.
+    What does not fit is still reported rather than silently dropped."""
+    tight = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_status 4\n'
+        "tab_bar_status_lines 3\n"
+    )
+    with Session(SH, cols=90, rows=20, config=tight) as s:
+        s.settle(30)
+        # The second needs more than the one row left over, so it is dropped
+        # whole: half a wrapped sentence with no mark would read as all of it.
+        _two_talking(
+            s,
+            "first pane says a fairly long thing here",
+            "second pane also says a good deal for itself",
+        )
+        snap = s.snapshot()
+        check(
+            "the row after the first status says there was more",
+            _row(snap, Y0 + 4).strip() == "\u2026",
+            repr([_row(snap, Y0 + 1 + k) for k in range(5)]),
+        )
+        check(
+            "an ellipsis is still not a door",
+            snap.hit_at(CX + 1, Y0 + 4) is None,
+            str(snap.hit_at(CX + 1, Y0 + 4)),
+        )
+
+
 def test_a_long_status_is_cut_and_says_so():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
@@ -620,6 +744,11 @@ if __name__ == "__main__":
     test_newtab_pad_is_the_air_before_the_button()
     test_newtab_button_false_removes_it_everywhere()
     test_statuses_never_cost_a_tab_its_row()
+    test_a_status_can_be_given_more_than_one_row()
+    test_one_line_still_cuts_at_the_column_not_the_word()
+    test_wrapped_statuses_are_striped_so_panes_stay_apart()
+    test_every_row_of_a_status_is_the_same_door()
+    test_wrapping_still_says_when_a_status_did_not_fit()
     test_a_narrow_sidebar_keeps_the_bare_mark()
     test_the_strip_keeps_its_bare_mark()
     test_narrow_terminal_falls_back_to_top()

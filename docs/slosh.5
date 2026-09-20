@@ -147,7 +147,18 @@ labels.
 Under each of a sidebar's tabs, up to \fIn\fR rows of what the panes inside
 said through OSC 5577 status \(em or how they died \(em with an ellipsis when
 there was more. Clicking a status row jumps to the pane that said it.
-0 turns it off; \fBtop\fR has no room for it either way.
+0 turns it off; \fBtop\fR has no room for it either way. The statuses give
+way before the tabs do when the sidebar is short of rows: the list is how you
+navigate, and a talkative pane must not cost you a tab you can click.
+.TP
+.BI tab_bar_status_lines\  n
+How many rows one pane's status may wrap onto, rather than being cut at the
+sidebar's width. 1, the default, is a single truncated row. Above that the
+text is word-wrapped \(em three rows of a sixteen-column sidebar is
+forty-eight cells rather than sixteen \(em and alternate panes are drawn on
+alternate bands (\fBtab_status_stripe\fR), because wrapped rows are a
+paragraph per pane and the shape alone no longer says where one ends. Rows
+still count against \fBtab_bar_status\fR.
 .TP
 .BI hints\  bool
 What the pointer is resting on, said in the status line.

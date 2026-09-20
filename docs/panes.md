@@ -57,6 +57,7 @@ tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
 tab_bar_pad 0         // blank rows above the first tab
 tab_bar_chrome true   // frame it like a pane
+tab_bar_status_lines 1 // rows one status may wrap onto
 newtab_button true    // the `+` at the end of the list
 newtab_pad 1          // ...and the air before it
 ```
@@ -92,7 +93,18 @@ and the last row is an ellipsis rather than a status pretending the list is
 complete. A short terminal cuts the list the same way, and says so the same
 way: **the statuses give way before the tabs do**, because the list is how you
 navigate and a status is only an annotation on it — a talkative pane must not
-be able to cost you a tab you can click. **Clicking a status row jumps to the
+be able to cost you a tab you can click.
+
+**A status can be given more than one row.** `tab_bar_status_lines 3` word-wraps
+it instead of cutting it, which is the difference between `add a summary…` and
+the sentence — three rows of a sixteen-column sidebar is forty-eight cells. The
+rows under a tab then read as a paragraph per pane rather than a line per pane,
+so **alternate panes sit on alternate bands** (`tab_status_stripe`, derived from
+the theme unless you name it): with the shape no longer saying where one pane's
+status ends, the band does. At one line there is nothing to disambiguate and no
+band is drawn, which leaves a translucent terminal's own background alone. Every
+row of a status is the same door — clicking any of them jumps to that pane — and
+they all count against `tab_bar_status`. **Clicking a status row jumps to the
 pane that said it**, across tabs. A status is set in italic rather than indented under its tab — the slant
 says "this belongs to the row above" without spending columns a narrow sidebar
 has none of, and says it on a monochrome theme too. The colour is part way
