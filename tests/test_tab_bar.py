@@ -305,6 +305,50 @@ def test_status_cap_spends_its_last_row_on_the_ellipsis():
         )
 
 
+def test_statuses_never_cost_a_tab_its_row():
+    """The list is the navigation; a status is an annotation on it.
+
+    Rows used to be spent in tab order until they ran out, so talkative panes
+    early in the list simply consumed the rows later tabs needed: four tabs of
+    three announcing panes in a short terminal left the fourth with no row and
+    no hit at all -- not clipped, unreachable -- and took the new-tab button
+    with it. What gives way now is the annotation."""
+    cfg = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_status 3\n')
+    with Session(SH, cols=90, rows=16, config=cfg) as s:
+        s.settle(30)
+        for t in range(4):
+            if t:
+                s.api("new-tab")
+                s.settle(20)
+            _status(s, f"tab{t + 1} pane1")
+            for p in (2, 3):
+                s.api("split", dir="rows")
+                s.settle(20)
+                _status(s, f"tab{t + 1} pane{p}")
+
+        snap = s.snapshot()
+        targets = {h["action"] for h in snap.hits}
+        missing = [t["index"] for t in s.tabs() if f"tab:{t['index']}" not in targets]
+        check("every tab that exists can be clicked", not missing, str(missing))
+        check("the button was not crowded out either", "newtab" in targets, str(sorted(targets)))
+        # The annotation is what gave way: with four labels and a button to
+        # fit into sixteen rows there is no room for twelve statuses, and it
+        # is the last tabs' statuses that are missing rather than their rows.
+        # The sidebar's own columns only: the panes' frames carry these same
+        # words (a pane draws its status too), and would match anywhere.
+        bar = [_row(snap, y) for y in range(16)]
+        check(
+            "the statuses are what went",
+            not any("tab4" in r for r in bar),
+            repr([r for r in bar if r.strip()]),
+        )
+        check(
+            "...and the ones that fit are still there",
+            any("tab1 pane1" in r for r in bar),
+            repr([r for r in bar if r.strip()]),
+        )
+
+
 def test_a_long_status_is_cut_and_says_so():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
@@ -575,6 +619,7 @@ if __name__ == "__main__":
     test_the_sidebar_button_says_what_it_does()
     test_newtab_pad_is_the_air_before_the_button()
     test_newtab_button_false_removes_it_everywhere()
+    test_statuses_never_cost_a_tab_its_row()
     test_a_narrow_sidebar_keeps_the_bare_mark()
     test_the_strip_keeps_its_bare_mark()
     test_narrow_terminal_falls_back_to_top()

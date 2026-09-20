@@ -89,8 +89,11 @@ puts that line under its tab — visible from every other tab, which is the
 point — and a pane that died shows how instead (`exited: status 3`). At most
 `tab_bar_status` rows per tab (3 by default, 0 turns it off); more than that
 and the last row is an ellipsis rather than a status pretending the list is
-complete. **Clicking a status row jumps to the pane that said it**, across
-tabs. A status is set in italic rather than indented under its tab — the slant
+complete. A short terminal cuts the list the same way, and says so the same
+way: **the statuses give way before the tabs do**, because the list is how you
+navigate and a status is only an annotation on it — a talkative pane must not
+be able to cost you a tab you can click. **Clicking a status row jumps to the
+pane that said it**, across tabs. A status is set in italic rather than indented under its tab — the slant
 says "this belongs to the row above" without spending columns a narrow sidebar
 has none of, and says it on a monochrome theme too. The colour is part way
 from `tab_count` to `tab_hover` — the live thing in the sidebar should not read

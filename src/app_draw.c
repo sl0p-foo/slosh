@@ -2119,18 +2119,45 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
 
   uint16_t cap = CFG.tab_bar_status;
   if (cap > 16) cap = 16; /* the collector keeps no more than that */
+  /* A row the button will want, so the statuses cannot spend it. The pad is
+   * not reserved: it already gives itself up a cell at a time. */
+  uint16_t btn_rows =
+      (CFG.newtab_button && cells(CFG.newtab_mark)) ? (uint16_t)1 : (uint16_t)0;
   for (size_t i = 0; i < a->ntabs && y < limit; i++) {
     draw_tab_cell(a, s, i, cx, y, cw, dragging_pane);
     y++;
     if (!cap) continue;
 
+    /* The floor statuses may not dig through: one row for each tab still to
+     * be drawn, plus the button's.
+     *
+     * The list is the navigation and a status is an annotation on it, so a
+     * chatty pane must not be able to cost you a tab. It could: rows were
+     * spent in tab order until they ran out, and four tabs of three talking
+     * panes in a short terminal left the fourth with no row and no hit --
+     * not clipped, *unreachable*, along with the new-tab button. What gives
+     * way instead is the annotation, the same order the strip already uses
+     * when it is short of room: the pad, then the extra statuses, then the
+     * statuses, never the thing they are about. */
+    uint16_t keep = (uint16_t)(a->ntabs - i - 1);
+    uint16_t floor = (uint16_t)(keep + btn_rows) < limit
+                         ? (uint16_t)(limit - keep - btn_rows)
+                         : 0;
+    uint16_t room = y < floor ? (uint16_t)(floor - y) : 0;
+
     struct tabstatus ts = {0};
     walk(a->tabs[i].root, tabstatus_cb, &ts);
-    size_t show = ts.total > cap ? cap : ts.n;
+    /* Whatever the cap allowed, this tab's share of what is left may be less.
+     * The "and more" row is measured against the smaller of the two, so a
+     * list cut short by the height still says it was cut. */
+    size_t allow = cap < room ? cap : room;
+    size_t show = ts.total > allow ? allow : (ts.n < allow ? ts.n : allow);
     for (size_t j = 0; j < show && y < limit; j++, y++) {
-      /* The cap's last row is spent on saying there was more, rather than on
-       * one more status pretending the list is complete. */
-      bool more = ts.total > cap && j == (size_t)(cap - 1);
+      /* The allowance's last row is spent on saying there was more, rather
+       * than on one more status pretending the list is complete. Measured
+       * against `allow`, not the cap: a tab whose statuses were cut by the
+       * height rather than by the setting is just as incomplete. */
+      bool more = ts.total > allow && j == allow - 1;
       char text[112];
       /* One leading space, which is the label's own -- a status starts in the
        * column its tab's name starts in, rather than indented under it.
