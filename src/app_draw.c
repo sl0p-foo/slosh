@@ -2188,6 +2188,23 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
   uint16_t btn_rows =
       (CFG.newtab_button && cells(CFG.newtab_mark)) ? (uint16_t)1 : (uint16_t)0;
   for (size_t i = 0; i < a->ntabs && y < limit; i++) {
+    /* Air between one tab and the next. Before the label rather than after
+     * the statuses, so it is the gap between two tabs and not a trailing
+     * margin under the last one -- the space before the first is
+     * tab_bar_pad's and the space before the button is newtab_pad's, and
+     * neither should be paid twice.
+     *
+     * Given up a row at a time when the list is short of room, ahead of
+     * anything that means something: a gap that pushed a tab off the bottom
+     * would be spacing costing you the thing it spaces. */
+    if (i) {
+      uint16_t g = CFG.tab_gap;
+      /* This tab's own label, the ones after it, and the button. */
+      uint16_t need = (uint16_t)(a->ntabs - i + btn_rows);
+      while (g && (uint16_t)(y + g + need) > limit) g--;
+      y = (uint16_t)(y + g);
+      if (y >= limit) break;
+    }
     draw_tab_cell(a, s, i, cx, y, cw, dragging_pane);
     y++;
     if (!cap) continue;

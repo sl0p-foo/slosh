@@ -954,6 +954,7 @@ void config_defaults(config_t *c) {
    * a gap nobody asked for. Still there for a bare sidebar, or for anyone
    * who wants room at the top for a borderless window's own buttons. */
   c->tab_bar_pad = 0;
+  c->tab_gap = 0; /* flush, the way the list has always read */
   /* Three is enough for "the build, the tests, and one more thing" without a
    * chatty tab pushing the list off the bottom. */
   c->tab_bar_status = 3;
@@ -1686,6 +1687,8 @@ char *config_render(const config_t *c) {
          c->tab_bar_width);
   cb_add(&b, "tab_bar_pad %u        // blank rows above a sidebar's tabs\n",
          c->tab_bar_pad);
+  cb_add(&b, "tab_gap %u            // blank rows between a sidebar's tabs\n",
+         c->tab_gap);
   cb_add(&b,
          "tab_bar_status %u     // pane status rows under each tab, 0 = off\n",
          c->tab_bar_status);
@@ -2017,6 +2020,7 @@ static const char *const KNOWN_TOP[] = {
     "tab_bar_status",
     "tab_bar_status_lines",
     "tab_bar_width",
+    "tab_gap",
     "theme",
     "title_align",
     "title_inset",
@@ -2229,6 +2233,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                                            c->tab_bar_width);
   c->tab_bar_pad =
       (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_bar_pad);
+  c->tab_gap =
+      (uint16_t)kdl_arg_int(kdl_child(root, "tab_gap"), 0, c->tab_gap);
   c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
                                             0, c->tab_bar_status);
   c->tab_bar_status_lines = (uint16_t)kdl_arg_int(

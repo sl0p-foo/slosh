@@ -305,6 +305,68 @@ def test_status_cap_spends_its_last_row_on_the_ellipsis():
         )
 
 
+def test_tab_gap_is_air_between_tabs_and_nothing_else():
+    """Tabs each carrying a paragraph of status read as one column of text;
+    the gap is what makes them separate entries again. It belongs *between*
+    tabs: the space above the first is tab_bar_pad's and the space before the
+    button is newtab_pad's, and neither should be paid twice."""
+    n = 2
+    gapped = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_gap {n}\n')
+    with Session(SH, cols=90, rows=20, config=gapped) as s:
+        s.settle(30)
+        for _ in range(2):
+            s.api("new-tab")
+            s.settle(20)
+        snap = s.snapshot()
+        check(
+            "the first tab still starts where it always did",
+            snap.hit_at(CX, Y0) == "tab:1",
+            str(snap.hit_at(CX, Y0)),
+        )
+        check(
+            "the next one is that many rows lower",
+            snap.hit_at(CX, Y0 + 1 + n) == "tab:2",
+            str([snap.hit_at(CX, Y0 + 1 + k) for k in range(n + 1)]),
+        )
+        check(
+            "and the air between is nobody's target",
+            all(snap.hit_at(CX, Y0 + 1 + k) is None for k in range(n)),
+            str([snap.hit_at(CX, Y0 + 1 + k) for k in range(n)]),
+        )
+        # Third tab, then the button: the gap is not paid again before the `+`.
+        third = Y0 + 2 * (1 + n)
+        check(
+            "the button keeps its own pad, not the gap",
+            snap.hit_at(CX, third + 1 + NT_PAD) == "newtab",
+            str(snap.hit_at(CX, third + 1 + NT_PAD)),
+        )
+        p = s.pane(0)
+        check(
+            "the gap is paint, not layout: panes keep their rows",
+            p["y"] <= 2,
+            str(p["y"]),
+        )
+
+
+def test_tab_gap_gives_way_before_a_tab_does():
+    """Spacing must never be what costs you the thing it spaces: a gap too
+    big for the rows available shrinks, one row at a time, rather than
+    pushing tabs off the bottom."""
+    huge = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_status 0\ntab_gap 4\n'
+    )
+    with Session(SH, cols=90, rows=12, config=huge) as s:
+        s.settle(30)
+        for _ in range(4):
+            s.api("new-tab")
+            s.settle(20)
+        snap = s.snapshot()
+        targets = {h["action"] for h in snap.hits}
+        missing = [t["index"] for t in s.tabs() if f"tab:{t['index']}" not in targets]
+        check("every tab is still clickable", not missing, str(missing))
+        check("and the button survived too", "newtab" in targets, str(sorted(targets)))
+
+
 def test_statuses_never_cost_a_tab_its_row():
     """The list is the navigation; a status is an annotation on it.
 
@@ -743,6 +805,8 @@ if __name__ == "__main__":
     test_the_sidebar_button_says_what_it_does()
     test_newtab_pad_is_the_air_before_the_button()
     test_newtab_button_false_removes_it_everywhere()
+    test_tab_gap_is_air_between_tabs_and_nothing_else()
+    test_tab_gap_gives_way_before_a_tab_does()
     test_statuses_never_cost_a_tab_its_row()
     test_a_status_can_be_given_more_than_one_row()
     test_one_line_still_cuts_at_the_column_not_the_word()

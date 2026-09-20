@@ -143,6 +143,15 @@ its inner line is the tab area's own ring, so the two meet in junctions and
 come out as one figure. On by default; off gives the two columns back to the
 labels.
 .TP
+.BI tab_gap\  n
+Blank rows between one tab and the next in a sidebar. Tabs that each carry a
+paragraph of status read as one column of text; this makes them separate
+entries again. It is the space \fIbetween\fR tabs only \(em above the first
+is \fBtab_bar_pad\fR and before the button is \fBnewtab_pad\fR \(em and it
+is given up a row at a time when the list is short of room, so the gap can
+never be what costs you the tab it was separating. Paint rather than layout:
+panes keep the same rectangle whatever it is. Sidebars only.
+.TP
 .BI tab_bar_status\  n
 Under each of a sidebar's tabs, up to \fIn\fR rows of what the panes inside
 said through OSC 5577 status \(em or how they died \(em with an ellipsis when

@@ -56,6 +56,7 @@ The strip of tabs sits along the top by default. It does not have to:
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
 tab_bar_pad 0         // blank rows above the first tab
+tab_gap 0             // ...and between one tab and the next
 tab_bar_chrome true   // frame it like a pane
 tab_bar_status_lines 1 // rows one status may wrap onto
 newtab_button true    // the `+` at the end of the list
@@ -94,6 +95,14 @@ complete. A short terminal cuts the list the same way, and says so the same
 way: **the statuses give way before the tabs do**, because the list is how you
 navigate and a status is only an annotation on it — a talkative pane must not
 be able to cost you a tab you can click.
+
+**`tab_gap` puts air between one tab and the next**, which is what stops a
+list of tabs that each carry a paragraph of status from reading as one column
+of text. It is the space *between* tabs only: above the first is `tab_bar_pad`
+and before the `+` is `newtab_pad`, so none of the three is paid twice. Like
+them it is paint rather than layout, and like them it is given up a row at a
+time when the sidebar runs short — a gap must never be what costs you the tab
+it was separating.
 
 **A status can be given more than one row.** `tab_bar_status_lines 3` word-wraps
 it instead of cutting it, which is the difference between `add a summary…` and
