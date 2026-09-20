@@ -192,6 +192,19 @@ typedef struct {
   /* The new-tab button at the end of the strip. Drawn with a space each side,
    * so a one-character mark is still a three-cell target. */
   char newtab_mark[32];
+  /* Whether that button is drawn at all. On by default -- it is the only
+   * pointer-reachable way to make a tab -- but the verb is also a chord and a
+   * palette entry, so anyone who works from the keyboard can have the row (or
+   * the columns) back and stop hitting it by accident. Setting newtab_mark to
+   * "" does the same thing by omission; this says it on purpose. */
+  bool newtab_button;
+  /* Air between the last tab and that button: blank *rows* in a sidebar,
+   * blank *columns* in the top strip -- the axis the list runs along, either
+   * way. The button sits at the end of a list of tabs whose rows all do
+   * something else, and a destructive-enough neighbour one cell away is a
+   * misclick waiting to happen; one cell of nothing is the cheapest fix.
+   * Dropped rather than the button itself when the strip is out of room. */
+  uint16_t newtab_pad;
   bool bell_indicator;
   /* What to draw. A short string rather than a fixed glyph: the obvious
    * choice is an emoji bell, and emoji are drawn two columns wide by many

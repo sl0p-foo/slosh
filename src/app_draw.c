@@ -1987,10 +1987,15 @@ void draw_tab_strip(app_t *a, screen_t *s) {
   for (size_t i = 0; i < a->ntabs && x < right; i++)
     x = (uint16_t)(x + draw_tab_cell(a, s, i, x, y, 0, dragging_pane));
 
-  {
+  if (CFG.newtab_button) {
     uint16_t bw = (uint16_t)(cells(CFG.newtab_mark) + 2);
-    if (bw > 2 && x + bw <= right)
-      draw_newtab_button(a, s, x, y, 0, dragging_pane);
+    /* The air before the button, in the axis this strip runs along. Given up
+     * before the button is, the same rule the sidebar's frame follows:
+     * spacing must not be what costs you the thing it is spacing. */
+    uint16_t pad = CFG.newtab_pad;
+    while (pad && x + pad + bw > right) pad--;
+    if (bw > 2 && x + pad + bw <= right)
+      draw_newtab_button(a, s, (uint16_t)(x + pad), y, 0, dragging_pane);
   }
 }
 
@@ -2158,8 +2163,16 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
     }
   }
 
-  if (cells(CFG.newtab_mark) && y < limit)
-    draw_newtab_button(a, s, cx, y, cw, dragging_pane);
+  if (CFG.newtab_button && cells(CFG.newtab_mark)) {
+    /* Blank rows between the list and the button. A sidebar tab is a target
+     * the full width of the strip, so the row under the last one is one slip
+     * of the pointer away from it -- air is what makes that slip a miss.
+     * Shrunk to fit rather than pushing the button off the bottom. */
+    uint16_t pad = CFG.newtab_pad;
+    while (pad && (uint16_t)(y + pad) >= limit) pad--;
+    y = (uint16_t)(y + pad);
+    if (y < limit) draw_newtab_button(a, s, cx, y, cw, dragging_pane);
+  }
 }
 
 /* The space between two of a split's children, or false if they are flush.

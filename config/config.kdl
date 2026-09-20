@@ -217,6 +217,20 @@ min_mark "▼"           // into the strip along the bottom, still running
 // the border became the button. Try "[+]" or "new" if you prefer a word.
 newtab_mark "+"
 
+// Whether that button is drawn at all, and how much nothing sits between it
+// and the last tab -- rows in a sidebar, columns in the top strip.
+//
+// The air is there because the button is the odd one out in a list whose every
+// other row means "go here": flush against the tabs, the row below the last one
+// is a new tab you did not ask for, and in a sidebar the whole width is the
+// target so the pointer only has to be one row low. One cell turns that into a
+// miss. It is paint, not layout -- the panes' rectangle is the same either way.
+//
+// Turn the button off if you make tabs from the keyboard (`C-a c`, or the
+// palette): the verb does not go anywhere, only the place to click it.
+newtab_button true
+newtab_pad 1
+
 // Which dead panes stay, and which just go.
 //
 //   commands   panes that were *given* a command -- from a layout, or the

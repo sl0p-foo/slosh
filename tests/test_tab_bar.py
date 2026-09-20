@@ -33,6 +33,10 @@ BARE = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_chrome false\n')
 # is one edit here rather than thirty coordinates below.
 CX, CW, Y0 = 1, W - 2, 2
 
+# The default newtab_pad: one blank row between the last tab and the `+`, so
+# a pointer one row low misses the button instead of making a tab.
+NT_PAD = 1
+
 SH = ["/bin/sh", "-c", "stty raw -echo; cat"]
 
 
@@ -56,8 +60,13 @@ def test_left_sidebar_reserves_columns():
             str(snap.hit_at(CX + CW - 1, Y0)),
         )
         check(
-            "the + sits on the row after the last tab",
-            snap.hit_at(CX, Y0 + 1) == "newtab",
+            "the + sits below the last tab, a pad row clear of it",
+            snap.hit_at(CX, Y0 + 1 + NT_PAD) == "newtab",
+            str(snap.hit_at(CX, Y0 + 1 + NT_PAD)),
+        )
+        check(
+            "and the air between them is nobody's target",
+            snap.hit_at(CX, Y0 + 1) is None,
             str(snap.hit_at(CX, Y0 + 1)),
         )
         p = s.pane(0)
@@ -73,7 +82,8 @@ def test_left_sidebar_reserves_columns():
 def test_sidebar_rows_click_like_the_strip():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
-        s.click(CX, Y0 + 1)  # the + row: a new tab, which becomes the active one
+        # the + row: a new tab, which becomes the active one
+        s.click(CX, Y0 + 1 + NT_PAD)
         s.until(lambda _: len(s.tabs()) == 2)
         check("the + row makes a tab", len(s.tabs()) == 2, str(len(s.tabs())))
         check("...and it is the one you are in", s.tabs()[1]["active"], str(s.tabs()))
@@ -290,8 +300,8 @@ def test_status_cap_spends_its_last_row_on_the_ellipsis():
         )
         check(
             "and only the cap's rows were spent",
-            snap.hit_at(CX, Y0 + 2) == "newtab",
-            str(snap.hit_at(CX, Y0 + 2)),
+            snap.hit_at(CX, Y0 + 2 + NT_PAD) == "newtab",
+            str(snap.hit_at(CX, Y0 + 2 + NT_PAD)),
         )
 
 
@@ -405,12 +415,83 @@ def test_the_sidebar_button_says_what_it_does():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(40)
         snap = s.snapshot()
-        row = _row(snap, Y0 + 1)
+        row = _row(snap, Y0 + 1 + NT_PAD)
         check("a row of its own spells the verb out", "new tab" in row, repr(row))
         check(
             "and the whole row is the target, like a tab's",
-            snap.hit_at(CX + CW - 1, Y0 + 1) == "newtab",
-            str(snap.hit_at(CX + CW - 1, Y0 + 1)),
+            snap.hit_at(CX + CW - 1, Y0 + 1 + NT_PAD) == "newtab",
+            str(snap.hit_at(CX + CW - 1, Y0 + 1 + NT_PAD)),
+        )
+
+
+def test_newtab_pad_is_the_air_before_the_button():
+    """The button is the one row in the list that does not mean "go here", and
+    a sidebar tab is a target the full width of the strip: flush against the
+    tabs, a pointer one row low makes a tab instead of switching to one. The
+    pad is that air, and 0 gives the old flush button back."""
+    n = 3
+    padded = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\nnewtab_pad {n}\n')
+    with Session(SH, cols=90, rows=20, config=padded) as s:
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "the air is not a target",
+            all(snap.hit_at(CX, Y0 + 1 + k) is None for k in range(n)),
+            str([snap.hit_at(CX, Y0 + 1 + k) for k in range(n)]),
+        )
+        check(
+            "the button is that many rows down",
+            snap.hit_at(CX, Y0 + 1 + n) == "newtab",
+            str(snap.hit_at(CX, Y0 + 1 + n)),
+        )
+        p = s.pane(0)
+        check(
+            "the pad is paint, not layout: panes keep their rows",
+            p["y"] <= 2,
+            str(p["y"]),
+        )
+
+    flush = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\nnewtab_pad 0\n')
+    with Session(SH, cols=90, rows=20, config=flush) as s:
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "0 puts it straight under the last tab",
+            snap.hit_at(CX, Y0 + 1) == "newtab",
+            str(snap.hit_at(CX, Y0 + 1)),
+        )
+
+
+def test_newtab_button_false_removes_it_everywhere():
+    """The verb keeps working from the keyboard; only the place to click it
+    goes. A sidebar that is missing it has no `newtab` hit anywhere on it --
+    including as somewhere to drop a pane."""
+    off = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\nnewtab_button false\n')
+    with Session(SH, cols=90, rows=20, config=off) as s:
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "no button on the sidebar",
+            all(h["action"] != "newtab" for h in snap.hits),
+            str([h for h in snap.hits if h["action"] == "newtab"]),
+        )
+        check(
+            "nor the word that spells it out",
+            all("new tab" not in snap.line(y) for y in range(20)),
+            repr([snap.line(y) for y in range(20) if "new tab" in snap.line(y)]),
+        )
+        s.api("new-tab")
+        s.until(lambda _: len(s.tabs()) == 2)
+        check("the verb still makes tabs", len(s.tabs()) == 2, str(len(s.tabs())))
+
+    top = _cfg("newtab_button false\n")
+    with Session(SH, cols=90, rows=20, config=top) as s:
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "and the top strip loses it too",
+            all(h["action"] != "newtab" for h in snap.hits),
+            str([h for h in snap.hits if h["action"] == "newtab"]),
         )
 
 
@@ -419,14 +500,14 @@ def test_a_narrow_sidebar_keeps_the_bare_mark():
     with Session(SH, cols=90, rows=20, config=narrow) as s:
         s.settle(40)
         snap = s.snapshot()
-        row = snap.line(Y0 + 1)[CX : CX + 8]
+        row = snap.line(Y0 + 1 + NT_PAD)[CX : CX + 8]
         check(
             "no room for the word, so it is not said", "new tab" not in row, repr(row)
         )
         check(
             "...but the button is still there",
-            snap.hit_at(CX, Y0 + 1) == "newtab",
-            str(snap.hit_at(CX, Y0 + 1)),
+            snap.hit_at(CX, Y0 + 1 + NT_PAD) == "newtab",
+            str(snap.hit_at(CX, Y0 + 1 + NT_PAD)),
         )
 
 
@@ -492,6 +573,8 @@ if __name__ == "__main__":
     test_compact_shares_its_lines_with_the_ring()
     test_chrome_false_gives_the_columns_back()
     test_the_sidebar_button_says_what_it_does()
+    test_newtab_pad_is_the_air_before_the_button()
+    test_newtab_button_false_removes_it_everywhere()
     test_a_narrow_sidebar_keeps_the_bare_mark()
     test_the_strip_keeps_its_bare_mark()
     test_narrow_terminal_falls_back_to_top()

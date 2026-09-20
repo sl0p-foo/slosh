@@ -57,13 +57,22 @@ tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
 tab_bar_pad 0         // blank rows above the first tab
 tab_bar_chrome true   // frame it like a pane
+newtab_button true    // the `+` at the end of the list
+newtab_pad 1          // ...and the air before it
 ```
 
 A **sidebar lists one tab per row** down the chosen edge, and the panes trade
 the strip's row for its columns. Everything the strip does travels with it:
 click to switch, double-click to rename in place, drag a pane onto a tab or
 onto the `+` — which, given a row of its own and the columns to spare, spells
-itself out as `+ new tab`. The pane count and the prefix badge move
+itself out as `+ new tab`. That button sits `newtab_pad` rows below the last
+tab (columns after it, in the top strip): it is the one row in the list that
+does something other than "go here", and flush against the tabs it is what you
+hit when you meant the last one. The air is paint, not layout — the panes keep
+their rectangle whatever it is, and it is given up before the button is when
+the strip runs out of room. Set `newtab_button false` to drop the button
+altogether; `new-tab` is still a [chord](keys.md) and a palette entry, and a
+pane can no longer be dropped onto it. The pane count and the prefix badge move
 to the sidebar's bottom rows; the [status line](config.md) along the bottom
 keeps the full width. A terminal too narrow to give up the columns falls back
 to the top row until it grows.

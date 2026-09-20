@@ -887,6 +887,14 @@ void config_defaults(config_t *c) {
   snprintf(c->close_mark, sizeof c->close_mark, "\u2715"); /* ✕ close */
   snprintf(c->min_mark, sizeof c->min_mark, "\u25ac"); /* ▬ into the strip */
   snprintf(c->newtab_mark, sizeof c->newtab_mark, "+");
+  c->newtab_button = true;
+  /* One cell of nothing between the last tab and the button. The tabs are a
+   * list where every row (or column) does one thing and the button does a
+   * different one, and flush against the list it is the thing you hit when
+   * you meant the tab above it -- most often in a sidebar, where the target
+   * is a whole row and the pointer only has to be one row low. One is enough
+   * to make the miss a miss rather than a new tab. */
+  c->newtab_pad = 1;
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "[!]");
   c->keep_dead = KEEP_DEAD_COMMANDS;
@@ -1691,6 +1699,12 @@ char *config_render(const config_t *c) {
   cb_qstr(&b, "close_mark", c->close_mark, NULL);
   cb_qstr(&b, "min_mark", c->min_mark, NULL);
   cb_qstr(&b, "newtab_mark", c->newtab_mark, NULL);
+  cb_add(&b, "newtab_button %s       // the + at the end of the tab strip\n",
+         yesno(c->newtab_button));
+  cb_add(&b,
+         "newtab_pad %u             // air before it: rows in a sidebar, "
+         "columns on top\n",
+         c->newtab_pad);
   cb_qstr(&b, "bell_mark", c->bell_mark, NULL);
 
   cb_add(&b, "\n// ---- behaviour ----\n");
@@ -1964,7 +1978,9 @@ static const char *const KNOWN_TOP[] = {
     "multi_attach",
     "min_split",
     "modal_scrim",
+    "newtab_button",
     "newtab_mark",
+    "newtab_pad",
     "padding",
     "pane_buttons",
     "project_layout",
@@ -2258,6 +2274,10 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   if (mm) set_mark(c->min_mark, sizeof c->min_mark, mm);
   const char *nt = kdl_arg(kdl_child(root, "newtab_mark"), 0, NULL);
   if (nt) set_mark(c->newtab_mark, sizeof c->newtab_mark, nt);
+  c->newtab_button =
+      kdl_arg_bool(kdl_child(root, "newtab_button"), 0, c->newtab_button);
+  c->newtab_pad =
+      (uint16_t)kdl_arg_int(kdl_child(root, "newtab_pad"), 0, c->newtab_pad);
   {
     /* `commands` (the default), `all`, or `none`. `true`/`false` are taken as
      * `all`/`none`, because that is what they used to mean here and a config
