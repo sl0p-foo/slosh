@@ -133,7 +133,18 @@ def test_pad_pushes_the_list_down():
 
 
 def _status(s, text):
-    s.send(rf"\e]5577;1;status;{text}\e\\")
+    """The focused pane announces a status, the way a program in it would.
+
+    `raw`, not `send`. They are different directions: `raw` writes the pane's
+    pty, where `cat` echoes the bytes back and the pane's own terminal parses
+    them -- the path a program's output takes. `send` feeds slosh's input
+    decoder instead, which is the path a keystroke from the outer terminal
+    takes, and an OSC arriving there is a reply to slosh, not output from the
+    program. Sent that way the sequence never reaches the pane at all: it is
+    swallowed by the decoder, the status stays empty, and every check below
+    fails against the *next tab's label* on the row it expected a status on.
+    """
+    s.raw(rf"\e]5577;1;status;{text}\e\\")
     s.settle(30)
 
 
