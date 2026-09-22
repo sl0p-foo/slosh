@@ -135,7 +135,16 @@ def test_the_control_socket_lists_and_switches():
     with Session(SH, cols=50, rows=10, config=cfg) as s:
         s.settle(30)
         r = s.api("theme")
-        check("it lists what is installed", r["themes"] == ["lime", "rose"], str(r))
+        check(
+            "it lists what is installed",
+            {"lime", "rose"} <= set(r["themes"]),
+            str(r),
+        )
+        check(
+            "...sorted, and each name once",
+            r["themes"] == sorted(set(r["themes"])),
+            str(r["themes"]),
+        )
         check("...and says which is worn", r["theme"] == "lime", str(r))
         check(
             "...and where it looked, in order",
@@ -210,6 +219,44 @@ def test_saving_into_a_config_that_never_said_anything():
         text = open(cfg).read()
         check("the line is added", 'theme_name "rose"' in text, text)
         check("...and the file it was added to is still there", "gap 1" in text, text)
+
+
+def test_the_shipped_themes_are_found_beside_the_binary():
+    """The compiled-in prefix is a guess about where this build will be
+    installed, and the binary that ends up running may have been packaged under
+    another one, moved, or never installed at all -- so the search also asks
+    the binary where *it* is. This is the case that sent a real config to
+    "no theme named sl0p": themes in /usr/share, a build compiled for
+    /usr/local, and nothing in either of the places it knew to look."""
+    d = home()
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "phosphor"\n')
+    r = subprocess.run([BIN, "--check", cfg], capture_output=True, text=True)
+    check(
+        "a theme nobody copied anywhere is still nameable",
+        r.returncode == 0,
+        r.stderr.strip(),
+    )
+    with Session(SH, cols=50, rows=10, config=cfg) as s:
+        s.settle(30)
+        listed = s.api("theme")
+        check(
+            "and it is in the list",
+            "phosphor" in listed["themes"],
+            str(listed["themes"]),
+        )
+        check(
+            "...found somewhere relative to the binary",
+            any(
+                "contrib/themes" in x or "share/slosh/themes" in x
+                for x in listed["dirs"][1:]
+            ),
+            str(listed["dirs"]),
+        )
+        check(
+            "...with your own directory still searched first",
+            listed["dirs"][0] == os.path.join(d, "themes"),
+            str(listed["dirs"]),
+        )
 
 
 def test_a_theme_may_be_shadowed_by_one_of_yours():
@@ -310,25 +357,29 @@ def test_editing_the_theme_repaints_on_reload():
 # honest preview of a palette meant to dress a whole session.
 
 
-def picker(s):
-    """The picker's rows, as text, without the frame either side."""
-    return [l.strip() for l in s.snapshot().screen().splitlines()]
+# The picker lists every theme that can be named, which includes the ones
+# slosh ships. So these write two nobody else has and narrow to them by typing
+# the prefix -- which is what the query is for, and what a person with a
+# directory of themes does anyway.
+PAIR = {"zzlime": GREEN, "zzrose": PINK}
+
+
+def pair_home():
+    return home(**{n: 'theme { frame_focus "%s" }\n' % c for n, c in PAIR.items()})
 
 
 def test_the_picker_lists_what_can_be_named():
-    d = home(
-        lime='theme { frame_focus "%s" }\n' % GREEN,
-        rose='theme { frame_focus "%s" }\n' % PINK,
-    )
-    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "lime"\n')
+    d = pair_home()
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "zzlime"\n')
     with Session(SH, cols=64, rows=16, config=cfg) as s:
         s.settle(30)
         s.key("t")
         s.settle(30)
         screen = s.snapshot().screen()
         check("it is a picker called themes", "themes" in screen, screen)
-        for name in ("lime", "rose"):
+        for name in ("zzlime", "zzrose"):
             check(f"{name} is listed", name in screen, screen)
+        check("...and so are the shipped ones", "phosphor" in screen, screen)
         check(
             "the config's own theme says so on its row",
             "in your config" in screen,
@@ -342,11 +393,8 @@ def test_the_picker_lists_what_can_be_named():
 
 
 def test_moving_the_selection_wears_the_theme():
-    d = home(
-        lime='theme { frame_focus "%s" }\n' % GREEN,
-        rose='theme { frame_focus "%s" }\n' % PINK,
-    )
-    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "lime"\n')
+    d = pair_home()
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "zzlime"\n')
     with Session(SH, cols=64, rows=16, config=cfg) as s:
         s.settle(30)
         before = frame(s)
@@ -354,69 +402,65 @@ def test_moving_the_selection_wears_the_theme():
         s.settle(30)
         check(
             "opening it changes nothing by itself",
-            s.api("theme")["theme"] == "lime",
+            s.api("theme")["theme"] == "zzlime",
             str(s.api("theme")),
         )
-        s.send(r"\e[B")  # the selection starts on the one being worn
+        s.send("zz")  # narrowed to the two this test wrote
+        s.settle(30)
+        s.send(r"\e[B")
         s.settle(30)
         check(
             "moving to the next one puts it on",
-            s.api("theme")["theme"] == "rose",
+            s.api("theme")["theme"] == "zzrose",
             str(s.api("theme")),
         )
         s.send(r"\x1b")  # escape
         s.settle(30)
         check(
             "escaping puts back what was worn",
-            s.api("theme")["theme"] == "lime",
+            s.api("theme")["theme"] == "zzlime",
             str(s.api("theme")),
         )
         check("...to the cell, not just in the reply", frame(s) == before, frame(s))
 
 
 def test_enter_keeps_it_for_the_session_only():
-    d = home(
-        lime='theme { frame_focus "%s" }\n' % GREEN,
-        rose='theme { frame_focus "%s" }\n' % PINK,
-    )
-    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "lime"\n')
+    d = pair_home()
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "zzlime"\n')
     with Session(SH, cols=64, rows=16, config=cfg) as s:
         s.settle(30)
         s.key("t")
         s.settle(30)
-        s.send(r"\e[B")
+        s.send("zzrose")
         s.settle(30)
         s.send(r"\r")
         s.settle(30)
         screen = s.snapshot().screen()
-        check("the picker is gone", "1 of 2" not in screen, screen)
+        check("the picker is gone", "in your config" not in screen, screen)
         check("...saying it was not written down", "session only" in screen, screen)
         check("the theme stayed", frame(s) == PINK, frame(s))
         check(
             "and your config was not edited by looking at a list",
-            'theme_name "lime"' in open(cfg).read(),
+            'theme_name "zzlime"' in open(cfg).read(),
             open(cfg).read(),
         )
 
 
 def test_ctrl_s_writes_it_down():
-    d = home(
-        lime='theme { frame_focus "%s" }\n' % GREEN,
-        rose='theme { frame_focus "%s" }\n' % PINK,
-    )
-    cfg = write(os.path.join(d, "config.kdl"), '// mine\ntheme_name "lime"\ngap 1\n')
+    d = pair_home()
+    cfg = write(os.path.join(d, "config.kdl"), '// mine\ntheme_name "zzlime"\ngap 1\n')
     with Session(SH, cols=64, rows=16, config=cfg) as s:
         s.settle(30)
         s.key("t")
         s.settle(30)
-        s.send(r"\e[B")
+        s.send("zzrose")
         s.settle(30)
         s.send(r"\x13")  # C-s
         # A reply to wait on: `settle` is fire-and-forget, so reading the file
         # straight after it races the session still writing it.
         s.until_text("written to your config")
         text = open(cfg).read()
-        check("the name is in the config now", 'theme_name "rose"' in text, text)
+        check("the name is in the config now", 'theme_name "zzrose"' in text, text)
         check("...and the rest of the file survived", "// mine" in text, text)
         check(
             "it says so out loud",
@@ -425,7 +469,9 @@ def test_ctrl_s_writes_it_down():
         )
 
 
-def test_with_no_themes_it_says_where_it_looked():
+def test_a_config_with_no_themes_of_its_own_still_has_a_picker():
+    """Nothing in your theme directory is the state everybody starts in, and
+    the answer is the shipped set rather than an empty box."""
     d = home()
     cfg = write(os.path.join(d, "config.kdl"), "gap 1\n")
     with Session(SH, cols=64, rows=16, config=cfg) as s:
@@ -433,8 +479,8 @@ def test_with_no_themes_it_says_where_it_looked():
         s.key("t")
         s.settle(30)
         screen = s.snapshot().screen()
-        check("no empty box", "themes" not in screen.split("\n")[4], screen)
-        check("a toast naming the directory instead", "no themes in" in screen, screen)
+        check("the picker opened", "themes" in screen, screen)
+        check("with the shipped themes in it", "phosphor" in screen, screen)
 
 
 if __name__ == "__main__":
@@ -448,6 +494,7 @@ if __name__ == "__main__":
     test_a_switch_survives_the_next_reload()
     test_saving_writes_one_line_and_leaves_the_rest_alone()
     test_saving_into_a_config_that_never_said_anything()
+    test_the_shipped_themes_are_found_beside_the_binary()
     test_a_theme_may_be_shadowed_by_one_of_yours()
     test_the_seed_config_offers_a_name_rather_than_a_palette()
     test_a_dumped_theme_is_a_theme()
@@ -456,5 +503,5 @@ if __name__ == "__main__":
     test_moving_the_selection_wears_the_theme()
     test_enter_keeps_it_for_the_session_only()
     test_ctrl_s_writes_it_down()
-    test_with_no_themes_it_says_where_it_looked()
+    test_a_config_with_no_themes_of_its_own_still_has_a_picker()
     sys.exit(report())

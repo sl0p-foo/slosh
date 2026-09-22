@@ -324,10 +324,17 @@ Unset, the compiled\-in palette stands.
 Where those files live.
 Unset, it is
 .I themes/
-beside the configuration file, and then
-.IR PREFIX/share/slosh/themes/ ,
-so a shipped theme is nameable without being copied and one of yours
-with the same name shadows it.
+beside the configuration file, and then the shipped themes, found
+relative to the running binary
+.RI ( <bin>/../share/slosh/themes ,
+or
+.I <repo>/contrib/themes
+out of a build tree) and finally under the prefix this build was
+compiled with.
+A shipped theme is therefore nameable without being copied, and one of
+yours with the same name shadows it.
+.B \(aq{"cmd":"theme"}\(aq
+reports the directories in the order they are searched.
 .PP
 .B theme { }
 names every colour the compositor draws (frames, titles, tabs,

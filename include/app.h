@@ -5,6 +5,7 @@
 #ifndef SLOSH_APP_H
 #define SLOSH_APP_H
 
+#include "config.h"
 #include "graphics.h"
 #include "kdl.h"
 #include "project.h"
@@ -74,7 +75,7 @@ bool app_set_theme(const char *name, bool save, char *err, size_t errcap);
 const char *app_theme(void);
 /* What there is to pick from, and where it was looked for. Through the app
  * rather than the config, because the front ends do not own a config. */
-size_t app_themes(char (*out)[64], size_t max);
+size_t app_themes(char (*out)[THEME_NAME_MAX], size_t max);
 size_t app_theme_dirs(char (*out)[512], size_t max);
 /* The files the config in force was read from: the one that was loaded and
  * everything it included, existing or not. What the watcher watches. */

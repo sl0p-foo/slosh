@@ -524,8 +524,8 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     }
     char names[64][64];
     size_t n = app_themes(names, 64);
-    char dirs[4][512];
-    size_t nd = app_theme_dirs(dirs, 4);
+    char dirs[THEME_DIRS_MAX][512];
+    size_t nd = app_theme_dirs(dirs, THEME_DIRS_MAX);
     json_t j;
     json_init(&j);
     json_obj_open(&j, NULL);

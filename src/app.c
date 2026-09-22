@@ -1677,8 +1677,8 @@ bool run_action(app_t *a, action_t act) {
      * session started is exactly the one being looked for. */
     a->nthemes = app_themes(a->themes, THEMES_MAX);
     if (!a->nthemes) {
-      char dirs[4][512];
-      size_t nd = app_theme_dirs(dirs, 4);
+      char dirs[THEME_DIRS_MAX][512];
+      size_t nd = app_theme_dirs(dirs, THEME_DIRS_MAX);
       char msg[600];
       snprintf(msg, sizeof msg, "no themes in %s",
                nd ? dirs[0]

@@ -79,13 +79,21 @@ pasted into a config are none of those — and they freeze the palette at the
 moment they were pasted, so every later improvement to the theme they came from
 is one you never see.
 
-**Two directories, yours first.** `themes/` beside your config (so
-`~/.config/slosh/themes` for the usual one), then the themes slosh installed in
-`<prefix>/share/slosh/themes`. A shipped theme is therefore nameable without
-being copied anywhere, and a file of yours with the same name shadows it —
-which is how you edit a shipped theme without touching a root-owned file. Point
-`theme_dir` somewhere else and that replaces the first of the two, never the
-shipped set.
+**Yours first, then the ones that ship with slosh.** `themes/` beside your
+config (so `~/.config/slosh/themes` for the usual one), and then the shipped
+set, found **relative to the binary that is running**: `<bin>/../share/slosh/themes`
+for an installed slosh, `<repo>/contrib/themes` when you are running one out of
+a build tree, and the prefix the build was compiled with as a last resort. The
+binary is asked where it is rather than trusting the compiled-in prefix alone,
+because the two disagree all the time — a distro builds with `PREFIX=/usr`
+while the default is `/usr/local`, and a binary can be moved after the fact.
+
+A shipped theme is therefore nameable without being copied anywhere, and a file
+of yours with the same name shadows it — which is how you edit a shipped theme
+without touching a root-owned file. `theme_dir` replaces the first of those
+directories, never the shipped set. `cmd theme` reports the whole list in
+`dirs`, in the order it searches, which is what to read when a name is not
+found.
 
 `theme_name` takes a **name, not a path**: the directory is what makes a theme
 switchable, listable and shadowable, and a path quietly does none of that. For

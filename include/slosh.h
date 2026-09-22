@@ -137,6 +137,9 @@ const char *path_base(const char *path);
 const char *path_relative(const char *path, const char *base);
 /* mkdir -p, for the directory a config or a session socket wants to live in. */
 bool path_mkdirs(const char *dir);
+/* This binary's own path, from the kernel rather than from argv[0]. What lets
+ * slosh find the files installed beside it without being told where they are. */
+bool path_self(char *out, size_t cap);
 
 /* ---- the shell a pane gets when nothing else is said -------------------- */
 

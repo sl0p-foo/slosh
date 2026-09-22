@@ -153,6 +153,10 @@ enum {
 #define THEMES_MAX 64
 #define THEME_NAME_MAX 64
 
+/* How many directories a theme is looked for in: yours, two derived from
+ * where the binary is, and the prefix this build was compiled with. */
+#define THEME_DIRS_MAX 4
+
 typedef struct {
   /* geometry */
   uint16_t gap, gap_aspect;

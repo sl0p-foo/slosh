@@ -2268,23 +2268,56 @@ static void include_path(const char *base_file, const char *ref, char *out,
  * being copied anywhere first, and a theme of yours with the same name wins
  * by being looked at first. `theme_dir` replaces the first of the two, not
  * both, so naming your own directory never hides the shipped set. */
+/* Append a candidate, skipping one that is already in the list: the lookup
+ * below names the same directory two ways on an ordinary install, and a
+ * "looked in" message that says it twice reads like a bug. */
+static void dir_add(char (*out)[512], size_t *n, size_t max, const char *fmt,
+                    ...) {
+  if (*n >= max) return;
+  char path[512];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(path, sizeof path, fmt, ap);
+  va_end(ap);
+  for (size_t i = 0; i < *n; i++)
+    if (strcmp(out[i], path) == 0) return;
+  snprintf(out[(*n)++], 512, "%s", path);
+}
+
 size_t config_theme_dirs(const config_t *c, char (*out)[512], size_t max) {
   size_t n = 0;
-  if (n < max) {
-    if (c && c->theme_dir && *c->theme_dir) {
-      snprintf(out[n++], 512, "%s", c->theme_dir);
-    } else {
-      /* files[0] is the file this config was loaded from -- remembered before
-       * it was parsed, so it is right even for a file that turned out not to
-       * exist. Only a config nobody has loaded falls back to where one would
-       * have been. */
-      const char *root = c && c->nfiles ? c->files[0] : config_default_path();
-      char dir[512];
-      snprintf(out[n++], 512, "%s/themes", path_dir(root, dir, sizeof dir));
-    }
+  if (c && c->theme_dir && *c->theme_dir) {
+    dir_add(out, &n, max, "%s", c->theme_dir);
+  } else {
+    /* files[0] is the file this config was loaded from -- remembered before
+     * it was parsed, so it is right even for a file that turned out not to
+     * exist. Only a config nobody has loaded falls back to where one would
+     * have been. */
+    const char *root = c && c->nfiles ? c->files[0] : config_default_path();
+    char dir[512];
+    dir_add(out, &n, max, "%s/themes", path_dir(root, dir, sizeof dir));
+  }
+
+  /* Then the shipped ones, found relative to *this binary* before anything
+   * compiled in. A build compiles in one PREFIX; the binary that ends up
+   * running may have been packaged under another (a distro building with
+   * PREFIX=/usr while the default is /usr/local is the common case), moved,
+   * or never installed at all. `<bin>/../share/slosh/themes` is true in all of
+   * those, and the checkout's own `contrib/themes` covers the last one, so a
+   * build tree can name a theme without installing anything first. */
+  char self[512];
+  if (path_self(self, sizeof self)) {
+    char bindir[512], updir[512];
+    const char *up =
+        path_dir(path_dir(self, bindir, sizeof bindir), updir, sizeof updir);
+    dir_add(out, &n, max, "%s/share/slosh/themes", up);
+    dir_add(out, &n, max, "%s/contrib/themes", up);
   }
 #ifdef SLOSH_DATADIR
-  if (n < max) snprintf(out[n++], 512, "%s/themes", SLOSH_DATADIR);
+  /* Last, and usually a repeat of the first of those: the prefix this build
+   * was told it would be installed under, which is the only answer left when
+   * the binary sits somewhere that says nothing about its data. */
+  dir_add(out, &n, max, "%s/themes", SLOSH_DATADIR);
 #endif
   return n;
 }
@@ -2292,8 +2325,8 @@ size_t config_theme_dirs(const config_t *c, char (*out)[512], size_t max) {
 /* A theme's file, or false with the places that were looked in. */
 static bool theme_path(const config_t *c, const char *name, char *out,
                        size_t cap, char *tried, size_t triedcap) {
-  char dirs[4][512];
-  size_t nd = config_theme_dirs(c, dirs, 4);
+  char dirs[THEME_DIRS_MAX][512];
+  size_t nd = config_theme_dirs(c, dirs, THEME_DIRS_MAX);
   if (tried && triedcap) tried[0] = 0;
   for (size_t i = 0; i < nd; i++) {
     char path[1024];
@@ -2330,8 +2363,8 @@ static int by_theme_name(const void *a, const void *b) {
 
 size_t config_themes(const config_t *c, char (*out)[THEME_NAME_MAX],
                      size_t max) {
-  char dirs[4][512];
-  size_t nd = config_theme_dirs(c, dirs, 4), n = 0;
+  char dirs[THEME_DIRS_MAX][512];
+  size_t nd = config_theme_dirs(c, dirs, THEME_DIRS_MAX), n = 0;
   for (size_t i = 0; i < nd && n < max; i++) {
     DIR *d = opendir(dirs[i]);
     if (!d) continue; /* a directory nobody made is the normal case */

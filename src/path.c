@@ -6,6 +6,7 @@
  * session happened to be in. Silently \u2014 which is the worst way for a path to
  * be wrong, because the pane still starts and still works.
  */
+#define _GNU_SOURCE
 #include "slosh.h"
 
 #include <sys/stat.h>
@@ -14,6 +15,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#ifdef __APPLE__
+#include <mach-o/dyld.h> /* Darwin has no /proc/self/exe */
+#endif
+#ifdef _WIN32
+#include "compat_win.h"
+#endif
 
 /* Whether a path names a place outright, rather than one to be read against
  * somewhere else.
@@ -147,6 +156,37 @@ const char *path_relative(const char *path, const char *base) {
   if (path[n] != '/') return path; /* /dev/apiary is not under /dev/api */
   const char *rest = path + n + 1;
   return *rest ? rest : ".";
+}
+
+/* This binary, as a path: what the program can find *relative to itself*.
+ *
+ * Read from the kernel rather than from argv[0], which is whatever the caller
+ * felt like passing. It is how the shipped themes are found without being told
+ * where they are: a build compiles in a PREFIX, but the binary that ends up
+ * running may have been installed under a different one, packaged by somebody
+ * else, or not installed at all -- and `<the binary>/../share/slosh` is true in
+ * every one of those cases while a compiled-in guess is true in one.
+ */
+bool path_self(char *out, size_t cap) {
+  if (!out || cap < 2) return false;
+#ifdef _WIN32
+  return sl_self_exe(out, cap);
+#elif defined(__APPLE__)
+  char raw[1024];
+  uint32_t sz = sizeof raw;
+  /* What Darwin hands back can still hold symlinks and `..`; realpath
+   * finishes the job, and falls back to the raw answer rather than to
+   * nothing. */
+  if (_NSGetExecutablePath(raw, &sz) != 0) return false;
+  char resolved[1024];
+  snprintf(out, cap, "%s", realpath(raw, resolved) ? resolved : raw);
+  return true;
+#else
+  ssize_t n = readlink("/proc/self/exe", out, cap - 1);
+  if (n <= 0) return false;
+  out[n] = 0;
+  return true;
+#endif
 }
 
 /* Create a directory and everything above it. `mkdir` of one level is enough
