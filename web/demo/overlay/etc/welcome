@@ -11,8 +11,9 @@
    that booted inside your browser tab. The machine is
    throwaway; the real thing is not.
 
-   Three things to try:
+   Four things to try:
      [35mC-a Enter[0m   split the pane you are in
+     [35mC-a t[0m       every theme, worn as you browse
      [35mC-a e[0m       the config, in vim; saving applies [1mlive[0m
      [35mC-a ?[0m       every key, from the bindings in force
 

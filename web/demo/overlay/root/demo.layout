@@ -37,10 +37,11 @@ layout {
         // command that exited would leave a corpse; this one only ends when
         // the pane closes), and the float's shadow plus everyone else's
         // dim_unfocused make it read as the dialog it is.
-        // Size is the text's (56 columns of it, plus the frame); position is
+        // Size is the text's (56 columns and 21 rows of it, plus the frame);
+        // position is
         // deliberately absent, so the float takes the centred default at
         // whatever size the browser gave the terminal. A smaller screen
         // clamps the rect and nothing is owed.
-        pane floating=true focus=true w=62 h=22 purpose="demo:hello" command="cat /etc/welcome; exec cat"
+        pane floating=true focus=true w=62 h=23 purpose="demo:hello" command="cat /etc/welcome; exec cat"
     }
 }

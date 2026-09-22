@@ -194,6 +194,20 @@ def phase_shell(cfg_dir, image, kernel, bios, mem, timeout):
             if not vm.expect(r"CHECK_RC=0", timeout=30):
                 return f"{path} did not pass --check", vm.tail()
 
+        # The themes ship as files in the overlay and the config names one,
+        # so the guest has to be able to find them by name -- which is the
+        # whole of what `C-a t` lists. HOME because this phase boots straight
+        # to a shell and skips the profile a real boot reads: the theme
+        # directory is `themes/` beside the config, and the config is found
+        # under $HOME.
+        vm.send(
+            "HOME=/root /usr/bin/slosh --script --cols 40 --rows 8 "
+            "-- /bin/sh -c 'sleep 1' <<'EOF'\n"
+            '{"cmd":"theme"}\nEOF\n'
+        )
+        if not vm.expect(r'"theme":"sl0p".*"phosphor"', timeout=60):
+            return "the shipped themes are not nameable in the guest", vm.tail()
+
         # vim, with the runtime pruned to syntax highlighting: prove the prune
         # kept enough. Batch ex mode loads synload.vim and filetype detection
         # exactly the way `:syntax on` does, and writes what it found -- if

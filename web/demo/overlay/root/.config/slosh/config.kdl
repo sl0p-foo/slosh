@@ -6,7 +6,10 @@
 // thing to ship to a browser.
 
 // The palette. Every theme the repo ships is in themes/ right here, so
-// swapping the whole look is editing one word and saving:
+// swapping the whole look is editing one word and saving -- or pressing
+// `C-a t`, which lists them and puts each one on as you arrow through it
+// (`C-s` in that list writes the name back into this file, `esc` puts back
+// what you were wearing):
 //
 //   sl0p        hot pink on near-black (this one)
 //   phosphor    a green terminal remembering being a VT220

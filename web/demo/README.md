@@ -128,13 +128,18 @@ which is the whole of what makes it ours:
 | `etc/init.d/rcS` | mounts, and `devpts` in particular: no devpts, no panes |
 | `etc/profile` | the environment every pane inherits, `COLORTERM` included |
 | `etc/motd` | five lines, shown in a pane rather than on the console |
-| `root/.config/slosh/config.kdl` | the demo's config: the `sl0p` theme |
+| `root/.config/slosh/config.kdl` | the demo's config: `theme_name "sl0p"`, and the knobs worth uncommenting |
+| `root/.config/slosh/themes/` | every theme the repository ships, so `C-a t` has a list to offer |
 | `root/.vimrc` | syntax on, truecolor, and nothing that wants the pruned parts |
 | `root/demo.layout` | the three panes you land in |
 
-The theme is a symlink to `contrib/themes/sl0p.kdl`, so the demo cannot drift
-from the palette the repository ships; `build-rootfs` copies it by content,
-because a symlink in the image would dangle.
+The themes are symlinks into `contrib/themes/`, so the demo cannot drift from
+the palettes the repository ships; `build-rootfs` copies them by content,
+because a symlink in the image would dangle. They live where a person's own
+would (`~/.config/slosh/themes`), which is also the directory `theme_name` and
+the `C-a t` picker look in first -- the guest binary sits in `/usr/bin` with no
+`share/slosh` beside it, so that directory is the whole list, and `boot-check`
+asks the guest for it rather than trusting that.
 
 Editing anything in `overlay/` and running `make` rebuilds the image. There is
 no state to clear: the emulator's writes live in the browser's memory and die
