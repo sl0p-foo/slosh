@@ -2089,6 +2089,7 @@ struct tabstatus {
      * of it could ever be shown. */
     char text[256];
     uint32_t pane;
+    bool busy; /* the program says this is still happening */
   } row[16];
   size_t n;     /* rows kept */
   size_t total; /* rows there were, so the cap can say "and more" */
@@ -2107,6 +2108,7 @@ static void tabstatus_cb(node_t *n, void *ud) {
   if (ts->n >= sizeof ts->row / sizeof *ts->row) return;
   snprintf(ts->row[ts->n].text, sizeof ts->row[0].text, "%s", text);
   ts->row[ts->n].pane = n->id;
+  ts->row[ts->n].busy = pane_status_busy(n->pane);
   ts->n++;
 }
 
@@ -2137,6 +2139,46 @@ static void mark_cut(char *row, size_t cap, uint16_t width) {
   }
   size_t len = strlen(row);
   if (len + 4 <= cap) memcpy(row + len, "\u2026", 4);
+}
+
+/* One frame of `busy_mark`, by wall clock, into `out`; false when the mark is
+ * empty. `spins` says whether the mark has more than one frame in it, which is
+ * the only thing that costs the session a frame clock -- a static mark is a
+ * mark, and a mark does not need repainting.
+ *
+ * Time rather than a counter for the same reason the rest of this file derives
+ * rather than remembers: two sidebars drawn from one session (several clients
+ * attached) show the same frame, and a frame dropped under load is a frame
+ * skipped rather than a spinner that limps behind. */
+static bool busy_frame(char *out, size_t cap, bool *spins) {
+  const char *m = CFG.busy_mark;
+  *spins = false;
+  while (*m == ' ') m++;
+  if (!*m) return false;
+  size_t n = 0;
+  const char *starts[16];
+  size_t lens[16];
+  for (const char *p = m; *p && n < 16;) {
+    while (*p == ' ') p++;
+    if (!*p) break;
+    const char *e = p;
+    while (*e && *e != ' ') e++;
+    starts[n] = p;
+    lens[n] = (size_t)(e - p);
+    n++;
+    p = e;
+  }
+  if (!n) return false;
+  *spins = n > 1;
+  size_t i = 0;
+  if (n > 1) {
+    uint16_t step = CFG.busy_ms ? CFG.busy_ms : 120;
+    i = (size_t)((uint64_t)(now_ms_() / step) % n);
+  }
+  size_t len = lens[i] < cap - 1 ? lens[i] : cap - 1;
+  memcpy(out, starts[i], len);
+  out[len] = 0;
+  return true;
 }
 
 #define STATUS_WRAP_MAX 8 /* rows one status may ever take */
@@ -2377,6 +2419,21 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
       color_t band = TAB_STATUS_BG;
       if (lines > 1 && (j % 2)) band = TAB_STATUS_STRIPE;
 
+      /* A pane that says it is still working: its rows in the busy colour,
+       * and a spinner in the column the padding would otherwise leave blank.
+       * The mark goes on the first row only -- it belongs to the status, not
+       * to each line it wrapped onto -- and the colour carries the rest,
+       * which is also what a sidebar with no padding to spare falls back to.
+       *
+       * This is the one thing a status line cannot say about itself: the text
+       * of a finished `make test` and a running one is the same text. */
+      bool busy = ts.row[j].busy;
+      char spin[16] = "";
+      bool spins = false;
+      bool marked =
+          busy && CFG.tab_pad_left && busy_frame(spin, sizeof spin, &spins);
+      if (marked && spins) a->animating = true;
+
       for (size_t k = 0; k < nrows[j] && y < limit; k++, y++) {
         char text[STATUS_ROW_CAP + 8];
         /* One leading space, which is the label's own -- a status starts in
@@ -2397,8 +2454,19 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
          * would be left with none -- tab_status_fg/bg are there for themes
          * that do. The hover brightening doubles as the affordance that the
          * row is a door; the hint under the pointer says where it leads. */
-        screen_text(s, cx, y, text, hot ? TAB_HOVER : TAB_STATUS_FG, band,
-                    hot ? ATTR_BOLD : ATTR_ITALIC);
+        screen_text(s, cx, y, text,
+                    hot    ? TAB_HOVER
+                    : busy ? TAB_STATUS_BUSY
+                           : TAB_STATUS_FG,
+                    band, hot ? ATTR_BOLD : ATTR_ITALIC);
+        /* In the indent, against the text rather than against the frame, and
+         * on the first row only: the mark belongs to the status, not to each
+         * line it wrapped onto. It takes a column the padding was holding
+         * blank, so nothing moves when a program starts or stops working --
+         * a list that reflowed on every `make` would be worse than no mark. */
+        if (marked && k == 0)
+          screen_text(s, (uint16_t)(cx + CFG.tab_pad_left - 1), y, spin,
+                      hot ? TAB_HOVER : TAB_STATUS_BUSY, band, 0);
         char act[24];
         snprintf(act, sizeof act, "find:%u", ts.row[j].pane);
         hit_add(&s->hits, cx, y, cw, 1, act);

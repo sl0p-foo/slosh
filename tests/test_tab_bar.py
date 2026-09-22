@@ -495,6 +495,134 @@ def test_status_rows_are_told_apart_by_the_slant_not_by_an_indent():
         )
 
 
+def _busy(s, on=True):
+    s.raw('printf "\\e]5577;1;busy;%s\\x07"\\n' % ("1" if on else "0"))
+
+
+def test_a_busy_status_says_so():
+    """The text of a running `make test` and a finished one is the same text,
+    so the row says it instead: the busy colour, and a mark in the column the
+    padding holds blank."""
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        _status(s, "make test")
+        snap = s.snapshot()
+        idle = snap.style_at(CX + 1, Y0 + 1)
+        check("a plain status is ambient", idle["fg"] == "#5a6a8f", str(idle))
+        check(
+            "...and nothing sits in the indent",
+            snap.line(Y0 + 1)[CX] == " ",
+            repr(_row(snap, Y0 + 1)),
+        )
+
+        _busy(s)
+        s.settle(30)
+        snap = s.snapshot()
+        hot = snap.style_at(CX + 1, Y0 + 1)
+        check("busy turns the row's own colour", hot["fg"] == "#7aa2f7", str(hot))
+        check(
+            "and a spinner lands in the indent",
+            snap.line(Y0 + 1)[CX] != " ",
+            repr(_row(snap, Y0 + 1)),
+        )
+        check(
+            "...where it moves nothing: the text is where it was",
+            _row(snap, Y0 + 1).index("make test") == 1,
+            repr(_row(snap, Y0 + 1)),
+        )
+
+        _busy(s, False)
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "done puts it back",
+            snap.style_at(CX + 1, Y0 + 1)["fg"] == "#5a6a8f"
+            and snap.line(Y0 + 1)[CX] == " ",
+            repr(_row(snap, Y0 + 1)),
+        )
+
+
+def test_a_spinner_costs_a_frame_clock_and_a_mark_does_not():
+    """Several frames turn, one frame is a mark -- and only the turning one is
+    worth repainting the session for, only while it is on screen."""
+    one = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\nbusy_mark "*"\n')
+    with Session(SH, cols=90, rows=20, config=one) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        check(
+            "the static mark is drawn",
+            s.snapshot().line(Y0 + 1)[CX] == "*",
+            repr(_row(s.snapshot(), Y0 + 1)),
+        )
+        check(
+            "and asks for no clock",
+            s.api("deadline")["ms"] == -1,
+            str(s.api("deadline")),
+        )
+
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        _status(s, "make test")
+        s.settle(30)
+        s.snapshot()
+        check(
+            "an idle sidebar wants no clock either",
+            s.api("deadline")["ms"] == -1,
+            str(s.api("deadline")),
+        )
+        _busy(s)
+        s.settle(30)
+        # The deadline is a property of the frame that was composed, like
+        # `animating` itself -- so ask for a frame before asking when the next
+        # one is wanted.
+        s.snapshot()
+        check(
+            "a spinner on screen asks for one",
+            s.api("deadline")["ms"] > 0,
+            str(s.api("deadline")),
+        )
+        _busy(s, False)
+        s.settle(30)
+        s.snapshot()
+        check(
+            "...and gives it back when the work stops",
+            s.api("deadline")["ms"] == -1,
+            str(s.api("deadline")),
+        )
+
+
+def test_no_busy_mark_leaves_the_colour_to_say_it():
+    quiet = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\nbusy_mark ""\n')
+    with Session(SH, cols=90, rows=20, config=quiet) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        snap = s.snapshot()
+        check("no mark", snap.line(Y0 + 1)[CX] == " ", repr(_row(snap, Y0 + 1)))
+        check(
+            "but the row still says it is running",
+            snap.style_at(CX + 1, Y0 + 1)["fg"] == "#7aa2f7",
+            str(snap.style_at(CX + 1, Y0 + 1)),
+        )
+
+
+def test_the_busy_colour_is_the_themes_own():
+    themed = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        'theme { tab_status_busy "#ff00ff" }\n'
+    )
+    with Session(SH, cols=90, rows=20, config=themed) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        st = s.snapshot().style_at(CX + 1, Y0 + 1)
+        check("named, it wins", st["fg"] == "#ff00ff", str(st))
+
+
 def test_status_rows_take_their_own_theme_colours():
     themed = _cfg(
         f'tab_bar_side "left"\ntab_bar_width {W}\n'
@@ -1110,6 +1238,10 @@ if __name__ == "__main__":
     test_a_theme_can_have_the_bare_tabs_back()
     test_status_rows_sit_under_their_tab()
     test_status_rows_are_told_apart_by_the_slant_not_by_an_indent()
+    test_a_busy_status_says_so()
+    test_a_spinner_costs_a_frame_clock_and_a_mark_does_not()
+    test_no_busy_mark_leaves_the_colour_to_say_it()
+    test_the_busy_colour_is_the_themes_own()
     test_status_rows_take_their_own_theme_colours()
     test_an_old_theme_gets_coherent_status_colours_anyway()
     test_a_monochrome_theme_stays_monochrome()

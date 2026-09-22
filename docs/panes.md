@@ -98,6 +98,17 @@ way: **the statuses give way before the tabs do**, because the list is how you
 navigate and a status is only an annotation on it — a talkative pane must not
 be able to cost you a tab you can click.
 
+**A pane can say its status is still happening**, and the sidebar says so back:
+`busy` over OSC 5577 turns that row `tab_status_busy` and puts a spinner
+(`busy_mark`) in the column the padding holds blank — so `make test` running and
+`make test` finished, which are the same words, stop looking the same from
+another tab. Nothing moves when it flips, since the mark takes a column that
+was already there; `tab_bar_padding 0 2` gives it a gutter of its own. One frame
+in `busy_mark` is a static mark and costs nothing, several make it turn, and the
+session only keeps a frame clock while such a row is actually on screen. The
+flag dies with the program: a status left behind by something that exited
+describes the past.
+
 **`tab_bar_padding` is the air inside the strip**, between its frame and the
 list: 1, 2 or 4 values in CSS order, the shape [`padding`](config.md) takes for
 a pane. In cells rather than `padding`'s rows-times-`gap_aspect`, because the

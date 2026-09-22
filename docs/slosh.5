@@ -211,6 +211,18 @@ Whether a pane's bell shows at all (the mark, and the frame effect).
 .BR zoom_mark ,\ zoom_on_mark ,\ close_mark ,\ min_mark ,\ newtab_mark ,\ bell_mark
 The glyphs themselves, each one string.
 .TP
+.BR busy_mark\  \fIframes\fR ,\ busy_ms\  \fIn\fR
+What a pane whose status says it is still working shows in a sidebar, and
+how long a frame of it is held.
+.B busy_mark
+is the spinner's frames separated by spaces; one frame is a static mark and
+costs nothing, several make it turn, and the session keeps a frame clock only
+while such a row is on screen. Empty draws no mark and leaves
+.B tab_status_busy
+to say it. The mark sits in the column
+.B tab_bar_padding
+holds blank, so nothing moves when a program starts or stops working.
+.TP
 .BR newtab_button\  \fIbool\fR ,\ newtab_pad\  \fIn\fR
 The new-tab button at the end of the tab strip, and the air between it and
 the last tab \(em \fIn\fR blank rows in a sidebar, \fIn\fR blank columns in

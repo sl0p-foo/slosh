@@ -26,7 +26,7 @@ THEMES = sorted(glob.glob(os.path.join(THEMEDIR, "*.kdl")))
 # from colours the theme does define (so a theme gets them in its own family
 # without a line), and the opt-in ones are unset on purpose, because a band
 # behind a row takes a translucent terminal's own background away.
-DERIVED = {"tab_status_fg", "tab_status_stripe", "tab_idle_bg"}
+DERIVED = {"tab_status_fg", "tab_status_stripe", "tab_status_busy", "tab_idle_bg"}
 OPT_IN = {"tab_status_bg", "attach_bg"}
 # The scrollback search tints: one theme in contrib names them and the rest
 # take the compiled-in pair, which reads the same on every palette here.

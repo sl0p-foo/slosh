@@ -696,6 +696,7 @@ static const struct {
     {"tab_count", offsetof(config_t, tab_count)},
     {"tab_status_fg", offsetof(config_t, tab_status_fg)},
     {"tab_status_bg", offsetof(config_t, tab_status_bg)},
+    {"tab_status_busy", offsetof(config_t, tab_status_busy)},
     {"tab_status_stripe", offsetof(config_t, tab_status_stripe)},
     {"status", offsetof(config_t, status)},
     {"status_state", offsetof(config_t, status_state)},
@@ -937,6 +938,14 @@ void config_defaults(config_t *c) {
   c->newtab_pad = 1;
   c->bell_indicator = true;
   snprintf(c->bell_mark, sizeof c->bell_mark, "[!]");
+  /* Braille, because it is one cell wide in every terminal that has the
+   * glyphs and reads as motion rather than as a character that changed. A
+   * terminal without them gets a single frame of nothing useful, which is
+   * what `busy_mark "*"` (or "") is for. */
+  snprintf(c->busy_mark, sizeof c->busy_mark,
+           "\u280b \u2819 \u2839 \u2838 \u283c \u2834 \u2826 \u2827 "
+           "\u2807 \u280f");
+  c->busy_ms = 120;
   c->keep_dead = KEEP_DEAD_COMMANDS;
   /* Gentle: an unfocused pane is one you are still reading half the time.
    * At 60 white text lands on #c3c3c3, which reads as "not this one" without
@@ -1126,6 +1135,10 @@ void config_defaults(config_t *c) {
    * to. The slant already says what it is; this says it is worth reading. */
   c->tab_status_fg = blend(dim, accent, 40);
   c->tab_status_bg = (color_t){0}; /* none: the terminal's own background */
+  /* All the way to the accent: a running thing is the one item in a list of
+   * annotations that is still moving, and the spinner beside it is already
+   * saying so -- the colour is what makes it findable without looking. */
+  c->tab_status_busy = accent;
   /* Barely off the background: the stripe has to say "different pane", not
    * "selected". Only drawn when statuses can wrap -- see tab_bar_status_lines
    * -- so an unwrapped sidebar keeps its transparent rows. */
@@ -1807,6 +1820,10 @@ char *config_render(const config_t *c) {
          "columns on top\n",
          c->newtab_pad);
   cb_qstr(&b, "bell_mark", c->bell_mark, NULL);
+  cb_qstr(&b, "busy_mark", c->busy_mark,
+          "// a busy pane's spinner; one frame is a static mark");
+  cb_add(&b, "busy_ms %u            // how long a spinner frame is held\n",
+         c->busy_ms);
 
   cb_add(&b, "\n// ---- behaviour ----\n");
   cb_add(&b, "focus_follows_mouse %s\n", yesno(c->focus_follows_mouse));
@@ -2211,6 +2228,8 @@ static const char *const KNOWN_TOP[] = {
     "attach_indicator",
     "bell_indicator",
     "bell_mark",
+    "busy_mark",
+    "busy_ms",
     "close_mark",
     "compact",
     "ctrl_d_exits",
@@ -2760,6 +2779,9 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       kdl_arg_bool(kdl_child(root, "bell_indicator"), 0, c->bell_indicator);
   const char *bm = kdl_arg(kdl_child(root, "bell_mark"), 0, NULL);
   if (bm) set_mark(c->bell_mark, sizeof c->bell_mark, bm);
+  const char *busym = kdl_arg(kdl_child(root, "busy_mark"), 0, NULL);
+  if (busym) snprintf(c->busy_mark, sizeof c->busy_mark, "%s", busym);
+  c->busy_ms = (uint16_t)kdl_arg_int(kdl_child(root, "busy_ms"), 0, c->busy_ms);
 
   const kdl_node_t *mins = kdl_child(root, "min_split");
   if (mins) {
@@ -2938,6 +2960,9 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
      * different row at a glance, not enough to read as a highlight. */
     if (!kdl_child(theme, "tab_status_stripe"))
       c->tab_status_stripe = blend(c->default_bg, c->tab_hover, 12);
+    /* The busy one is the theme's own accent, which is what it uses for
+     * "this one" everywhere else. */
+    if (!kdl_child(theme, "tab_status_busy")) c->tab_status_busy = c->tab_hover;
   }
   /* After the theme, so the wash follows whatever scroll_bg the theme just
    * chose -- a config that wrote its own `scrolled` chain keeps it, whether

@@ -7,6 +7,7 @@ ones: a pane's own output is untrusted input.
 """
 
 import sys
+import tempfile
 import time
 
 from harness import Session, check, report
@@ -156,6 +157,68 @@ def test_replace_and_clear():
             "second" not in bottom() and "[A]" not in bottom(),
             repr(bottom()),
         )
+
+
+def test_busy_is_its_own_flag():
+    """`busy` says whether what the status describes is still happening -- the
+    one thing the text cannot say about itself. A flag rather than a field of
+    `status`, because a status is the whole payload after the verb and adding
+    to that line would change what every existing sender means."""
+    with Session(shell(), cols=50, rows=8) as s:
+        s.settle()
+        busy = lambda: s.panes()[0]["busy"]
+
+        s.raw(emit_cmd("1;status;make test"))
+        s.settle()
+        check("a status on its own is not busy", not busy(), str(s.panes()[0]))
+        check(
+            "...and the text arrived",
+            s.panes()[0]["status"] == "make test",
+            str(s.panes()[0]),
+        )
+
+        s.raw(emit_cmd("1;busy;1"))
+        s.settle()
+        check("busy;1 sets it", busy(), str(s.panes()[0]))
+        check(
+            "...without touching the text",
+            s.panes()[0]["status"] == "make test",
+            str(s.panes()[0]),
+        )
+
+        s.raw(emit_cmd("1;status;make install"))
+        s.settle()
+        check("a new status leaves the flag alone", busy(), str(s.panes()[0]))
+
+        s.raw(emit_cmd("1;busy;0"))
+        s.settle()
+        check("busy;0 clears it", not busy(), str(s.panes()[0]))
+
+        s.raw(emit_cmd("1;busy"))
+        s.settle()
+        check("busy with nothing after it means busy", busy(), str(s.panes()[0]))
+
+        s.raw(emit_cmd("1;clear"))
+        s.settle()
+        check(
+            "clear takes the flag with the text",
+            not busy() and not s.panes()[0]["status"],
+            str(s.panes()[0]),
+        )
+
+
+def test_a_status_left_by_a_dead_program_is_not_busy():
+    """It describes the past, whatever it last claimed -- and a spinner turning
+    forever under a tab whose program is gone is a lie you keep looking at."""
+    body = 'printf "\\033]5577;1;status;working\\033\\\\"; printf "\\033]5577;1;busy;1\\033\\\\"'
+    keep = tempfile.NamedTemporaryFile("w", suffix=".kdl", delete=False)
+    keep.write('keep_dead "all"\n')  # so there is still a pane to ask
+    keep.close()
+    with Session(["/bin/sh", "-c", body], cols=50, rows=8, config=keep.name) as s:
+        s.until(lambda snap: s.panes() and not s.panes()[0]["alive"])
+        p = s.panes()[0]
+        check("the program is gone", not p["alive"], str(p))
+        check("and nothing is still happening", not p["busy"], str(p))
 
 
 def test_escaping():
@@ -388,6 +451,8 @@ if __name__ == "__main__":
     test_status_and_buttons()
     test_click_reports()
     test_replace_and_clear()
+    test_busy_is_its_own_flag()
+    test_a_status_left_by_a_dead_program_is_not_busy()
     test_escaping()
     test_hostile_input()
     test_split_across_reads()

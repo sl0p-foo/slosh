@@ -235,6 +235,17 @@ typedef struct {
    * terminals while chrome here is booked as one — so the default is narrow
    * and anyone who knows their terminal can say otherwise. */
   char bell_mark[32];
+  /* What a pane that says it is *busy* looks like in the sidebar: the frames
+   * of a spinner, separated by spaces. One frame is a static mark and costs
+   * nothing; several make it turn, and only then does the session keep a
+   * frame clock -- and only while such a row is actually on screen. Empty
+   * draws no mark at all and leaves the colour to say it. */
+  char busy_mark[64];
+  /* Milliseconds a spinner frame is held. Its own knob rather than anim_ms,
+   * which is how often the session repaints while something animates: this is
+   * how fast the thing being repainted moves, and a spinner stepping at the
+   * repaint rate is a blur. */
+  uint16_t busy_ms;
   /* Which dead panes stay, showing what they printed and offering to run
    * again, and which just go.
    *
@@ -530,6 +541,12 @@ typedef struct {
    * none leaves the terminal's own background alone, which is what a
    * translucent one wants. */
   color_t tab_status_fg, tab_status_bg;
+  /* A status whose program says it is still happening. Brighter than the
+   * ambient one, because "running" and "finished" are the two states worth
+   * telling apart from another tab, and the difference between them should
+   * not be something you have to read the words to work out. Derived from the
+   * theme, like tab_status_fg. */
+  color_t tab_status_busy;
   /* The other stripe. With wrapped statuses, where one pane's rows end and
    * the next one's begin is no longer obvious from the shape -- both are
    * just italic text down the same column -- so alternate panes sit on

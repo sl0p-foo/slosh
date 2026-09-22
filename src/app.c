@@ -2155,6 +2155,13 @@ static void panes_cb(node_t *n, void *ud) {
   json_int(j, "tab_id", (long long)pj->a->tabs[ti].id);
   const char *t = pane_title(n->pane);
   json_str(j, "title", t ? t : "", t ? strlen(t) : 0);
+  /* What the pane said about itself over OSC 5577, which is the one thing in
+   * here it chose rather than had chosen for it -- and whether it says that
+   * is still happening, which `alive` does not answer: a pane can be alive
+   * and idle all day. */
+  const char *st = pane_status(n->pane);
+  json_str(j, "status", st ? st : "", st ? strlen(st) : 0);
+  json_bool(j, "busy", pane_status_busy(n->pane));
   json_obj_close(j);
 }
 

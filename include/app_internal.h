@@ -412,6 +412,7 @@ extern config_t CFG;
 #define TAB_COUNT (CFG.tab_count)
 #define TAB_STATUS_FG (CFG.tab_status_fg)
 #define TAB_STATUS_BG (CFG.tab_status_bg)
+#define TAB_STATUS_BUSY (CFG.tab_status_busy)
 #define TAB_STATUS_STRIPE (CFG.tab_status_stripe)
 #define STATUS_C (CFG.status)
 #define STATUS_STATE (CFG.status_state)

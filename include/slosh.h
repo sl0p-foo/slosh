@@ -313,6 +313,11 @@ const char *pane_name(const pane_t *p);
 /* "" clears the name and gives the pane back to the program's title. */
 void pane_set_name(pane_t *p, const char *name);
 const char *pane_status(const pane_t *p);
+/* Whether the program says what its status describes is still happening
+ * (`busy` over OSC 5577). Never true of a pane whose program has gone: a
+ * status left behind by something that exited is a description of the past,
+ * whatever it last claimed. */
+bool pane_status_busy(const pane_t *p);
 size_t pane_buttons(const pane_t *p, const pane_button_t **out);
 void pane_click_button(pane_t *p, const char *id);
 void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud);

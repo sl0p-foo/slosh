@@ -211,6 +211,8 @@ sequence. No socket, no config, nothing to set up:
 
 ```bash
 printf '\e]5577;1;status;building 3/7\e\\'
+printf '\e]5577;1;busy;1\e\\'      # ...and it is still going
+printf '\e]5577;1;busy;0\e\\'      # ...and now it is not
 printf '\e]5577;1;buttons;approve:Approve;cancel:Cancel\e\\'
 printf '\e]5577;1;purpose;task:build\e\\'
 printf '\e]5577;1;clear\e\\'
@@ -221,6 +223,15 @@ sidebar (`tab_bar_side left/right`), as a row under your pane's tab, visible
 from every other tab. Treat it as your progress report to somebody working
 elsewhere: keep it current while you work ("building 3/7", "tests green"),
 and `clear` it when you are done, so a stale line never outlives the work.
+
+**`busy` is the half the words cannot carry.** "building 3/7" reads the same
+whether it is building or gave up ten minutes ago, so say which: `busy;1` when
+you start something, `busy;0` when it lands. The sidebar draws a busy status in
+its own colour with a spinner beside it, which is what somebody in another tab
+is actually reading. It is a separate flag, so setting a new status does not
+change it; `clear` clears both, and so does your program exiting.
+Both are reported by `panes` as `status` and `busy`, so a script can see what
+every pane says about itself without reading any screens.
 The buttons are real click targets, and a
 click arrives **on your stdin** as:
 

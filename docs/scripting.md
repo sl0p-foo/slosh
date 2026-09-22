@@ -93,6 +93,8 @@ By printing an escape sequence. No plugin, no config:
 
 ```bash
 printf '\033]5577;1;status;building 3/7\033\\'
+printf '\033]5577;1;busy;1\033\\'     # ...and it is still going
+printf '\033]5577;1;busy;0\033\\'     # ...and now it is not
 printf '\033]5577;1;buttons;approve:Approve;cancel:Cancel\033\\'
 # clicking [Approve] arrives on the program's stdin as:
 #   \033]5577;1;click;approve\033\\
@@ -107,6 +109,17 @@ under the pane's tab — visible from every other tab, and clicking it jumps to
 the pane that said it. A status is not decoration on your own frame; it is how
 a pane reports progress to somebody working elsewhere, which is a reason to
 keep it current and `clear` it when the work is done.
+
+`busy` is the one thing a line of text cannot say about itself: `make test` and
+`make test` are the same words whether it is running or finished. It is a flag
+of its own rather than a field of `status`, because a status is the *whole*
+payload after the verb — `status;a;b;c` is the text `a;b;c` — so anything added
+to that line would change what every sender already means. In a sidebar a busy
+status gets the spinner (`busy_mark`) and `tab_status_busy`, which is how
+"working" and "done" tell themselves apart from another tab without reading the
+words. Anything but `0`, `false`, `no` or `off` turns it on; `clear` turns it
+off along with the text, and so does the program exiting — a status left behind
+by something that is gone describes the past, whatever it last claimed.
 
 `purpose` is the other verb: `printf '\033]5577;1;purpose;logs\033\\'`. A purpose
 declared by a layout or the control API wins and cannot be overwritten this way.

@@ -99,6 +99,12 @@ struct pane {
 
   osc_scan_t scan;
   char status[256];
+  /* Whether what the status describes is still happening. Its own flag rather
+   * than a field of the status text, because the text is the *whole* payload
+   * after the verb (`status;a;b;c` is "a;b;c") and always has been -- adding a
+   * field to it would change what every existing sender means. Orthogonal, so
+   * a program can leave one line up and toggle the other. */
+  bool busy;
   pane_button_t buttons[8];
   size_t nbuttons;
   pane_osc_fn osc_cb;
@@ -115,6 +121,7 @@ void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud) {
 }
 
 const char *pane_status(const pane_t *p) { return p->status; }
+bool pane_status_busy(const pane_t *p) { return p->busy && p->alive; }
 size_t pane_buttons(const pane_t *p, const pane_button_t **out) {
   *out = p->buttons;
   return p->nbuttons;
@@ -176,10 +183,20 @@ static void on_osc5577(const char *verb, const char *payload, void *ud) {
   if (strcmp(verb, "status") == 0) {
     snprintf(p->status, sizeof p->status, "%s", payload);
     p->dirty = true;
+  } else if (strcmp(verb, "busy") == 0) {
+    /* "is this still happening?" -- the one thing a line of text cannot say
+     * about itself. Off for the spellings of no, on for everything else
+     * including an empty payload, because `busy` with nothing after it is a
+     * program saying it is busy. */
+    bool on = !(strcmp(payload, "0") == 0 || strcmp(payload, "false") == 0 ||
+                strcmp(payload, "no") == 0 || strcmp(payload, "off") == 0);
+    if (p->busy != on) p->dirty = true;
+    p->busy = on;
   } else if (strcmp(verb, "buttons") == 0) {
     parse_buttons(p, payload);
   } else if (strcmp(verb, "clear") == 0) {
     p->status[0] = 0;
+    p->busy = false;
     p->nbuttons = 0;
     p->dirty = true;
   } else if (strcmp(verb, "hello") == 0) {
@@ -690,6 +707,7 @@ bool pane_restart(pane_t *p) {
    * status line and buttons from a program that is not there describe
    * nothing, and the new run gets to say its own. */
   p->status[0] = 0;
+  p->busy = false;
   p->nbuttons = 0;
   osc_scan_reset(&p->scan);
   p->exit_known = false;

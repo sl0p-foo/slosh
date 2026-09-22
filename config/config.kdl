@@ -280,6 +280,21 @@ bell_indicator true
 // this file has no \u escape, so put the character itself here).
 bell_mark "[!]"
 
+// A pane can also say that what its status describes is still *happening*
+// (`busy` over OSC 5577, see the scripting chapter). In a sidebar that status
+// then turns the theme's `tab_status_busy` colour and carries this spinner,
+// which is how "running" and "finished" tell themselves apart from another tab
+// without reading the words.
+//
+// The frames are separated by spaces. One frame is a static mark and costs
+// nothing; several make it turn, and only then does the session keep a frame
+// clock -- and only while such a row is actually on screen. "" draws no mark
+// at all and leaves the colour to say it. The mark sits in the column
+// `tab_bar_padding` was holding blank, so nothing moves when a program starts
+// or stops working; give it a gutter of its own with `tab_bar_padding 0 2`.
+busy_mark "⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"
+busy_ms 120
+
 // The one-row bar with tabs, the new-tab button and the pane count.
 status_bar true
 
