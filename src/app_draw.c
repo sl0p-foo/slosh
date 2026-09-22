@@ -1844,23 +1844,32 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
    * spare the columns: on a narrow one the name is what you came for, so the
    * number goes back in front where it costs two cells rather than a column.
    * Never while renaming, where the whole cell is the editor. */
+  /* In a sidebar the label's indent is the strip's own left padding, and its
+   * right padding is cells the name may not have; in the top strip a tab is
+   * as wide as its label and the single space each side *is* the plate. */
+  uint16_t padl = max_w ? CFG.tab_pad_left : 1;
+  uint16_t padr = max_w ? CFG.tab_pad_right : 1;
+
   char idx[16] = "";
   bool right_idx = false;
   if (max_w && !editing && CFG.tab_bar_index == TAB_INDEX_RIGHT) {
-    snprintf(idx, sizeof idx, "%zu ", i + 1);
+    snprintf(idx, sizeof idx, "%zu%*s", i + 1, (int)padr, "");
     uint16_t iw = (uint16_t)cells(idx);
     right_idx = max_w >= (uint16_t)(iw + 5);
     if (!right_idx) idx[0] = 0;
   }
 
   if (editing)
-    snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
+    snprintf(label, sizeof label, "%*s%s\u2588%*s", (int)padl, "",
+             a->rename_buf, (int)padr, "");
   else if (right_idx)
-    snprintf(label, sizeof label, " %s", nm[0] ? nm : "");
+    snprintf(label, sizeof label, "%*s%s", (int)padl, "", nm[0] ? nm : "");
   else if (nm[0])
-    snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+    snprintf(label, sizeof label, "%*s%zu:%s%*s", (int)padl, "", i + 1, nm,
+             (int)padr, "");
   else
-    snprintf(label, sizeof label, " %zu ", i + 1);
+    snprintf(label, sizeof label, "%*s%zu%*s", (int)padl, "", i + 1, (int)padr,
+             "");
 
   /* A pinned width cuts the label to fit -- bell and number budgeted first,
    * so neither is what a long name eats -- and then pads it out, so the
@@ -1988,10 +1997,13 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
 static void draw_newtab_button(app_t *a, screen_t *s, uint16_t x, uint16_t y,
                                uint16_t max_w, bool dragging_pane) {
   char btn[64];
+  /* The same indent the labels take, so the button lines up with the list it
+   * sits under rather than with the frame. */
+  int padl = max_w ? (int)CFG.tab_pad_left : 1;
   if (max_w && (uint16_t)(cells(CFG.newtab_mark) + 10) <= max_w)
-    snprintf(btn, sizeof btn, " %s new tab ", CFG.newtab_mark);
+    snprintf(btn, sizeof btn, "%*s%s new tab ", padl, "", CFG.newtab_mark);
   else
-    snprintf(btn, sizeof btn, " %s ", CFG.newtab_mark);
+    snprintf(btn, sizeof btn, "%*s%s ", padl, "", CFG.newtab_mark);
   /* Padded out on a sidebar row for the same reason a tab's label is: the
    * hover and the drop fill are the row, not the word sitting on it. */
   if (max_w) pad_cells(btn, sizeof btn, max_w);
@@ -2217,7 +2229,22 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
    * above the list. The pad is where the drawing starts, not a layout fact:
    * the panes' rect is the same with pad 0 and pad 5, so tuning it repaints
    * without reflowing anyone. */
-  uint16_t y = (uint16_t)(top + (chrome ? 1 : 0) + CFG.tab_bar_pad);
+  uint16_t y = (uint16_t)(top + (chrome ? 1 : 0) + CFG.tab_pad_top);
+
+  /* The indent everything on a row starts at, and the width it has to work
+   * in. Inside the plate, not outside it: a tab's fill still spans the whole
+   * row, because the row is what you click and a highlight that stopped short
+   * of the frame would read as a highlighted word. */
+  uint16_t ix = (uint16_t)(cx + (cw > CFG.tab_pad_left ? CFG.tab_pad_left : 0));
+
+  /* Air at the bottom, taken before anything is placed against the bottom
+   * edge -- and given up when the rows are not there to spare, like every
+   * other piece of air in this strip. */
+  {
+    uint16_t pad = CFG.tab_pad_bottom;
+    while (pad && limit <= (uint16_t)(y + pad)) pad--;
+    limit = (uint16_t)(limit - pad);
+  }
 
   /* Bottom rows first: what the horizontal strip keeps on its right. Indented
    * one cell to sit under the labels' own leading space -- at cx exactly, the
@@ -2228,15 +2255,14 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
   snprintf(info, sizeof info, "%zu pane%s", np, np == 1 ? "" : "s");
   if (limit > y && (uint16_t)(strlen(info) + 1) <= cw) {
     limit--;
-    screen_text(s, (uint16_t)(cx + 1), limit, info, TAB_COUNT, NO_COLOR, 0);
+    screen_text(s, ix, limit, info, TAB_COUNT, NO_COLOR, 0);
   }
   if (a->prefix) { /* the prefix is a mode: say so, and say which key */
     char pfx[24];
     config_chord_name(CFG.prefix_key, CFG.prefix_mods, pfx, sizeof pfx);
     if (limit > y && (uint16_t)(cells(pfx) + 1) <= cw) {
       limit--;
-      screen_text(s, (uint16_t)(cx + 1), limit, pfx, PREFIX_FG, PREFIX_BG,
-                  ATTR_BOLD);
+      screen_text(s, ix, limit, pfx, PREFIX_FG, PREFIX_BG, ATTR_BOLD);
     }
   }
 
@@ -2298,8 +2324,10 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
     size_t lines = CFG.tab_bar_status_lines ? CFG.tab_bar_status_lines : 1;
     if (lines > STATUS_WRAP_MAX) lines = STATUS_WRAP_MAX;
     if (lines > allow) lines = allow;
-    /* The text column: everything but the leading space below. */
-    uint16_t tw = cw > 1 ? (uint16_t)(cw - 1) : 1;
+    /* The text column: the row minus the strip's own padding, which is what
+     * puts a status in the column its tab's name starts in. */
+    uint16_t inset = (uint16_t)(CFG.tab_pad_left + CFG.tab_pad_right);
+    uint16_t tw = cw > inset ? (uint16_t)(cw - inset) : 1;
 
     /* Lay the statuses out before drawing any, because whether the last row
      * has to become an ellipsis depends on what did not fit -- and with
@@ -2360,7 +2388,8 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
          * sidebar, where three columns is a fifth of everything a status has
          * to say itself in. The slant below says the same thing in none of
          * them, and the band says which pane said it. */
-        snprintf(text, sizeof text, " %s", rows[j][k]);
+        snprintf(text, sizeof text, "%*s%s", (int)CFG.tab_pad_left, "",
+                 rows[j][k]);
         pad_cells(text, sizeof text, cw); /* so a themed band covers the row */
         /* Italic, and ambient in colour: these are annotations until pointed
          * at. The slant is what separates them from the labels, rather than
@@ -2377,7 +2406,7 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
     }
     if (ell && y < limit && used < allow) {
       char text[STATUS_ROW_CAP + 8];
-      snprintf(text, sizeof text, " \u2026");
+      snprintf(text, sizeof text, "%*s\u2026", (int)CFG.tab_pad_left, "");
       pad_cells(text, sizeof text, cw);
       screen_text(s, cx, y, text, TAB_STATUS_FG, TAB_STATUS_BG, ATTR_ITALIC);
       y++; /* an ellipsis is not a door: no hit */

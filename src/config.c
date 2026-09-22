@@ -311,6 +311,40 @@ static void complain(config_t *c, char *err, size_t errcap, int line,
   if (err && errcap && !err[0]) snprintf(err, errcap, "%s", full);
 }
 
+/* `x 1`, `x 0 2`, or `x 1 2 1 2` -- one value for every side, two for
+ * vertical and horizontal, four in CSS order (top, right, bottom, left),
+ * because that is the order everybody who has written a stylesheet already
+ * knows. Three is refused rather than guessed at: CSS says
+ * top/horizontal/bottom and a reader who has to look that up is a reader who
+ * cannot see what the line does.
+ *
+ * One reader for every setting shaped like this, so `padding` and
+ * `tab_bar_padding` cannot drift into meaning two different things. */
+static void parse_sides(config_t *c, const kdl_node_t *n, const char *name,
+                        uint16_t *top, uint16_t *right, uint16_t *bottom,
+                        uint16_t *left, char *err, size_t errcap) {
+  if (!n) return;
+  long v[4] = {0};
+  size_t k = n->nargs < 4 ? n->nargs : 4;
+  for (size_t i = 0; i < k; i++) v[i] = kdl_arg_int(n, i, 0);
+  if (n->nargs == 1) {
+    *top = *right = *bottom = *left = (uint16_t)v[0];
+  } else if (n->nargs == 2) {
+    *top = *bottom = (uint16_t)v[0];
+    *right = *left = (uint16_t)v[1];
+  } else if (n->nargs == 4) {
+    *top = (uint16_t)v[0];
+    *right = (uint16_t)v[1];
+    *bottom = (uint16_t)v[2];
+    *left = (uint16_t)v[3];
+  } else {
+    complain(c, err, errcap, n->line,
+             "%s takes 1, 2 or 4 values (all, vertical horizontal, or top "
+             "right bottom left), not %zu",
+             name, n->nargs);
+  }
+}
+
 size_t config_messages(const config_t *c, const char **out, size_t max) {
   size_t n = c->nmsgs < max ? c->nmsgs : max;
   for (size_t i = 0; i < n; i++) out[i] = c->msgs[i];
@@ -959,7 +993,11 @@ void config_defaults(config_t *c) {
    * standing in for, and a blank row inside the frame on top of it reads as
    * a gap nobody asked for. Still there for a bare sidebar, or for anyone
    * who wants room at the top for a borderless window's own buttons. */
-  c->tab_bar_pad = 0;
+  /* No rows of air by default, and one column: that column is where every
+   * label's leading space used to be hard-coded, so the default draws what it
+   * always drew and 0 is now a thing you can ask for. */
+  c->tab_pad_top = c->tab_pad_bottom = 0;
+  c->tab_pad_left = c->tab_pad_right = 1;
   c->tab_gap = 0; /* flush, the way the list has always read */
   /* Three is enough for "the build, the tests, and one more thing" without a
    * chatty tab pushing the list off the bottom. */
@@ -1716,8 +1754,24 @@ char *config_render(const config_t *c) {
          c->tab_bar_index == TAB_INDEX_RIGHT ? "right" : "prefix");
   cb_add(&b, "tab_bar_width %u      // columns a sidebar takes\n",
          c->tab_bar_width);
-  cb_add(&b, "tab_bar_pad %u        // blank rows above a sidebar's tabs\n",
-         c->tab_bar_pad);
+  if (c->tab_pad_top == c->tab_pad_right &&
+      c->tab_pad_top == c->tab_pad_bottom && c->tab_pad_top == c->tab_pad_left)
+    cb_add(&b, "tab_bar_padding %u    // air inside a sidebar, in cells\n",
+           c->tab_pad_top);
+  else if (c->tab_pad_top == c->tab_pad_bottom &&
+           c->tab_pad_right == c->tab_pad_left)
+    cb_add(&b,
+           "tab_bar_padding %u %u  // air inside a sidebar: rows, then "
+           "columns\n",
+           c->tab_pad_top, c->tab_pad_right);
+  else
+    cb_add(&b, "tab_bar_padding %u %u %u %u // top right bottom left\n",
+           c->tab_pad_top, c->tab_pad_right, c->tab_pad_bottom,
+           c->tab_pad_left);
+  cb_add(&b,
+         "// tab_bar_pad %u       // the top of that alone, the older "
+         "name for it\n",
+         c->tab_pad_top);
   cb_add(&b, "tab_gap %u            // blank rows between a sidebar's tabs\n",
          c->tab_gap);
   cb_add(&b,
@@ -2200,6 +2254,7 @@ static const char *const KNOWN_TOP[] = {
     "status_pad",
     "tab_bar_chrome",
     "tab_bar_pad",
+    "tab_bar_padding",
     "tab_bar_index",
     "tab_bar_side",
     "tab_bar_status",
@@ -2571,31 +2626,20 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
    * stylesheet already knows. Three is refused rather than guessed at: CSS says
    * top/horizontal/bottom and a reader who has to look that up is a reader who
    * cannot see what the line does. */
-  {
-    const kdl_node_t *pn = kdl_child(root, "padding");
-    if (pn) {
-      long v[4];
-      size_t n = pn->nargs < 4 ? pn->nargs : 4;
-      for (size_t i = 0; i < n; i++) v[i] = kdl_arg_int(pn, i, 0);
-      if (pn->nargs == 1) {
-        c->pad_top = c->pad_right = c->pad_bottom = c->pad_left =
-            (uint16_t)v[0];
-      } else if (pn->nargs == 2) {
-        c->pad_top = c->pad_bottom = (uint16_t)v[0];
-        c->pad_right = c->pad_left = (uint16_t)v[1];
-      } else if (pn->nargs == 4) {
-        c->pad_top = (uint16_t)v[0];
-        c->pad_right = (uint16_t)v[1];
-        c->pad_bottom = (uint16_t)v[2];
-        c->pad_left = (uint16_t)v[3];
-      } else {
-        complain(c, err, errcap, pn->line,
-                 "padding takes 1, 2 or 4 values (all, vertical horizontal, or "
-                 "top right bottom left), not %zu",
-                 pn->nargs);
-      }
-    }
-  }
+  parse_sides(c, kdl_child(root, "padding"), "padding", &c->pad_top,
+              &c->pad_right, &c->pad_bottom, &c->pad_left, err, errcap);
+  /* The same shape for the sidebar's own air, so one form is learned once.
+   * In cells rather than rows-times-gap_aspect: a sidebar's columns and rows
+   * are doing different jobs (an indent, and air above a list), and scaling
+   * one of them by the cell aspect would make `2` mean four columns in a
+   * sixteen-column strip. */
+  parse_sides(c, kdl_child(root, "tab_bar_padding"), "tab_bar_padding",
+              &c->tab_pad_top, &c->tab_pad_right, &c->tab_pad_bottom,
+              &c->tab_pad_left, err, errcap);
+  /* After it, because it is the more specific of the two: a config that says
+   * both means the narrow one where they overlap. */
+  c->tab_pad_top =
+      (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_pad_top);
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
   c->compact = kdl_arg_bool(kdl_child(root, "compact"), 0, c->compact);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
@@ -2624,8 +2668,6 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   }
   c->tab_bar_width = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_width"), 0,
                                            c->tab_bar_width);
-  c->tab_bar_pad =
-      (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_bar_pad);
   c->tab_gap = (uint16_t)kdl_arg_int(kdl_child(root, "tab_gap"), 0, c->tab_gap);
   c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
                                             0, c->tab_bar_status);

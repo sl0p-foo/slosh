@@ -135,6 +135,25 @@ The strip's indicators move to the sidebar's bottom rows; the status line
 keeps the full width. A terminal too narrow to give up the columns falls
 back to \fBtop\fR until it grows.
 .TP
+.BI tab_bar_padding\  n\ ...
+Air inside a sidebar, between its frame and the list, per side and in
+cells: 1, 2 or 4 values in CSS order, like
+.BR padding ,
+but counted in cells rather than rows times
+.B gap_aspect
+\(em a sidebar's rows and columns do different jobs, one being air above
+the list and the other an indent for its labels.
+The default is
+.B 0 1
+\(em one column, which is where every label's leading space used to be
+fixed; 0 puts the names against the frame.
+It is inside the plate: a tab's fill still spans the whole row, which is
+what you click.
+.B tab_bar_pad
+is the older name for the top alone and still works, and wins where both
+are written.
+Sidebars only.
+.TP
 .BI tab_bar_index\  where
 Where a tab's number sits: \fBright\fR (the default) puts it at the far end
 of the row, so the names all start in one column and the numbers line up in

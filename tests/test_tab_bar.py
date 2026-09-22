@@ -9,10 +9,11 @@ with the cells. A terminal too narrow to give up the columns falls back to
 the top strip until it grows.
 """
 
+import subprocess
 import sys
 import tempfile
 
-from harness import Session, check, report
+from harness import BIN, Session, check, report
 
 
 def _cfg(text):
@@ -162,6 +163,104 @@ def _status(s, text):
 # alignment, so they say which mode they mean rather than leaning on it.
 RIGHT_IDX = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "right"\n')
 PREFIX_IDX = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "prefix"\n')
+
+
+def test_padding_is_the_air_inside_the_strip():
+    """`tab_bar_padding`, the sidebar's own version of `padding` -- in cells,
+    because a sidebar's rows and columns are doing different jobs."""
+    padded = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 1 2\n')
+    with Session(SH, cols=90, rows=20, config=padded) as s:
+        s.settle(30)
+        _status(s, "building")
+        snap = s.snapshot()
+        check(
+            "a row of air above the first tab",
+            not _row(snap, Y0).strip(),
+            repr(_row(snap, Y0)),
+        )
+        label = _row(snap, Y0 + 1)
+        check("the label is indented by two", label.startswith("  tests"), repr(label))
+        check(
+            "...and the number is held off the other edge",
+            label.endswith("1  "),
+            repr(label),
+        )
+        check(
+            "a status keeps the column its label starts in",
+            _row(snap, Y0 + 2).index("building") == label.index("tests"),
+            repr(_row(snap, Y0 + 2)),
+        )
+
+
+def test_padding_zero_puts_it_against_the_frame():
+    """The column the labels have always carried was hard-coded, so there was
+    no way to ask for none of it."""
+    flush = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 0\n')
+    with Session(SH, cols=90, rows=20, config=flush) as s:
+        s.settle(30)
+        _status(s, "building")
+        snap = s.snapshot()
+        check(
+            "the name starts in the first column",
+            _row(snap, Y0).startswith("tests"),
+            repr(_row(snap, Y0)),
+        )
+        check(
+            "...the number ends in the last",
+            _row(snap, Y0).endswith("1"),
+            repr(_row(snap, Y0)),
+        )
+        check(
+            "...and the status follows it",
+            _row(snap, Y0 + 1).startswith("building"),
+            repr(_row(snap, Y0 + 1)),
+        )
+
+
+def test_the_plate_ignores_the_padding():
+    """Air *inside* the fill: the row is the click target, and a highlight that
+    stopped short of the frame would read as a highlighted word."""
+    padded = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 0 3\n')
+    with Session(SH, cols=90, rows=20, config=padded) as s:
+        s.settle(30)
+        edge = s.snapshot().style_at(CX, Y0)
+        mid = s.snapshot().style_at(CX + 4, Y0)
+        check(
+            "the active tab's fill reaches the frame",
+            edge and mid and edge["bg"] == mid["bg"],
+            f"{edge} vs {mid}",
+        )
+        check(
+            "and the whole row is still the door",
+            s.snapshot().hit_at(CX, Y0) == "tab:1",
+            str(s.snapshot().hit_at(CX, Y0)),
+        )
+
+
+def test_tab_bar_pad_is_still_the_top_of_it():
+    """The older name, kept working: a config that says both means the narrow
+    one where they overlap."""
+    both = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 4 1\ntab_bar_pad 1\n'
+    )
+    with Session(SH, cols=90, rows=20, config=both) as s:
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "one row of air, not four",
+            not _row(snap, Y0).strip() and "tests" in _row(snap, Y0 + 1),
+            f"{_row(snap, Y0)!r} / {_row(snap, Y0 + 1)!r}",
+        )
+
+
+def test_a_bad_padding_is_a_line_and_no_more():
+    bad = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 1 2 3\n')
+    r = subprocess.run([BIN, "--check", bad], capture_output=True, text=True)
+    check(
+        "three values is refused, not guessed at",
+        "1, 2 or 4" in r.stderr,
+        r.stderr.strip(),
+    )
 
 
 def test_the_index_sits_at_the_far_end():
@@ -727,7 +826,14 @@ def test_a_long_status_is_cut_and_says_so():
         _status(s, "a status far too long for the sidebar")
         row = _row(s.snapshot(), Y0 + 1)
         check(
-            "the status stops at the sidebar's edge", row.endswith("\u2026"), repr(row)
+            "the status stops at the sidebar's text column",
+            row.rstrip().endswith("\u2026"),
+            repr(row),
+        )
+        check(
+            "...which is the strip's padding short of the frame",
+            row.endswith(" "),
+            repr(row),
         )
 
 
@@ -986,6 +1092,11 @@ if __name__ == "__main__":
     test_sidebar_rows_click_like_the_strip()
     test_right_sidebar_takes_the_other_edge()
     test_pad_pushes_the_list_down()
+    test_padding_is_the_air_inside_the_strip()
+    test_padding_zero_puts_it_against_the_frame()
+    test_the_plate_ignores_the_padding()
+    test_tab_bar_pad_is_still_the_top_of_it()
+    test_a_bad_padding_is_a_line_and_no_more()
     test_the_index_sits_at_the_far_end()
     test_the_prefix_is_still_there_for_anyone_who_wants_it()
     test_the_sidebar_aligns_by_default()

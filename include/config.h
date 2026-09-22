@@ -365,11 +365,25 @@ typedef struct {
    * Ignored on the top strip, where a tab is only as wide as its label and
    * there is no room to align anything in. */
   int tab_bar_index;
-  /* Rows a sidebar leaves blank above its first tab. Air for anyone who finds
-   * a list starting in the very corner cramped -- or room for a terminal's
-   * own window buttons when the multiplexer fills a borderless window.
-   * Ignored for top, which has exactly one row and no air to give. */
-  uint16_t tab_bar_pad;
+  /* Air inside a sidebar, between its frame and the list in it, per side and
+   * in CELLS: rows above and below, columns left and right. Written as 1, 2
+   * or 4 values in CSS order like `padding`, and in cells rather than
+   * `padding`'s rows-times-gap_aspect, because this is not a ring around a
+   * block of text -- the two sides do different jobs. The columns are an
+   * indent for labels and statuses, and the rows are air above the first tab
+   * and below the last thing in the strip.
+   *
+   * The left column is 1 by default, which is where every label's leading
+   * space used to be hard-coded; 0 puts the names against the frame.
+   *
+   * It is *inside the plate*: a tab's fill still spans the whole row, because
+   * the row is the click target and a highlight that stops short of the edge
+   * reads as a highlighted word rather than a chosen row.
+   *
+   * `tab_bar_pad` is the older name for the top alone and still works; where
+   * both are written the more specific one wins. Ignored for the top strip,
+   * which has exactly one row and no air to give. */
+  uint16_t tab_pad_top, tab_pad_right, tab_pad_bottom, tab_pad_left;
   /* Blank rows between one tab and the next, so a list of tabs each carrying
    * a paragraph of status reads as separate entries rather than as one
    * column of text. Sidebars only: the top strip is a single row, where the

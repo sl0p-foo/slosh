@@ -56,7 +56,8 @@ The strip of tabs sits along the top by default. It does not have to:
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
 tab_bar_index "right" // the tab number at the far end; "prefix" is 1:name
-tab_bar_pad 0         // blank rows above the first tab
+tab_bar_padding 0 1   // air inside it, in cells: rows, then columns
+tab_bar_pad 0         // ...or just the top of that, the older name
 tab_gap 0             // ...and between one tab and the next
 tab_bar_chrome true   // frame it like a pane
 tab_bar_status_lines 1 // rows one status may wrap onto
@@ -96,6 +97,19 @@ complete. A short terminal cuts the list the same way, and says so the same
 way: **the statuses give way before the tabs do**, because the list is how you
 navigate and a status is only an annotation on it — a talkative pane must not
 be able to cost you a tab you can click.
+
+**`tab_bar_padding` is the air inside the strip**, between its frame and the
+list: 1, 2 or 4 values in CSS order, the shape [`padding`](config.md) takes for
+a pane. In cells rather than `padding`'s rows-times-`gap_aspect`, because the
+two sides do different jobs here — the columns indent the labels and their
+statuses, the rows are air above the first tab and below the last thing in the
+strip — and scaling the columns would spend four of a sixteen-column sidebar on
+`2`. The default is `0 1`: one column, which is where every label's leading
+space used to be fixed, so `tab_bar_padding 0` is a thing you can now ask for
+and puts the names against the frame. It is air *inside* the plate — a tab's
+fill still spans the whole row, because the row is what you click.
+`tab_bar_pad` is the older name for the top of it alone, still honoured, and it
+wins where both are written.
 
 **`tab_gap` puts air between one tab and the next**, which is what stops a
 list of tabs that each carry a paragraph of status from reading as one column

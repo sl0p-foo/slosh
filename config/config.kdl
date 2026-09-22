@@ -283,6 +283,22 @@ bell_mark "[!]"
 // The one-row bar with tabs, the new-tab button and the pane count.
 status_bar true
 
+// Air inside a *sidebar*, between its frame and the list in it: 1, 2 or 4
+// values in CSS order, the same shape `padding` takes. Counted in cells and
+// not in rows-times-`gap_aspect`, because the two sides are doing different
+// jobs here -- the columns are an indent for labels and statuses, the rows
+// are air above the first tab and below the last thing in the strip -- and
+// scaling the columns would make `2` mean four of a sixteen-column sidebar.
+//
+// The one column each side is where every label's leading space used to be
+// hard-coded, so `0` is a thing you can now ask for: names against the frame.
+// It is air *inside* the plate; a tab's fill still spans the whole row,
+// because the row is what you click.
+//
+// `tab_bar_pad` is the older name for the top of this alone, still honoured,
+// and it wins where a config writes both.
+tab_bar_padding 0 1
+
 // Where a tab's number sits in a *sidebar*. The default, "right", puts it at
 // the far end of the row, so every name starts in the same column and the
 // numbers line up in one of their own -- a list with a shape rather than a
