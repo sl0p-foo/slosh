@@ -1868,13 +1868,20 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
    * hover colour if that width turns out to be under the pointer — which
    * costs a repaint of a few cells and guarantees the lit cells are the
    * registered ones. */
+  /* Every tab is a plate: the active one in the accent, the rest in
+   * `tab_idle_bg`. The quiet fill is what makes a strip of labels read as
+   * tabs — where one ends and the next begins, and how far the row the
+   * pointer will hit actually extends — and it is what the active fill is
+   * brighter *than*. A theme that wants the old bare strip sets it to its own
+   * background. */
   uint16_t w = screen_text(
       s, x, y, label, editing ? RENAME_FG : (active ? TAB_ACTIVE_FG : TAB_IDLE),
-      editing ? RENAME_BG : (active ? TAB_ACTIVE_BG : NO_COLOR),
+      editing ? RENAME_BG : (active ? TAB_ACTIVE_BG : TAB_IDLE_BG),
       editing ? ATTR_BOLD : attrs);
-  /* Hovering keeps the active tab's fill — it is still the tab you are in —
-   * so its feedback lands on the text instead. An inactive tab has no fill
-   * to keep, and brightens. */
+  /* Hovering keeps the tab's own fill — the active one because it is still
+   * the tab you are in, an inactive one because losing its plate under the
+   * pointer would read as the tab going away — so the feedback lands on the
+   * text, which brightens. */
   /* The bell keeps its own colour here too, rather than taking the tab's —
    * an indicator drawn in the same dim grey as the label it sits next to is
    * an indicator you have to already be looking for. */
@@ -1882,13 +1889,13 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
     char mark[24];
     snprintf(mark, sizeof mark, "%s ", CFG.bell_mark);
     w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), y, mark, BELL_C,
-                                   active ? TAB_ACTIVE_BG : NO_COLOR,
+                                   active ? TAB_ACTIVE_BG : TAB_IDLE_BG,
                                    ATTR_BOLD));
   }
   uint16_t hit_w = max_w ? max_w : w;
   if (!editing && ptr_on(a, x, y, hit_w, 1))
     screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
-                active ? TAB_ACTIVE_BG : NO_COLOR, attrs | ATTR_BOLD);
+                active ? TAB_ACTIVE_BG : TAB_IDLE_BG, attrs | ATTR_BOLD);
 
   /* While a pane is in your hand, every tab it does not already live in is
    * somewhere it could go, and `ptr_on` says nothing during a drag by design --
@@ -2101,9 +2108,11 @@ static size_t wrap_cells(const char *text, uint16_t width, size_t max,
       len += clen;
       if (p[len] == ' ') brk = len; /* the last break point that still fits */
     }
-    if (!p[len]) brk = len;    /* what is left fits whole */
-    else if (!brk) brk = len;  /* one long word: split it rather than stall */
-    if (!brk) break;           /* not even one cell of room */
+    if (!p[len])
+      brk = len; /* what is left fits whole */
+    else if (!brk)
+      brk = len;     /* one long word: split it rather than stall */
+    if (!brk) break; /* not even one cell of room */
     if (brk >= STATUS_ROW_CAP) brk = STATUS_ROW_CAP - 1;
     memcpy(out[n], p, brk);
     out[n][brk] = 0;

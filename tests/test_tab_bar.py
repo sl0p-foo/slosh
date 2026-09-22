@@ -158,6 +158,72 @@ def _status(s, text):
     s.settle(30)
 
 
+def test_every_tab_sits_on_a_plate():
+    """The tab you are in is the accent; the others are `tab_idle_bg`. The
+    quiet fill is what gives a tab edges -- and what the active fill is
+    brighter than."""
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        s.api("new-tab")
+        s.settle(30)
+        snap = s.snapshot()
+        idle, active = snap.style_at(CX, Y0), snap.style_at(CX, Y0 + 1)
+        check("the tab you are not in is filled", idle and idle["bg"], str(idle))
+        check(
+            "...in something other than the active tab's fill",
+            active and active["bg"] != idle["bg"],
+            f"{idle} vs {active}",
+        )
+        end = snap.style_at(CX + CW - 1, Y0)
+        check(
+            "and the plate is the whole row, which is the whole hit",
+            end and end["bg"] == idle["bg"],
+            str(end),
+        )
+
+
+def test_an_old_theme_gets_an_idle_plate_in_its_own_family():
+    """Same bargain as the status colours: mixed from two colours the theme
+    does define rather than one stock colour dropped into its palette."""
+    bg, idle = "#101020", "#88ff88"
+    old = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        f'theme {{ default_bg "{bg}"\n tab_idle "{idle}" }}\n'
+    )
+    with Session(SH, cols=90, rows=20, config=old) as s:
+        s.settle(30)
+        s.api("new-tab")
+        s.settle(30)
+        st = s.snapshot().style_at(CX, Y0)
+        got, a, b = _rgb(st["bg"]), _rgb(bg), _rgb(idle)
+        check(
+            "the plate is mixed from the theme's own background and label grey",
+            all(min(a[i], b[i]) <= got[i] <= max(a[i], b[i]) for i in range(3)),
+            f"{st['bg']} not between {bg} and {idle}",
+        )
+        check(
+            "...and nearer the background than the label",
+            sum(abs(got[i] - a[i]) for i in range(3))
+            < sum(abs(got[i] - b[i]) for i in range(3)),
+            st["bg"],
+        )
+
+
+def test_a_theme_can_have_the_bare_tabs_back():
+    """Naming the background is how you say "no plate" -- the knob wins over
+    the derivation, as every named colour does."""
+    bare = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        'theme { default_bg "#101020"\n tab_idle_bg "#101020" }\n'
+    )
+    with Session(SH, cols=90, rows=20, config=bare) as s:
+        s.settle(30)
+        s.api("new-tab")
+        s.settle(30)
+        st = s.snapshot().style_at(CX, Y0)
+        check("the named colour is the one drawn", st["bg"] == "#101020", str(st))
+
+
 def test_status_rows_sit_under_their_tab():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
@@ -392,7 +458,11 @@ def test_statuses_never_cost_a_tab_its_row():
         targets = {h["action"] for h in snap.hits}
         missing = [t["index"] for t in s.tabs() if f"tab:{t['index']}" not in targets]
         check("every tab that exists can be clicked", not missing, str(missing))
-        check("the button was not crowded out either", "newtab" in targets, str(sorted(targets)))
+        check(
+            "the button was not crowded out either",
+            "newtab" in targets,
+            str(sorted(targets)),
+        )
         # The annotation is what gave way: with four labels and a button to
         # fit into sixteen rows there is no room for twelve statuses, and it
         # is the last tabs' statuses that are missing rather than their rows.
@@ -788,6 +858,9 @@ if __name__ == "__main__":
     test_sidebar_rows_click_like_the_strip()
     test_right_sidebar_takes_the_other_edge()
     test_pad_pushes_the_list_down()
+    test_every_tab_sits_on_a_plate()
+    test_an_old_theme_gets_an_idle_plate_in_its_own_family()
+    test_a_theme_can_have_the_bare_tabs_back()
     test_status_rows_sit_under_their_tab()
     test_status_rows_are_told_apart_by_the_slant_not_by_an_indent()
     test_status_rows_take_their_own_theme_colours()

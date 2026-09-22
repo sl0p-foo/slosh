@@ -388,6 +388,7 @@ extern config_t CFG;
 #define TAB_ACTIVE_BG (CFG.tab_active_bg)
 #define TAB_ACTIVE_HOVER_FG (CFG.tab_active_hover_fg)
 #define TAB_IDLE (CFG.tab_idle)
+#define TAB_IDLE_BG (CFG.tab_idle_bg)
 #define TAB_HOVER (CFG.tab_hover)
 #define PREFIX_FG (CFG.prefix_fg)
 #define PREFIX_BG (CFG.prefix_bg)

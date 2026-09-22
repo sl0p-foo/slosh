@@ -651,6 +651,7 @@ static const struct {
     {"tab_active_bg", offsetof(config_t, tab_active_bg)},
     {"tab_active_hover_fg", offsetof(config_t, tab_active_hover_fg)},
     {"tab_idle", offsetof(config_t, tab_idle)},
+    {"tab_idle_bg", offsetof(config_t, tab_idle_bg)},
     {"tab_hover", offsetof(config_t, tab_hover)},
     {"prefix_fg", offsetof(config_t, prefix_fg)},
     {"prefix_bg", offsetof(config_t, prefix_bg)},
@@ -1058,6 +1059,13 @@ void config_defaults(config_t *c) {
   c->tab_active_bg = accent;
   c->tab_active_hover_fg = bright;
   c->tab_idle = dim;
+  /* A plate under the tabs you are not in. Barely off the background and in
+   * the label's own grey: enough that a tab is a shape with edges, not enough
+   * to compete with the active tab's accent fill -- the strip has one
+   * highlight and this is not it. It also gives the active fill something to
+   * be brighter *than*, which on a strip of short labels is most of how the
+   * eye finds it. */
+  c->tab_idle_bg = blend(c->default_bg, dim, 30);
   c->tab_hover = accent;
   c->prefix_fg = ink;
   c->prefix_bg = accent;
@@ -2233,8 +2241,7 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
                                            c->tab_bar_width);
   c->tab_bar_pad =
       (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_pad"), 0, c->tab_bar_pad);
-  c->tab_gap =
-      (uint16_t)kdl_arg_int(kdl_child(root, "tab_gap"), 0, c->tab_gap);
+  c->tab_gap = (uint16_t)kdl_arg_int(kdl_child(root, "tab_gap"), 0, c->tab_gap);
   c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
                                             0, c->tab_bar_status);
   c->tab_bar_status_lines = (uint16_t)kdl_arg_int(
@@ -2486,6 +2493,13 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
      * split apply_scrolled makes. */
     if (!kdl_child(theme, "tab_status_fg"))
       c->tab_status_fg = blend(c->tab_count, c->tab_hover, 40);
+    /* The idle tab plate, on the same terms: a third of the way from the
+     * theme's background to the grey it writes idle tab labels in. Every
+     * theme defines both, so each gets a plate in its own family -- paper
+     * lightens, phosphor greens -- and a theme that wants the bare strip back
+     * says `tab_idle_bg` in its own default_bg rather than editing this. */
+    if (!kdl_child(theme, "tab_idle_bg"))
+      c->tab_idle_bg = blend(c->default_bg, c->tab_idle, 30);
     /* The alternate band, on the same terms. A tenth of the way from the
      * tab bar's own background toward the accent: enough to read as a
      * different row at a glance, not enough to read as a highlight. */

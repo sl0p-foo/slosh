@@ -126,6 +126,18 @@ yours wins; the band is unset by default, which leaves a translucent
 terminal's own background alone. The top strip has one row and no room for any of this, which is half of
 why the sidebar exists.
 
+**Every tab is a plate, not a word on the background.** The one you are in is
+filled with the accent (`tab_active_bg`); the rest sit on `tab_idle_bg`, a
+third of the way from the theme's background to the grey it writes idle labels
+in. Two things come of the quiet fill: a tab has edges, so where one ends, how
+far the row you are about to click reaches, and — in the sidebar especially —
+which rows are tabs rather than statuses are all visible; and the active fill
+has something to be brighter *than*, which on a strip of short labels is most
+of how the eye finds it. Unset, it is mixed from two colours every theme
+defines, so each gets a plate in its own family — paper lightens, phosphor
+greens. Name it and yours wins: set it to your own `default_bg` for the bare
+strip, or somewhere further along for a louder one.
+
 **An unnamed tab borrows the directory its focused pane is in** — the
 kernel's answer, so a `cd` moves the label with you, and home shows as `~`.
 A real name or a [purpose](layouts.md#purposes) wins the moment one exists;

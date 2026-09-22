@@ -468,6 +468,14 @@ typedef struct {
    * the tab you are in -- so its hover shows in the text instead. */
   color_t tab_active_hover_fg;
   color_t tab_idle, tab_hover;
+  /* The fill under every tab that is not the active one, so a tab reads as a
+   * plate rather than as words floating on the background -- and so the
+   * active tab's fill reads as *this one* against the rest, which is a
+   * comparison it could not make against nothing. Derived a third of the way
+   * from the background to `tab_idle`, the tab's own label grey, so it stays
+   * in a theme's family without any theme naming it. Set it to the theme's
+   * `default_bg` for the old bare look. */
+  color_t tab_idle_bg;
   color_t prefix_fg, prefix_bg; /* the "C-a" badge */
   color_t tab_count;            /* how many panes in the session */
   /* The sidebar's status rows. Their distinction from the labels above them

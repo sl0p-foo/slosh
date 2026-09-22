@@ -313,6 +313,7 @@ ACCENT = "#7aa2f7"  # the fill of the tab you are in, and hover on the rest
 INK = "#141418"  # text on that fill
 BRIGHT = "#ffffff"  # that text while the pointer is on it
 DIM = "#45454a"  # a tab you are not in
+IDLE_BG = "#141416"  # ...and its plate: a third of the way from bg to DIM
 
 
 def two_tab_layout():
@@ -401,9 +402,22 @@ def test_weight_says_active_and_colour_says_pointer():
             h for k, h in hits.items() if k.startswith("tab:") and h is not active
         ][0]
         check(
-            "a tab you are not in has no fill at all",
-            bg_of(snap, inactive) is None and fg_of(snap, inactive) == DIM,
+            "a tab you are not in sits on the quiet plate instead",
+            bg_of(snap, inactive) == IDLE_BG and fg_of(snap, inactive) == DIM,
             f"{fg_of(snap, inactive)} on {bg_of(snap, inactive)}",
+        )
+
+        hover(s, inactive["x"] + 1, inactive["y"])
+        snap = s.snapshot()
+        check(
+            "hovering an inactive tab brightens its text",
+            fg_of(snap, inactive) == ACCENT,
+            str(fg_of(snap, inactive)),
+        )
+        check(
+            "...and keeps its plate, rather than reading as the tab going away",
+            bg_of(snap, inactive) == IDLE_BG,
+            str(bg_of(snap, inactive)),
         )
 
         hover(s, active["x"] + 1, active["y"])
