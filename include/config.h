@@ -142,6 +142,16 @@ enum {
  * problems in it has one problem, and the list is long enough to say so. */
 #define CONFIG_MSGS_MAX 32
 
+/* Room for the colour table in config.c, checked against it there: the flags
+ * beside it live in the config, so the header needs a ceiling rather than the
+ * table. Generous, because overshooting costs one byte per unused slot. */
+#define THEME_COLORS_MAX 128
+
+/* How many named themes a picker will list, and how long a name may be. A
+ * theme is a file in a directory; both numbers are "more than anyone has". */
+#define THEMES_MAX 64
+#define THEME_NAME_MAX 64
+
 typedef struct {
   /* geometry */
   uint16_t gap, gap_aspect;
@@ -571,6 +581,31 @@ typedef struct {
   size_t nproject_roots;
   int project_depth;
 
+  /* Named themes. `theme_name "phosphor"` reads `phosphor.kdl` out of the
+   * theme directory and applies it *before* the rest of the file, exactly as
+   * an include does: the theme is the base, anything you write beside it
+   * wins. NULL is "nobody asked", and the compiled-in palette stands.
+   *
+   * `theme_dir` is where to look, resolved against the file that said it when
+   * it is relative; NULL means the pair of directories config_theme_dirs
+   * derives -- `themes/` beside your config, then the ones `make install`
+   * put in `<prefix>/share/slosh/themes`. Two rather than one so a theme that
+   * ships with slosh is reachable by name without being copied first, and a
+   * theme of yours with the same name shadows it. */
+  char *theme_dir;
+  char *theme_name;
+
+  /* Which colours were named by hand rather than inherited from the theme the
+   * config asked for, indexed like the table in config.c. Only the dump reads
+   * it, and only so that `--dump-config` can write `theme_name` plus your two
+   * overrides instead of freezing sixty resolved colours into a file -- which
+   * would pin the theme's palette at the moment you dumped it and quietly
+   * make every later change to that theme invisible. */
+  bool theme_set[THEME_COLORS_MAX];
+  /* Loader scratch: true while a named theme file is being read, which is how
+   * the flags above tell "the theme said it" from "you said it". */
+  bool in_theme;
+
   /* The layout a project with no file of its own opens as. Yours rather than a
    * guess about your stack: relative paths in it bind to whichever project is
    * being opened, so one file is the shape you start every project in. NULL is
@@ -603,6 +638,29 @@ typedef struct {
  * it keeps the defaults and writes the reason to `err`. */
 void config_defaults(config_t *c);
 bool config_load(config_t *c, const char *path, char *err, size_t errcap);
+
+/* Apply a named theme over a config that is already loaded, as if the config
+ * had asked for it: the same lookup, the same file, the same derivations. How
+ * a live theme switch is made, and why switching is not a special path through
+ * the loader -- a theme applied at runtime and one named in a config have to
+ * end up at the same palette, or the session and its file disagree. */
+bool config_apply_theme(config_t *c, const char *name, char *err,
+                        size_t errcap);
+
+/* Where named themes are looked for, in order. Absolute and expanded. */
+size_t config_theme_dirs(const config_t *c, char (*out)[512], size_t max);
+
+/* Every theme that can be named, sorted, each one listed once -- a name in an
+ * earlier directory shadows the same name in a later one, which is what makes
+ * a theme of yours able to replace a shipped one. */
+size_t config_themes(const config_t *c, char (*out)[THEME_NAME_MAX],
+                     size_t max);
+
+/* Write `theme_name "x"` into a config file, replacing the line already there
+ * or adding one. For a switch somebody asked to keep: the session can hold a
+ * theme for itself, but only the file can hold it past a restart. */
+bool config_write_theme_name(const char *path, const char *name, char *err,
+                             size_t errcap);
 /* $SLOSH_CONFIG, else $XDG_CONFIG_HOME/slosh/config.kdl, else ~/.config/… */
 const char *config_default_path(void);
 /* Every complaint from the last load, oldest first: "config.kdl:12: ...".
@@ -676,6 +734,11 @@ char *config_render(const config_t *c);
 /* The same, for a config nobody has edited: what a fresh install would do.
  * Caller frees. */
 char *config_dump_defaults(void);
+/* The palette in force as a theme file, which is how a theme is started from
+ * the one you are looking at. The config dump writes `theme_name` rather than
+ * sixty colours, so this is the only place they are all spelled out. */
+char *config_render_theme(const config_t *c);
+char *config_dump_theme(void);
 const char *config_action_group(action_t a);
 /* "ctrl+a", "alt+left", "\\", "f" -> key + mods. False if unparseable. */
 bool config_parse_chord(const char *text, int *out_key, uint16_t *out_mods);

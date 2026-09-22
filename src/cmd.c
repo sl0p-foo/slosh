@@ -501,6 +501,48 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     }
     return jok_int(NULL, 0);
   }
+  /* Colour, by name. Without one it answers what there is to pick from, which
+   * is the question a picker (or a person) has first; with one it switches the
+   * session now. `save` writes the name into the config as well, so the same
+   * verb covers "let me see it" and "keep it". */
+  if (strcmp(cmd, "theme") == 0) {
+    const char *name = jv_gets(req, "name", NULL);
+    bool save = jv_getb(req, "save", false);
+    char err[192] = {0};
+    if (name && *name && !app_set_theme(name, save, err, sizeof err))
+      return jerr(err[0] ? err : "cannot use that theme");
+    if (name && !*name && !app_set_theme("", false, err, sizeof err))
+      return jerr(err[0] ? err : "cannot reload");
+    if (name) {
+      app_resize(a, s->cols, s->rows); /* a theme may move the geometry */
+      s->force_full = true;
+      char msg[128];
+      snprintf(msg, sizeof msg, "theme: %s%s",
+               *app_theme() ? app_theme() : "the config's own",
+               save ? " (saved)" : "");
+      app_toast(a, msg);
+    }
+    char names[64][64];
+    size_t n = app_themes(names, 64);
+    char dirs[4][512];
+    size_t nd = app_theme_dirs(dirs, 4);
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_str(&j, "theme", app_theme(), strlen(app_theme()));
+    if (name) json_bool(&j, "saved", save);
+    json_arr_open(&j, "themes");
+    for (size_t i = 0; i < n; i++)
+      json_str(&j, NULL, names[i], strlen(names[i]));
+    json_arr_close(&j);
+    json_arr_open(&j, "dirs");
+    for (size_t i = 0; i < nd; i++)
+      json_str(&j, NULL, dirs[i], strlen(dirs[i]));
+    json_arr_close(&j);
+    json_obj_close(&j);
+    return j.buf;
+  }
   if (strcmp(cmd, "alive") == 0) {
     json_t j;
     json_init(&j);
@@ -643,6 +685,33 @@ char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
     app_resize(a, s->cols, s->rows);
     s->force_full = true;
     return strdup(ok ? "ok" : err);
+  }
+  /* `theme` lists, `theme phosphor` switches. The bare form has no room for
+   * `save`, which is the right way round: the driver is for trying things. */
+  if (strcmp(verb, "theme") == 0) {
+    char err[192] = {0};
+    if (*arg && !app_set_theme(arg, false, err, sizeof err))
+      return strdup(err[0] ? err : "cannot use that theme");
+    if (*arg) {
+      app_resize(a, s->cols, s->rows);
+      s->force_full = true;
+      return strdup(app_theme());
+    }
+    char names[64][64];
+    size_t n = app_themes(names, 64);
+    /* One line, because a bare verb's answer is one line -- the driver reads
+     * replies by line and a list down the page would put it out of step. The
+     * one in force is marked, so "which am I wearing" needs no second call. */
+    char out[64 * 68];
+    size_t used = 0;
+    for (size_t i = 0; i < n && used + 68 < sizeof out; i++) {
+      int wrote =
+          snprintf(out + used, sizeof out - used, "%s%s%s", used ? " " : "",
+                   names[i], strcmp(names[i], app_theme()) == 0 ? "*" : "");
+      if (wrote > 0) used += (size_t)wrote;
+    }
+    out[used] = 0;
+    return strdup(out);
   }
   if (strcmp(verb, "alive") == 0) {
     return strdup(app_should_quit(a) ? "false" : "true");

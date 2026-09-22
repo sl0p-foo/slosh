@@ -32,10 +32,18 @@ def dump(config=None):
     ).stdout
 
 
+def theme_dump(config=None):
+    env = dict(os.environ)
+    env["SLOSH_CONFIG"] = config or "/nonexistent/slosh.kdl"
+    return subprocess.run(
+        [BIN, "--dump-theme"], capture_output=True, text=True, env=env
+    ).stdout
+
+
 def test_it_dumps_something_that_looks_like_a_config():
     text = dump()
     check("it has content", len(text.splitlines()) > 100, str(len(text)))
-    for expect in ("gap ", "theme {", "states {", "keys {", "prefix "):
+    for expect in ("gap ", "states {", "keys {", "prefix "):
         check(f"it has {expect!r}", expect in text, text[:200])
 
 
@@ -102,10 +110,33 @@ def test_every_key_the_parser_knows_is_in_it():
     )
 
 
-def test_every_theme_colour_is_in_it():
+def test_the_config_dump_names_a_theme_rather_than_a_palette():
+    """Colour left this file when themes got names. A seed config full of
+    resolved colours pins the palette at the moment it was written, and every
+    later improvement to the theme it came from stops arriving -- so the dump
+    offers the two settings that *can* follow a theme, and no block."""
+    text = dump()
+    for expect in ("// theme_name", "// theme_dir"):
+        check(f"it offers {expect!r}", expect in text, text[:400])
+    check(
+        "it pins no palette",
+        not re.search(r"^theme \{", text, re.M),
+        text[:400],
+    )
+    check(
+        "and names no theme of its own: a default is not a theme",
+        not re.search(r"^theme_name", text, re.M),
+        text[:400],
+    )
+
+
+def test_every_theme_colour_is_in_the_theme_dump():
+    """The same guard, moved to where the colours went: --dump-theme is the
+    file you start a theme from, so a colour missing from it is a colour
+    nobody can change by copying what they are wearing."""
     src = open(SRC).read()
     colours = set(re.findall(r'\{"([a-z_]+)", offsetof\(config_t', src))
-    text = dump()
+    text = theme_dump()
     # A colour that is *unset* is the terminal's own, and a theme block has no
     # spelling for that -- parse_color takes #rrggbb and nothing else. Those
     # are written commented out, so the dump still names the key while loading

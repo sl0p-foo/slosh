@@ -799,130 +799,40 @@ splash_ms 900
 
 // ── theme ───────────────────────────────────────────────────────────────────
 
-// Every colour the compositor draws has its own name here. They started as six
-// names doing thirty jobs, which meant the split guide could not be recoloured
-// without also recolouring the focused frame, because they were the same
-// entry. Several still share a default: that says they look right together,
-// not that they are the same thing.
-theme {
-    // What a cell's "terminal default" colour is taken to be when a shader has
-    // to compute on it. See the shaders section above.
-    default_fg "#ffffff"
-    default_bg "#000000"
+// A theme is a file of colours in a directory, named here rather than pasted
+// in. Named, because a name is a thing you can change: `theme_name` is one
+// line to edit, one `{"cmd":"theme","name":"amber"}` to switch while the
+// session runs, and one entry in a list a picker can show you. Sixty colours
+// pasted into this file are none of those things -- and they freeze the
+// palette at the moment you pasted them, so every later improvement to the
+// theme you copied from is one you never see.
+//
+// theme_name "phosphor"
 
-    // ── panes ───────────────────────────────────────────────────────────────
-    frame_focus "#7aa2f7"      // border of the focused pane
-    frame_idle "#45454a"       // border of every other pane
-    title "#ffffff"            // its title, and its OSC 5577 status text
-    title_idle "#45454a"       // the same, on a pane that is not focused
+// Where those files are looked for. Unset, it is `themes/` beside this file
+// (so ~/.config/slosh/themes for the usual config), and then the ones slosh
+// installed in <prefix>/share/slosh/themes -- a shipped theme is nameable
+// without being copied first, and a theme of yours with the same name shadows
+// it. Yours is searched first for exactly that reason.
+//
+// theme_dir "~/.config/slosh/themes"
 
-    // A pane's own OSC 5577 buttons.
-    button_fg "#141418"
-    button_bg "#7aa2f7"
-    button_bg_idle "#55555c"   // buttons on a pane that is not focused
-
-    // ── things that appear under the pointer ────────────────────────────────
-    guide "#7aa2f7"            // split guide: armed edge, handle, its arrow, boundary
-    resize "#7aa2f7"           // the handle in the gap between two panes
-    drop_target "#7aa2f7"      // frame of a pane a drag could land on
-
-    // ── a pane's scrollback indicator ───────────────────────────────────────
-    scroll_fg "#141418"
-    scroll_bg "#7aa2f7"
-
-    // ── rows of a tab that has collapsed into a list ────────────────────────
-    header "#45454a"
-    header_hover "#7aa2f7"          // the rule, under the pointer
-    header_hover_title "#ffffff"    // the name, under the pointer
-
-    // ── the strip along the top ─────────────────────────────────────────────
-    // The tab you are in is filled rather than merely bold: bold alone is easy
-    // to miss on a strip of short labels. It keeps that fill while the pointer
-    // is on it -- it is still the tab you are in -- so its hover lands on the
-    // text instead.
-    tab_active_fg "#141418"
-    tab_active_bg "#7aa2f7"
-    tab_active_hover_fg "#ffffff"
-    // Brighter than the grey on idle frames and titles: a tab you are not in
-    // is a place to go, and has to read from across the screen.
-    tab_idle "#8a8a95"
-    // Every other tab is a plate too, 43% of the way from the background to
-    // the grey above: a tab with edges rather than a word floating on the
-    // background, and something for the active fill to be brighter *than*.
-    // That fraction is a contrast ratio in disguise -- about 1.9:1 against
-    // the background whether the theme is dark or light. Unset, it is mixed
-    // from those two, so a theme gets one in its own family without naming
-    // it. Name your own background here for bare tabs.
-    tab_idle_bg "#3b3b40"
-    tab_hover "#7aa2f7"
-    prefix_fg "#141418"        // the "C-a" badge, while the prefix is pending
-    prefix_bg "#7aa2f7"
-    tab_count "#45454a"        // panes in the whole session
-
-    // ── the line along the bottom ───────────────────────────────────────────
-    status "#45454a"           // session, tab, pane, and the pane index
-    status_state "#ffffff"     // scrolled / alt screen / not started / exited
-    hint "#ffffff"             // what the pointer is on, in the middle
-
-    // ── marks on a pane's frame ─────────────────────────────────────────────
-    bell "#e0af68"             // a pane rang and has not been looked at:
-                               // amber, not the accent -- attention, not focus
-    dead "#ff875f"             // its program exited: the line in its backlog,
-                               // and the words in its frame and the status line
-    pane_button "#45454a"      // the frame's own close/zoom/minimise marks
-    pane_button_hover "#7aa2f7"
-
-    // ── the row of minimised panes ──────────────────────────────────────────
-    minbar "#45454a"
-    minbar_hover "#7aa2f7"
-
-    // ── modals: a surface that floats over the layout ───────────────────────
-    // Named apart from the pane colours they resemble because a modal is a
-    // different surface: opaque, on top of everything, and legible against a
-    // background that has been dimmed underneath it. (The first version drew
-    // the close button in the pane button colour on the finder background,
-    // which are the same value — an invisible button until you hovered it.)
-    modal_bg "#1c1c22"          // a shade lighter than the dimmed screen
-    modal_fg "#e8e8ea"
-    modal_border "#7aa2f7"
-    modal_title "#ffffff"
-    modal_button "#8a8a95"      // visible *without* the pointer on it
-    modal_button_hover "#7aa2f7"
-
-    // ── the pane finder ─────────────────────────────────────────────────────
-    // The finder is a modal, so its box is the modal colours above; these are
-    // the parts only it has. `finder_bg` is the query field and the row under
-    // the pointer — a band that is not the box, so typing and hovering both
-    // have somewhere to show.
-    finder_fg "#ffffff"
-    finder_bg "#45454a"
-    finder_sel_fg "#141418"
-    finder_sel_bg "#7aa2f7"      // the row enter would take
-
-    // ── scrollback search (the `/` bar) ────────────────────────────────
-    // Every match on screen is tinted `search_*`; the one the bar is on gets
-    // `search_cur_*` instead, so "this one" reads apart from "all of them".
-    // Warm gold by default, because a match is a different thing from a
-    // selection (finder) or focus (accent) and should not be mistaken for one.
-    search_fg "#ffffff"
-    search_bg "#4d4124"          // the other matches
-    search_cur_fg "#141418"
-    search_cur_bg "#f2c97a"      // the one ↑↓ and enter act on
-
-    // ── the in-place editor a double-click opens on a pane title ────────────
-    rename_fg "#141418"
-    rename_bg "#7aa2f7"
-
-    // ── announcements ───────────────────────────────────────────────────────
-    toast_fg "#141418"
-    toast_bg "#7aa2f7"
-
-    // The "2 clients" tag when several terminals share the session. Muted by
-    // default -- standing information, not an announcement. attach_bg unset
-    // means the terminal's own background.
-    attach_fg "#45454a"
-    // attach_bg "#141418"
-}
+// A theme file *is* a config file -- one `theme { }` block in it and nothing
+// else -- which is why `slosh --check` lints one, why saving one reloads the
+// session wearing it, and why `include` still works for a theme that lives
+// somewhere a directory of names cannot reach.
+//
+// The shipped `default` theme is the annotated reference: every colour with
+// what it is for, and it matches what no config at all gets you. To start one
+// from the session in front of you:
+//
+//   slosh --dump-theme > ~/.config/slosh/themes/mine.kdl
+//
+// Anything written in a `theme { }` block here beats the named theme, colour
+// by colour, so "that one, but with my green frames" is two lines:
+//
+// theme_name "phosphor"
+// theme { frame_focus "#00ff88" }
 
 // ── keys ────────────────────────────────────────────────────────────────────
 //

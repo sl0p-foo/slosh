@@ -5,9 +5,13 @@
 #   contrib/theme-tour slate           apply one to the session named below
 #   SESSION=work contrib/theme-tour    ...to a different session
 #
-# It works by writing the theme to the file the session was started with and
-# letting the config watcher do the rest, which is also a fair demonstration of
-# the watcher.
+# One control-socket call per theme (`cmd theme`), which is the same thing a
+# person does with one line of their config -- the tour used to copy a theme
+# file over the session's config and wait for the watcher to notice, which
+# demonstrated the watcher rather than the themes.
+#
+# THEME_DIR points the session at this repo's themes, so the tour shows what is
+# in the checkout rather than what happens to be installed.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 bin="$here/../build/slosh"
@@ -16,21 +20,21 @@ CONF=${SLOSH_CONFIG:-/tmp/slosh-theme-tour.kdl}
 DWELL=${DWELL:-4}
 
 apply() {
-  cp "$here/themes/$1.kdl" "$CONF"
+  "$bin" -s "$SESSION" cmd "theme $1" >/dev/null
   printf '  %-10s %s\n' "$1" "$(sed -n '1s|// ||p' "$here/themes/$1.kdl")"
 }
+
+if ! "$bin" ls 2>/dev/null | grep -q "^$SESSION "; then
+  printf 'theme_dir "%s"\ntheme_name "sl0p"\n' "$here/themes" >"$CONF"
+  echo "starting a session called $SESSION..."
+  SLOSH_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
+  sleep 1
+fi
 
 if [ -n "$1" ]; then
   [ -f "$here/themes/$1.kdl" ] || { echo "no such theme: $1"; exit 1; }
   apply "$1"
   exit 0
-fi
-
-if ! "$bin" ls 2>/dev/null | grep -q "^$SESSION "; then
-  cp "$here/themes/sl0p.kdl" "$CONF"
-  echo "starting a session called $SESSION..."
-  SLOSH_CONFIG="$CONF" "$bin" -s "$SESSION" -- "${SHELL:-/bin/sh}" &
-  sleep 1
 fi
 
 echo "cycling every theme, ${DWELL}s each. ^C to stop wherever you like."

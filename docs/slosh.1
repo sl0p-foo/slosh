@@ -27,6 +27,8 @@ slosh \- a terminal multiplexer
 .br
 .B slosh \-\-dump\-config
 .br
+.B slosh \-\-dump\-theme
+.br
 .B slosh \-\-headless
 |
 .B \-\-script
@@ -120,6 +122,25 @@ The values are the defaults, not the ones currently in effect:
 this is the file to begin from, and
 .B \-\-check
 is the one that reads yours back.
+Colour is the exception: it prints the
+.B theme_name
+in force and the colours a configuration overrides by hand, not the
+resolved palette, so a dumped configuration keeps following its theme.
+.RE
+.TP
+.B \-\-dump\-theme
+Print the palette in force as a theme file: every colour the
+compositor draws, derivations resolved.
+.RS
+.PP
+.EX
+slosh \-\-dump\-theme > ~/.config/slosh/themes/mine.kdl
+.EE
+.PP
+starts a theme from the session in front of you rather than from an
+empty file; name it with
+.B theme_name
+to wear it.
 .RE
 .TP
 .B \-\-headless

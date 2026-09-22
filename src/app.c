@@ -63,6 +63,12 @@ const char *app_config_complaint(void) {
   return CFG_COMPLAINT;
 }
 
+/* A theme this session was told to wear, which outranks the config file's own
+ * answer until it is cleared. Held here rather than in the config because a
+ * reload builds a whole new config from disk: anything that has to survive
+ * that cannot live inside the thing being replaced. */
+static char THEME_OVERRIDE[THEME_NAME_MAX];
+
 bool app_reload_config(char *err, size_t errcap) {
   config_t fresh;
   config_defaults(&fresh);
@@ -71,11 +77,71 @@ bool app_reload_config(char *err, size_t errcap) {
     config_free(&fresh);
     return false; /* keep what works */
   }
+  /* After the file, over whatever it asked for: a session that was switched
+   * to a theme stays switched when the config is saved. A name that has gone
+   * missing since (the file was deleted, the directory moved) complains like
+   * any other bad line and leaves the file's own colours standing -- it must
+   * not cost you the reload. */
+  if (THEME_OVERRIDE[0]) {
+    char terr[192] = {0};
+    if (!config_apply_theme(&fresh, THEME_OVERRIDE, terr, sizeof terr) && err &&
+        errcap && !err[0])
+      snprintf(err, errcap, "%s", terr[0] ? terr : "cannot apply that theme");
+  }
   config_free(&CFG);
   CFG = fresh;
   CFG_LOADED = true;
   /* Whatever the new file had to say about itself, including nothing. */
   snprintf(CFG_COMPLAINT, sizeof CFG_COMPLAINT, "%s", err && err[0] ? err : "");
+  return true;
+}
+
+const char *app_theme(void) {
+  ensure_config();
+  return CFG.theme_name ? CFG.theme_name : "";
+}
+
+size_t app_themes(char (*out)[THEME_NAME_MAX], size_t max) {
+  ensure_config();
+  return config_themes(&CFG, out, max);
+}
+
+size_t app_theme_dirs(char (*out)[512], size_t max) {
+  ensure_config();
+  return config_theme_dirs(&CFG, out, max);
+}
+
+bool app_set_theme(const char *name, bool save, char *err, size_t errcap) {
+  ensure_config();
+  if (err && errcap) err[0] = 0;
+
+  /* Nothing named: forget the session's answer and take the file's, which is
+   * the only way back to a config that names no theme at all. */
+  if (!name || !*name) {
+    THEME_OVERRIDE[0] = 0;
+    return app_reload_config(err, errcap);
+  }
+
+  /* Tried on a throwaway config first: a name that is not there must not cost
+   * the session the colours it is wearing. */
+  config_t probe;
+  config_defaults(&probe);
+  bool ok = config_apply_theme(&probe, name, err, errcap);
+  config_free(&probe);
+  if (!ok) return false;
+
+  if (save &&
+      !config_write_theme_name(config_default_path(), name, err, errcap))
+    return false;
+
+  snprintf(THEME_OVERRIDE, sizeof THEME_OVERRIDE, "%s", name);
+  char rerr[192] = {0};
+  if (!app_reload_config(rerr, sizeof rerr)) {
+    /* The config file is broken, so a reload cannot be how the theme lands --
+     * but the theme itself was fine, and refusing the switch over somebody
+     * else's syntax error would be the wrong half to give up. */
+    if (!config_apply_theme(&CFG, name, err, errcap)) return false;
+  }
   return true;
 }
 

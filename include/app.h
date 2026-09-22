@@ -59,6 +59,23 @@ char *app_take_clipboard(app_t *a);
 
 /* Re-read the config file. Keeps the working one if the new file is broken. */
 bool app_reload_config(char *err, size_t errcap);
+
+/* Switch the session to a named theme, now.
+ *
+ * The name is held by the session and re-applied over every later reload, so
+ * editing your config does not quietly put the old colours back. `save` also
+ * writes the `theme_name` line into the config file, which is the difference
+ * between "for now" and "from now on" -- a live switch that edited your config
+ * behind you would be rude, and one that vanished on the next reload would be
+ * useless, so it is a choice the caller makes. An empty name drops the
+ * session's own answer and goes back to whatever the file says. */
+bool app_set_theme(const char *name, bool save, char *err, size_t errcap);
+/* The theme in force, or "" when nobody has named one. */
+const char *app_theme(void);
+/* What there is to pick from, and where it was looked for. Through the app
+ * rather than the config, because the front ends do not own a config. */
+size_t app_themes(char (*out)[64], size_t max);
+size_t app_theme_dirs(char (*out)[512], size_t max);
 /* The files the config in force was read from: the one that was loaded and
  * everything it included, existing or not. What the watcher watches. */
 size_t app_config_files(const char **out, size_t max);

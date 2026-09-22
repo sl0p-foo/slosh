@@ -302,20 +302,52 @@ Unset, the workspaces feature is dormant.
 A layout applied to projects that do not carry their own
 .IR slosh.layout .
 .SH THEME
-.B theme { }
-names every colour the compositor draws (frames, titles, tabs,
-buttons, modals, toasts), each its own entry, 48 of them, so one can
-change without dragging thirty others along.
+A theme is a file of colours in a directory, named rather than pasted:
 .PP
 .EX
-include "~/.config/slosh/themes/phosphor.kdl"
+theme_name "phosphor"
 theme { frame_focus "#00ff88" }   // ...but that one colour is mine
 .EE
+.TP
+.BI theme_name\  name
+The theme to wear:
+.IR name .kdl
+from the theme directory, applied before the rest of the file, so a
+.B theme { }
+block beside it wins.
+A name, not a path \(em use
+.B include
+for a file somewhere else.
+Unset, the compiled\-in palette stands.
+.TP
+.BI theme_dir\  path
+Where those files live.
+Unset, it is
+.I themes/
+beside the configuration file, and then
+.IR PREFIX/share/slosh/themes/ ,
+so a shipped theme is nameable without being copied and one of yours
+with the same name shadows it.
 .PP
-.B slosh \-\-dump\-config
-prints the full list with the compiled-in values; ready-made themes
-ship under
-.IR PREFIX/share/slosh/themes/ .
+.B theme { }
+names every colour the compositor draws (frames, titles, tabs,
+buttons, modals, toasts), each its own entry, so one can change without
+dragging thirty others along.
+A theme file is a configuration containing one of those blocks, which
+is why
+.B slosh \-\-check
+lints one and why saving it reloads the session.
+.PP
+The theme can also be changed while the session runs, over the control
+socket:
+.B \(aq{"cmd":"theme"}\(aq
+lists what is installed and what is worn,
+.B \(aq{"cmd":"theme","name":"amber"}\(aq
+switches now, and
+.B "save":true
+with it writes the
+.B theme_name
+line into the configuration so the switch outlives the session.
 .SH SHADERS
 A shader is a colour pass over a pane's cells: foreground, background,
 attributes, never the text, because rewriting text would desync
@@ -488,9 +520,16 @@ for the full search order).
 .TP
 .I PREFIX/share/slosh/
 The annotated default configuration and an example layout, plus the
-shipped themes, chrome presets and shader presets, each a file to
-copy or
+chrome and shader presets, each a file to copy or
 .BR include .
+.TP
+.I PREFIX/share/slosh/themes/
+The shipped themes, read by name: see
+.BR theme_name .
+.TP
+.I ~/.config/slosh/themes/
+Yours, searched first, so a file here replaces a shipped theme of the
+same name.
 .SH SEE ALSO
 .BR slosh (1)
 .PP

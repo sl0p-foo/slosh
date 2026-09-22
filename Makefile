@@ -36,8 +36,14 @@ VT_INC   := $(VT_OUT)/include
 # all -> ./VERSION verbatim, which is how a cgit snapshot / Homebrew build sees it).
 VERSION := $(shell contrib/version)
 
+# Where `install` will put the shipped themes, compiled in so that a named
+# theme (`theme_name "phosphor"`) can be found without being copied into your
+# config directory first. PREFIX only, never DESTDIR: DESTDIR is a staging root
+# a package is built in, not a path the program will ever see.
+PREFIX   ?= /usr/local
+
 CFLAGS   := -std=c23 -O1 -g -Wall -Wextra -Wno-unused-parameter -MMD -MP \
-            -I$(VT_INC) -Iinclude -Ibuild
+            -I$(VT_INC) -Iinclude -Ibuild -DSLOSH_DATADIR='"$(PREFIX)/share/slosh"'
 LDFLAGS  :=
 
 SRC      := $(wildcard src/*.c)
@@ -454,11 +460,12 @@ release: release-check release-linux release-windows ## full release: linux tarb
 # ── installation ────────────────────────────────────────────────────────────
 # For packagers (Homebrew's formula mirrors this layout) and for anyone doing
 # `sudo make install`. DESTDIR is the staging root a package manager wants;
-# PREFIX is where the files will finally live. The binary is the only thing
-# slosh needs to run -- the rest is example configuration you may copy into
-# ~/.config/slosh, so it goes to share/ and nothing reads it from there. The
-# manpage goes where man(1) already looks, which is the whole point of one.
-PREFIX   ?= /usr/local
+# PREFIX (set near CFLAGS, because the binary is compiled knowing it) is where
+# the files will finally live. The binary is the only thing slosh needs to run;
+# of the rest, share/slosh/themes is the one directory it reads by itself --
+# `theme_name` looks there after your own themes directory -- and the example
+# config and layout are still yours to copy. The manpage goes where man(1)
+# already looks, which is the whole point of one.
 DESTDIR  ?=
 BINDIR   := $(DESTDIR)$(PREFIX)/bin
 SHAREDIR := $(DESTDIR)$(PREFIX)/share/slosh

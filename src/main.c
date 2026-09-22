@@ -147,7 +147,8 @@ static int check_config(const char *path) {
 
 static void usage(void) {
   fputs("usage: slosh [-s NAME] [--layout FILE] [--no-reload]\n"
-        "                [--version] [--dump-config] [--check [FILE]]\n"
+        "                [--version] [--dump-config] [--dump-theme]\n"
+        "                [--check [FILE]]\n"
         "                [--install-terminfo] [ls | cmd LINE | -- CMD...]\n",
         stderr);
 }
@@ -200,6 +201,14 @@ int main(int argc, char **argv) {
        * them -- this is the file to begin from, and `--check` is the one that
        * reads yours and says what it understood. */
       char *text = config_dump_defaults();
+      fputs(text, stdout);
+      free(text);
+      return 0;
+    } else if (strcmp(a, "--dump-theme") == 0) {
+      /* The other half of --dump-config, which writes a theme's *name* rather
+       * than its colours: this writes the colours, so a theme can be started
+       * from the one in front of you instead of from a blank file. */
+      char *text = config_dump_theme();
       fputs(text, stdout);
       free(text);
       return 0;

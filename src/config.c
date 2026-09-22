@@ -2,14 +2,17 @@
 #include "config.h"
 
 #include <ghostty/vt.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "input.h"
 #include "kdl.h"
+#include "slosh.h"
 
 static const struct {
   const char *name;
@@ -1266,6 +1269,8 @@ void config_free(config_t *c) {
   free(c->binds);
   free(c->shell);
   free(c->editor);
+  free(c->theme_dir);
+  free(c->theme_name);
   free(c->project_layout);
   for (size_t i = 0; i < c->nproject_roots; i++) free(c->project_roots[i]);
   for (size_t i = 0; i < c->nfiles; i++) free(c->files[i]);
@@ -1814,10 +1819,39 @@ char *config_render(const config_t *c) {
   else
     cb_add(&b, "// project_layout \"~/.config/slosh/project.layout\"\n");
 
-  cb_add(&b, "\n// ---- colour ----\ntheme {\n");
+  /* Colour is a name and a short list of exceptions, never sixty resolved
+   * values. Writing the whole palette out would pin the theme as it looked at
+   * the moment of the dump: the file would keep working and every later
+   * change to that theme -- including one you make yourself -- would silently
+   * stop arriving. So the dump says which theme, and then only what this
+   * config said for itself. */
+  cb_add(&b, "\n// ---- colour ----\n");
+  if (c->theme_dir)
+    cb_qstr(&b, "theme_dir", c->theme_dir, "where named themes live");
+  else
+    cb_add(&b,
+           "// theme_dir \"~/.config/slosh/themes\"  // unset: themes/ beside "
+           "this file,\n//                                     then the "
+           "installed ones\n");
+  if (c->theme_name)
+    cb_qstr(&b, "theme_name", c->theme_name, "a file in there, without .kdl");
+  else
+    cb_add(&b,
+           "// theme_name \"phosphor\"  // unset: the compiled-in palette\n");
+  size_t nset = 0;
   for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)
-    cb_color(&b, THEME_COLORS[i].name, *THEME_COLOR((config_t *)c, i));
-  cb_add(&b, "}\n");
+    if (c->theme_set[i]) nset++;
+  if (nset) {
+    cb_add(&b, "// ...and the colours this config names itself, which beat "
+               "the theme's:\ntheme {\n");
+    for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)
+      if (c->theme_set[i])
+        cb_color(&b, THEME_COLORS[i].name, *THEME_COLOR((config_t *)c, i));
+    cb_add(&b, "}\n");
+  } else {
+    cb_add(&b, "// theme { frame_focus \"#00ff88\" }  // ...and the colours "
+               "you want anyway\n");
+  }
 
   /* Written even when empty: an empty block says "this exists and you have
    * none", where nothing at all says "we forgot to tell you". Chrome passes
@@ -1912,6 +1946,41 @@ char *config_dump_defaults(void) {
   return text;
 }
 
+/* The palette itself, as a theme file.
+ *
+ * The config dump stopped writing sixty colours when themes got names -- it
+ * writes the name -- so this is where "what exactly am I wearing" is answered:
+ * the resolved colours, derivations included, in the one format a theme is
+ * written in. `slosh --dump-theme > ~/.config/slosh/themes/mine.kdl` is how a
+ * theme is started from the one in front of you rather than from nothing. */
+char *config_render_theme(const config_t *c) {
+  cfgbuf_t b = {0};
+  cb_add(&b, "// A slosh theme: every colour the compositor draws, as it\n");
+  cb_add(&b, "// currently stands. Written by `slosh --dump-theme`.\n");
+  cb_add(&b, "//\n");
+  cb_add(&b, "// Drop it in your theme directory and name it with\n");
+  cb_add(&b, "// `theme_name`. What each colour is for is written out in\n");
+  cb_add(&b, "// the shipped `default` theme.\n");
+  if (c->theme_name) cb_add(&b, "// Started from: %s\n", c->theme_name);
+  cb_add(&b, "theme {\n");
+  for (size_t i = 0; i < sizeof THEME_COLORS / sizeof *THEME_COLORS; i++)
+    cb_color(&b, THEME_COLORS[i].name, *THEME_COLOR((config_t *)c, i));
+  cb_add(&b, "}\n");
+  return b.buf ? b.buf : strdup("");
+}
+
+char *config_dump_theme(void) {
+  config_t fresh;
+  config_defaults(&fresh);
+  /* The config's own answer, not the compiled one: dumping a theme is asking
+   * what this session looks like, and a session reads a config. A broken file
+   * leaves the defaults standing, which is what the session would wear too. */
+  config_load(&fresh, config_default_path(), NULL, 0);
+  char *text = config_render_theme(&fresh);
+  config_free(&fresh);
+  return text;
+}
+
 action_t config_lookup(const config_t *c, int key, uint16_t mods) {
   /* caps/num lock must not make a binding stop working */
   mods &= (uint16_t)(MOD_SHIFT | MOD_CTRL | MOD_ALT | MOD_SUPER);
@@ -1948,6 +2017,95 @@ static action_t action_by_name(const char *name) {
     if (n >= 1 && n <= 9) return (action_t)(ACT_SELECT_TAB_1 + (n - 1));
   }
   return ACT_NONE;
+}
+
+/* Defined with the rest of the theme lookup, below: what a theme may be
+ * called is one rule, and the writer has to refuse exactly what the loader
+ * would refuse. */
+static bool theme_name_ok(const char *name);
+
+/* Keep a theme switch past a restart, by editing the one line that says which
+ * theme it is.
+ *
+ * A line rather than a rewrite: dumping the whole config back over itself
+ * would reformat a file somebody wrote by hand and drop every comment in it,
+ * which is not a fair price for changing a colour scheme. So the existing
+ * `theme_name` line is replaced in place where there is one, and appended
+ * where there is not -- and a config that does not exist yet becomes a
+ * one-line one, since that is exactly what was asked for. */
+bool config_write_theme_name(const char *path, const char *name, char *err,
+                             size_t errcap) {
+  if (err && errcap) err[0] = 0;
+  if (!theme_name_ok(name)) {
+    if (err && errcap) snprintf(err, errcap, "not a theme name: %s", name);
+    return false;
+  }
+
+  char *text = NULL;
+  size_t len = 0;
+  FILE *f = fopen(path, "rb");
+  if (f) {
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    if (size < 0) size = 0;
+    fseek(f, 0, SEEK_SET);
+    text = malloc((size_t)size + 1);
+    if (!text) {
+      fclose(f);
+      if (err && errcap) snprintf(err, errcap, "out of memory");
+      return false;
+    }
+    len = fread(text, 1, (size_t)size, f);
+    text[len] = 0;
+    fclose(f);
+  }
+
+  char dir[1024];
+  path_mkdirs(path_dir(path, dir, sizeof dir));
+  /* Written beside the original and renamed over it: a config half-written by
+   * a crash is a session that will not start. */
+  char tmp[1100];
+  snprintf(tmp, sizeof tmp, "%s.new", path);
+  FILE *out = fopen(tmp, "wb");
+  if (!out) {
+    free(text);
+    if (err && errcap) snprintf(err, errcap, "cannot write %s", path);
+    return false;
+  }
+
+  bool replaced = false;
+  for (char *line = text; line && *line;) {
+    char *nl = strchr(line, '\n');
+    size_t n = nl ? (size_t)(nl - line) : strlen(line);
+    const char *p = line;
+    while (p < line + n && (*p == ' ' || *p == '\t')) p++;
+    /* The line this owns, and only at the top level -- a `theme_name` inside
+     * a block is not this setting, and indentation is the only thing that
+     * tells them apart without parsing the file again. */
+    bool mine = !replaced && p == line && strncmp(p, "theme_name", 10) == 0 &&
+                (p[10] == ' ' || p[10] == '\t' || p[10] == '"');
+    if (mine) {
+      fprintf(out, "theme_name \"%s\"\n", name);
+      replaced = true;
+    } else {
+      fwrite(line, 1, n, out);
+      fputc('\n', out);
+    }
+    if (!nl) break;
+    line = nl + 1;
+  }
+  if (!replaced) {
+    if (len && text[len - 1] != '\n') fputc('\n', out);
+    fprintf(out, "theme_name \"%s\"\n", name);
+  }
+  free(text);
+  bool ok = fclose(out) == 0;
+  if (ok) ok = rename(tmp, path) == 0;
+  if (!ok) {
+    remove(tmp);
+    if (err && errcap) snprintf(err, errcap, "cannot write %s", path);
+  }
+  return ok;
 }
 
 const char *config_default_path(void) {
@@ -2037,6 +2195,8 @@ static const char *const KNOWN_TOP[] = {
     "tab_bar_width",
     "tab_gap",
     "theme",
+    "theme_dir",
+    "theme_name",
     "title_align",
     "title_inset",
     "toast_ms",
@@ -2089,6 +2249,144 @@ static void include_path(const char *base_file, const char *ref, char *out,
   }
   char dir[512];
   snprintf(out, cap, "%s/%s", path_dir(base_file, dir, sizeof dir), r);
+}
+
+/* The directories a named theme is looked for in, in order.
+ *
+ * `themes/` beside the config first -- beside the *root* config, not beside
+ * whichever file named the theme, because it is where a person keeps their
+ * themes and a config elsewhere (SLOSH_CONFIG, or a file handed to --check)
+ * takes its themes with it rather than borrowing yours. Then the
+ * ones `make install` wrote to `<prefix>/share/slosh/themes`, if this build
+ * knows where that is: a theme slosh ships with should be nameable without
+ * being copied anywhere first, and a theme of yours with the same name wins
+ * by being looked at first. `theme_dir` replaces the first of the two, not
+ * both, so naming your own directory never hides the shipped set. */
+size_t config_theme_dirs(const config_t *c, char (*out)[512], size_t max) {
+  size_t n = 0;
+  if (n < max) {
+    if (c && c->theme_dir && *c->theme_dir) {
+      snprintf(out[n++], 512, "%s", c->theme_dir);
+    } else {
+      /* files[0] is the file this config was loaded from -- remembered before
+       * it was parsed, so it is right even for a file that turned out not to
+       * exist. Only a config nobody has loaded falls back to where one would
+       * have been. */
+      const char *root = c && c->nfiles ? c->files[0] : config_default_path();
+      char dir[512];
+      snprintf(out[n++], 512, "%s/themes", path_dir(root, dir, sizeof dir));
+    }
+  }
+#ifdef SLOSH_DATADIR
+  if (n < max) snprintf(out[n++], 512, "%s/themes", SLOSH_DATADIR);
+#endif
+  return n;
+}
+
+/* A theme's file, or false with the places that were looked in. */
+static bool theme_path(const config_t *c, const char *name, char *out,
+                       size_t cap, char *tried, size_t triedcap) {
+  char dirs[4][512];
+  size_t nd = config_theme_dirs(c, dirs, 4);
+  if (tried && triedcap) tried[0] = 0;
+  for (size_t i = 0; i < nd; i++) {
+    char path[1024];
+    snprintf(path, sizeof path, "%s/%s.kdl", dirs[i], name);
+    if (access(path, R_OK) == 0) {
+      snprintf(out, cap, "%s", path);
+      return true;
+    }
+    if (tried && triedcap) {
+      size_t used = strlen(tried);
+      snprintf(tried + used, triedcap - used, "%s%s", used ? ", " : "",
+               dirs[i]);
+    }
+  }
+  return false;
+}
+
+/* A theme is named, never spelled as a path: `theme_name "phosphor"`, not
+ * `theme_name "../../etc/x.kdl"`. The directory is the whole point -- it is
+ * what makes a theme switchable at runtime, listable in a picker, and
+ * shadowable by one of yours -- and a path silently does none of that. A file
+ * somewhere else is what `include` has always been for, and the complaint
+ * says so rather than half-honouring it. */
+static bool theme_name_ok(const char *name) {
+  if (!name || !*name || strlen(name) >= THEME_NAME_MAX) return false;
+  for (const char *p = name; *p; p++)
+    if (*p == '/' || *p == '\\' || *p == ':' || *p < 0x20) return false;
+  return strcmp(name, ".") != 0 && strcmp(name, "..") != 0;
+}
+
+static int by_theme_name(const void *a, const void *b) {
+  return strcmp((const char *)a, (const char *)b);
+}
+
+size_t config_themes(const config_t *c, char (*out)[THEME_NAME_MAX],
+                     size_t max) {
+  char dirs[4][512];
+  size_t nd = config_theme_dirs(c, dirs, 4), n = 0;
+  for (size_t i = 0; i < nd && n < max; i++) {
+    DIR *d = opendir(dirs[i]);
+    if (!d) continue; /* a directory nobody made is the normal case */
+    struct dirent *e;
+    while ((e = readdir(d)) && n < max) {
+      size_t len = strlen(e->d_name);
+      if (len < 5 || strcmp(e->d_name + len - 4, ".kdl") != 0) continue;
+      if (e->d_name[0] == '.' || len - 4 >= THEME_NAME_MAX) continue;
+      char name[THEME_NAME_MAX];
+      snprintf(name, sizeof name, "%.*s", (int)(len - 4), e->d_name);
+      bool seen = false; /* the first directory to offer a name owns it */
+      for (size_t j = 0; j < n && !seen; j++) seen = strcmp(out[j], name) == 0;
+      if (!seen) snprintf(out[n++], THEME_NAME_MAX, "%s", name);
+    }
+    closedir(d);
+  }
+  qsort(out, n, THEME_NAME_MAX, by_theme_name);
+  return n;
+}
+
+/* Read the theme the file asked for, before the file's own settings.
+ *
+ * `in_theme` is saved and restored rather than simply cleared, because a theme
+ * may name a theme: the flags have to keep meaning "somebody outside the theme
+ * chain said this" however deep the chain goes. */
+static void apply_theme_name(config_t *c, const char *name, int line, int depth,
+                             char *err, size_t errcap) {
+  if (!theme_name_ok(name)) {
+    complain(c, err, errcap, line,
+             "theme_name is a name, not a path: %s (use include for a file "
+             "elsewhere)",
+             name);
+    return;
+  }
+  char path[1024], tried[512];
+  if (!theme_path(c, name, path, sizeof path, tried, sizeof tried)) {
+    complain(c, err, errcap, line, "no theme named %s in %s", name, tried);
+    return;
+  }
+  free(c->theme_name);
+  c->theme_name = strdup(name);
+  bool was = c->in_theme;
+  c->in_theme = true;
+  char terr[256] = {0};
+  if (!load_into(c, path, depth + 1, terr, sizeof terr) && !terr[0])
+    snprintf(terr, sizeof terr, "cannot read it");
+  c->in_theme = was;
+  if (terr[0] && err && errcap && !err[0]) snprintf(err, errcap, "%s", terr);
+}
+
+bool config_apply_theme(config_t *c, const char *name, char *err,
+                        size_t errcap) {
+  if (err && errcap) err[0] = 0;
+  const char *was = c->loading;
+  c->loading = NULL;
+  apply_theme_name(c, name, 0, 0, err, errcap);
+  c->loading = was;
+  /* Named it and got it: the name is on the config, which is the only signal
+   * that cannot lie about whether the file was there. */
+  return c->theme_name && strcmp(c->theme_name, name) == 0 &&
+         (!err || !errcap || !err[0]);
 }
 
 /* Every `include` at the top level of this file, in order, applied *before* the
@@ -2190,6 +2488,31 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   /* After the includes, because each of those set it to its own file while it
    * was being read. From here the complaints belong to this file. */
   c->loading = path;
+  /* The named theme, after the includes and before everything this file says
+   * itself -- the same rule includes follow, for the same reason: the loader
+   * reads a document by asking it for names rather than walking it in order,
+   * so "here" is not a position it could honour, and "what you asked for is
+   * the base, what you wrote is yours" is the rule worth having. A theme
+   * beats an include because it is the more specific request. */
+  {
+    const kdl_node_t *dn = kdl_child(root, "theme_dir");
+    const char *dir = kdl_arg(dn, 0, NULL);
+    if (dir) {
+      /* Resolved against the file that said it, like an include's path: a
+       * config is a thing on disk that refers to its neighbours. */
+      char resolved[512];
+      include_path(path, dir, resolved, sizeof resolved);
+      free(c->theme_dir);
+      c->theme_dir = strdup(resolved);
+    }
+    const kdl_node_t *tn = kdl_child(root, "theme_name");
+    const char *name = kdl_arg(tn, 0, NULL);
+    if (tn && !name)
+      complain(c, err, errcap, tn->line, "theme_name needs a name");
+    else if (name)
+      apply_theme_name(c, name, tn->line, depth, err, errcap);
+    c->loading = path; /* the theme file borrowed it while it was read */
+  }
   /* ...which includes "I have no idea what this document is", so it has to be
    * said after the file is known and not before. */
   complain_unknown_top(c, root, err, errcap);
@@ -2490,6 +2813,12 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
       if (!parse_color(v, THEME_COLOR(c, i)))
         complain(c, err, errcap, kdl_child(theme, THEME_COLORS[i].name)->line,
                  "bad colour for %s: %s", THEME_COLORS[i].name, v);
+      /* Not while reading the theme the config asked for: those colours are
+       * the theme's answer, and the dump wants to write the theme's *name*
+       * rather than its palette. A colour named anywhere else -- your config,
+       * a file it includes -- is yours, and survives the dump. */
+      else if (!c->in_theme)
+        c->theme_set[i] = true;
     }
     /* A theme that restyles the chrome but has never heard of the sidebar's
      * status rows gets coherent ones anyway, mixed from two colours it does

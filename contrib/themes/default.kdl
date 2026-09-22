@@ -1,91 +1,139 @@
 // default -- what no config gets you: muted blue on neutral dark
 //
-// This file exists so the tour can show the starting point and so another
-// theme is one include-swap away from coming back. It matches the compiled-in
-// palette exactly (`slosh --dump-config` is the authority if they ever drift).
+// The reference theme, and the annotated one: every colour the compositor
+// draws is named here, with what it is for. Copy this file to
+// ~/.config/slosh/themes/mine.kdl, change what you like, and put
+// `theme_name "mine"` in your config -- or name one of the others beside it.
+//
+// It matches the compiled-in palette exactly, so `theme_name "default"` and
+// naming no theme at all are the same session (`slosh --dump-config` is the
+// authority if they ever drift).
+//
+// The names started as six doing thirty jobs, which meant the split guide
+// could not be recoloured without also recolouring the focused frame, because
+// they were the same entry. Several still share a value: that says they look
+// right together, not that they are the same thing.
 //
 // Two colours mean something rather than match something: `bell` is amber
 // (attention, not focus) and `dead` is warm red-orange. Everything else that
 // says "this one" -- the focused frame, the guide, the active tab -- is one
 // muted blue, calm enough to frame text without shouting over it.
 theme {
-    // what a shader takes "terminal default" to mean
+    // What a cell's "terminal default" colour is taken to be when a shader has
+    // to compute on it. See the shaders chapter (docs/shaders.md).
     default_fg "#ffffff"
     default_bg "#000000"
 
-    // panes
-    frame_focus "#7aa2f7"
-    frame_idle "#45454a"
-    title "#ffffff"
-    title_idle "#45454a"
+    // ── panes ───────────────────────────────────────────────────────────────
+    frame_focus "#7aa2f7"      // border of the focused pane
+    frame_idle "#45454a"       // border of every other pane
+    title "#ffffff"            // its title, and its OSC 5577 status text
+    title_idle "#45454a"       // the same, on a pane that is not focused
 
-    // a pane's own OSC 5577 buttons
+    // A pane's own OSC 5577 buttons.
     button_fg "#141418"
     button_bg "#7aa2f7"
-    button_bg_idle "#55555c"
+    button_bg_idle "#55555c"   // buttons on a pane that is not focused
 
-    // affordances under the pointer
-    guide "#7aa2f7"
-    resize "#7aa2f7"
-    drop_target "#7aa2f7"
+    // ── things that appear under the pointer ────────────────────────────────
+    guide "#7aa2f7"            // split guide: armed edge, handle, its arrow, boundary
+    resize "#7aa2f7"           // the handle in the gap between two panes
+    drop_target "#7aa2f7"      // frame of a pane a drag could land on
 
-    // scrollback indicator
+    // ── a pane's scrollback indicator ───────────────────────────────────────
     scroll_fg "#141418"
     scroll_bg "#7aa2f7"
 
-    // rows of a tab collapsed into a list
+    // ── rows of a tab that has collapsed into a list ────────────────────────
     header "#45454a"
-    header_hover "#7aa2f7"
-    header_hover_title "#ffffff"
+    header_hover "#7aa2f7"          // the rule, under the pointer
+    header_hover_title "#ffffff"    // the name, under the pointer
 
-    // the strip along the top, or the sidebar down the side
+    // ── the strip along the top ─────────────────────────────────────────────
+    // The tab you are in is filled rather than merely bold: bold alone is easy
+    // to miss on a strip of short labels. It keeps that fill while the pointer
+    // is on it -- it is still the tab you are in -- so its hover lands on the
+    // text instead.
     tab_active_fg "#141418"
     tab_active_bg "#7aa2f7"
     tab_active_hover_fg "#ffffff"
+    // Brighter than the grey on idle frames and titles: a tab you are not in
+    // is a place to go, and has to read from across the screen.
     tab_idle "#8a8a95"
+    // Every other tab is a plate too, 43% of the way from the background to
+    // the grey above: a tab with edges rather than a word floating on the
+    // background, and something for the active fill to be brighter *than*.
+    // That fraction is a contrast ratio in disguise -- about 1.9:1 against
+    // the background whether the theme is dark or light. Unset, it is mixed
+    // from those two, so a theme gets one in its own family without naming
+    // it. Name your own background here for bare tabs.
+    tab_idle_bg "#3b3b40"
     tab_hover "#7aa2f7"
-    prefix_fg "#141418"
+    prefix_fg "#141418"        // the "C-a" badge, while the prefix is pending
     prefix_bg "#7aa2f7"
-    tab_count "#45454a"
-    // a sidebar's status rows, part way from tab_count to tab_hover: the live
-    // thing in the sidebar, so not the flat grey of the chrome round it, and
-    // not the full accent either. Unset, it is mixed from those two, so a
-    // theme gets a status colour in its own family without naming one.
-    // tab_status_bg is unset -- a band is opt-in, and none leaves a
-    // translucent terminal's background alone.
-    tab_status_fg "#5a6a8f"
+    tab_count "#45454a"        // panes in the whole session
 
-    // the line along the bottom
-    status "#45454a"
-    status_state "#ffffff"
-    hint "#ffffff"
+    // ── the line along the bottom ───────────────────────────────────────────
+    status "#45454a"           // session, tab, pane, and the pane index
+    status_state "#ffffff"     // scrolled / alt screen / not started / exited
+    hint "#ffffff"             // what the pointer is on, in the middle
 
-    // the pane finder
-    finder_fg "#ffffff"
-    finder_bg "#45454a"
-    finder_sel_fg "#141418"
-    finder_sel_bg "#7aa2f7"
-
-    // rename editor, bell, dead panes, frame buttons, the minimised bar
-    rename_fg "#141418"
-    rename_bg "#7aa2f7"
-    toast_fg "#141418"
-    toast_bg "#7aa2f7"
-
-    // the "N clients" tag: the theme's muted chrome tone, quiet on purpose
-    attach_fg "#45454a"
-    bell "#e0af68"
-    dead "#ff875f"
-    pane_button "#45454a"
+    // ── marks on a pane's frame ─────────────────────────────────────────────
+    bell "#e0af68"             // a pane rang and has not been looked at:
+                               // amber, not the accent -- attention, not focus
+    dead "#ff875f"             // its program exited: the line in its backlog,
+                               // and the words in its frame and the status line
+    pane_button "#45454a"      // the frame's own close/zoom/minimise marks
     pane_button_hover "#7aa2f7"
+
+    // ── the row of minimised panes ──────────────────────────────────────────
     minbar "#45454a"
     minbar_hover "#7aa2f7"
 
-    // a modal floating over the layout (the cheatsheet, C-a ?)
-    modal_bg "#1c1c22"
+    // ── modals: a surface that floats over the layout ───────────────────────
+    // Named apart from the pane colours they resemble because a modal is a
+    // different surface: opaque, on top of everything, and legible against a
+    // background that has been dimmed underneath it. (The first version drew
+    // the close button in the pane button colour on the finder background,
+    // which are the same value — an invisible button until you hovered it.)
+    modal_bg "#1c1c22"          // a shade lighter than the dimmed screen
     modal_fg "#e8e8ea"
     modal_border "#7aa2f7"
     modal_title "#ffffff"
-    modal_button "#8a8a95"
+    modal_button "#8a8a95"      // visible *without* the pointer on it
     modal_button_hover "#7aa2f7"
+
+    // ── the pane finder ─────────────────────────────────────────────────────
+    // The finder is a modal, so its box is the modal colours above; these are
+    // the parts only it has. `finder_bg` is the query field and the row under
+    // the pointer — a band that is not the box, so typing and hovering both
+    // have somewhere to show.
+    finder_fg "#ffffff"
+    finder_bg "#45454a"
+    finder_sel_fg "#141418"
+    finder_sel_bg "#7aa2f7"      // the row enter would take
+
+    // ── scrollback search (the `/` bar) ────────────────────────────────
+    // Every match on screen is tinted `search_*`; the one the bar is on gets
+    // `search_cur_*` instead, so "this one" reads apart from "all of them".
+    // Warm gold by default, because a match is a different thing from a
+    // selection (finder) or focus (accent) and should not be mistaken for one.
+    search_fg "#ffffff"
+    search_bg "#4d4124"          // the other matches
+    search_cur_fg "#141418"
+    search_cur_bg "#f2c97a"      // the one ↑↓ and enter act on
+
+    // ── the in-place editor a double-click opens on a pane title ────────────
+    rename_fg "#141418"
+    rename_bg "#7aa2f7"
+
+    // ── announcements ───────────────────────────────────────────────────────
+    toast_fg "#141418"
+    toast_bg "#7aa2f7"
+
+    // The "2 clients" tag when several terminals share the session. Muted by
+    // default -- standing information, not an announcement. attach_bg unset
+    // means the terminal's own background.
+    attach_fg "#45454a"
+    // attach_bg "#141418"
 }

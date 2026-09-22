@@ -65,18 +65,61 @@ include "keys/vim.kdl" "shaders/crt.kdl"
 
 ## Themes
 
-Every colour the compositor draws has its own name under `theme { }`.
-
-Six ready-made themes are in
-`contrib/themes`:
-`amber`, `mono`, `paper`, `phosphor`, `sl0p`, `slate`, plus `default`, the
-compiled-in palette written out, so another theme is one include-swap away from
-coming back. Include one and put your own two lines on top:
+A theme is a file of colours in a directory, and a config names it:
 
 ```kdl
-include "~/.config/slosh/themes/phosphor.kdl"
+theme_name "phosphor"               // themes/phosphor.kdl
 theme { frame_focus "#00ff88" }     // ...but that one colour is mine
 ```
+
+**Named rather than pasted, because a name is a thing you can change.** It is
+one line to edit, one `{"cmd":"theme","name":"amber"}` to switch while the
+session is running, and one row in a list something can show you. Sixty colours
+pasted into a config are none of those — and they freeze the palette at the
+moment they were pasted, so every later improvement to the theme they came from
+is one you never see.
+
+**Two directories, yours first.** `themes/` beside your config (so
+`~/.config/slosh/themes` for the usual one), then the themes slosh installed in
+`<prefix>/share/slosh/themes`. A shipped theme is therefore nameable without
+being copied anywhere, and a file of yours with the same name shadows it —
+which is how you edit a shipped theme without touching a root-owned file. Point
+`theme_dir` somewhere else and that replaces the first of the two, never the
+shipped set.
+
+`theme_name` takes a **name, not a path**: the directory is what makes a theme
+switchable, listable and shadowable, and a path quietly does none of that. For
+a file somewhere a directory of names cannot reach, `include` is unchanged and
+still works.
+
+Seven themes ship in `contrib/themes`: `amber`, `mono`, `paper`, `phosphor`,
+`sl0p`, `slate`, and `default` — the annotated reference, every colour with
+what it is for, matching exactly what no config at all gets you. A theme file
+*is* a config file with one `theme { }` block in it, so `slosh --check` lints
+one and saving one reloads the session wearing it.
+
+Start your own from the session in front of you rather than from an empty file:
+
+```bash
+slosh --dump-theme > ~/.config/slosh/themes/mine.kdl   # the palette in force
+```
+
+`--dump-config` writes `theme_name` and the colours you overrode, not the
+resolved palette, so a dumped config keeps following its theme.
+
+**Switching without editing anything:**
+
+```bash
+slosh -s main cmd theme                                  # amber default* mono ...
+slosh -s main cmd '{"cmd":"theme","name":"amber"}'        # now
+slosh -s main cmd '{"cmd":"theme","name":"amber","save":true}'   # ...and from now on
+```
+
+The session holds the name over later reloads, so editing your config does not
+put the old colours back; `save` writes the `theme_name` line into the config,
+replacing the one already there, and leaves every other line and comment alone.
+`{"cmd":"theme","name":""}` drops the session's own answer and goes back to
+whatever the file says.
 
 ## The knobs, briefly
 

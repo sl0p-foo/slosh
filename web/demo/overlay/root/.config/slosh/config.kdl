@@ -15,7 +15,7 @@
 //   paper       dark-on-light, for the well-lit
 //   mono        no colour at all
 //   default     white on black, undecorated
-include "themes/sl0p.kdl"
+theme_name "sl0p"
 
 // Busybox ash is the only shell on this machine and $SHELL is not set on it.
 shell "/bin/sh"
