@@ -312,8 +312,8 @@ def test_json_api():
 ACCENT = "#7aa2f7"  # the fill of the tab you are in, and hover on the rest
 INK = "#141418"  # text on that fill
 BRIGHT = "#ffffff"  # that text while the pointer is on it
-DIM = "#45454a"  # a tab you are not in
-IDLE_BG = "#141416"  # ...and its plate: a third of the way from bg to DIM
+DIM = "#8a8a95"  # a tab you are not in
+IDLE_BG = "#3b3b40"  # ...and its plate: 43% of the way from bg to DIM
 
 
 def two_tab_layout():

@@ -471,10 +471,11 @@ typedef struct {
   /* The fill under every tab that is not the active one, so a tab reads as a
    * plate rather than as words floating on the background -- and so the
    * active tab's fill reads as *this one* against the rest, which is a
-   * comparison it could not make against nothing. Derived a third of the way
-   * from the background to `tab_idle`, the tab's own label grey, so it stays
-   * in a theme's family without any theme naming it. Set it to the theme's
-   * `default_bg` for the old bare look. */
+   * comparison it could not make against nothing. Derived 43% of the way from
+   * the background to `tab_idle`, the tab's own label grey, so it stays in a
+   * theme's family without any theme naming it -- and lands at about the same
+   * 1.9:1 against the background whether that background is dark or light.
+   * Set it to the theme's `default_bg` for the bare look. */
   color_t tab_idle_bg;
   color_t prefix_fg, prefix_bg; /* the "C-a" badge */
   color_t tab_count;            /* how many panes in the session */

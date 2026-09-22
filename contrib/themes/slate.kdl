@@ -36,7 +36,7 @@ theme {
     tab_active_fg "#11131c"
     tab_active_bg "#7aa2f7"
     tab_active_hover_fg "#c0caf5"
-    tab_idle "#3b4261"
+    tab_idle "#70789c"
     tab_hover "#7aa2f7"
     prefix_fg "#11131c"
     prefix_bg "#7aa2f7"

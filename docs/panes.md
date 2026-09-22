@@ -127,9 +127,13 @@ terminal's own background alone. The top strip has one row and no room for any o
 why the sidebar exists.
 
 **Every tab is a plate, not a word on the background.** The one you are in is
-filled with the accent (`tab_active_bg`); the rest sit on `tab_idle_bg`, a
-third of the way from the theme's background to the grey it writes idle labels
-in. Two things come of the quiet fill: a tab has edges, so where one ends, how
+filled with the accent (`tab_active_bg`); the rest sit on `tab_idle_bg`, 43% of
+the way from the theme's background to `tab_idle`, the grey it writes their
+labels in — a fraction chosen as a contrast ratio, about 1.9:1 against the
+background whether the theme is dark or light. That label grey is brighter than
+the one on idle frames and titles, because a tab you are not in is a place to
+go and has to read from across the screen, where a dimmed border only has to be
+findable. Two things come of the quiet fill: a tab has edges, so where one ends, how
 far the row you are about to click reaches, and — in the sidebar especially —
 which rows are tabs rather than statuses are all visible; and the active fill
 has something to be brighter *than*, which on a strip of short labels is most

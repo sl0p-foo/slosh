@@ -1058,14 +1058,21 @@ void config_defaults(config_t *c) {
   c->tab_active_fg = ink;
   c->tab_active_bg = accent;
   c->tab_active_hover_fg = bright;
-  c->tab_idle = dim;
-  /* A plate under the tabs you are not in. Barely off the background and in
-   * the label's own grey: enough that a tab is a shape with edges, not enough
-   * to compete with the active tab's accent fill -- the strip has one
-   * highlight and this is not it. It also gives the active fill something to
-   * be brighter *than*, which on a strip of short labels is most of how the
-   * eye finds it. */
-  c->tab_idle_bg = blend(c->default_bg, dim, 30);
+  /* Brighter than the ambient chrome grey the rest of the idle furniture uses
+   * (`dim`, on frames and titles): a tab you are not in is a place to go, and
+   * has to be readable at a glance from across the screen, where a dimmed
+   * pane border only has to be findable. */
+  c->tab_idle = rgb(0x8a, 0x8a, 0x95);
+  /* A plate under the tabs you are not in, in the label's own grey. Enough
+   * that a tab is a shape with edges rather than a word on the background,
+   * and enough to give the active fill something to be brighter *than* --
+   * which on a strip of short labels is most of how the eye finds the tab it
+   * is in -- while staying a plate rather than a second highlight. The
+   * fraction is a contrast ratio in disguise: 43% of the way from the
+   * background to the label lands about 1.9:1 against that background whether
+   * the theme is black-on-dark or white-on-light, because the same step is
+   * being taken in opposite directions. */
+  c->tab_idle_bg = blend(c->default_bg, c->tab_idle, 43);
   c->tab_hover = accent;
   c->prefix_fg = ink;
   c->prefix_bg = accent;
@@ -2493,13 +2500,13 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
      * split apply_scrolled makes. */
     if (!kdl_child(theme, "tab_status_fg"))
       c->tab_status_fg = blend(c->tab_count, c->tab_hover, 40);
-    /* The idle tab plate, on the same terms: a third of the way from the
+    /* The idle tab plate, on the same terms: 43% of the way from the
      * theme's background to the grey it writes idle tab labels in. Every
      * theme defines both, so each gets a plate in its own family -- paper
      * lightens, phosphor greens -- and a theme that wants the bare strip back
      * says `tab_idle_bg` in its own default_bg rather than editing this. */
     if (!kdl_child(theme, "tab_idle_bg"))
-      c->tab_idle_bg = blend(c->default_bg, c->tab_idle, 30);
+      c->tab_idle_bg = blend(c->default_bg, c->tab_idle, 43);
     /* The alternate band, on the same terms. A tenth of the way from the
      * tab bar's own background toward the accent: enough to read as a
      * different row at a glance, not enough to read as a highlight. */
