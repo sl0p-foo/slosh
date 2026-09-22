@@ -158,14 +158,17 @@ def _status(s, text):
     s.settle(30)
 
 
+# The sidebar's default. LEFT would do as well -- the point of these is the
+# alignment, so they say which mode they mean rather than leaning on it.
 RIGHT_IDX = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "right"\n')
+PREFIX_IDX = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "prefix"\n')
 
 
-def test_the_index_can_sit_at_the_far_end():
-    """`tab_bar_index "right"`: names all start in one column, numbers line up
-    in another. A sidebar row is wider than the name on it, and the prefix
-    spends the start of every row on a number nobody reads until they want to
-    press it."""
+def test_the_index_sits_at_the_far_end():
+    """The sidebar's default: names all start in one column, numbers line up in
+    another. A sidebar row is wider than the name on it, and a prefix spends
+    the start of every row on a number nobody reads until they want to press
+    it."""
     with Session(SH, cols=90, rows=20, config=RIGHT_IDX) as s:
         s.settle(30)
         s.api("new-tab", name="api")
@@ -246,15 +249,29 @@ def test_the_whole_row_is_still_one_door():
         )
 
 
+def test_the_prefix_is_still_there_for_anyone_who_wants_it():
+    """`1:name`, which is what the top strip draws and what the sidebar drew
+    before the alignment existed."""
+    with Session(SH, cols=90, rows=20, config=PREFIX_IDX) as s:
+        s.settle(30)
+        row = _row(s.snapshot(), Y0)
+        check("the number is in front of the name", row.strip() == "1:tests", repr(row))
+
+
+def test_the_sidebar_aligns_by_default():
+    with Session(SH, cols=90, rows=20, config=LEFT) as s:
+        s.settle(30)
+        row = _row(s.snapshot(), Y0)
+        check("no config asked for it", row.rstrip()[-1] == "1", repr(row))
+        check("...and no prefix came with it", "1:" not in row, repr(row))
+
+
 def test_a_bad_index_mode_is_a_line_and_no_more():
     bad = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "middle"\n')
     with Session(SH, cols=90, rows=20, config=bad) as s:
         s.settle(30)
-        check(
-            "the session runs, with the default",
-            "1:tests" in s.snapshot().screen(),
-            _row(s.snapshot(), Y0),
-        )
+        row = _row(s.snapshot(), Y0)
+        check("the session runs, with the default", row.rstrip()[-1] == "1", repr(row))
 
 
 def test_every_tab_sits_on_a_plate():
@@ -367,8 +384,8 @@ def test_status_rows_are_told_apart_by_the_slant_not_by_an_indent():
         # starts in. Three columns of indent is a fifth of this sidebar.
         check(
             "a status is not indented under its label",
-            status.index("building") == label.index("1:"),
-            f"{status.index('building')} vs {label.index('1:')}",
+            status.index("building") == label.index("tests"),
+            f"{status.index('building')} vs {label.index('tests')}",
         )
         st = snap.style_at(CX + 1, Y0 + 1)
         check("it is italic instead", "italic" in st["attrs"], str(st))
@@ -729,7 +746,11 @@ def test_an_unnamed_tab_borrows_its_directory():
     with Session(cd, cols=90, rows=20, config=LEFT) as s:
         s.settle(60)
         row = _row(s.snapshot(), Y0)
-        check("the label is the focused pane's dir", "1:tmp" in row, repr(row))
+        check(
+            "the label is the focused pane's dir",
+            row.split() == ["tmp", "1"],
+            repr(row),
+        )
 
 
 def test_a_real_name_beats_the_derived_one():
@@ -739,17 +760,25 @@ def test_a_real_name_beats_the_derived_one():
     with Session(SH, cols=90, rows=20, config=LEFT, layout=lay.name) as s:
         s.settle(60)
         row = _row(s.snapshot(), Y0)
-        check("a declared name is not second-guessed", "1:api" in row, repr(row))
+        check(
+            "a declared name is not second-guessed",
+            row.split() == ["api", "1"],
+            repr(row),
+        )
 
 
 def test_the_borrowed_name_follows_a_cd():
     loop = ["/bin/sh", "-c", 'cd /tmp && while IFS= read -r l; do eval "$l"; done']
     with Session(loop, cols=90, rows=20, config=LEFT) as s:
-        s.until(lambda snap: "1:tmp" in snap.line(Y0))
+        s.until(lambda snap: "tmp" in snap.line(Y0))
         s.send(r"cd /home\n")
-        s.until(lambda snap: "1:home" in snap.line(Y0))
+        s.until(lambda snap: "home" in snap.line(Y0))
         row = _row(s.snapshot(), Y0)
-        check("the kernel's answer moves the label", "1:home" in row, repr(row))
+        check(
+            "the kernel's answer moves the label",
+            row.split() == ["home", "1"],
+            repr(row),
+        )
 
 
 def test_the_sidebar_is_framed_like_a_pane():
@@ -957,7 +986,9 @@ if __name__ == "__main__":
     test_sidebar_rows_click_like_the_strip()
     test_right_sidebar_takes_the_other_edge()
     test_pad_pushes_the_list_down()
-    test_the_index_can_sit_at_the_far_end()
+    test_the_index_sits_at_the_far_end()
+    test_the_prefix_is_still_there_for_anyone_who_wants_it()
+    test_the_sidebar_aligns_by_default()
     test_a_long_name_stops_short_of_the_number()
     test_a_narrow_row_keeps_the_prefix()
     test_the_top_strip_ignores_it()

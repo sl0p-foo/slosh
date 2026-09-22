@@ -951,7 +951,7 @@ void config_defaults(config_t *c) {
   c->modal_scrim = 120;
   c->status_bar = true;
   c->tab_bar_side = TAB_BAR_TOP;
-  c->tab_bar_index = TAB_INDEX_PREFIX;
+  c->tab_bar_index = TAB_INDEX_RIGHT;
   /* Wide enough for " 12:a-real-name " plus a bell; narrow enough that a
    * 100-column terminal keeps a working layout beside it. */
   c->tab_bar_width = 18;
@@ -1711,8 +1711,8 @@ char *config_render(const config_t *c) {
          : c->tab_bar_side == TAB_BAR_RIGHT ? "right"
                                             : "top");
   cb_add(&b,
-         "tab_bar_index \"%s\"  // 1:name, or the number at the sidebar's far "
-         "edge\n",
+         "tab_bar_index \"%s\"  // the sidebar's number at its far edge, or "
+         "1:name\n",
          c->tab_bar_index == TAB_INDEX_RIGHT ? "right" : "prefix");
   cb_add(&b, "tab_bar_width %u      // columns a sidebar takes\n",
          c->tab_bar_width);
