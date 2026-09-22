@@ -144,9 +144,14 @@ but counted in cells rather than rows times
 \(em a sidebar's rows and columns do different jobs, one being air above
 the list and the other an indent for its labels.
 The default is
+.B 0 1 0 2
+\(em one column on the right, where the tab number stops, and two on the
+left, whose first column is the gutter a busy pane's spinner sits in and
+whose remainder is the air after it;
 .B 0 1
-\(em one column, which is where every label's leading space used to be
-fixed; 0 puts the names against the frame.
+is the squashed look and
+.B 0
+puts the names against the frame.
 It is inside the plate: a tab's fill still spans the whole row, which is
 what you click.
 .B tab_bar_pad
@@ -219,9 +224,10 @@ is the spinner's frames separated by spaces; one frame is a static mark and
 costs nothing, several make it turn, and the session keeps a frame clock only
 while such a row is on screen. Empty draws no mark and leaves
 .B tab_status_busy
-to say it. The mark sits in the column
+to say it. The mark sits in the first column
 .B tab_bar_padding
-holds blank, so nothing moves when a program starts or stops working.
+holds blank, so nothing moves when a program starts or stops working, and
+the rest of that padding is the space after it.
 .TP
 .BR newtab_button\  \fIbool\fR ,\ newtab_pad\  \fIn\fR
 The new-tab button at the end of the tab strip, and the air between it and

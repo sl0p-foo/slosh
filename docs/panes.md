@@ -56,7 +56,7 @@ The strip of tabs sits along the top by default. It does not have to:
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
 tab_bar_index "right" // the tab number at the far end; "prefix" is 1:name
-tab_bar_padding 0 1   // air inside it, in cells: rows, then columns
+tab_bar_padding 0 1 0 2 // air inside it, in cells: top right bottom left
 tab_bar_pad 0         // ...or just the top of that, the older name
 tab_gap 0             // ...and between one tab and the next
 tab_bar_chrome true   // frame it like a pane
@@ -100,10 +100,11 @@ be able to cost you a tab you can click.
 
 **A pane can say its status is still happening**, and the sidebar says so back:
 `busy` over OSC 5577 turns that row `tab_status_busy` and puts a spinner
-(`busy_mark`) in the column the padding holds blank — so `make test` running and
+(`busy_mark`) in the first column of the indent — so `make test` running and
 `make test` finished, which are the same words, stop looking the same from
-another tab. Nothing moves when it flips, since the mark takes a column that
-was already there; `tab_bar_padding 0 2` gives it a gutter of its own. One frame
+another tab. Nothing moves when it flips, since the mark takes a column the
+padding was already holding blank, and the rest of that padding is the space
+after it. One frame
 in `busy_mark` is a static mark and costs nothing, several make it turn, and the
 session only keeps a frame clock while such a row is actually on screen. The
 flag dies with the program: a status left behind by something that exited
@@ -115,9 +116,14 @@ a pane. In cells rather than `padding`'s rows-times-`gap_aspect`, because the
 two sides do different jobs here — the columns indent the labels and their
 statuses, the rows are air above the first tab and below the last thing in the
 strip — and scaling the columns would spend four of a sixteen-column sidebar on
-`2`. The default is `0 1`: one column, which is where every label's leading
-space used to be fixed, so `tab_bar_padding 0` is a thing you can now ask for
-and puts the names against the frame. It is air *inside* the plate — a tab's
+`2`. The default is `0 1 0 2`: one column on the right, where the tab number stops,
+and two on the left, because that indent is also the gutter a busy pane's
+spinner sits in — the mark takes its first column and what is left over is the
+air after the mark, so a single column would stand the spinner against the
+first letter of the status. `tab_bar_padding 0 1` is that squashed look for
+anyone who wants the column back, and `tab_bar_padding 0` puts the names
+against the frame, which the hard-coded leading space they used to carry never
+allowed. It is air *inside* the plate — a tab's
 fill still spans the whole row, because the row is what you click.
 `tab_bar_pad` is the older name for the top of it alone, still honoured, and it
 wins where both are written.

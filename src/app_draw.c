@@ -2459,14 +2459,18 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
                     : busy ? TAB_STATUS_BUSY
                            : TAB_STATUS_FG,
                     band, hot ? ATTR_BOLD : ATTR_ITALIC);
-        /* In the indent, against the text rather than against the frame, and
-         * on the first row only: the mark belongs to the status, not to each
-         * line it wrapped onto. It takes a column the padding was holding
-         * blank, so nothing moves when a program starts or stops working --
-         * a list that reflowed on every `make` would be worse than no mark. */
+        /* The first column of the indent, on the first row only: the mark
+         * belongs to the status, not to each line it wrapped onto. It takes a
+         * column the padding was holding blank, so nothing moves when a
+         * program starts or stops working -- a list that reflowed on every
+         * `make` would be worse than no mark -- and whatever padding is left
+         * after it is the air between the mark and the words. At
+         * `tab_bar_padding`'s default of two columns that is one space; at
+         * one column they stand shoulder to shoulder, which is the squashed
+         * look and now something you ask for rather than something you get. */
         if (marked && k == 0)
-          screen_text(s, (uint16_t)(cx + CFG.tab_pad_left - 1), y, spin,
-                      hot ? TAB_HOVER : TAB_STATUS_BUSY, band, 0);
+          screen_text(s, cx, y, spin, hot ? TAB_HOVER : TAB_STATUS_BUSY, band,
+                      0);
         char act[24];
         snprintf(act, sizeof act, "find:%u", ts.row[j].pane);
         hit_add(&s->hits, cx, y, cw, 1, act);

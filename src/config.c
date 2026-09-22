@@ -1002,11 +1002,15 @@ void config_defaults(config_t *c) {
    * standing in for, and a blank row inside the frame on top of it reads as
    * a gap nobody asked for. Still there for a bare sidebar, or for anyone
    * who wants room at the top for a borderless window's own buttons. */
-  /* No rows of air by default, and one column: that column is where every
-   * label's leading space used to be hard-coded, so the default draws what it
-   * always drew and 0 is now a thing you can ask for. */
+  /* No rows of air by default. One column on the right, which is where the
+   * tab number stops; two on the left, because the left indent is also the
+   * gutter a busy pane's spinner sits in -- one column would put the mark
+   * against the first letter of the status, which reads as clutter rather
+   * than as a mark. `tab_bar_padding 0 1` is the squashed look for anyone
+   * who wants the column back. */
   c->tab_pad_top = c->tab_pad_bottom = 0;
-  c->tab_pad_left = c->tab_pad_right = 1;
+  c->tab_pad_left = 2;
+  c->tab_pad_right = 1;
   c->tab_gap = 0; /* flush, the way the list has always read */
   /* Three is enough for "the build, the tests, and one more thing" without a
    * chatty tab pushing the list off the bottom. */

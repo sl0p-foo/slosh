@@ -290,8 +290,8 @@ bell_mark "[!]"
 // nothing; several make it turn, and only then does the session keep a frame
 // clock -- and only while such a row is actually on screen. "" draws no mark
 // at all and leaves the colour to say it. The mark sits in the column
-// `tab_bar_padding` was holding blank, so nothing moves when a program starts
-// or stops working; give it a gutter of its own with `tab_bar_padding 0 2`.
+// `tab_bar_padding` holds blank, so nothing moves when a program starts or
+// stops working, and the rest of that padding is the space after it.
 busy_mark "⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"
 busy_ms 120
 
@@ -305,14 +305,20 @@ status_bar true
 // are air above the first tab and below the last thing in the strip -- and
 // scaling the columns would make `2` mean four of a sixteen-column sidebar.
 //
-// The one column each side is where every label's leading space used to be
-// hard-coded, so `0` is a thing you can now ask for: names against the frame.
+// The right column is where the tab number stops. The left is two, because
+// that indent is also the gutter a busy pane's spinner sits in: the mark takes
+// the first column of it and whatever is left over is the air between the mark
+// and the words, so one column would put a spinner against the first letter of
+// a status. `tab_bar_padding 0 1` is that squashed look for anyone who wants
+// the column back, and `0` puts the names against the frame -- which the
+// hard-coded leading space they used to carry never allowed.
+//
 // It is air *inside* the plate; a tab's fill still spans the whole row,
 // because the row is what you click.
 //
 // `tab_bar_pad` is the older name for the top of this alone, still honoured,
 // and it wins where a config writes both.
-tab_bar_padding 0 1
+tab_bar_padding 0 1 0 2   // top right bottom left
 
 // Where a tab's number sits in a *sidebar*. The default, "right", puts it at
 // the far end of the row, so every name starts in the same column and the

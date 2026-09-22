@@ -527,7 +527,12 @@ def test_a_busy_status_says_so():
         )
         check(
             "...where it moves nothing: the text is where it was",
-            _row(snap, Y0 + 1).index("make test") == 1,
+            _row(snap, Y0 + 1).index("make test") == 2,
+            repr(_row(snap, Y0 + 1)),
+        )
+        check(
+            "...with the rest of the indent as air after it",
+            _row(snap, Y0 + 1)[1] == " ",
             repr(_row(snap, Y0 + 1)),
         )
 
@@ -540,6 +545,30 @@ def test_a_busy_status_says_so():
             and snap.line(Y0 + 1)[CX] == " ",
             repr(_row(snap, Y0 + 1)),
         )
+
+
+def test_the_gap_after_the_mark_is_the_rest_of_the_padding():
+    """The mark takes the first column of the indent and what is left is air,
+    so the default's two columns are a mark and a space -- and the squashed
+    look is something you ask for rather than something you get."""
+    squashed = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 0 1\n')
+    with Session(SH, cols=90, rows=20, config=squashed) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        row = _row(s.snapshot(), Y0 + 1)
+        check("one column: mark then words", row.index("make test") == 1, repr(row))
+
+    roomy = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 0 1 0 3\n')
+    with Session(SH, cols=90, rows=20, config=roomy) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        row = _row(s.snapshot(), Y0 + 1)
+        check("three: mark then two spaces", row.index("make test") == 3, repr(row))
+        check("...and the mark is still against the frame", row[0] != " ", repr(row))
 
 
 def test_a_spinner_costs_a_frame_clock_and_a_mark_does_not():
@@ -1239,6 +1268,7 @@ if __name__ == "__main__":
     test_status_rows_sit_under_their_tab()
     test_status_rows_are_told_apart_by_the_slant_not_by_an_indent()
     test_a_busy_status_says_so()
+    test_the_gap_after_the_mark_is_the_rest_of_the_padding()
     test_a_spinner_costs_a_frame_clock_and_a_mark_does_not()
     test_no_busy_mark_leaves_the_colour_to_say_it()
     test_the_busy_colour_is_the_themes_own()
