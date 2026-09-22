@@ -258,13 +258,30 @@ struct app {
    * rather than two that would drift apart, for the same reason the rename
    * editor is. Only one can be open, which is what makes sharing the query
    * and the selection honest rather than a saving. */
-  enum { PICK_NONE = 0, PICK_FINDER, PICK_PALETTE, PICK_WORKSPACES } picker;
+  enum {
+    PICK_NONE = 0,
+    PICK_FINDER,
+    PICK_PALETTE,
+    PICK_WORKSPACES,
+    PICK_THEMES
+  } picker;
   /* What the project picker is listing: scanned once when it opens, because
    * draw_picker asks for its rows every frame and a readdir per repaint is a
    * filesystem walk at 120Hz. Once per opening is when the answer has to be
    * right, which is why nothing is kept for longer. */
   project_t *projects;
   size_t nprojects;
+  /* The theme picker's list, scanned when it opens for the same reason the
+   * projects are: draw asks for rows every frame, and a readdir per repaint
+   * is a filesystem walk at 120Hz.
+   *
+   * `theme_was` is what the session wore before the picker opened, because
+   * moving the selection *applies* the theme -- picking a colour scheme from
+   * a list of names is guessing, and the only honest preview of a theme is
+   * the session wearing it. Escape puts it back. */
+  char themes[THEMES_MAX][THEME_NAME_MAX];
+  size_t nthemes;
+  char theme_was[THEME_NAME_MAX];
   char query[64];
   size_t sel;
 

@@ -47,6 +47,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `reload` | re-read the config; answers `{"ok":true,"warning":...}` if it had a complaint |
 | `splash` | replay the attach greeting; `fx` and `motion` pick the colour effect and the assembly by index, for a deterministic one |
 | `edit-config` | open the config in a pane |
+| `theme` | without `name`, what is installed and what is worn (`theme` `themes` `dirs`); with one, switch now, and `save:true` writes the `theme_name` line into the config. See [themes](config.md#themes) |
 | `alive` | is it running, and how many panes and tabs |
 | `quit` | end the session |
 

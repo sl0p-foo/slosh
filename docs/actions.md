@@ -90,6 +90,7 @@ it one.
 | `palette`        | `p`          | the command palette                   |
 | `help`           | `?`          | the cheatsheet                        |
 | `edit-config`    | `e`          | edit the config, in a pane            |
+| `themes`         | `t`          | the theme picker, worn as you browse  |
 | `detach`         | `d`          | detach, leave it running              |
 | `quit`           | `q`          | quit the session                      |
 | `literal-prefix` | leader twice | send the leader itself to the program |

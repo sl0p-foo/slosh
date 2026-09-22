@@ -36,6 +36,7 @@ leader twice sends it to the program in the pane.
 | `p`                              | the command palette                                                                                     |
 | `PgUp` `PgDn` `Home` `End`       | [scrollback](config.md#scrollback) (the wheel works too)                                                |
 | `/`                              | search the scrollback: type, `↑` `↓` between matches, Enter keeps your place, Esc snaps back            |
+| `t`                              | the theme picker: every theme you can name, applied as you move, `C-s` keeps it ([themes](config.md#themes)) |
 | `e`                              | edit the config, in a pane                                                                              |
 | `?`                              | this list                                                                                               |
 | `d`                              | detach, leave it running                                                                                |

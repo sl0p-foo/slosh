@@ -96,6 +96,7 @@ typedef enum {
   ACT_QUIT,
   ACT_HELP,
   ACT_EDIT_CONFIG,
+  ACT_THEMES,
   ACT_LITERAL_PREFIX,
   ACT_SELECT_TAB_1, /* .. +8, so digits stay one entry each */
 } action_t;

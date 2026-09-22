@@ -303,6 +303,140 @@ def test_editing_the_theme_repaints_on_reload():
         check("the edited theme is what is drawn", frame(s) == PINK, frame(s))
 
 
+# ---- the picker ------------------------------------------------------------
+#
+# `C-a t`. The list is names, and a name says nothing about a colour scheme, so
+# moving the selection wears the theme: the session behind the box is the only
+# honest preview of a palette meant to dress a whole session.
+
+
+def picker(s):
+    """The picker's rows, as text, without the frame either side."""
+    return [l.strip() for l in s.snapshot().screen().splitlines()]
+
+
+def test_the_picker_lists_what_can_be_named():
+    d = home(
+        lime='theme { frame_focus "%s" }\n' % GREEN,
+        rose='theme { frame_focus "%s" }\n' % PINK,
+    )
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "lime"\n')
+    with Session(SH, cols=64, rows=16, config=cfg) as s:
+        s.settle(30)
+        s.key("t")
+        s.settle(30)
+        screen = s.snapshot().screen()
+        check("it is a picker called themes", "themes" in screen, screen)
+        for name in ("lime", "rose"):
+            check(f"{name} is listed", name in screen, screen)
+        check(
+            "the config's own theme says so on its row",
+            "in your config" in screen,
+            screen,
+        )
+        check(
+            "and the footer says what the keys do",
+            "C-s" in screen and "esc" in screen,
+            screen,
+        )
+
+
+def test_moving_the_selection_wears_the_theme():
+    d = home(
+        lime='theme { frame_focus "%s" }\n' % GREEN,
+        rose='theme { frame_focus "%s" }\n' % PINK,
+    )
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "lime"\n')
+    with Session(SH, cols=64, rows=16, config=cfg) as s:
+        s.settle(30)
+        before = frame(s)
+        s.key("t")
+        s.settle(30)
+        check(
+            "opening it changes nothing by itself",
+            s.api("theme")["theme"] == "lime",
+            str(s.api("theme")),
+        )
+        s.send(r"\e[B")  # the selection starts on the one being worn
+        s.settle(30)
+        check(
+            "moving to the next one puts it on",
+            s.api("theme")["theme"] == "rose",
+            str(s.api("theme")),
+        )
+        s.send(r"\x1b")  # escape
+        s.settle(30)
+        check(
+            "escaping puts back what was worn",
+            s.api("theme")["theme"] == "lime",
+            str(s.api("theme")),
+        )
+        check("...to the cell, not just in the reply", frame(s) == before, frame(s))
+
+
+def test_enter_keeps_it_for_the_session_only():
+    d = home(
+        lime='theme { frame_focus "%s" }\n' % GREEN,
+        rose='theme { frame_focus "%s" }\n' % PINK,
+    )
+    cfg = write(os.path.join(d, "config.kdl"), 'theme_name "lime"\n')
+    with Session(SH, cols=64, rows=16, config=cfg) as s:
+        s.settle(30)
+        s.key("t")
+        s.settle(30)
+        s.send(r"\e[B")
+        s.settle(30)
+        s.send(r"\r")
+        s.settle(30)
+        screen = s.snapshot().screen()
+        check("the picker is gone", "1 of 2" not in screen, screen)
+        check("...saying it was not written down", "session only" in screen, screen)
+        check("the theme stayed", frame(s) == PINK, frame(s))
+        check(
+            "and your config was not edited by looking at a list",
+            'theme_name "lime"' in open(cfg).read(),
+            open(cfg).read(),
+        )
+
+
+def test_ctrl_s_writes_it_down():
+    d = home(
+        lime='theme { frame_focus "%s" }\n' % GREEN,
+        rose='theme { frame_focus "%s" }\n' % PINK,
+    )
+    cfg = write(os.path.join(d, "config.kdl"), '// mine\ntheme_name "lime"\ngap 1\n')
+    with Session(SH, cols=64, rows=16, config=cfg) as s:
+        s.settle(30)
+        s.key("t")
+        s.settle(30)
+        s.send(r"\e[B")
+        s.settle(30)
+        s.send(r"\x13")  # C-s
+        # A reply to wait on: `settle` is fire-and-forget, so reading the file
+        # straight after it races the session still writing it.
+        s.until_text("written to your config")
+        text = open(cfg).read()
+        check("the name is in the config now", 'theme_name "rose"' in text, text)
+        check("...and the rest of the file survived", "// mine" in text, text)
+        check(
+            "it says so out loud",
+            "written to your config" in s.snapshot().screen(),
+            s.snapshot().screen(),
+        )
+
+
+def test_with_no_themes_it_says_where_it_looked():
+    d = home()
+    cfg = write(os.path.join(d, "config.kdl"), "gap 1\n")
+    with Session(SH, cols=64, rows=16, config=cfg) as s:
+        s.settle(30)
+        s.key("t")
+        s.settle(30)
+        screen = s.snapshot().screen()
+        check("no empty box", "themes" not in screen.split("\n")[4], screen)
+        check("a toast naming the directory instead", "no themes in" in screen, screen)
+
+
 if __name__ == "__main__":
     test_a_named_theme_is_read_from_the_theme_dir()
     test_the_config_beats_the_theme_it_named()
@@ -318,4 +452,9 @@ if __name__ == "__main__":
     test_the_seed_config_offers_a_name_rather_than_a_palette()
     test_a_dumped_theme_is_a_theme()
     test_editing_the_theme_repaints_on_reload()
+    test_the_picker_lists_what_can_be_named()
+    test_moving_the_selection_wears_the_theme()
+    test_enter_keeps_it_for_the_session_only()
+    test_ctrl_s_writes_it_down()
+    test_with_no_themes_it_says_where_it_looked()
     sys.exit(report())

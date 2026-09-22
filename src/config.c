@@ -67,6 +67,7 @@ static const struct {
     {"literal-prefix", ACT_LITERAL_PREFIX},
     {"help", ACT_HELP},
     {"edit-config", ACT_EDIT_CONFIG},
+    {"themes", ACT_THEMES},
 };
 
 static const struct {
@@ -1247,6 +1248,10 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_W, 0, ACT_WORKSPACES, false);
   bind_add(c, GHOSTTY_KEY_W, MOD_SHIFT, ACT_SAVE_WORKSPACE, false);
   bind_add(c, GHOSTTY_KEY_S, 0, ACT_FINDER, false);
+  /* `t` for themes, which nothing else wanted: tabs cycle on tab, and the
+   * only other verb with a claim on the letter (`new-tab`) has had `c` since
+   * the first day. */
+  bind_add(c, GHOSTTY_KEY_T, 0, ACT_THEMES, false);
   bind_add(c, GHOSTTY_KEY_P, 0, ACT_PALETTE, false);
   /* Shifted, beside the palette on the same letter: `p` runs a command, `P`
    * tags this pane. A purpose was reachable only from a layout or the socket,
@@ -1358,6 +1363,7 @@ static const struct {
     {ACT_PALETTE, "session", "run a command"},
     {ACT_HELP, "session", "this list"},
     {ACT_EDIT_CONFIG, "session", "edit the config"},
+    {ACT_THEMES, "session", "change the theme"},
     {ACT_DETACH, "session", "detach, leave it running"},
     {ACT_QUIT, "session", "quit the session"},
     {ACT_LITERAL_PREFIX, "session", "send the prefix itself"},

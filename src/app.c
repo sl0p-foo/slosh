@@ -1671,6 +1671,35 @@ bool run_action(app_t *a, action_t act) {
     a->query[0] = 0;
     a->sel = 0;
     return true;
+  case ACT_THEMES: {
+    /* Scanned on the keystroke, like the projects: the moment the list is
+     * opened is the moment it has to be right, and a theme written since the
+     * session started is exactly the one being looked for. */
+    a->nthemes = app_themes(a->themes, THEMES_MAX);
+    if (!a->nthemes) {
+      char dirs[4][512];
+      size_t nd = app_theme_dirs(dirs, 4);
+      char msg[600];
+      snprintf(msg, sizeof msg, "no themes in %s",
+               nd ? dirs[0]
+                  : "any theme "
+                    "directory");
+      app_toast(a, msg);
+      return true;
+    }
+    /* What to come back to when the picker is escaped. The session's own
+     * answer if it has one, and otherwise the config's -- both are "what I
+     * was wearing", which is the only thing Escape can honestly mean. */
+    snprintf(a->theme_was, sizeof a->theme_was, "%s", app_theme());
+    a->picker = PICK_THEMES;
+    a->query[0] = 0;
+    a->sel = 0;
+    /* Start on the one being worn rather than at the top, so the first arrow
+     * press moves off it instead of silently changing the session. */
+    for (size_t i = 0; i < a->nthemes; i++)
+      if (strcmp(a->themes[i], a->theme_was) == 0) a->sel = i;
+    return true;
+  }
   case ACT_WORKSPACES: {
     /* Scanned here, once, and kept only while the picker is up: draw_picker
        * asks for its rows every frame. Opening is also exactly when the list

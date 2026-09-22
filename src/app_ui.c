@@ -539,9 +539,52 @@ static size_t workspace_rows(app_t *a, pick_row_t *out, size_t max) {
   return n;
 }
 
+/* ---- the theme picker ----------------------------------------------------
+ *
+ * The list of names `theme_name` would take, with the one in force marked and
+ * the one your config asks for marked differently -- those are two different
+ * facts the moment you switch, and "how do I get back" is the question right
+ * after "what does this one look like".
+ *
+ * Moving the selection applies the theme. A row of names tells you nothing
+ * about a colour scheme, and a swatch in a list would be a small lie about a
+ * palette that is meant to dress a whole session; the session itself is the
+ * only honest preview, and it is already on screen behind the box. */
+static size_t theme_rows(app_t *a, pick_row_t *out, size_t max) {
+  size_t n = 0;
+  const char *worn = app_theme();
+  for (size_t i = 0; i < a->nthemes && n < max; i++) {
+    const char *name = a->themes[i];
+    if (!ci_contains(name, a->query)) continue;
+    pick_row_t *r = &out[n++];
+    memset(r, 0, sizeof *r);
+    snprintf(r->mid, sizeof r->mid, "%s", name);
+    /* What the file says, which is what a restart would give you back. */
+    if (strcmp(name, a->theme_was) == 0)
+      snprintf(r->right, sizeof r->right, "in your config");
+    r->here = strcmp(name, worn) == 0;
+    snprintf(r->action, sizeof r->action, "theme:%s", name);
+  }
+  return n;
+}
+
+/* Wear one, without writing anything down. Failure is a toast rather than a
+ * refusal to move: a theme that has been deleted since the list was scanned
+ * must not trap the selection on its row. */
+static void theme_preview(app_t *a) {
+  pick_row_t rows[128];
+  size_t n = theme_rows(a, rows, 128);
+  if (!n || a->sel >= n) return;
+  const char *name = rows[a->sel].action + 6; /* past "theme:" */
+  char err[192] = {0};
+  if (!app_set_theme(name, false, err, sizeof err))
+    app_toast(a, err[0] ? err : "cannot use that theme");
+}
+
 static size_t picker_rows(app_t *a, pick_row_t *out, size_t max) {
   if (a->picker == PICK_PALETTE) return palette_rows(a, out, max);
   if (a->picker == PICK_WORKSPACES) return workspace_rows(a, out, max);
+  if (a->picker == PICK_THEMES) return theme_rows(a, out, max);
   return finder_rows(a, out, max);
 }
 
@@ -567,9 +610,14 @@ static void draw_picker(app_t *a, screen_t *s) {
 
   bool palette = a->picker == PICK_PALETTE;
   bool projects = a->picker == PICK_WORKSPACES;
-  const char *title = palette ? "commands" : projects ? "projects" : "find";
+  bool themes = a->picker == PICK_THEMES;
+  const char *title = palette    ? "commands"
+                      : projects ? "projects"
+                      : themes   ? "themes"
+                                 : "find";
   const char *close = palette    ? "closepalette"
                       : projects ? "closeprojects"
+                      : themes   ? "closethemes"
                                  : "closefind";
 
   /* The window of results on screen. Kept around the selection rather than
@@ -664,9 +712,13 @@ static void draw_picker(app_t *a, screen_t *s) {
 
   /* The count belongs where the eye already goes for "how much is there", and
    * it is the answer to "is my query too narrow, or is there nothing?". */
-  char foot[64];
-  snprintf(foot, sizeof foot, " %zu of %zu \u00b7 \u2191\u2193 enter ",
-           a->sel + 1, n);
+  char foot[80];
+  /* The theme picker is worn as it is browsed, so the two things worth saying
+   * are how to keep it for good and that escaping puts it back -- "enter" on
+   * its own would suggest nothing has happened yet, and something has. */
+  snprintf(foot, sizeof foot, " %zu of %zu \u00b7 %s ", a->sel + 1, n,
+           themes ? "\u2191\u2193 \u00b7 C-s keeps it \u00b7 esc undoes"
+                  : "\u2191\u2193 enter");
   if (in.w > cells(foot))
     screen_text(s, (uint16_t)(in.x + (in.w - cells(foot)) / 2),
                 (uint16_t)(in.y + in.h), foot, HINT_C, MODAL_BG, 0);
@@ -748,6 +800,25 @@ bool run_action(app_t *a, action_t act);
 /* Do what a row says it does. One entry point for the keyboard and the mouse,
  * so a picker cannot choose one way with Enter and another with a click. */
 void picker_accept(app_t *a, const char *action) {
+  if (strncmp(action, "theme:", 6) == 0) {
+    /* Already worn -- the selection applied it on the way here -- so accepting
+     * is keeping it, and the only thing left to decide is whether the config
+     * hears about it. It does not: a picker that edits your config because you
+     * looked at a row is a picker you stop opening. `theme_was` follows, so
+     * Escape from here on means "back to this" rather than "back to before I
+     * ever opened it". */
+    char err[192] = {0};
+    if (!app_set_theme(action + 6, false, err, sizeof err)) {
+      app_toast(a, err[0] ? err : "cannot use that theme");
+      return;
+    }
+    char msg[128];
+    snprintf(msg, sizeof msg,
+             "%s \u00b7 this session only: C-s in the picker keeps it",
+             action + 6);
+    app_toast(a, msg);
+    return;
+  }
   if (strncmp(action, "find:", 5) == 0)
     app_focus_pane(a, (uint32_t)strtoul(action + 5, NULL, 10));
   else if (strncmp(action, "run:", 4) == 0)
@@ -784,6 +855,10 @@ static void picker_move(app_t *a, int d) {
   if (sel < 0) sel = d == -1 ? last : 0; /* a page up stops at the top */
   if (sel > last) sel = d == 1 ? 0 : last;
   a->sel = (size_t)sel;
+  /* The theme picker previews by wearing it, so moving is the gesture that
+     applies one. Here rather than at each call site, so every way of moving --
+     arrows, tab, C-n, page, the mouse -- previews alike. */
+  if (a->picker == PICK_THEMES) theme_preview(a);
 }
 
 /* Returns true when the picker consumed the event.
@@ -813,11 +888,43 @@ bool picker_key(app_t *a, const input_event_t *ev) {
   if (ctrl && (ev->key == GHOSTTY_KEY_U || ev->unshifted == 'u')) {
     a->query[0] = 0;
     a->sel = 0;
+    if (a->picker == PICK_THEMES) theme_preview(a);
+    return true;
+  }
+
+  /* Keep it, and write it down. The one thing the picker does that the socket
+     call does not do for free, and the only place in the UI where a keystroke
+     edits your config -- which is why it is a deliberate chord rather than
+     Enter, and why the box says so. */
+  if (ctrl && a->picker == PICK_THEMES &&
+      (ev->key == GHOSTTY_KEY_S || ev->unshifted == 's')) {
+    char err[192] = {0};
+    const char *name = app_theme();
+    if (!*name) return true;
+    char keep[THEME_NAME_MAX];
+    snprintf(keep, sizeof keep, "%s", name);
+    a->picker = PICK_NONE;
+    if (app_set_theme(keep, true, err, sizeof err)) {
+      char msg[128];
+      snprintf(msg, sizeof msg, "theme_name \"%s\" written to your config",
+               keep);
+      app_toast(a, msg);
+    } else {
+      app_toast(a, err[0] ? err : "cannot write the config");
+    }
     return true;
   }
 
   switch (ev->key) {
-  case GHOSTTY_KEY_ESCAPE: a->picker = PICK_NONE; return true;
+  case GHOSTTY_KEY_ESCAPE:
+    /* A preview that survived the escape would be a picker that changed your
+       session by being looked at. */
+    if (a->picker == PICK_THEMES) {
+      char err[192] = {0};
+      app_set_theme(a->theme_was, false, err, sizeof err);
+    }
+    a->picker = PICK_NONE;
+    return true;
   case GHOSTTY_KEY_ENTER: {
     pick_row_t rows[128];
     size_t n = picker_rows(a, rows, 128);
@@ -850,6 +957,7 @@ bool picker_key(app_t *a, const input_event_t *ev) {
     if (l) l--;
     a->query[l] = 0;
     a->sel = 0;
+    if (a->picker == PICK_THEMES) theme_preview(a);
     return true;
   }
   default: break;
@@ -860,6 +968,7 @@ bool picker_key(app_t *a, const input_event_t *ev) {
       memcpy(a->query + l, ev->text, ev->text_len);
       a->query[l + ev->text_len] = 0;
       a->sel = 0;
+      if (a->picker == PICK_THEMES) theme_preview(a);
     }
   }
   return true;
