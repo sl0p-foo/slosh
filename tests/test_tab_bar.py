@@ -158,6 +158,105 @@ def _status(s, text):
     s.settle(30)
 
 
+RIGHT_IDX = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "right"\n')
+
+
+def test_the_index_can_sit_at_the_far_end():
+    """`tab_bar_index "right"`: names all start in one column, numbers line up
+    in another. A sidebar row is wider than the name on it, and the prefix
+    spends the start of every row on a number nobody reads until they want to
+    press it."""
+    with Session(SH, cols=90, rows=20, config=RIGHT_IDX) as s:
+        s.settle(30)
+        s.api("new-tab", name="api")
+        s.settle(30)
+        rows = [_row(snap := s.snapshot(), Y0), _row(snap, Y0 + 1)]
+        check(
+            "the number is against the right edge",
+            [r.rstrip()[-1] for r in rows] == ["1", "2"],
+            str(rows),
+        )
+        check(
+            "...and every name starts in the same column",
+            rows[1].index("api") == rows[0].index("tests"),
+            str(rows),
+        )
+        check("no prefix is left behind", "1:" not in rows[0], str(rows))
+
+
+def test_a_long_name_stops_short_of_the_number():
+    """Otherwise `verylongproje2` is a tab called verylongproje2, and nothing
+    on the row says otherwise."""
+    with Session(SH, cols=90, rows=20, config=RIGHT_IDX) as s:
+        s.settle(30)
+        s.api("new-tab", name="verylongprojectname")
+        s.settle(30)
+        row = _row(s.snapshot(), Y0 + 1)
+        check("the number survived the long name", row.rstrip()[-1] == "2", repr(row))
+        check(
+            "...with a cell of air before it",
+            row.rstrip()[-2] == " ",
+            repr(row),
+        )
+        check("and the row is still one plate wide", len(row) == CW, repr(row))
+
+
+def test_a_narrow_row_keeps_the_prefix():
+    """The name is the part you came for: at eight columns there is nothing to
+    align and the number goes back in front, where it costs two cells."""
+    narrow = _cfg('tab_bar_side "left"\ntab_bar_width 8\ntab_bar_index "right"\n')
+    with Session(SH, cols=90, rows=20, config=narrow) as s:
+        s.settle(30)
+        row = s.snapshot().line(Y0)[1:7]
+        check("the prefix is back", "1:" in row, repr(row))
+
+
+def test_the_top_strip_ignores_it():
+    """A strip tab is as wide as its label, so there is no far end to align
+    against -- and a number floating after a name it does not belong to would
+    be worse than the prefix it replaced."""
+    top = _cfg('tab_bar_index "right"\n')
+    with Session(SH, cols=60, rows=10, config=top) as s:
+        s.settle(30)
+        check(
+            "the strip still writes 1:name",
+            "1:tests" in s.snapshot().screen(),
+            s.snapshot().line(1),
+        )
+
+
+def test_the_whole_row_is_still_one_door():
+    with Session(SH, cols=90, rows=20, config=RIGHT_IDX) as s:
+        s.settle(30)
+        s.api("new-tab", name="api")
+        s.settle(30)
+        snap = s.snapshot()
+        at_name = snap.hit_at(CX + 1, Y0 + 1)
+        at_number = snap.hit_at(CX + CW - 2, Y0 + 1)
+        check(
+            "clicking the number is clicking the tab",
+            at_name and at_name == at_number,
+            f"{at_name} vs {at_number}",
+        )
+        st = snap.style_at(CX + CW - 2, Y0 + 1)
+        check(
+            "and the number sits on the tab's own plate",
+            st and st["bg"] == (snap.style_at(CX + 1, Y0 + 1) or {}).get("bg"),
+            str(st),
+        )
+
+
+def test_a_bad_index_mode_is_a_line_and_no_more():
+    bad = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_index "middle"\n')
+    with Session(SH, cols=90, rows=20, config=bad) as s:
+        s.settle(30)
+        check(
+            "the session runs, with the default",
+            "1:tests" in s.snapshot().screen(),
+            _row(s.snapshot(), Y0),
+        )
+
+
 def test_every_tab_sits_on_a_plate():
     """The tab you are in is the accent; the others are `tab_idle_bg`. The
     quiet fill is what gives a tab edges -- and what the active fill is
@@ -858,6 +957,12 @@ if __name__ == "__main__":
     test_sidebar_rows_click_like_the_strip()
     test_right_sidebar_takes_the_other_edge()
     test_pad_pushes_the_list_down()
+    test_the_index_can_sit_at_the_far_end()
+    test_a_long_name_stops_short_of_the_number()
+    test_a_narrow_row_keeps_the_prefix()
+    test_the_top_strip_ignores_it()
+    test_the_whole_row_is_still_one_door()
+    test_a_bad_index_mode_is_a_line_and_no_more()
     test_every_tab_sits_on_a_plate()
     test_an_old_theme_gets_an_idle_plate_in_its_own_family()
     test_a_theme_can_have_the_bare_tabs_back()

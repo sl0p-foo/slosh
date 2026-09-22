@@ -122,6 +122,15 @@ enum {
   TAB_BAR_RIGHT,
 };
 
+/* tab_bar_index: where a tab's number sits. `prefix` is `1:api`, the number
+ * against the name; `right` puts it at the far end of the row, which only a
+ * sidebar has -- the top strip's tabs are as wide as their labels, so there
+ * is no "far end" to put anything at. */
+enum {
+  TAB_INDEX_PREFIX = 0,
+  TAB_INDEX_RIGHT,
+};
+
 /* size_follows: which attached client sizes the shared screen. */
 enum {
   SIZE_FOLLOWS_ACTIVE = 0, /* newest attach, then last input */
@@ -349,6 +358,13 @@ typedef struct {
    * untouched and keeps the full width either way. */
   int tab_bar_side;       /* TAB_BAR_* */
   uint16_t tab_bar_width; /* columns a sidebar takes; ignored for top */
+  /* Where a tab's number goes (TAB_INDEX_*). A sidebar row is wider than the
+   * name on it, and `1:api` spends the start of every row on a number nobody
+   * reads until they want to press it -- against the right edge the names all
+   * start in the same column and the numbers line up as their own column.
+   * Ignored on the top strip, where a tab is only as wide as its label and
+   * there is no room to align anything in. */
+  int tab_bar_index;
   /* Rows a sidebar leaves blank above its first tab. Air for anyone who finds
    * a list starting in the very corner cramped -- or room for a terminal's
    * own window buttons when the multiplexer fills a borderless window.

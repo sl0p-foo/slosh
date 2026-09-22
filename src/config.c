@@ -951,6 +951,7 @@ void config_defaults(config_t *c) {
   c->modal_scrim = 120;
   c->status_bar = true;
   c->tab_bar_side = TAB_BAR_TOP;
+  c->tab_bar_index = TAB_INDEX_PREFIX;
   /* Wide enough for " 12:a-real-name " plus a bell; narrow enough that a
    * 100-column terminal keeps a working layout beside it. */
   c->tab_bar_width = 18;
@@ -1709,6 +1710,10 @@ char *config_render(const config_t *c) {
          c->tab_bar_side == TAB_BAR_LEFT    ? "left"
          : c->tab_bar_side == TAB_BAR_RIGHT ? "right"
                                             : "top");
+  cb_add(&b,
+         "tab_bar_index \"%s\"  // 1:name, or the number at the sidebar's far "
+         "edge\n",
+         c->tab_bar_index == TAB_INDEX_RIGHT ? "right" : "prefix");
   cb_add(&b, "tab_bar_width %u      // columns a sidebar takes\n",
          c->tab_bar_width);
   cb_add(&b, "tab_bar_pad %u        // blank rows above a sidebar's tabs\n",
@@ -2195,6 +2200,7 @@ static const char *const KNOWN_TOP[] = {
     "status_pad",
     "tab_bar_chrome",
     "tab_bar_pad",
+    "tab_bar_index",
     "tab_bar_side",
     "tab_bar_status",
     "tab_bar_status_lines",
@@ -2593,6 +2599,16 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   c->rounded = kdl_arg_bool(kdl_child(root, "rounded"), 0, c->rounded);
   c->compact = kdl_arg_bool(kdl_child(root, "compact"), 0, c->compact);
   c->status_bar = kdl_arg_bool(kdl_child(root, "status_bar"), 0, c->status_bar);
+  const char *tbidx = kdl_arg(kdl_child(root, "tab_bar_index"), 0, NULL);
+  if (tbidx) {
+    if (strcmp(tbidx, "prefix") == 0)
+      c->tab_bar_index = TAB_INDEX_PREFIX;
+    else if (strcmp(tbidx, "right") == 0)
+      c->tab_bar_index = TAB_INDEX_RIGHT;
+    else
+      complain(c, err, errcap, kdl_child(root, "tab_bar_index")->line,
+               "tab_bar_index is \"prefix\" or \"right\", not \"%s\"", tbidx);
+  }
   const char *tbside = kdl_arg(kdl_child(root, "tab_bar_side"), 0, NULL);
   if (tbside) {
     if (strcmp(tbside, "top") == 0)

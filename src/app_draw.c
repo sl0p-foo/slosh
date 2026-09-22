@@ -1831,28 +1831,57 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
   /* A pane that rang in a tab you are not looking at is invisible without
    * this, and that is the case the whole indicator exists for. */
   bool rang = CFG.bell_indicator && tab_has_bell(t);
-  if (nm[0])
-    snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
-  else
-    snprintf(label, sizeof label, " %zu ", i + 1);
 
   /* Renaming: the tab's own cell becomes the editor, in the editor's
    * colours, so a half-typed name can never be mistaken for the tab's real
    * one. The caret is part of the label, so the width below — and therefore
    * the hit — is the width of what is actually drawn. */
   bool editing = a->renaming == RENAME_TAB && a->rename_id == t->id;
-  if (editing) snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
 
-  /* A pinned width cuts the label to fit -- bell budgeted first, so the mark
-   * survives the longest name -- and then pads it out, so the active fill and
-   * the hover read as the whole row rather than as the word on it. */
+  /* The number at the far end instead of in front of the name (`tab_bar_index
+   * "right"`). Only a sidebar has a far end -- a strip tab is as wide as its
+   * label, and there is nothing to align against -- and only when the row can
+   * spare the columns: on a narrow one the name is what you came for, so the
+   * number goes back in front where it costs two cells rather than a column.
+   * Never while renaming, where the whole cell is the editor. */
+  char idx[16] = "";
+  bool right_idx = false;
+  if (max_w && !editing && CFG.tab_bar_index == TAB_INDEX_RIGHT) {
+    snprintf(idx, sizeof idx, "%zu ", i + 1);
+    uint16_t iw = (uint16_t)cells(idx);
+    right_idx = max_w >= (uint16_t)(iw + 5);
+    if (!right_idx) idx[0] = 0;
+  }
+
+  if (editing)
+    snprintf(label, sizeof label, " %s\u2588 ", a->rename_buf);
+  else if (right_idx)
+    snprintf(label, sizeof label, " %s", nm[0] ? nm : "");
+  else if (nm[0])
+    snprintf(label, sizeof label, " %zu:%s ", i + 1, nm);
+  else
+    snprintf(label, sizeof label, " %zu ", i + 1);
+
+  /* A pinned width cuts the label to fit -- bell and number budgeted first,
+   * so neither is what a long name eats -- and then pads it out, so the
+   * active fill and the hover read as the whole row rather than as the word
+   * on it. */
   if (max_w) {
     uint16_t budget = max_w;
     if (rang) {
       uint16_t bw = (uint16_t)(cells(CFG.bell_mark) + 1);
       budget = budget > bw ? (uint16_t)(budget - bw) : 0;
     }
-    while (label[0] && cells(label) > budget) {
+    if (right_idx) {
+      uint16_t iw = (uint16_t)cells(idx);
+      budget = budget > iw ? (uint16_t)(budget - iw) : 0;
+    }
+    /* A name long enough to reach the number has to stop one cell short of
+     * it: `verylongproje2` is a tab called verylongproje2, and the reader has
+     * no way to know otherwise. The cell comes back as padding below, so the
+     * plate is still unbroken. */
+    uint16_t cut = right_idx && budget ? (uint16_t)(budget - 1) : budget;
+    while (label[0] && cells(label) > cut) {
       size_t len = strlen(label);
       do len--;
       while (len && (label[len] & 0xc0) == 0x80); /* whole UTF-8 sequences */
@@ -1892,10 +1921,27 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
                                    active ? TAB_ACTIVE_BG : TAB_IDLE_BG,
                                    ATTR_BOLD));
   }
+  /* The number, after whatever the label and the bell took, which is where
+   * the row's right edge now is. Drawn in the tab's own colours rather than
+   * in the sidebar's counting grey: it is part of the tab, and a number in a
+   * third colour would read as a third thing on the row. */
+  if (*idx)
+    w = (uint16_t)(w + screen_text(s, (uint16_t)(x + w), y, idx,
+                                   active ? TAB_ACTIVE_FG : TAB_IDLE,
+                                   active ? TAB_ACTIVE_BG : TAB_IDLE_BG,
+                                   attrs));
+
   uint16_t hit_w = max_w ? max_w : w;
-  if (!editing && ptr_on(a, x, y, hit_w, 1))
+  if (!editing && ptr_on(a, x, y, hit_w, 1)) {
     screen_text(s, x, y, label, active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
                 active ? TAB_ACTIVE_BG : TAB_IDLE_BG, attrs | ATTR_BOLD);
+    /* The number brightens with the label: hovering half a row and leaving
+     * the other half dim would read as two things, one of them lit. */
+    if (*idx)
+      screen_text(s, (uint16_t)(x + hit_w - cells(idx)), y, idx,
+                  active ? TAB_ACTIVE_HOVER_FG : TAB_HOVER,
+                  active ? TAB_ACTIVE_BG : TAB_IDLE_BG, attrs | ATTR_BOLD);
+  }
 
   /* While a pane is in your hand, every tab it does not already live in is
    * somewhere it could go, and `ptr_on` says nothing during a drag by design --
@@ -1909,6 +1955,10 @@ static uint16_t draw_tab_cell(app_t *a, screen_t *s, size_t i, uint16_t x,
       bool on = a->drag.tab_target == t->id;
       screen_text(s, x, y, label, on ? TAB_ACTIVE_HOVER_FG : DROP_C,
                   on ? DROP_C : NO_COLOR, attrs | ATTR_BOLD);
+      if (*idx)
+        screen_text(s, (uint16_t)(x + hit_w - cells(idx)), y, idx,
+                    on ? TAB_ACTIVE_HOVER_FG : DROP_C, on ? DROP_C : NO_COLOR,
+                    attrs | ATTR_BOLD);
     }
   }
   char action[48];

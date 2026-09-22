@@ -283,6 +283,14 @@ bell_mark "[!]"
 // The one-row bar with tabs, the new-tab button and the pane count.
 status_bar true
 
+// Where a tab's number sits. "prefix" writes it against the name (`1:api`);
+// "right" puts it at the far end of the row, so every name starts in the same
+// column and the numbers line up in one of their own -- which a sidebar has
+// room for and the top strip has not, a tab there being exactly as wide as
+// its label. Sidebars only for that reason, and a row too narrow to spare the
+// columns keeps the prefix: the name is the part you came for.
+tab_bar_index "prefix"
+
 // The line along the bottom: which session and tab you are in, what the
 // focused pane calls itself, and whether it is in a state worth knowing about
 // - scrolled back, on an alternate screen, or not started yet. On the right it

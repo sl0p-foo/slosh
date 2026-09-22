@@ -55,6 +55,7 @@ The strip of tabs sits along the top by default. It does not have to:
 ```kdl
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes
+tab_bar_index "right" // the tab number at the far end, not against the name
 tab_bar_pad 0         // blank rows above the first tab
 tab_gap 0             // ...and between one tab and the next
 tab_bar_chrome true   // frame it like a pane
@@ -125,6 +126,24 @@ mixes two greys and stays grey). Name it, or `tab_status_bg` for a band, and
 yours wins; the band is unset by default, which leaves a translucent
 terminal's own background alone. The top strip has one row and no room for any of this, which is half of
 why the sidebar exists.
+
+**The tab number can sit at the far end of the row.** `tab_bar_index "right"`
+draws `api` on the left and `3` hard against the right edge, instead of the
+default `3:api`:
+
+```
+│ tests        1 │        │ 1:tests        │
+│ verylongproj 2 │   vs   │ 2:verylongproje│
+│ api          3 │        │ 3:api          │
+```
+
+Every name then starts in the same column and the numbers line up in one of
+their own, which is worth a column of a sidebar and is not available to the top
+strip at all — a tab there is exactly as wide as its label, so it has no far end
+to align against, and the setting is ignored. A row too narrow to spare the
+columns goes back to the prefix, because the name is the part you came for, and
+a name long enough to reach the number always stops one cell short of it:
+`verylongproje2` is a tab called verylongproje2 as far as any reader can tell.
 
 **Every tab is a plate, not a word on the background.** The one you are in is
 filled with the accent (`tab_active_bg`); the rest sit on `tab_idle_bg`, 43% of
