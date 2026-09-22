@@ -547,6 +547,12 @@ typedef struct {
    * not be something you have to read the words to work out. Derived from the
    * theme, like tab_status_fg. */
   color_t tab_status_busy;
+  /* The spinner beside such a row, which is its own entry because it is its
+   * own decision: the text has to stay readable, and a mark does not -- so a
+   * theme can shout with the glyph and keep the words calm, or the other way
+   * round. Unset it follows tab_status_busy, which is what it looked like
+   * when the two were one colour. */
+  color_t tab_status_spinner;
   /* The other stripe. With wrapped statuses, where one pane's rows end and
    * the next one's begin is no longer obvious from the shape -- both are
    * just italic text down the same column -- so alternate panes sit on

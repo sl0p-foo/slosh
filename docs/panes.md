@@ -100,7 +100,9 @@ be able to cost you a tab you can click.
 
 **A pane can say its status is still happening**, and the sidebar says so back:
 `busy` over OSC 5577 turns that row `tab_status_busy` and puts a spinner
-(`busy_mark`) in the first column of the indent — so `make test` running and
+(`busy_mark`, in `tab_status_spinner` — its own theme entry, because the words
+have to stay readable and a mark does not, and unset it follows the words) in
+the first column of the indent — so `make test` running and
 `make test` finished, which are the same words, stop looking the same from
 another tab. Nothing moves when it flips, since the mark takes a column the
 padding was already holding blank, and the rest of that padding is the space

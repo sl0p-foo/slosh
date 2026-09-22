@@ -115,7 +115,8 @@ keep it current and `clear` it when the work is done.
 of its own rather than a field of `status`, because a status is the *whole*
 payload after the verb — `status;a;b;c` is the text `a;b;c` — so anything added
 to that line would change what every sender already means. In a sidebar a busy
-status gets the spinner (`busy_mark`) and `tab_status_busy`, which is how
+status gets the spinner (`busy_mark`, coloured `tab_status_spinner`) and
+`tab_status_busy`, which is how
 "working" and "done" tell themselves apart from another tab without reading the
 words. Anything but `0`, `false`, `no` or `off` turns it on; `clear` turns it
 off along with the text, and so does the program exiting — a status left behind

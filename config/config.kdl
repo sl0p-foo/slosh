@@ -282,7 +282,9 @@ bell_mark "[!]"
 
 // A pane can also say that what its status describes is still *happening*
 // (`busy` over OSC 5577, see the scripting chapter). In a sidebar that status
-// then turns the theme's `tab_status_busy` colour and carries this spinner,
+// then turns the theme's `tab_status_busy` colour and carries this spinner --
+// in `tab_status_spinner`, its own entry, so a theme can shout with the mark
+// and keep the words calm; unset it follows the words --
 // which is how "running" and "finished" tell themselves apart from another tab
 // without reading the words.
 //

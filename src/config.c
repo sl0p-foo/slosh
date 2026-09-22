@@ -697,6 +697,7 @@ static const struct {
     {"tab_status_fg", offsetof(config_t, tab_status_fg)},
     {"tab_status_bg", offsetof(config_t, tab_status_bg)},
     {"tab_status_busy", offsetof(config_t, tab_status_busy)},
+    {"tab_status_spinner", offsetof(config_t, tab_status_spinner)},
     {"tab_status_stripe", offsetof(config_t, tab_status_stripe)},
     {"status", offsetof(config_t, status)},
     {"status_state", offsetof(config_t, status_state)},
@@ -1143,6 +1144,7 @@ void config_defaults(config_t *c) {
    * annotations that is still moving, and the spinner beside it is already
    * saying so -- the colour is what makes it findable without looking. */
   c->tab_status_busy = accent;
+  c->tab_status_spinner = accent;
   /* Barely off the background: the stripe has to say "different pane", not
    * "selected". Only drawn when statuses can wrap -- see tab_bar_status_lines
    * -- so an unwrapped sidebar keeps its transparent rows. */
@@ -2967,6 +2969,10 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
     /* The busy one is the theme's own accent, which is what it uses for
      * "this one" everywhere else. */
     if (!kdl_child(theme, "tab_status_busy")) c->tab_status_busy = c->tab_hover;
+    /* After it, and from it: the mark follows the words it marks unless a
+     * theme says otherwise, whether those words were named or derived. */
+    if (!kdl_child(theme, "tab_status_spinner"))
+      c->tab_status_spinner = c->tab_status_busy;
   }
   /* After the theme, so the wash follows whatever scroll_bg the theme just
    * chose -- a config that wrote its own `scrolled` chain keeps it, whether

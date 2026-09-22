@@ -648,8 +648,64 @@ def test_the_busy_colour_is_the_themes_own():
         _status(s, "make test")
         _busy(s)
         s.settle(30)
-        st = s.snapshot().style_at(CX + 1, Y0 + 1)
+        snap = s.snapshot()
+        st = snap.style_at(CX + 2, Y0 + 1)
         check("named, it wins", st["fg"] == "#ff00ff", str(st))
+        check(
+            "and the mark follows the words it marks",
+            (snap.style_at(CX, Y0 + 1) or {}).get("fg") == "#ff00ff",
+            str(snap.style_at(CX, Y0 + 1)),
+        )
+
+
+def test_the_spinner_can_be_coloured_on_its_own():
+    """Its own entry because it is its own decision: the words have to stay
+    readable and a mark does not, so a theme can shout with the glyph and keep
+    the text calm."""
+    themed = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\n'
+        'theme { tab_status_busy "#8888ff"\n tab_status_spinner "#ffcc00" }\n'
+    )
+    with Session(SH, cols=90, rows=20, config=themed) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "the mark takes its own colour",
+            (snap.style_at(CX, Y0 + 1) or {}).get("fg") == "#ffcc00",
+            str(snap.style_at(CX, Y0 + 1)),
+        )
+        check(
+            "...and the words keep theirs",
+            (snap.style_at(CX + 2, Y0 + 1) or {}).get("fg") == "#8888ff",
+            str(snap.style_at(CX + 2, Y0 + 1)),
+        )
+
+
+def test_an_old_theme_gets_a_spinner_colour_anyway():
+    """Neither colour is in any theme in contrib, so both are mixed from what a
+    theme does define -- the same bargain the other status colours make."""
+    old = _cfg(
+        f'tab_bar_side "left"\ntab_bar_width {W}\ntheme {{ tab_hover "#00ff88" }}\n'
+    )
+    with Session(SH, cols=90, rows=20, config=old) as s:
+        s.settle(30)
+        _status(s, "make test")
+        _busy(s)
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "the row is the theme's accent",
+            (snap.style_at(CX + 2, Y0 + 1) or {}).get("fg") == "#00ff88",
+            str(snap.style_at(CX + 2, Y0 + 1)),
+        )
+        check(
+            "...and so is the mark",
+            (snap.style_at(CX, Y0 + 1) or {}).get("fg") == "#00ff88",
+            str(snap.style_at(CX, Y0 + 1)),
+        )
 
 
 def test_status_rows_take_their_own_theme_colours():
@@ -1272,6 +1328,8 @@ if __name__ == "__main__":
     test_a_spinner_costs_a_frame_clock_and_a_mark_does_not()
     test_no_busy_mark_leaves_the_colour_to_say_it()
     test_the_busy_colour_is_the_themes_own()
+    test_the_spinner_can_be_coloured_on_its_own()
+    test_an_old_theme_gets_a_spinner_colour_anyway()
     test_status_rows_take_their_own_theme_colours()
     test_an_old_theme_gets_coherent_status_colours_anyway()
     test_a_monochrome_theme_stays_monochrome()

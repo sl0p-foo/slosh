@@ -224,7 +224,12 @@ is the spinner's frames separated by spaces; one frame is a static mark and
 costs nothing, several make it turn, and the session keeps a frame clock only
 while such a row is on screen. Empty draws no mark and leaves
 .B tab_status_busy
-to say it. The mark sits in the first column
+to say it.
+The mark is drawn in
+.BR tab_status_spinner ,
+which follows
+.B tab_status_busy
+unless a theme names it. The mark sits in the first column
 .B tab_bar_padding
 holds blank, so nothing moves when a program starts or stops working, and
 the rest of that padding is the space after it.

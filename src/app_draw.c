@@ -2469,8 +2469,8 @@ void draw_tab_sidebar(app_t *a, screen_t *s) {
          * one column they stand shoulder to shoulder, which is the squashed
          * look and now something you ask for rather than something you get. */
         if (marked && k == 0)
-          screen_text(s, cx, y, spin, hot ? TAB_HOVER : TAB_STATUS_BUSY, band,
-                      0);
+          screen_text(s, cx, y, spin, hot ? TAB_HOVER : TAB_STATUS_SPINNER,
+                      band, 0);
         char act[24];
         snprintf(act, sizeof act, "find:%u", ts.row[j].pane);
         hit_add(&s->hits, cx, y, cw, 1, act);
