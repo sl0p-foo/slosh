@@ -52,6 +52,7 @@
         <div data-sloshcast="recordings/sessions.json" data-loop data-name="sessions"></div>
         <div data-sloshcast="recordings/reflow.json" data-loop data-name="reflow"></div>
         <div data-sloshcast="recordings/config.json" data-loop data-name="config"></div>
+        <div data-sloshcast="recordings/themes.json" data-loop data-name="themes"></div>
         <div data-sloshcast="recordings/shaders.json" data-loop data-name="shaders"></div>
         <div data-sloshcast="recordings/scripting.json" data-loop data-name="scripting"></div>
         <div data-sloshcast="recordings/extras.json" data-loop data-name="extras"></div>
@@ -100,6 +101,23 @@
           <li>retheme the whole session with one magic vimfu substitution</li>
           <li>padding, gaps, titles: every knob, applied as you watch</li>
           <li><code>compact true</code>: for those who value their terminal real estate.</li>
+        </ul>
+      </article>
+
+      <article class="step" data-cast="themes">
+        <h3>Themes are names, not pasted palettes.</h3>
+        <p><kbd>C-a</kbd> <kbd>t</kbd> lists every theme you can name &mdash;
+        yours, and the ones slosh ships &mdash; and moving the selection puts
+        it on.</p>
+        <ul>
+          <li>the session behind the box is the preview: a swatch would be a
+          small lie about a palette that dresses a whole session</li>
+          <li>type to narrow the list, <kbd>Esc</kbd> to put back what you were
+          wearing</li>
+          <li><kbd>C-s</kbd> keeps it: one <code>theme_name</code> line written
+          into your config, every other line untouched</li>
+          <li><code>slosh -s main cmd '{"cmd":"theme","name":"amber"}'</code>
+          does the same from a script</li>
         </ul>
       </article>
 

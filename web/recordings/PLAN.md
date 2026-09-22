@@ -48,6 +48,7 @@ Measured, hero demo (26 s, 159 events): **81 KiB raw, 2.9 KiB gzipped**.
 | `demos/sessions.py` | TWO live sessions (`main` sl0p-pink, `scratch` phosphor-green) with authored bare-shell frames between: attach, detach, hop, return — and the pane that died off camera kept its epitaph, [re-run] clicked |
 | `demos/reflow.py` | quarter-turn, shrink to header list, grow back: the arrangement returns |
 | `demos/config.py` | C-a e opens the config in a vim pane: theme flip by substitution, `padding`, `compact true` — each landing on save |
+| `demos/themes.py` | the theme picker: `C-a t`, the list, two previews *worn* rather than swatched, a typed filter, `C-s` writing the one `theme_name` line, and Escape putting back what was worn |
 | `demos/shaders.py` | contrib/shader-repl: chrome tint, cursor spotlight, ruler; a bell rings unfocused and the frame flashes |
 | `demos/scripting.py` | left: socket JSON typed with verbatim replies while the session performs each verb; right: deploy.py draws status + [Approve] into its frame, the pointer's click lands on its stdin |
 
@@ -106,6 +107,15 @@ scroll. Lessons that cost time, so they stay written down:
   in the pane's script) and use `Recorder.wall()` for the real seconds.
 - Commanded panes come from layouts; a command that is a file (`sh checks`)
   keeps the dead frame's `[ran: …]` line readable.
+- A demo that changes the theme must keep to dark ones. Cells slosh does not
+  paint keep the *terminal's* own background, which the cast header fixes
+  once, so `paper` on a black page would look broken in the player and honest
+  in a terminal that is light. Same reason a config demo's colour bars are
+  drawn by the program rather than assumed from the palette.
+- Anything a demo writes on screen is published: `themes.py` copies
+  `contrib/themes` next to its temp config instead of naming `theme_dir`, so
+  the `cat config.kdl` frame carries a theme *name* and not the render
+  machine's path.
 
 The detach story is in (`sessions.py`); what remains is pacing polish once
 the page has been scrolled by real hands for a while.
