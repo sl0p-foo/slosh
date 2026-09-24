@@ -76,10 +76,9 @@
         <p>Detach, let the ssh connection die, come back tomorrow: every pane
         exactly where you left it.</p>
         <ul>
-          <li>detach mid-thought, reattach mid-thought</li>
-          <li>attach from two terminals at once: both type, both see</li>
-          <li>keep separate sessions for separate lives; hop between them</li>
-          <li>a command that died while you were away keeps its output and exit status</li>
+          <li>attach from two terminals at once, both can type</li>
+          <li>keep separate sessions for separate projects and switch between them</li>
+          <li>if a command exits while you're away, its output and exit code are still there</li>
         </ul>
       </article>
 
@@ -87,9 +86,9 @@
         <h3>Responsive terminal layouts.</h3>
         <p>Layouts (re)flow in the way you expect, nothing drifts.</p>
         <ul>
-          <li>quarter-turn the whole layout in place</li>
-          <li>shrink until boxes become a tidy list</li>
-          <li>grow back: the exact arrangement returns</li>
+          <li>rotate the whole layout in place</li>
+          <li>shrink the window and panes collapse into a list</li>
+          <li>make it bigger again and your layout comes back</li>
         </ul>
       </article>
 
@@ -105,58 +104,47 @@
       </article>
 
       <article class="step" data-cast="themes">
-        <h3>Themes are names, not pasted palettes.</h3>
-        <p><kbd>C-a</kbd> <kbd>t</kbd> lists every theme you can name &mdash;
-        yours, and the ones slosh ships &mdash; and moving the selection puts
-        it on.</p>
+        <h3>Themes, and a picker.</h3>
+        <p>Press <kbd>C-a</kbd> <kbd>t</kbd> to browse the shipped themes and
+        your own.</p>
         <ul>
-          <li>the session behind the box is the preview: a swatch would be a
-          small lie about a palette that dresses a whole session</li>
-          <li>type to narrow the list, <kbd>Esc</kbd> to put back what you were
-          wearing</li>
-          <li><kbd>C-s</kbd> keeps it: one <code>theme_name</code> line written
-          into your config, every other line untouched</li>
-          <li><code>slosh -s main cmd '{"cmd":"theme","name":"amber"}'</code>
-          does the same from a script</li>
+          <li>live preview on your actual session as you move through the list</li>
+          <li>type to filter, <kbd>Esc</kbd> to back out</li>
+          <li><kbd>C-s</kbd> saves your pick to your config</li>
         </ul>
       </article>
 
       <article class="step" data-cast="shaders">
-        <h3>Nifty visual effects, written as expressions.</h3>
-        <p>Dim, tint, rulers, spotlights: over a pane's cells or over its
-        frame, with strengths computed from <code>x</code>, <code>y</code>, the
-        cursor, the clock.</p>
+        <h3>Nifty visual effects.</h3>
+        <p>Tints, dimming, spotlights and more, applied to a pane or its
+        border. Write your own or load one of the presets.</p>
         <ul>
-          <li>tint a frame, rule a column, scanline the lot</li>
-          <li>a spotlight that follows the cursor as you type</li>
-          <li><code>:load shine</code>, and a shipped preset runs light along the frame</li>
-          <li>a pane rings unfocused, its border flashes</li>
+          <li>a spotlight that follows your cursor</li>
+          <li><code>:load shine</code> runs a glint around the border</li>
+          <li>a background pane's border flashes when it rings the bell</li>
         </ul>
       </article>
 
       <article class="step" data-cast="scripting">
         <h3>Built to be driven.</h3>
-        <p>One JSON object per line over the session's socket: the same depth
-        the keyboard gets. An agent can hold the other end.</p>
+        <p>Control everything from a script (or an AI agent) with simple
+        JSON commands.</p>
         <ul>
-          <li>split and rename panes from a script, replies and all</li>
-          <li>a program draws status and buttons into its own frame</li>
-          <li>the click comes back on that program's stdin</li>
+          <li>split, rename and arrange panes from a script</li>
+          <li>programs can put status text and buttons in their pane's border</li>
+          <li>button clicks are sent back to the program</li>
         </ul>
       </article>
 
       <article class="step" data-cast="extras">
         <h3>Floats, and the small comforts.</h3>
-        <p><kbd>C-a</kbd> <kbd>F</kbd> drops a throwaway shell on top of
-        whatever you are doing: a monitor, a man page, a quick command.</p>
+        <p><kbd>C-a</kbd> <kbd>F</kbd> opens a floating shell on top of
+        whatever you're doing, for a quick command or a man page.</p>
         <ul>
-          <li>move it with the keys that move boundaries; grow it about its
-          centre</li>
-          <li><kbd>C-a</kbd> <kbd>?</kbd> shows a cheatsheet built from the
-          bindings actually active, it cannot disagree with your
-          keyboard</li>
-          <li><code>exit</code> closes it like any shell. the layout never
-          flinched</li>
+          <li>move and resize it from the keyboard</li>
+          <li><code>exit</code> closes it, your layout stays as it was</li>
+          <li><kbd>C-a</kbd> <kbd>?</kbd> shows a cheatsheet of your current
+          keybindings</li>
         </ul>
       </article>
     </div>
@@ -169,14 +157,13 @@
 <section id="try">
   <h2>try it</h2>
 
-  <p>A riscv64 Linux with slosh as the thing you land in, booted right here.
-  Nothing is installed, nothing leaves the tab, and the machine is throwaway
-  (reload for a fresh one).
-  <a href="demo/">Prefer a whole tab?</a></p>
+  <p>Boot a small Linux machine with slosh in your browser. Nothing gets
+  installed, and reloading the page gives you a fresh one.
+  <a href="demo/">Open it in its own tab.</a></p>
 
   <div class="try-stage" id="try_stage">
     <button class="boot" type="button" id="boot_btn">boot the machine</button>
-                    <p class="aside">riscv64 · <a href='https://bellard.org/tinyemu/'>TinyEMU</a>, compiled to wasm · yours until you reload</p>
+                    <p class="aside">riscv64 · <a href='https://bellard.org/tinyemu/'>TinyEMU</a>, compiled to wasm</p>
   </div>
   <p class="try-live" id="try_live" hidden>
     <button class="boot ghost" type="button" id="kill_btn">power off</button>
@@ -194,7 +181,7 @@
     <a href="https://github.com/sl0p-foo/slosh/releases/latest">latest release</a>
     page. The macOS binary is signed and notarized.
 
-    We also provide some packaged versions of slosh, instructions can be found below.
+    Or install with a package manager:
   </p>
 
 
@@ -238,34 +225,27 @@ Server = https://slosh.foo/arch/$arch</code></pre>
       </div>
       <div class="cmd" data-copy="sudo pacman -Sy slosh">
         <pre><code><span class="prompt">$</span> sudo pacman -Sy slosh
-<span class="prompt">$</span> sudo pacman -S ghostty-terminfo   <span class="c"># optional, x86_64 only: the TERM entry</span>
-                                     <span class="c"># system-wide; slosh self-installs it otherwise</span></code></pre>
+<span class="prompt">$</span> sudo pacman -S ghostty-terminfo   <span class="c"># optional (x86_64 only)</span></code></pre>
         <button class="copy" type="button" aria-label="Copy command">copy</button>
       </div>
-      <p class="aside">Built, signed packages. The fingerprint to check before
-      the <code>--lsign-key</code>: the same key is
-      <a href="https://github.com/sl0p-foo/slosh/blob/master/contrib/arch/slosh.asc">contrib/arch/slosh.asc</a>
-      in git, so the file fetched from the website can be compared against the
-      one in the source. The PKGBUILD, for building it yourself, is in
-      <a href="https://github.com/sl0p-foo/slosh/tree/master/contrib/arch">contrib/arch</a>
-      too; the same instructions at <a href="arch/">arch/</a>.</p>
+      <p class="aside">Signed packages. You can check the key against
+      <a href="https://github.com/sl0p-foo/slosh/blob/master/contrib/arch/slosh.asc">the copy in the repo</a>.
+      To build it yourself, the PKGBUILD is in
+      <a href="https://github.com/sl0p-foo/slosh/tree/master/contrib/arch">contrib/arch</a>.
+      More details at <a href="arch/">arch/</a>.</p>
     </div>
 
     <div class="os-panel" id="install-source">
       <div class="cmd">
         <pre><code><span class="prompt">$</span> git clone https://github.com/sl0p-foo/slosh.git &amp;&amp; cd slosh
-<span class="prompt">$</span> make vendor    <span class="c"># the vendored terminal core, once</span>
+<span class="prompt">$</span> make vendor    <span class="c"># first time only</span>
 <span class="prompt">$</span> make all       <span class="c"># about a second</span>
 <span class="prompt">$</span> sudo make install                  <span class="c"># or: make install PREFIX=$HOME/.local</span></code></pre>
       </div>
-      <p class="aside">Needs <a href="https://ziglang.org">zig</a> 0.16 and
-      nothing else: no cmake, no autotools, no libraries. The result is one
-      static binary. Bare <code>make</code> prints the target list;
-      <code>make&nbsp;all</code> is the build, and <code>make&nbsp;install</code>
-      puts the binary in <code>$PREFIX/bin</code> along with the manpages and
-      the example configuration. Windows cross-compilation is
-      <code>make&nbsp;-f&nbsp;Makefile.windows</code>;
-      <a href="docs/windows.html">the details</a>.</p>
+      <p class="aside">Only needs <a href="https://ziglang.org">zig</a> 0.16,
+      and you get a single static binary. <code>make&nbsp;install</code> also
+      installs the manpages and an example config. Building for Windows is
+      <a href="docs/windows.html">covered here</a>.</p>
     </div>
   </div>
 </section>
@@ -280,8 +260,7 @@ Server = https://slosh.foo/arch/$arch</code></pre>
   </p>
 
   <p>
-    For everything that is not an issue yet (a question, an idea, a
-    screenshot of a setup you are proud of) there is the
+    For questions, ideas, or to show off your setup, join the
     <a href="https://discord.gg/9rmHTNsnKY">sl0p discord</a>.
   </p>
 </section>
