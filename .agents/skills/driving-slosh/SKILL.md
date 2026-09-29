@@ -1,13 +1,14 @@
 ---
 name: driving-slosh
 description: >-
-  Drive a slosh terminal multiplexer: run a long-lived command somewhere its
-  output can be watched, read a pane's screen, arrange panes and tabs, find a
-  pane by purpose, open a project workspace, and report progress or ask a
-  question from inside a pane. Activates when `SLOSH` is set in the
-  environment, when a task needs a dev server, log tailer or build left running
-  while other work continues, or when the user mentions slosh, panes, tabs or
-  workspaces.
+  House rules and API for driving a slosh terminal multiplexer: spawn
+  long-running work as a visible pane IN YOUR OWN TAB (never the human's), read
+  a pane's screen, type into a pane, arrange panes and tabs, find a pane by
+  purpose, open a project workspace, and report progress or ask a question from
+  inside a pane. Use whenever `SLOSH` is set in the environment, and ALWAYS
+  before spawning a pane, splitting, applying a layout, moving a pane, or
+  reading/typing into one — getting "which pane am I" from focus is the classic
+  way to erupt in the middle of somebody else's work.
 ---
 
 # Driving slosh
@@ -34,6 +35,7 @@ Every pane gets these:
 | `SLOSH=1` | this process is running inside a slosh pane |
 | `SLOSH_SESSION` | the name of the session it is in — empty under `--script` |
 | `SLOSH_BIN` | the binary that started it |
+| `SLOSH_PANE` | **which pane this is** — the id every `id:` argument wants |
 
 Use `$SLOSH_BIN`, not `slosh`: a session may have been started from a build
 tree, and `slosh` is then not on your `PATH`. Both are *set* by the thing that
@@ -86,16 +88,53 @@ form at all. Type the bare one at a shell; write JSON in anything you keep.
 closes is removed and every index after it shifts. `id` survives that. Where a
 verb takes an `id`, `0` means "the focused pane, and the tab you are looking at".
 
+## Rule 1: your own pane is `$SLOSH_PANE`, never the focused one
+
+**`focused` is the human's pane, not yours.** Exactly one pane in the whole
+session has `focused:true`, it is always in the tab currently on screen, and it
+moves whenever the person watching clicks something. It answers "what is the
+human looking at". It does *not* answer "where do I live", and using it for that
+is the single most expensive mistake you can make here: work spawned "beside me"
+lands in whatever tab somebody else wandered into, and with several agents in one
+session it is reliably a stranger's.
+
+```bash
+# right: act on the pane you are in
+my_tab=$($S '{"cmd":"panes"}' | jq --argjson me "$SLOSH_PANE" '.panes[]|select(.id==$me)|.tab_id')
+
+# wrong: this is wherever the human happens to be
+my_tab=$($S '{"cmd":"panes"}' | jq '.panes[]|select(.focused)|.tab_id')
+```
+
+If `$SLOSH_PANE` is somehow not set (a scrubbed env, a helper with no
+controlling tty, an older slosh), **do not fall back to `focused`** — fall back
+to `pid`, which `panes` reports for every pane: walk your own parents
+(`/proc/$pid/stat`) until one matches. Both answers are about you; `focused`
+never is.
+
 ## Running work so you can read the result
 
 This is the pattern to reach for. Do **not** type a command into somebody's shell
 and then screen-scrape for it.
 
-Make a pane that *was given a command*, and tag it:
+Make a pane that *was given a command*, and tag it. `focus:false` builds it
+without dragging the view to it — always pass it for background work:
 
 ```bash
-$S '{"cmd":"apply-layout","kdl":"layout { tab name=\"build\" { pane purpose=\"task:build\" command=\"make -j8\" } }"}'
+$S '{"cmd":"apply-layout","focus":false,"kdl":"layout { tab name=\"build\" { pane purpose=\"task:build\" command=\"make -j8\" } }"}'
 ```
+
+To put it beside *you* rather than in a tab of its own, move it in by id — again
+without taking focus:
+
+```bash
+id=$($S '{"cmd":"panes"}' | jq '.panes[]|select(.purpose=="task:build")|.id')
+$S "{\"cmd\":\"move-pane\",\"id\":$id,\"tab\":$my_tab,\"beside\":$SLOSH_PANE,\"focus\":false}"
+```
+
+The pane keeps running across the move: same pty, same scrollback. Panes built
+this way are sized properly even in a tab nobody has looked at, so a full-screen
+TUI in one renders correctly.
 
 Then poll `panes`, matching on your purpose, until it is no longer alive:
 
@@ -123,19 +162,28 @@ sleep you would be happy to explain.
 ## Reading a pane
 
 ```bash
-$S '{"cmd":"snapshot","format":"text"}'     # the composited screen as text
+$S "{\"cmd\":\"capture\",\"id\":$id}"       # one pane's visible text
+$S '{"cmd":"snapshot","format":"text"}'     # the whole composited screen
 $S '{"cmd":"snapshot"}'                     # ...or JSON: rows, styles, cursor
 ```
 
+**`capture` is the one to use.** It reads that pane's own terminal, so it works
+for a pane in a tab that is not on screen, and it changes nothing: no
+`select-tab`, no focus change, no effect on a selection the human is holding.
+`id:0` is the focused pane.
+
 `snapshot` is the **whole session's** composited screen — every visible pane, as
-laid out, borders and all. To read one pane, take its rect from `panes`
-(`content_x`, `content_y`, `content_w`, `content_h`) and cut that window out of
-the text.
+laid out, borders and all — and only the tab on screen is composited at all. Use
+it to see what a *human* sees, not to read a pane. Where a pane sits in that
+frame is its rect in `panes` (`content_x`, `content_y`, `content_w`,
+`content_h`), which is what to cut out of the text if you are checking the
+layout itself rather than a program's output — and the only way to answer "is
+this pane on screen, and where", for clicks and geometry.
 
 Two traps:
 
-- **Only what is on screen is in a snapshot.** Scrollback is not. If you need a
-  program's whole output, redirect it to a file and read the file; a snapshot is
+- **Only what is on screen is in either.** Scrollback is not. If you need a
+  program's whole output, redirect it to a file and read the file; these are
   for seeing what a human would see.
 - **The echoed command line matches your own marker.** Typing `echo DONE` into a
   shell puts the string `DONE` on screen twice: once as the command, once as its
@@ -144,9 +192,15 @@ Two traps:
 ## Typing into a pane
 
 ```bash
-$S '{"cmd":"send","data":"ls -la\r"}'   # as if typed: decoded, then re-encoded
-$S '{"cmd":"raw","data":"ls -la\r"}'    # straight into the focused pane's pty
+$S '{"cmd":"send","data":"ls -la\r"}'              # as if typed: decoded, then re-encoded
+$S "{\"cmd\":\"raw\",\"id\":$id,\"data\":\"ls -la\r\"}"   # straight into that pane's pty
 ```
+
+**Pass `id` to `raw`.** Without it the bytes go to the focused pane — which is
+the human's. Focusing a pane first to type into it is worse: `focus` also
+selects that pane's tab, so it moves the view, and it races anybody else doing
+the same. `send` has no `id`: it is session input (that is how it can carry the
+leader chord), so it always goes where focus is.
 
 `send` goes through the input decoder, so it can carry key chords: `\x01` is the
 leader (`C-a` by default), so `{"cmd":"send","data":"\\x01\\\\"}` splits the pane.
@@ -275,18 +329,20 @@ Two rules:
 
 | verb | takes |
 |---|---|
-| `panes` `tabs` | —. ids, rects, titles, purposes, `alive`, `exit_code`, `tab_id`, `purpose_declared`, `floating`, `hidden`, `suspended`, `status`, `busy` |
+| `panes` `tabs` | —. ids, rects, titles, purposes, `alive`, `exit_code`, `pid`, `tab_id`, `purpose_declared`, `floating`, `hidden`, `suspended`, `status`, `busy` |
 | `snapshot` | `format:"text"` for text, `"bytes"` for the frame's own output (a second call is the delta), omitted for JSON |
-| `send` `raw` | `data` |
+| `capture` | `id` (0 = focused). One pane's visible text, from any tab, with no side effects |
+| `send` | `data` — session input, always to the focused pane |
+| `raw` | `data`, `id` (0 = focused) — straight into that pane's pty |
 | `split` | `dir:"cols"\|"rows"`, `id` |
 | `focus` `close` `rerun` `clear-shaders` | `id`, or `0` for the focused pane |
 | `new-tab` `select-tab` `close-tab` `move-tab` | `id` or `index` |
 | `set-name` | `target:"tab"` (the default) or `"pane"`, `id`, `name`. A pane's name beats the title the program sets, which is how you overrule something that keeps announcing itself; `""` hands the label back |
-| `move-pane` | `id`, `tab` (`0` for a tab of its own), `dir` |
+| `move-pane` | `id`, `tab` (`0` for a tab of its own), `dir`, `beside` (a pane in that tab to land next to), `focus:false` to leave focus and the view alone |
 | `float` | `id` to toggle a pane floating; with any of `x` `y` `w` `h` it places instead, and never un-floats |
 | `new-float` | —. a floating shell over the current tab, in the focused pane's directory; answers `id` |
 | `set-purpose` | `target:"pane"\|"tab"`, `id`, `purpose` |
-| `apply-layout` | `path` or `kdl`, `replace` |
+| `apply-layout` | `path` or `kdl`, `replace`, `focus:false` to build without going there |
 | `dump-layout` | `tab`, `relative_to`, `suspend` |
 | `workspaces` `open-workspace` `close-workspace` `save-workspace` | see above |
 | `resize` | `cols` `rows`, optionally `cell_w` `cell_h` |
