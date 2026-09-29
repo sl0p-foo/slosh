@@ -846,17 +846,29 @@ void pane_send_key(pane_t *p, const input_event_t *ev) {
 void pane_send_mouse(pane_t *p, const input_event_t *ev) {
   ghostty_mouse_encoder_setopt_from_terminal(p->menc, p->term);
 
-  /* The encoder works in surface pixels. We have no pixels, so we declare a
-   * 1x1-pixel cell: cell coordinates and "pixels" become the same number, and
-   * SGR-pixel mode degrades to cell precision instead of lying. */
+  /* The encoder works in surface pixels, so we hand it the cell size we
+   * already tell the pane about (mode 2048's resize reports and the XTWINOPS
+   * answers in on_size_report) and put the pointer in the middle of its cell.
+   *
+   * It used to declare a 1x1 cell, so that cell coordinates and "pixels" were
+   * the same number -- which was fine until a program turned on SGR-pixel mouse
+   * (mode 1016). Textual does that by itself the moment in-band resize works,
+   * and then divides every reported coordinate by the pixels-per-cell it got
+   * from OUR resize report (8x16): a click 30 cells across and 9 down arrived
+   * as (3, 0), so every click in a Textual app landed in the top-left corner.
+   * A size that contradicts what the same pane was told about itself is the
+   * lie, not the precision. */
+  uint16_t cw = p->cell_w ? p->cell_w : 1;
+  uint16_t ch = p->cell_h ? p->cell_h : 1;
   GhosttyMouseEncoderSize size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
-  size.screen_width = p->cols;
-  size.screen_height = p->rows_n;
-  size.cell_width = 1;
-  size.cell_height = 1;
+  size.screen_width = (uint32_t)p->cols * cw;
+  size.screen_height = (uint32_t)p->rows_n * ch;
+  size.cell_width = cw;
+  size.cell_height = ch;
   ghostty_mouse_encoder_setopt(p->menc, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
 
-  GhosttyMousePosition pos = {.x = (float)ev->mx, .y = (float)ev->my};
+  GhosttyMousePosition pos = {.x = (float)ev->mx * cw + cw / 2.0f,
+                              .y = (float)ev->my * ch + ch / 2.0f};
   ghostty_mouse_event_set_position(p->mev, pos);
   /* "no button held" is its own thing, not button zero: bare motion (hover)
    * must be encoded as none, or a pane in any-event tracking sees nothing. */
