@@ -124,7 +124,8 @@ static const char *pty_term(void) {
 }
 
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
-              const char *cwd, uint16_t cell_w, uint16_t cell_h) {
+              const char *cwd, uint16_t cell_w, uint16_t cell_h,
+              uint32_t pane_id) {
   int master = posix_openpt(O_RDWR | O_NOCTTY);
   if (master < 0) return -1;
   if (grantpt(master) < 0 || unlockpt(master) < 0) {
@@ -206,6 +207,18 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
      * same contract inward. xterm-ghostty is what libghostty-vt implements. */
     setenv("TERM", pty_term(), 1);
     setenv("SLOSH", "1", 1);
+    /* Which pane this is, so a program can act on its own pane instead of on
+     * whichever one has focus. Set in the child, after the fork, because it is
+     * per-pane: setting it in the parent would leak one pane's id into the
+     * next spawn. Unset when there is no id, so a stale inherited value from
+     * an outer session cannot be read as this one's. */
+    if (pane_id) {
+      char idbuf[16];
+      snprintf(idbuf, sizeof idbuf, "%u", pane_id);
+      setenv("SLOSH_PANE", idbuf, 1);
+    } else {
+      unsetenv("SLOSH_PANE");
+    }
     unsetenv("ZELLIJ");
 
     signal(SIGPIPE, SIG_DFL);

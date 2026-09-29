@@ -179,7 +179,8 @@ static void build_cmdline(const char *const argv[], char *out, size_t cap) {
 }
 
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
-              const char *cwd, uint16_t cell_w, uint16_t cell_h) {
+              const char *cwd, uint16_t cell_w, uint16_t cell_h,
+              uint32_t pane_id) {
   (void)cell_w;
   (void)cell_h; /* ConPTY carries no pixel geometry */
   if (!p || !argv || !argv[0]) return -1;
@@ -235,6 +236,18 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
   /* Same contract as the POSIX child: we say what terminal this is. */
   SetEnvironmentVariableA("TERM", "xterm-ghostty");
   SetEnvironmentVariableA("SLOSH", "1");
+  {
+    /* Same contract as the POSIX child: which pane this is. See pty_spawn in
+     * slosh.h -- a program must be able to name its own pane rather than
+     * infer it from whoever has focus. */
+    char idbuf[16];
+    if (pane_id) {
+      snprintf(idbuf, sizeof idbuf, "%u", pane_id);
+      SetEnvironmentVariableA("SLOSH_PANE", idbuf);
+    } else {
+      SetEnvironmentVariableA("SLOSH_PANE", NULL);
+    }
+  }
 
   /* A child attached to a pseudoconsole is supposed to take its stdio from
    * that console -- but CreateProcess copies the *parent's* standard handles

@@ -30,6 +30,11 @@ struct pane {
   GhosttyMouseEncoder menc;
   GhosttyMouseEvent mev;
   uint16_t cols, rows_n;
+  /* The id the session knows this pane by, handed to every spawn of it as
+   * $SLOSH_PANE. Kept on the pane rather than looked up from the layout
+   * because `rerun` respawns from here, and an identity that changed under a
+   * rerun would be no identity at all. */
+  uint32_t id;
   /* The client's cell size in pixels. A default rather than a zero, because
    * zero is what makes an image vanish: a placement given no explicit cell
    * count is sized from the image's pixels and this, and 0 covers no cells.
@@ -321,7 +326,7 @@ bool pane_start(pane_t *p) {
   if (!p->suspended) return false;
   p->suspended = false;
   if (pty_spawn(&p->pty, (const char *const *)p->argv, p->cols, p->rows_n,
-                p->cwd, p->cell_w, p->cell_h) != 0) {
+                p->cwd, p->cell_w, p->cell_h, p->id) != 0) {
     p->alive = false;
     return false;
   }
@@ -339,8 +344,9 @@ static char **argv_dup(const char *const argv[]) {
 }
 
 pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
-                    const char *cwd, bool suspended, const char *label) {
-  pane_t *p = pane_new(argv, cols, rows, cwd);
+                    const char *cwd, bool suspended, const char *label,
+                    uint32_t id) {
+  pane_t *p = pane_new(argv, cols, rows, cwd, id);
   if (!p) return NULL;
   snprintf(p->label, sizeof p->label, "%s", label ? label : "");
   if (suspended) {
@@ -355,8 +361,9 @@ pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
 }
 
 pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
-                 const char *cwd) {
+                 const char *cwd, uint32_t id) {
   pane_t *p = calloc(1, sizeof *p);
+  p->id = id;
   p->cols = cols;
   p->rows_n = rows;
   p->cell_w = 8;
@@ -414,7 +421,7 @@ pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
   p->argv = argv_dup(argv);
   p->cwd = cwd ? strdup(cwd) : NULL;
 
-  if (pty_spawn(&p->pty, argv, cols, rows, cwd, p->cell_w, p->cell_h) != 0)
+  if (pty_spawn(&p->pty, argv, cols, rows, cwd, p->cell_w, p->cell_h, id) != 0)
     goto fail;
   p->alive = true;
   p->dirty = true;
@@ -715,7 +722,7 @@ bool pane_restart(pane_t *p) {
   p->exit_code = 0;
 
   if (pty_spawn(&p->pty, (const char *const *)p->argv, p->cols, p->rows_n,
-                p->cwd, p->cell_w, p->cell_h) != 0)
+                p->cwd, p->cell_w, p->cell_h, p->id) != 0)
     return false;
   /* The terminal is deliberately not cleared: the run that ended, and the
    * line saying it ended, stay above this one in the scrollback. That is the

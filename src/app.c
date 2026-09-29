@@ -830,13 +830,18 @@ const char *app_clipboard(const app_t *a) { return a->clipboard; }
 
 node_t *leaf_new_ex(app_t *a, const char *const argv[], const char *cwd,
                     bool suspended, const char *label) {
-  pane_t *p = pane_new_ex(argv, 1, 1, cwd, suspended, label);
+  /* The id is taken *before* the pane is made, because the pane's program is
+   * spawned by pane_new and has to be told which pane it is ($SLOSH_PANE).
+   * Assigning it afterwards, as this used to, is one instruction too late:
+   * the child is already running without it. */
+  uint32_t id = ++a->next_id;
+  pane_t *p = pane_new_ex(argv, 1, 1, cwd, suspended, label, id);
   if (!p) return NULL;
   node_t *n = calloc(1, sizeof *n);
   n->kind = NODE_LEAF;
   n->weight = WEIGHT_UNIT;
   n->pane = p;
-  n->id = ++a->next_id;
+  n->id = id;
   pane_set_osc_handler(p, on_pane_osc, a);
   pane_set_clipboard_handler(p, on_pane_clipboard, a);
   pane_set_notify_handler(p, on_pane_notify, a);
@@ -2137,6 +2142,12 @@ static void panes_cb(node_t *n, void *ud) {
    * false with a status is one whose program is over and which is waiting to
    * be re-run or closed. `exit_code` is -1 when there is no status to give. */
   json_bool(j, "alive", pane_alive(n->pane));
+  /* The pid of the program in the pane, so a process can work out which pane
+   * it is in by walking its own parents up to one of these -- the answer for
+   * anything that cannot read $SLOSH_PANE from its environment, which is
+   * every tool run with a scrubbed env and every process with no controlling
+   * tty. -1 when there is nothing running (a suspended or dead pane). */
+  json_int(j, "pid", (long long)pane_pid(n->pane));
   {
     int code = 0;
     bool sig = false;

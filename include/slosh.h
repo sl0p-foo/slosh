@@ -169,8 +169,16 @@ typedef struct {
  * success). Panes do this on their own when the entry is missing
  * everywhere; `slosh --install-terminfo` is the by-hand spelling. */
 int pty_terminfo_install(void);
+/* `pane_id` is the id the session knows this pane by, exported into the child
+ * as $SLOSH_PANE. A program in a pane has to be able to name the pane it is
+ * *in* -- `panes` says which pane is focused, and focus is the human's, not the
+ * caller's, so anything that inferred "where do I live" from it spawned its
+ * work in whichever tab somebody else happened to be looking at. tmux answers
+ * this with $TMUX_PANE and zellij with $ZELLIJ_PANE_ID; this is ours. 0 means
+ * "no id", and then the variable is left unset rather than set to a lie. */
 int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
-              const char *cwd, uint16_t cell_w, uint16_t cell_h);
+              const char *cwd, uint16_t cell_w, uint16_t cell_h,
+              uint32_t pane_id);
 int pty_resize(pty_t *p, uint16_t cols, uint16_t rows, uint16_t cell_w,
                uint16_t cell_h);
 void pty_close(pty_t *p);
@@ -194,12 +202,16 @@ typedef void (*pane_clip_fn)(pane_t *p, char *text, void *ud);
 typedef void (*pane_notify_fn)(pane_t *p, const char *title, const char *body,
                                void *ud);
 
+/* `id` is what the session will know this pane by: it reaches the program as
+ * $SLOSH_PANE, and every respawn of this pane (start/rerun) carries the same
+ * one, so a pane's identity outlives the process that had it. */
 pane_t *pane_new(const char *const argv[], uint16_t cols, uint16_t rows,
-                 const char *cwd);
+                 const char *cwd, uint32_t id);
 /* `suspended`: create the pane but run nothing until pane_start(). `label` is
  * what to show in the meantime (usually the command line). */
 pane_t *pane_new_ex(const char *const argv[], uint16_t cols, uint16_t rows,
-                    const char *cwd, bool suspended, const char *label);
+                    const char *cwd, bool suspended, const char *label,
+                    uint32_t id);
 bool pane_suspended(const pane_t *p);
 /* A pane opened to do one thing, rather than one the session is made of: an
  * editor you popped open, not the dev server a layout declared. It runs a
