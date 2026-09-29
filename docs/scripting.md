@@ -20,23 +20,24 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 
 | verb | |
 |---|---|
-| `panes` `tabs` | what exists, with ids, rects, titles, purposes, state. A pane's `tab_id` is what `move-pane` and `select-tab` want; its `tab` is where that tab sits in the strip |
+| `panes` `tabs` | what exists, with ids, rects, titles, purposes, state. A pane's `tab_id` is what `move-pane` and `select-tab` want; its `tab` is where that tab sits in the strip; its `pid` is the program in it |
 | `snapshot` | the composited screen, as JSON, `format:"text"`, or `format:"bytes"`, the emitter's own output for this frame (a second call is the delta) |
+| `capture` | one pane's visible text: `id` (0 = focused). Reads the pane's own terminal, so it works for a pane in a tab that is not on screen, and changes nothing — no `select-tab`, no focus, no effect on a selection |
 | `deadline` | when the session wants its next frame, in ms, or -1 |
 | `send` | bytes as if typed, decoded like input (`"data":"\\x01\\\\"`) |
-| `raw` | bytes straight into the focused pane's pty |
+| `raw` | bytes straight into a pane's pty: `id` (0 = focused). Naming the pane is the point — focusing one first moves the view of whoever is watching |
 | `resize` | `cols` `rows`, and optionally `cell_w` `cell_h` |
 | `split` | `dir:"cols"\|"rows"`, `id` for which pane to split |
 | `focus` | `id` |
 | `close` `rerun` | `id`, or 0 for the focused pane |
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1`. The way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` | tabs, by `id` or `index` |
-| `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`. The pane keeps running: same pty, same scrollback |
+| `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`, `beside` a pane in that tab to land next to (default: whatever it has focused), `focus:false` to leave focus — and the view — where it is. The pane keeps running: same pty, same scrollback |
 | `float` | bare: toggle a pane [floating](panes.md#floating-a-pane) (`id`, or 0 for the focused one). With any of `x` `y` `w` `h` it *places*: floats first when tiled, re-places when floating, never un-floats; omitted fields keep their value |
 | `new-float` | a fresh floating shell over the current tab, centred, in the focused pane's directory; answers `id` |
 | `set-name` | `target:"tab"` (the default, because that is what this verb has always meant) or `"pane"`, `id`, `name`. A pane accepts 0 for the focused one. A pane's name wins over the title the program sets, so this is how a program that keeps announcing something stale gets overruled; an empty `name` clears it and hands the label back. Refusals say `no such pane` or `no such tab`, so a mistyped target is visible in the reply |
 | `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program |
-| `dump-layout` `apply-layout` | see [layouts](layouts.md). `dump-layout` takes `tab` (0 for every tab), `relative_to` to write every `cwd=` under that directory instead of absolute, and `suspend` (`as-is` `none` `commands` `all`); it answers `kdl` `panes` `suspended`, and an unknown `tab` is an error rather than an empty document |
+| `dump-layout` `apply-layout` | see [layouts](layouts.md). `apply-layout` takes `focus:false` to build the tabs without going to them (a layout that names an `active` tab still wins); the panes it builds are sized either way. `dump-layout` takes `tab` (0 for every tab), `relative_to` to write every `cwd=` under that directory instead of absolute, and `suspend` (`as-is` `none` `commands` `all`); it answers `kdl` `panes` `suspended`, and an unknown `tab` is an error rather than an empty document |
 | `workspaces` | the projects on disk and which of them are open: `roots` says whether any are configured at all, and each entry has `name` `path` `purpose` `layout` (a file path, or "") `mtime` `tab` (0 when closed). See [workspaces](workspaces.md) |
 | `open-workspace` | `name` or `path`, and `suspended`; answers `tab` `purpose` `path` `created` `tabs` `honoured`. Already open means focused, with `created:false` |
 | `close-workspace` | `name` or `purpose`; answers `closed`, how many tabs went |
@@ -50,6 +51,44 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `theme` | without `name`, what is installed and what is worn (`theme` `themes` `dirs`); with one, switch now, and `save:true` writes the `theme_name` line into the config. See [themes](config.md#themes) |
 | `alive` | is it running, and how many panes and tabs |
 | `quit` | end the session |
+
+## Your own pane, not the focused one
+
+A program in a pane is told which pane it is in: **`$SLOSH_PANE`**. Everything
+else follows from having it.
+
+```bash
+$S '{"cmd":"capture","id":'$SLOSH_PANE'}'      # read yourself
+$S '{"cmd":"panes"}' | jq --argjson me $SLOSH_PANE '.panes[] | select(.id==$me) | .tab_id'
+```
+
+**Do not use `focused` for this.** Exactly one pane in the session is focused,
+it is in the tab currently on screen, and it belongs to whoever is looking —
+which is not you. A tool that read focus as "where I live" put its panes in
+whatever tab the human had wandered into, and in a session with several such
+tools running it was reliably somebody else's. `focused` answers "what is the
+human doing"; `$SLOSH_PANE` answers "who am I".
+
+So background work is three calls, none of which move anybody's view:
+
+```bash
+my_tab=$($S '{"cmd":"panes"}' | jq --argjson me $SLOSH_PANE '.panes[]|select(.id==$me)|.tab_id')
+
+# 1. build a pane that was *given* a command, without going to it
+$S '{"cmd":"apply-layout","focus":false,"kdl":"layout { tab name=\"work\" { pane purpose=\"task:build\" command=\"make -j8\" } }"}'
+id=$($S '{"cmd":"panes"}' | jq '.panes[]|select(.purpose=="task:build")|.id')
+
+# 2. move it in beside yourself, still without taking focus
+$S "{\"cmd\":\"move-pane\",\"id\":$id,\"tab\":$my_tab,\"beside\":$SLOSH_PANE,\"focus\":false}"
+
+# 3. read it wherever it is
+$S "{\"cmd\":\"capture\",\"id\":$id}"
+```
+
+If you cannot read the environment — a scrubbed env, a helper with no
+controlling tty, a process several forks down — `panes` reports each pane's
+**`pid`**, so walking your own parents until one of them matches finds your pane
+without asking anybody about focus.
 
 ## Driving a project
 

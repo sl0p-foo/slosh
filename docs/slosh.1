@@ -397,6 +397,31 @@ and everything still works.
 .B 1
 : you are inside a pane.
 .TP
+.B SLOSH_PANE
+Which pane this is: the id
+.B panes
+reports, and the one every verb that takes an
+.B id
+wants.
+A program has to be able to name the pane it is
+.IR in :
+.B panes
+says which pane is
+.IR focused ,
+and focus belongs to whoever is looking, so a tool that inferred "where do
+I live" from it put its work in whichever tab somebody else was in.
+The id is the pane's, not the process's \(en a
+.B rerun
+keeps it.
+See
+.B TMUX_PANE
+and
+.B ZELLIJ_PANE_ID
+for the same idea elsewhere.
+Unset under
+.BR \-\-script 's
+own stdio, and for anything not in a pane.
+.TP
 .B SLOSH_SESSION
 The name of the session this pane belongs to: which one of possibly
 several, the part a program cannot work out for itself.
