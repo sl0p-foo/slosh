@@ -559,6 +559,31 @@ void app_write_focused(app_t *a, const void *buf, size_t len) {
   if (cur(a)->focus) pane_write(cur(a)->focus->pane, buf, len);
 }
 
+/* The same, into a pane named by id -- the one a caller can use without first
+ * stealing focus from whoever has it. `id` 0 means the focused pane, as
+ * everywhere. False when there is no such pane, so a script that names one
+ * that has gone hears about it instead of writing into a stranger's shell. */
+bool app_write_pane(app_t *a, uint32_t id, const void *buf, size_t len) {
+  if (!id) {
+    if (!cur(a)->focus) return false;
+    pane_write(cur(a)->focus->pane, buf, len);
+    return true;
+  }
+  node_t *n = pane_by_id(a, id);
+  if (!n || n->kind != NODE_LEAF) return false;
+  pane_write(n->pane, buf, len);
+  return true;
+}
+
+/* One pane's viewport as text, by id (0 = focused). NULL when there is no such
+ * pane or nothing to read; caller frees. Reads the pane's own terminal, so a
+ * pane in a tab nobody is looking at answers exactly as one on screen does. */
+char *app_pane_text(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : cur(a)->focus;
+  if (!n || n->kind != NODE_LEAF) return NULL;
+  return pane_viewport_text(n->pane);
+}
+
 void app_resize(app_t *a, uint16_t cols, uint16_t rows) {
   a->cols = cols;
   a->rows = rows;
@@ -1172,6 +1197,13 @@ bool app_toggle_float(app_t *a, uint32_t id) {
 bool app_pane_floating(app_t *a, uint32_t id) {
   node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
   return n && n->floating;
+}
+
+/* Is there a pane with this id at all, in any tab. So a reply can tell "gone"
+ * apart from "empty", which are the same answer to a caller reading text. */
+bool app_pane_exists(app_t *a, uint32_t id) {
+  node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
+  return n && n->kind == NODE_LEAF;
 }
 
 /* Float a pane *at* a rect: the script's version of the drag. Already

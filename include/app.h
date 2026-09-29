@@ -118,6 +118,14 @@ void app_splash(app_t *a);
 void app_splash_fx(app_t *a, int fx, int motion);
 /* Bytes straight into the focused pane's pty (the harness's `raw`). */
 void app_write_focused(app_t *a, const void *buf, size_t len);
+/* Bytes into a pane named by id (0 = focused); false when there is no such
+ * pane. What `raw` uses, so driving a pane never requires taking focus off
+ * whatever the human is doing. */
+bool app_write_pane(app_t *a, uint32_t id, const void *buf, size_t len);
+/* One pane's viewport as text, by id (0 = focused), with no side effects --
+ * works for a pane in any tab, unlike a snapshot, which can only see the tab
+ * that is composited. NULL when there is no such pane; caller frees. */
+char *app_pane_text(app_t *a, uint32_t id);
 bool app_should_quit(const app_t *a);
 /* C-a d asks the client to leave while the session keeps running. */
 bool app_detach_requested(const app_t *a);
@@ -277,6 +285,10 @@ bool app_pane_zoomed(app_t *a, uint32_t id);
  * with no tiled pane to float over. */
 bool app_toggle_float(app_t *a, uint32_t id);
 bool app_pane_floating(app_t *a, uint32_t id);
+/* Whether a pane with this id exists at all (any tab); 0 asks about the
+ * focused one. Lets a reply distinguish a pane that has gone from one with
+ * nothing in it. */
+bool app_pane_exists(app_t *a, uint32_t id);
 
 /* Float a pane at a wanted rect: floats it first when it is tiled, re-places
  * it when it already floats. Negative x/y and zero w/h mean "keep". */

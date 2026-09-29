@@ -379,6 +379,10 @@ bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps);
 void pane_select_done(pane_t *p);
 bool pane_selecting(const pane_t *p);
 char *pane_selection_text(pane_t *p);
+/* The pane's whole viewport as plain text, for a pane in any tab and with no
+ * side effects: no focus change, no tab change, and the human's selection left
+ * alone. Caller frees. NULL when there is nothing to read. */
+char *pane_viewport_text(pane_t *p);
 /* Compose this pane's viewport into the screen at (x0,y0). Clears dirty. */
 void pane_compose(pane_t *p, screen_t *s, uint16_t x0, uint16_t y0,
                   bool focused);

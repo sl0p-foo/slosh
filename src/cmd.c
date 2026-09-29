@@ -153,9 +153,39 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     return jok_int(NULL, 0);
   }
   if (strcmp(cmd, "raw") == 0) {
+    /* `id` names the pane to write into; 0 (the default) is the focused one,
+     * which is what this verb always did. Naming a pane is the difference
+     * between driving a program and interfering with a person: without it a
+     * caller had to focus the pane first, which moves the view of whoever is
+     * watching and loses a race with anybody else doing the same. */
     const char *data = jv_gets(req, "data", "");
-    app_write_focused(a, data, strlen(data));
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    if (!app_write_pane(a, id, data, strlen(data))) return jerr("no such pane");
     return jok_int(NULL, 0);
+  }
+  /* One pane's visible text, by id (0 = focused), from the pane's own terminal.
+   * `snapshot` is the composited screen and composites only the active tab, so
+   * this is the verb for reading a pane that is somewhere else -- with no
+   * select-tab, no focus change and no effect on the human's selection. */
+  if (strcmp(cmd, "capture") == 0) {
+    app_compose(a, s); /* so a pane that has just printed is up to date */
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    char *txt = app_pane_text(a, id);
+    if (!txt) {
+      /* Tell "no such pane" apart from "that pane is empty": a caller polling
+       * for output would otherwise read a dead id as a quiet pane forever. */
+      if (id && !app_pane_exists(a, id)) return jerr("no such pane");
+      txt = calloc(1, 1);
+    }
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_int(&j, "id", (long long)(id ? id : app_focused_pane_id(a)));
+    json_str(&j, "text", txt, strlen(txt));
+    json_obj_close(&j);
+    free(txt);
+    return j.buf;
   }
   if (strcmp(cmd, "resize") == 0) {
     uint16_t c = (uint16_t)jv_geti(req, "cols", s->cols);

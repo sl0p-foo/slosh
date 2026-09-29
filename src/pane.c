@@ -1264,6 +1264,55 @@ char *pane_selection_text(pane_t *p) {
   return out;
 }
 
+/* The pane's whole viewport as text: what somebody looking at this pane would
+ * read, for a pane in any tab, without touching anything.
+ *
+ * A snapshot of the *session* is the composited screen and only the active tab
+ * is composited, so reading one pane used to mean bringing its tab up, slicing
+ * its rect out of the frame and putting the tab back -- which moves the view
+ * of whoever is watching, and races anybody else doing the same. This asks the
+ * pane's own terminal instead.
+ *
+ * The selection is built here and handed to the formatter as a snapshot rather
+ * than set on the terminal: formatting the *terminal's* selection would mean
+ * overwriting whatever the human had selected, so a read would have a visible
+ * side effect. `unwrap` is off, unlike a copy: this answers "what is on
+ * screen", and a row is a line there even when it is the tail of a longer one.
+ *
+ * NULL when there is nothing (a pane whose terminal has no viewport yet).
+ * Caller frees. */
+char *pane_viewport_text(pane_t *p) {
+  if (!p || !p->term || !p->cols || !p->rows_n) return NULL;
+  GhosttyGridRef a, b;
+  if (!grid_ref_at(p, 0, 0, &a) ||
+      !grid_ref_at(p, (uint16_t)(p->cols - 1), (uint16_t)(p->rows_n - 1), &b))
+    return NULL;
+
+  GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+  sel.start = a;
+  sel.end = b;
+  sel.rectangle = false;
+
+  GhosttyTerminalSelectionFormatOptions opts =
+      GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
+  opts.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+  opts.unwrap = false;
+  opts.trim = true;
+  opts.selection = &sel;
+
+  uint8_t *ptr = NULL;
+  size_t len = 0;
+  if (ghostty_terminal_selection_format_alloc(p->term, NULL, opts, &ptr,
+                                              &len) != GHOSTTY_SUCCESS ||
+      !len)
+    return NULL;
+  char *out = malloc(len + 1);
+  memcpy(out, ptr, len);
+  out[len] = 0;
+  ghostty_free(NULL, ptr, len);
+  return out;
+}
+
 /* ---- scrollback --------------------------------------------------------- */
 
 void pane_scroll(pane_t *p, int delta) {
