@@ -68,9 +68,19 @@ $S '{"cmd":"panes"}'
 $S '{"cmd":"new-tab","name":"build"}'
 ```
 
-Every verb has a bare-verb alias for the same code — `$S panes`, `$S tabs`,
-`$S alive` — which is convenient at a shell and gives you no arguments. Use JSON
-when you need to pass anything.
+Sixteen verbs also take a bare form — `send raw resize snapshot deadline panes
+tabs dump-layout workspaces open-workspace close-workspace save-workspace reload
+theme alive quit`. It runs the same code, but **it answers unwrapped**: `panes`
+gives you the bare array, `alive` gives you `true`, `snapshot text` gives you the
+screen itself. So a filter written for one shape finds nothing in the other:
+
+```bash
+$S panes              # [{"id":1,...}]          — no .panes, no .ok
+$S '{"cmd":"panes"}'  # {"ok":true,"panes":[...]}
+```
+
+That is a silent failure in a `jq` pipeline, and every other verb has no bare
+form at all. Type the bare one at a shell; write JSON in anything you keep.
 
 **Panes and tabs are addressed by `id`, never by index.** A tab whose last pane
 closes is removed and every index after it shifts. `id` survives that. Where a
@@ -265,18 +275,23 @@ Two rules:
 
 | verb | takes |
 |---|---|
-| `panes` `tabs` | —. ids, rects, titles, purposes, `alive`, `exit_code`, `tab_id` |
-| `snapshot` | `format:"text"` for text, omitted for JSON |
+| `panes` `tabs` | —. ids, rects, titles, purposes, `alive`, `exit_code`, `tab_id`, `purpose_declared`, `floating`, `hidden`, `suspended`, `status`, `busy` |
+| `snapshot` | `format:"text"` for text, `"bytes"` for the frame's own output (a second call is the delta), omitted for JSON |
 | `send` `raw` | `data` |
 | `split` | `dir:"cols"\|"rows"`, `id` |
 | `focus` `close` `rerun` `clear-shaders` | `id`, or `0` for the focused pane |
-| `new-tab` `select-tab` `close-tab` `move-tab` `set-name` | `id` or `index` |
+| `new-tab` `select-tab` `close-tab` `move-tab` | `id` or `index` |
+| `set-name` | `target:"tab"` (the default) or `"pane"`, `id`, `name`. A pane's name beats the title the program sets, which is how you overrule something that keeps announcing itself; `""` hands the label back |
 | `move-pane` | `id`, `tab` (`0` for a tab of its own), `dir` |
+| `float` | `id` to toggle a pane floating; with any of `x` `y` `w` `h` it places instead, and never un-floats |
+| `new-float` | —. a floating shell over the current tab, in the focused pane's directory; answers `id` |
 | `set-purpose` | `target:"pane"\|"tab"`, `id`, `purpose` |
 | `apply-layout` | `path` or `kdl`, `replace` |
 | `dump-layout` | `tab`, `relative_to`, `suspend` |
 | `workspaces` `open-workspace` `close-workspace` `save-workspace` | see above |
-| `resize` | `cols` `rows` |
+| `resize` | `cols` `rows`, optionally `cell_w` `cell_h` |
+| `theme` | —. what is installed and worn; `name` switches now, `save:true` writes it into the config |
+| `splash` | `fx` `motion` — replay the attach greeting |
 | `notify` | `text` — a line in the session's status area |
 | `reload` `edit-config` | — |
 | `alive` `deadline` `clipboard` `graphics` | — |
