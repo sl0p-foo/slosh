@@ -447,6 +447,32 @@ static rect_t tab_area(app_t *a) {
  * second opinion about where the layout put everything. */
 rect_t app_tab_area(app_t *a) { return tab_area(a); }
 
+/* Lay out a tab that is not the one on screen.
+ *
+ * `layout` is written around `cur(a)` -- zoom, focus, the minimised strip and
+ * the floats are all that tab's -- so this borrows the cursor for the length
+ * of one pass rather than growing a second copy of the arithmetic. Nothing
+ * observes `a->cur` in between: no compose, no input, no frame.
+ *
+ * It exists because a pane's size comes from a layout pass, and a tab nobody
+ * has looked at never had one: a pane built or moved into a background tab
+ * stayed 1x1, and a program in it drew into a single cell. That was invisible
+ * for as long as making a pane elsewhere *also* jumped the view to it -- the
+ * jump is what sized it. Panes can now be made without that jump, so the
+ * sizing has to be asked for on purpose. */
+void layout_tab(app_t *a, size_t ti) {
+  if (!a->ntabs || ti >= a->ntabs) return;
+  if (ti == a->cur) {
+    layout(a);
+    return;
+  }
+  size_t save = a->cur;
+  a->cur = ti;
+  layout(a);
+  a->cur = save;
+  layout(a); /* leave the viewed tab's geometry as it was found */
+}
+
 void layout(app_t *a) {
   if (!a->ntabs) return;
   /* Re-derived below, like everything else about a layout pass: whether this
@@ -1460,10 +1486,31 @@ static bool detach_leaf(app_t *a, node_t *leaf, size_t *from, bool *emptied) {
  * mechanism. */
 bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id,
                           bool rows) {
+  return app_move_pane_beside(a, pane_id, tab_id, 0, rows, true);
+}
+
+/* The same move, told exactly where to land and whether to take focus there.
+ *
+ * `beside` is the pane in the destination to split, rather than "whatever that
+ * tab has focused": a program moving a pane in beside *itself* knows which
+ * pane that is, and the tab's focus is a fact about the last person who looked
+ * at it. `take_focus` false leaves focus where it was, which is what a caller
+ * doing background work wants -- focusing the moved pane also selects its tab
+ * (see app_focus_pane), so a move used to end with the view somewhere nobody
+ * asked for. `beside` 0 keeps the old behaviour. */
+bool app_move_pane_beside(app_t *a, uint32_t pane_id, uint32_t tab_id,
+                          uint32_t beside_id, bool rows, bool take_focus) {
   node_t *leaf = pane_id ? pane_by_id(a, pane_id) : cur(a)->focus;
   if (!leaf || leaf->kind != NODE_LEAF) return false;
   tab_t *dest = tab_by_id(a, tab_id);
   if (!dest || !dest->root) return false;
+  /* A `beside` that is not in the destination tab is a caller with the wrong
+   * idea of where things are; refusing beats silently landing elsewhere. */
+  node_t *want = beside_id ? pane_by_id(a, beside_id) : NULL;
+  if (beside_id && (!want || want->kind != NODE_LEAF ||
+                    tab_of(a, want) != (size_t)(dest - a->tabs)))
+    return false;
+  uint32_t want_id = beside_id;
   size_t src_ti = tab_of(a, leaf);
   if (src_ti == (size_t)-1 || &a->tabs[src_ti] == dest) return false;
 
@@ -1479,9 +1526,17 @@ bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id,
     node_free(leaf);
     return false;
   }
-  node_t *beside = dest->focus ? dest->focus : first_leaf(dest->root);
+  /* Re-found by id for the same reason the tab was: the removal above can have
+   * moved the node array under us. */
+  node_t *beside = want_id ? pane_by_id(a, want_id) : NULL;
+  if (!beside) beside = dest->focus ? dest->focus : first_leaf(dest->root);
+  node_t *had_focus = dest->focus;
   place_beside(a, dest, beside, leaf, rows ? SPLIT_ROWS : SPLIT_COLS, false);
-  dest->focus = leaf;
+  dest->focus = take_focus ? leaf : (had_focus ? had_focus : leaf);
+  /* The destination may not be the tab on screen, and the pane that just
+   * arrived needs a size either way: a program told it is 1x1 draws into one
+   * cell and has no reason to ask again. */
+  layout_tab(a, (size_t)(dest - a->tabs));
 
   /* Stay where we were looking, unless that tab is the one that just went. */
   for (size_t i = 0; i < a->ntabs; i++)

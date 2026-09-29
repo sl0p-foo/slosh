@@ -328,6 +328,15 @@ struct app {
    * the index is only meaningful once the array has stopped growing. */
   size_t restore_tab;
 
+  /* Set for the duration of one app_apply_layout by `apply-layout focus:false`:
+   * build the tabs but keep looking at whatever was on screen. Applying a
+   * layout otherwise lands on the first tab it made, which for a program
+   * building a pane in the background means yanking the view off the human
+   * mid-sentence -- and, worse, leaving the *next* caller to read focus as
+   * "where I am" and land its own work in a stranger's tab. A layout that
+   * names an `active` tab still wins: that is a statement about where to be. */
+  bool layout_keep_view;
+
   /* Set for the duration of one app_apply_layout: every pane it builds starts
    * suspended whatever the file said. `open-workspace suspended:true` is the
    * "open ten projects, run zero processes" case, which is a different question
@@ -481,6 +490,10 @@ void close_leaf(app_t *a, node_t *leaf);
 node_t *first_leaf_of(node_t *n);
 void focus_dir(app_t *a, int dx, int dy);
 void layout(app_t *a);
+/* One layout pass over a tab by index, including one that is not on screen --
+ * how a pane in a background tab gets a real size instead of the 1x1 it was
+ * born with. Restores the viewed tab's geometry before returning. */
+void layout_tab(app_t *a, size_t ti);
 node_t *pane_by_id(app_t *a, uint32_t id);
 split_dir_t side_dir(char side);
 bool split_fits(node_t *leaf, split_dir_t dir);

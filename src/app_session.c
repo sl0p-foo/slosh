@@ -147,6 +147,10 @@ static node_t *build_pane(app_t *a, const kdl_node_t *node, const char *cwd,
 
 bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace,
                       const char *base, char *err, size_t errcap) {
+  /* Taken and cleared up front, so one request's "keep my view" cannot leak
+   * into the next layout applied for any other reason. */
+  bool keep_view = a->layout_keep_view;
+  a->layout_keep_view = false;
   a->restore_tab = (size_t)-1;
   const kdl_node_t *lay = kdl_child(root, "layout");
   if (!lay) lay = root; /* allow a bare list of tabs */
@@ -227,12 +231,23 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace,
     a->restore_tab -= before;
   if (a->restore_tab != (size_t)-1 && a->restore_tab < a->ntabs)
     a->cur = a->restore_tab;
-  else
+  else if (!keep_view)
     a->cur = replace ? 0 : before;
+  else if (a->cur >= a->ntabs && a->ntabs)
+    a->cur = a->ntabs - 1; /* the view we kept is gone (replace): clamp */
   a->restore_tab = (size_t)-1;
   layout(a);
+  /* Every tab this layout built gets a pass, on screen or not: a pane's size
+   * comes from a layout pass, and `focus:false` means nobody is going to look
+   * at these and give them one. Without it a background pane runs at 1x1 --
+   * which used to be impossible to hit only because applying a layout always
+   * jumped the view to it. */
+  if (keep_view && !replace)
+    for (size_t i = before; i < a->ntabs; i++) layout_tab(a, i);
   return true;
 }
+
+void app_layout_keep_view(app_t *a) { a->layout_keep_view = true; }
 
 bool app_apply_layout_text_at(app_t *a, const char *text, bool replace,
                               const char *base, char *err, size_t errcap) {

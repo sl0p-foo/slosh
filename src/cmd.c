@@ -271,8 +271,15 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
       if (!made) return jerr("cannot move it to a tab of its own");
       return jok_int("tab", (long long)made);
     }
-    if (!app_move_pane_to_tab(a, pid, tid, rows))
-      return jerr("cannot move it there");
+    /* `beside` says which pane in the destination to land next to, and
+     * `focus:false` says not to take focus (and so not to pull the view)
+     * on arrival: the two things a caller placing a pane beside *itself*
+     * needs, neither of which can be expressed by "that tab's focus". */
+    uint32_t beside = (uint32_t)jv_geti(req, "beside", 0);
+    bool take_focus = jv_getb(req, "focus", true);
+    if (!app_move_pane_beside(a, pid, tid, beside, rows, take_focus))
+      return jerr(beside ? "cannot move it there (is `beside` in that tab?)"
+                         : "cannot move it there");
     return jok_int("tab", (long long)tid);
   }
   if (strcmp(cmd, "new-tab") == 0) {
@@ -352,6 +359,9 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     const char *path = jv_gets(req, "path", NULL);
     const char *text = jv_gets(req, "kdl", NULL);
     bool replace = jv_getb(req, "replace", false);
+    /* `focus:false` builds the tabs without going to them. A layout that names
+     * an `active` tab still wins -- that is a statement about where to be. */
+    if (!jv_getb(req, "focus", true)) app_layout_keep_view(a);
     char err[256] = {0};
     bool ok = text   ? app_apply_layout_text(a, text, replace, err, sizeof err)
               : path ? app_apply_layout_file(a, path, replace, err, sizeof err)

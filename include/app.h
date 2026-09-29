@@ -168,6 +168,12 @@ bool app_set_tab_purpose(app_t *a, uint32_t id, const char *purpose,
  * Purposes a layout declares are locked (D8). A relative `cwd=` in a *file*
  * resolves against that file's directory, so a project's layout can be checked
  * in beside the project; text has no directory and keeps meaning what it said. */
+/* Apply the *next* layout without changing which tab is on screen. Consumed by
+ * the one apply that follows, so it cannot leak into a later one. For a program
+ * building panes in the background: landing on the tab it just made moves the
+ * view out from under whoever is watching, and leaves the next caller to read
+ * focus as "where I am". A layout that names an `active` tab still wins. */
+void app_layout_keep_view(app_t *a);
 bool app_apply_layout_text(app_t *a, const char *text, bool replace, char *err,
                            size_t errcap);
 bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
@@ -271,6 +277,14 @@ bool app_minimize(app_t *a, uint32_t id);
  * second would file the arrival in a strip nobody asked for. */
 bool app_move_pane_to_tab(app_t *a, uint32_t pane_id, uint32_t tab_id,
                           bool rows);
+
+/* The same move, saying where in the destination to land and whether to take
+ * focus there. `beside_id` is a pane in that tab to split (0 = whatever it has
+ * focused, the old behaviour); `take_focus` false leaves focus, and therefore
+ * the view, exactly where it was. What a program placing a pane beside itself
+ * in the background wants; refused if `beside_id` is not in `tab_id`. */
+bool app_move_pane_beside(app_t *a, uint32_t pane_id, uint32_t tab_id,
+                          uint32_t beside_id, bool rows, bool take_focus);
 
 /* The same, into a tab of its own; returns that tab's id, or 0 -- including for a
  * pane that is already alone in its tab, which has nowhere to go. */
