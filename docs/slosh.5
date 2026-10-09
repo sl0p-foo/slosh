@@ -129,11 +129,17 @@ line's side margin.
 .TP
 .BR tab_bar_side\  \fIside\fR ,\ tab_bar_width\  \fIn\fR ,\ tab_bar_pad\  \fIn\fR
 Where the tab strip lives: \fBtop\fR (the default), or a sidebar on the
-\fBleft\fR or \fBright\fR listing one tab per row, \fBtab_bar_width\fR
-columns wide, with \fBtab_bar_pad\fR blank rows above the first tab.
+\fBleft\fR or \fBright\fR listing one tab per row, at most
+\fBtab_bar_width\fR columns wide, with \fBtab_bar_pad\fR blank rows above
+the first tab.
 The strip's indicators move to the sidebar's bottom rows; the status line
-keeps the full width. A terminal too narrow to give up the columns falls
-back to \fBtop\fR until it grows.
+keeps the full width.
+The width is a ceiling, not a reservation: a sidebar narrows to fit a small
+screen \(em never more than a third of it, never into the columns a pane
+collapses at \(em and falls back to \fBtop\fR when what is left would be too
+narrow to read a name in, or when the terminal is too short to give every tab
+a row (unless the top strip could not seat them either, where nothing is
+gained by moving them). Re-derived per frame, so a resize moves the bar.
 .TP
 .BI tab_bar_padding\  n\ ...
 Air inside a sidebar, between its frame and the list, per side and in

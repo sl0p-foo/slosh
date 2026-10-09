@@ -997,7 +997,9 @@ void config_defaults(config_t *c) {
   c->tab_bar_side = TAB_BAR_TOP;
   c->tab_bar_index = TAB_INDEX_RIGHT;
   /* Wide enough for " 12:a-real-name " plus a bell; narrow enough that a
-   * 100-column terminal keeps a working layout beside it. */
+   * 100-column terminal keeps a working layout beside it. A ceiling rather
+   * than a reservation -- app_tab_bar_cols narrows it to fit a smaller
+   * screen, so this is the width you get when there is room for it. */
   c->tab_bar_width = 18;
   /* None by default: tab_bar_chrome's top line is the separation the air was
    * standing in for, and a blank row inside the frame on top of it reads as
@@ -1771,7 +1773,7 @@ char *config_render(const config_t *c) {
          "tab_bar_index \"%s\"  // the sidebar's number at its far edge, or "
          "1:name\n",
          c->tab_bar_index == TAB_INDEX_RIGHT ? "right" : "prefix");
-  cb_add(&b, "tab_bar_width %u      // columns a sidebar takes\n",
+  cb_add(&b, "tab_bar_width %u      // columns a sidebar takes, at most\n",
          c->tab_bar_width);
   if (c->tab_pad_top == c->tab_pad_right &&
       c->tab_pad_top == c->tab_pad_bottom && c->tab_pad_top == c->tab_pad_left)

@@ -54,7 +54,7 @@ The strip of tabs sits along the top by default. It does not have to:
 
 ```kdl
 tab_bar_side "left"   // or "right"; "top" is the default
-tab_bar_width 18      // columns the sidebar takes
+tab_bar_width 18      // columns the sidebar takes, at most
 tab_bar_index "right" // the tab number at the far end; "prefix" is 1:name
 tab_bar_padding 0 1 0 2 // air inside it, in cells: top right bottom left
 tab_bar_pad 0         // ...or just the top of that, the older name
@@ -78,8 +78,24 @@ the strip runs out of room. Set `newtab_button false` to drop the button
 altogether; `new-tab` is still a [chord](keys.md) and a palette entry, and a
 pane can no longer be dropped onto it. The pane count and the prefix badge move
 to the sidebar's bottom rows; the [status line](config.md) along the bottom
-keeps the full width. A terminal too narrow to give up the columns falls back
-to the top row until it grows.
+keeps the full width.
+
+**The bar fits itself to the terminal, and gives up the edge only when it has
+to.** `tab_bar_width` is a ceiling rather than a reservation: the sidebar is
+held to a third of the screen, so 18 columns is a margin beside a 90-column
+terminal and narrows to 16 beside a 50-column one, with the panes keeping the
+rest and never dropping below the width they collapse at. Only when even a
+legible sidebar (14 columns, or whatever narrower width you asked for) will not
+fit does the strip go back to the top row.
+
+Height counts too: a sidebar spends a
+row per tab, so a wide but short terminal runs out of list before it runs out
+of screen — and a tab with no row is not clipped, it is unreachable. When the
+rows for the labels and the `+` are not there, the strip goes back on top,
+where the same tabs lie along one row. Not when that row could not hold them
+either: with more tabs than the top strip can seat, moving them gains nothing
+and the side you configured stands. All of it is re-derived per frame from the
+terminal's size, so a resize moves the bar and nothing remembers it did.
 
 **The sidebar is framed like a pane**, so it belongs to the chrome rather than
 floating beside it. Under [`compact`](config.md#compact) the frame's inner line

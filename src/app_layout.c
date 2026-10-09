@@ -322,26 +322,87 @@ static void layout_node(node_t *n, rect_t r, layout_ctx_t *ctx) {
 #define STRIP_ROWS (CFG.status_bar ? 1 : 0)
 #define LINE_ROWS (CFG.status_line ? 1 : 0)
 
-/* The sidebar's width, held to a range where it is neither an unreadable
- * sliver nor half the screen. Clamped at use rather than at parse so a config
- * written for a big terminal degrades on a small one instead of erroring. */
-uint16_t app_tab_bar_cols(void) {
+/* The narrowest a sidebar is worth having, and the narrowest this code will
+ * shrink one to on its own. A config that asks for less than TAB_BAR_MIN is
+ * taken at its word -- someone who wrote `tab_bar_width 8` wants the sliver
+ * -- but a width nobody asked for is never invented below TAB_BAR_FIT, where
+ * " 12:name " stops fitting and the list is numbers and ellipses. */
+#define TAB_BAR_MIN 8
+#define TAB_BAR_FIT 14
+#define TAB_BAR_MAX 60
+
+/* The sidebar's width this frame: what the config asked for, held to a range
+ * where it is neither an unreadable sliver nor half the screen, and then to
+ * the room this terminal actually has. Clamped at use rather than at parse,
+ * so a config written for a big terminal degrades on a small one instead of
+ * erroring -- and it degrades by narrowing first, because a sidebar three
+ * columns thinner is still the list you navigate by, while one that jumps to
+ * the top row moves every target you were aiming at.
+ *
+ * Two ceilings, both about the panes rather than about the bar: the columns
+ * left after the width a pane collapses at (plus the gap either side), and a
+ * third of the screen, whatever that arithmetic says. The second is the one
+ * that does the work on a small terminal -- 18 columns is a margin next to a
+ * 100-column screen and a sidecar next to a 50-column one, and the bar is
+ * chrome for the panes either way.
+ *
+ * Zero when what is left is narrower than the bar is worth: the caller reads
+ * that as "no room for a sidebar at all" and puts the strip back on top. */
+uint16_t app_tab_bar_cols(const app_t *a) {
   uint16_t w = CFG.tab_bar_width;
-  if (w < 8) w = 8;
-  if (w > 60) w = 60;
-  return w;
+  if (w < TAB_BAR_MIN) w = TAB_BAR_MIN;
+  if (w > TAB_BAR_MAX) w = TAB_BAR_MAX;
+  if (!a) return w;
+
+  uint16_t spare = a->cols > (uint16_t)(CFG.min_pane_cols + 4)
+                       ? (uint16_t)(a->cols - CFG.min_pane_cols - 4)
+                       : 0;
+  uint16_t third = (uint16_t)(a->cols / 3);
+  if (spare > third) spare = third;
+
+  /* The floor to shrink against: never wider than what was configured, so a
+   * deliberately narrow bar is not "grown" into a fallback it never asked
+   * for, and never narrower than a legible one. */
+  uint16_t least = w < TAB_BAR_FIT ? w : TAB_BAR_FIT;
+  if (spare < least) return 0;
+  return w < spare ? w : spare;
+}
+
+/* The rows a sidebar needs before it starts hiding doors: its own top air,
+ * the frame's two lines, a row per tab, the `+`, and the status line's row
+ * underneath. Everything else in there -- the gaps, the pads, the statuses --
+ * already gives itself up a row at a time when the list is short of room, so
+ * it is the labels and the button that set the floor. */
+static uint16_t tab_bar_min_rows(const app_t *a) {
+  uint16_t need = (uint16_t)(CFG.compact ? 0 : CFG.gap);
+  if (CFG.tab_bar_chrome) need = (uint16_t)(need + 2);
+  if (CFG.newtab_button && CFG.newtab_mark[0]) need++;
+  if (CFG.status_line) need++;
+  return (uint16_t)(need + a->ntabs);
 }
 
 /* The side the strip actually lands on this frame. The configured side,
- * except that a screen too narrow to give up the sidebar's columns falls
- * back to the top row: a sidebar that leaves no room for a pane is chrome
- * displacing the thing it is chrome for. Re-derived per frame like the
- * layout itself, so a resize moves the bar without anyone storing state. */
+ * except on a terminal too small to seat it, where it falls back to the top
+ * row: a sidebar that leaves no room for the panes -- or no room for its own
+ * list -- is chrome displacing the thing it is chrome for. Re-derived per
+ * frame like the layout itself, so a resize moves the bar without anyone
+ * storing state.
+ *
+ * Too narrow is app_tab_bar_cols' answer, after it has tried shrinking. Too
+ * short is this function's: the sidebar spends a row per tab, so a wide but
+ * short terminal runs out of list before it runs out of screen, and the tabs
+ * that fall off the bottom are not clipped but unreachable. The strip lays
+ * the same tabs along one row -- but only while that row can hold them, so
+ * the fallback is conditional on the strip actually being the better seat.
+ * Eight columns is about what a tab cell costs at its most squeezed; if the
+ * tabs would not fit there either, nothing is gained by moving them and the
+ * configured side stands. */
 int app_tab_bar_side(const app_t *a) {
   int side = CFG.tab_bar_side;
   if (side == TAB_BAR_TOP || !CFG.status_bar) return TAB_BAR_TOP;
-  uint16_t sw = app_tab_bar_cols();
-  if (a->cols < sw + CFG.min_pane_cols + 4) return TAB_BAR_TOP;
+  if (!app_tab_bar_cols(a)) return TAB_BAR_TOP;
+  if (a->rows < tab_bar_min_rows(a) && a->ntabs * 8 <= a->cols)
+    return TAB_BAR_TOP;
   return side;
 }
 
@@ -429,7 +490,7 @@ static rect_t tab_area(app_t *a) {
    * way -- it keeps the full width (LINE_ROWS is subtracted from the height
    * alone, never from the sidebar's rows: the sidebar stops above it). */
   int side = app_tab_bar_side(a);
-  uint16_t sw = side != TAB_BAR_TOP ? app_tab_bar_cols() : 0;
+  uint16_t sw = side != TAB_BAR_TOP ? app_tab_bar_cols(a) : 0;
   uint16_t strip = side == TAB_BAR_TOP ? STRIP_ROWS : 0;
   uint16_t top = (uint16_t)(gy + strip);
   uint16_t lx = (uint16_t)(gx + (side == TAB_BAR_LEFT ? sw : 0));

@@ -489,10 +489,13 @@ void walk_all(app_t *a, leaf_fn fn, void *ud);
 uint16_t eff_gap(split_dir_t dir);
 rect_t app_tab_area(app_t *a);
 /* Where the tab bar lands this frame (TAB_BAR_*), and how many columns a
- * sidebar takes. The side is re-derived per frame: a screen too narrow for
- * the sidebar falls back to the top row. */
+ * sidebar takes. Both are re-derived per frame from the terminal's size: a
+ * sidebar narrows to fit a small screen, and one that can no longer seat
+ * either the panes or its own list of tabs falls back to the top row. The
+ * columns are 0 when there is no room for a sidebar at all; pass a NULL app
+ * to ask only what the config wants. */
 int app_tab_bar_side(const app_t *a);
-uint16_t app_tab_bar_cols(void);
+uint16_t app_tab_bar_cols(const app_t *a);
 void close_leaf(app_t *a, node_t *leaf);
 node_t *first_leaf_of(node_t *n);
 void focus_dir(app_t *a, int dx, int dy);

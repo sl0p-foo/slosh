@@ -2231,7 +2231,7 @@ static size_t wrap_cells(const char *text, uint16_t width, size_t max,
 void draw_tab_sidebar(app_t *a, screen_t *s) {
   bool dragging_pane = a->drag.kind == DRAG_TITLE && a->drag.moved;
   bool left = app_tab_bar_side(a) == TAB_BAR_LEFT;
-  uint16_t sw = app_tab_bar_cols();
+  uint16_t sw = app_tab_bar_cols(a);
   uint16_t x = left ? 0 : (uint16_t)(s->cols > sw ? s->cols - sw : 0);
   uint16_t top = CFG.compact ? 0 : CFG.gap; /* the strip's own row rule */
   uint16_t limit = (uint16_t)(s->rows > (CFG.status_line ? 1 : 0)

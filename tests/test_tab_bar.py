@@ -40,6 +40,22 @@ NT_PAD = 1
 
 SH = ["/bin/sh", "-c", "stty raw -echo; cat"]
 
+# An unnamed tab borrows the basename of its focused pane's cwd, so every row
+# below would otherwise read differently depending on where the suite was run
+# from -- `tests` under `make test`, `slosh` from the repository root. These
+# checks are about padding, alignment and the index, not about that
+# derivation, so they name the tab and assert against the name they gave it.
+TAB = "tests"
+
+
+def _named(s):
+    """Pin the label, so a row's contents do not depend on the cwd.
+
+    By id, because `set-name` takes 0 for the focused *pane* only -- a tab is
+    named by naming a tab.
+    """
+    s.api("set-name", id=s.tabs()[0]["id"], name=TAB)
+
 
 def _row(snap, y):
     """The sidebar's content on a row, without the frame either side."""
@@ -171,6 +187,7 @@ def test_padding_is_the_air_inside_the_strip():
     padded = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 1 2\n')
     with Session(SH, cols=90, rows=20, config=padded) as s:
         s.settle(30)
+        _named(s)
         _status(s, "building")
         snap = s.snapshot()
         check(
@@ -179,7 +196,7 @@ def test_padding_is_the_air_inside_the_strip():
             repr(_row(snap, Y0)),
         )
         label = _row(snap, Y0 + 1)
-        check("the label is indented by two", label.startswith("  tests"), repr(label))
+        check("the label is indented by two", label.startswith(f"  {TAB}"), repr(label))
         check(
             "...and the number is held off the other edge",
             label.endswith("1  "),
@@ -187,7 +204,7 @@ def test_padding_is_the_air_inside_the_strip():
         )
         check(
             "a status keeps the column its label starts in",
-            _row(snap, Y0 + 2).index("building") == label.index("tests"),
+            _row(snap, Y0 + 2).index("building") == label.index(TAB),
             repr(_row(snap, Y0 + 2)),
         )
 
@@ -198,11 +215,12 @@ def test_padding_zero_puts_it_against_the_frame():
     flush = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_padding 0\n')
     with Session(SH, cols=90, rows=20, config=flush) as s:
         s.settle(30)
+        _named(s)
         _status(s, "building")
         snap = s.snapshot()
         check(
             "the name starts in the first column",
-            _row(snap, Y0).startswith("tests"),
+            _row(snap, Y0).startswith(TAB),
             repr(_row(snap, Y0)),
         )
         check(
@@ -245,10 +263,11 @@ def test_tab_bar_pad_is_still_the_top_of_it():
     )
     with Session(SH, cols=90, rows=20, config=both) as s:
         s.settle(30)
+        _named(s)
         snap = s.snapshot()
         check(
             "one row of air, not four",
-            not _row(snap, Y0).strip() and "tests" in _row(snap, Y0 + 1),
+            not _row(snap, Y0).strip() and TAB in _row(snap, Y0 + 1),
             f"{_row(snap, Y0)!r} / {_row(snap, Y0 + 1)!r}",
         )
 
@@ -270,6 +289,7 @@ def test_the_index_sits_at_the_far_end():
     it."""
     with Session(SH, cols=90, rows=20, config=RIGHT_IDX) as s:
         s.settle(30)
+        _named(s)
         s.api("new-tab", name="api")
         s.settle(30)
         rows = [_row(snap := s.snapshot(), Y0), _row(snap, Y0 + 1)]
@@ -280,7 +300,7 @@ def test_the_index_sits_at_the_far_end():
         )
         check(
             "...and every name starts in the same column",
-            rows[1].index("api") == rows[0].index("tests"),
+            rows[1].index("api") == rows[0].index(TAB),
             str(rows),
         )
         check("no prefix is left behind", "1:" not in rows[0], str(rows))
@@ -320,9 +340,10 @@ def test_the_top_strip_ignores_it():
     top = _cfg('tab_bar_index "right"\n')
     with Session(SH, cols=60, rows=10, config=top) as s:
         s.settle(30)
+        _named(s)
         check(
             "the strip still writes 1:name",
-            "1:tests" in s.snapshot().screen(),
+            f"1:{TAB}" in s.snapshot().screen(),
             s.snapshot().line(1),
         )
 
@@ -353,8 +374,13 @@ def test_the_prefix_is_still_there_for_anyone_who_wants_it():
     before the alignment existed."""
     with Session(SH, cols=90, rows=20, config=PREFIX_IDX) as s:
         s.settle(30)
+        _named(s)
         row = _row(s.snapshot(), Y0)
-        check("the number is in front of the name", row.strip() == "1:tests", repr(row))
+        check(
+            "the number is in front of the name",
+            row.strip() == f"1:{TAB}",
+            repr(row),
+        )
 
 
 def test_the_sidebar_aligns_by_default():
@@ -476,6 +502,7 @@ def test_status_rows_sit_under_their_tab():
 def test_status_rows_are_told_apart_by_the_slant_not_by_an_indent():
     with Session(SH, cols=90, rows=20, config=LEFT) as s:
         s.settle(30)
+        _named(s)
         _status(s, "building 3/7")
         snap = s.snapshot()
         label, status = _row(snap, Y0), _row(snap, Y0 + 1)
@@ -483,8 +510,8 @@ def test_status_rows_are_told_apart_by_the_slant_not_by_an_indent():
         # starts in. Three columns of indent is a fifth of this sidebar.
         check(
             "a status is not indented under its label",
-            status.index("building") == label.index("tests"),
-            f"{status.index('building')} vs {label.index('tests')}",
+            status.index("building") == label.index(TAB),
+            f"{status.index('building')} vs {label.index(TAB)}",
         )
         st = snap.style_at(CX + 1, Y0 + 1)
         check("it is italic instead", "italic" in st["attrs"], str(st))
@@ -1271,9 +1298,88 @@ def test_the_strip_keeps_its_bare_mark():
         )
 
 
+def test_a_small_screen_narrows_the_sidebar_first():
+    """Eighteen columns is a margin beside a ninety-column screen and a sidecar
+    beside a fifty-column one, so the width is a ceiling rather than a
+    reservation: the bar hands columns back before it hands back the edge,
+    keeping to a third of the screen so the panes always have the rest."""
+    with Session(SH, cols=50, rows=20, config=LEFT) as s:
+        s.settle(30)
+        snap = s.snapshot()
+        check(
+            "the sidebar kept its edge",
+            snap.hit_at(CX, Y0) == "tab:1",
+            str(snap.hit_at(CX, Y0)),
+        )
+        # A pane's x is its text, which starts after the gap, the bar, and the
+        # pane's own left border: the bar's width is that minus the two.
+        sw = s.pane(0)["x"] - 2
+        check("...by narrowing, not by moving", sw < W, str(sw))
+        check("no more than a third of the screen", sw <= 50 // 3, str(sw))
+        check("and still wide enough to read a name in", sw >= 14, str(sw))
+        s.resize(90, 20)
+        s.until(lambda _: s.pane(0)["x"] - 2 == W)
+        check(
+            "the room comes back and so does the width",
+            s.pane(0)["x"] - 2 == W,
+            str(s.pane(0)["x"] - 2),
+        )
+
+
+def test_a_short_terminal_falls_back_to_top():
+    """The sidebar spends a row per tab, so a wide but short terminal runs out
+    of list before it runs out of screen -- and a tab with no row is not
+    clipped, it is unreachable. The strip lays the same tabs along one row."""
+    with Session(SH, cols=90, rows=10, config=LEFT) as s:
+        s.settle(30)
+        _named(s)
+        check(
+            "one tab fits down the edge",
+            s.snapshot().hit_at(CX, Y0) == "tab:1",
+            str(s.snapshot().hit_at(CX, Y0)),
+        )
+        # Named, like the first one, because the last check needs all seven to
+        # fit *across* the strip: unnamed, they are labelled from the cwd, and
+        # a checkout called something longer than `slosh` pushes the seventh
+        # tab off the row and out of the hit map. The fallback itself is about
+        # rows, so the names do not affect what is being tested.
+        for i in range(6):
+            s.api("new-tab", name=f"t{i}")
+            s.settle(20)
+        s.until(lambda snap: snap.hit_at(5, 1) == "tab:1")
+        snap = s.snapshot()
+        check(
+            "seven of them do not, so the strip goes back on top",
+            snap.hit_at(5, 1) == "tab:1",
+            str(snap.hit_at(5, 1)),
+        )
+        targets = {h["action"] for h in snap.hits}
+        missing = [t["index"] for t in s.tabs() if f"tab:{t['index']}" not in targets]
+        check("and every tab is reachable again", not missing, str(missing))
+
+
+def test_a_strip_that_could_not_hold_them_either_changes_nothing():
+    """The fallback is only worth making while the top row is the better seat.
+    Tabs too many for one row are clipped there as surely as they are cut off
+    the bottom of a sidebar -- and the sidebar at least shows more of them --
+    so the configured side stands."""
+    with Session(SH, cols=60, rows=10, config=LEFT) as s:
+        s.settle(30)
+        for _ in range(9):
+            s.api("new-tab")
+            s.settle(20)
+        snap = s.snapshot()
+        check(
+            "the sidebar keeps the edge it was given",
+            snap.hit_at(CX, Y0) == "tab:1",
+            str(snap.hit_at(CX, Y0)),
+        )
+
+
 def test_narrow_terminal_falls_back_to_top():
-    # 40 < width + min_pane cols + 4: the sidebar would leave no room for the
-    # pane it is chrome for, so the strip goes back to the top row.
+    # 40 columns: a third of it is 13, narrower than a sidebar is worth, and
+    # what is left would not seat the pane the bar is chrome for either. So
+    # the strip goes back to the top row rather than shrink any further.
     with Session(SH, cols=40, rows=20, config=LEFT) as s:
         s.settle(30)
         snap = s.snapshot()
@@ -1355,6 +1461,9 @@ if __name__ == "__main__":
     test_wrapping_still_says_when_a_status_did_not_fit()
     test_a_narrow_sidebar_keeps_the_bare_mark()
     test_the_strip_keeps_its_bare_mark()
+    test_a_small_screen_narrows_the_sidebar_first()
+    test_a_short_terminal_falls_back_to_top()
+    test_a_strip_that_could_not_hold_them_either_changes_nothing()
     test_narrow_terminal_falls_back_to_top()
     test_growing_back_restores_the_sidebar()
     sys.exit(report())
