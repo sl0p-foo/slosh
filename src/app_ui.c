@@ -1210,6 +1210,7 @@ static void drop_render_cb(node_t *n, void *ud) {
 }
 
 void app_compose(app_t *a, screen_t *s) {
+  FOCUS_CHECK(a, "app_compose");
   screen_clear(s); /* every frame starts blank: no ghosts in the gap ring */
   hit_reset(&s->hits);
   a->noverlays = 0; /* re-registered by whatever draws over the panes below */
@@ -1234,7 +1235,11 @@ void app_compose(app_t *a, screen_t *s) {
    * first and would otherwise spend a frame reporting a bell that had just
    * been answered. Done here so that every route to "this pane is focused"
    * clears it, not only the ones that thought to. */
-  if (cur(a)->focus) pane_clear_bell(cur(a)->focus->pane);
+  /* `focus` names a node; `node->pane` is only set on a leaf that has one, so
+   * the pane is its own test -- the same pair of checks the search below
+   * makes. */
+  if (cur(a)->focus && cur(a)->focus->pane)
+    pane_clear_bell(cur(a)->focus->pane);
 
   /* A search over a pane whose program keeps printing: catch the results up
    * before the pane composes, so the highlight painted this frame is the

@@ -459,6 +459,13 @@ static inline tab_t *cur(app_t *a) { return &a->tabs[a->cur]; }
 
 typedef void (*leaf_fn)(node_t *, void *);
 
+#ifdef SLOSH_FOCUS_CHECK
+void focus_check(app_t *a, const char *where);
+#define FOCUS_CHECK(a, where) focus_check((a), (where))
+#else
+#define FOCUS_CHECK(a, where) ((void)0)
+#endif
+
 /* Formerly static in app.c; shared across the app_*.c units since the
  * split. Grouped by the unit that defines them. */
 

@@ -861,6 +861,13 @@ static void tab_remove(app_t *a, size_t ti) {
   memmove(&a->tabs[ti], &a->tabs[ti + 1],
           (a->ntabs - ti - 1) * sizeof *a->tabs);
   a->ntabs--;
+  /* The shift leaves a copy of the last tab in the slot it vacated -- its
+   * `root` and `focus` among them, and both have just been freed. `cur(a)` is
+   * `&a->tabs[a->cur]` with no bounds check, so on the way down to zero tabs
+   * that copy is precisely what the next `cur(a)->focus` reads. Blank it: an
+   * emptied app has an empty tab under the cursor, not the ghost of the one
+   * that went. */
+  memset(&a->tabs[a->ntabs], 0, sizeof *a->tabs);
   if (a->cur >= a->ntabs && a->ntabs) a->cur = a->ntabs - 1;
 }
 
@@ -872,6 +879,12 @@ void close_leaf(app_t *a, node_t *leaf) {
 
   if (!p) { /* the tab's last pane: the tab goes with it */
     t->root = NULL;
+    /* The focus has to be dropped with the tree, not left to be tidied by
+     * whoever removes the tab: `a->quit` below is a request, not a barrier,
+     * and the loop keeps serving commands until it is acted on. Anything that
+     * asks for the focused pane in between would otherwise be handed this
+     * node, which the next line frees. */
+    t->focus = NULL;
     node_free(leaf);
     tab_remove(a, ti);
     if (a->ntabs == 0) a->quit = true;
@@ -880,10 +893,26 @@ void close_leaf(app_t *a, node_t *leaf) {
 
   size_t at = 0;
   while (at < p->nkids && p->kids[at] != leaf) at++;
+  /* `leaf->parent` said p, so p must list it. If the two ever disagreed the
+   * arithmetic below would underflow -- `p->nkids - at - 1` is unsigned -- and
+   * memmove would be handed a length near SIZE_MAX. Refusing is the only safe
+   * answer to a tree that contradicts itself. */
+  if (at == p->nkids) return;
   memmove(&p->kids[at], &p->kids[at + 1],
           (p->nkids - at - 1) * sizeof *p->kids);
   p->nkids--;
   node_free(leaf);
+
+  /* A split always holds two or more children -- the collapse below is what
+   * keeps it true -- so there is a survivor to read. If one ever did hold a
+   * single child, `p->kids[0]` here would still be the node freed above (the
+   * memmove moved nothing) and the focus would be set to freed memory, so the
+   * emptied split is answered rather than assumed away. */
+  if (p->nkids == 0) {
+    if (t->focus == leaf) t->focus = NULL;
+    close_leaf(a, p);
+    return;
+  }
 
   node_t *survivor = p->kids[0];
   if (p->nkids == 1) { /* a split with one child is just that child */

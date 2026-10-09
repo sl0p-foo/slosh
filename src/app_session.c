@@ -152,6 +152,11 @@ bool app_apply_layout(app_t *a, const kdl_node_t *root, bool replace,
   bool keep_view = a->layout_keep_view;
   a->layout_keep_view = false;
   a->restore_tab = (size_t)-1;
+  /* Cleared for the same reason, and it matters more: this one is a *node
+   * pointer*. It is normally consumed by the tab it was recorded for, but an
+   * apply that fails before reaching that line leaves it set, and the tree it
+   * points into can be freed long before the next apply reads it as a focus. */
+  a->restore_focus = NULL;
   const kdl_node_t *lay = kdl_child(root, "layout");
   if (!lay) lay = root; /* allow a bare list of tabs */
 

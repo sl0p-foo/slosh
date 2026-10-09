@@ -1004,6 +1004,43 @@ void walk_all(app_t *a, leaf_fn fn, void *ud) {
   for (size_t i = 0; i < a->ntabs; i++) walk(a->tabs[i].root, fn, ud);
 }
 
+#ifdef SLOSH_FOCUS_CHECK
+/* Diagnostic: every tab's focus must be a leaf of that tab's own tree, and a
+ * tab slot cur() can still reach must not keep a focus from a tab that went.
+ * Pointer comparison only -- the checker never dereferences a suspect. */
+struct fchk {
+  const node_t *want;
+  bool found;
+};
+static void fchk_cb(node_t *n, void *ud) {
+  struct fchk *f = ud;
+  if (n == f->want) f->found = true;
+}
+void focus_check(app_t *a, const char *where) {
+  for (size_t i = 0; i < a->ntabs; i++) {
+    const node_t *f = a->tabs[i].focus;
+    if (!f) continue;
+    struct fchk c = {f, false};
+    walk(a->tabs[i].root, fchk_cb, &c);
+    if (!c.found) {
+      fprintf(stderr,
+              "FOCUS-DANGLE at %s: tab %zu (id %u) focus=%p is not a leaf of "
+              "its tree (root=%p ntabs=%zu cur=%zu)\n",
+              where, i, a->tabs[i].id, (const void *)f, (void *)a->tabs[i].root,
+              a->ntabs, a->cur);
+      abort();
+    }
+  }
+  if (a->ntabs == 0 && a->tabs && a->tabs[0].focus) {
+    fprintf(stderr,
+            "FOCUS-DANGLE at %s: ntabs==0 but tabs[0].focus=%p survives, and "
+            "cur(a) still reads that slot\n",
+            where, (void *)a->tabs[0].focus);
+    abort();
+  }
+}
+#endif
+
 /* Which tab a node lives in: climb to its root and match. */
 size_t tab_of(app_t *a, node_t *n) {
   while (n->parent) n = n->parent;

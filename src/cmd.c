@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app_internal.h"
 #include "json.h"
 #include "jsonval.h"
 
@@ -604,11 +605,13 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
 char *cmd_exec(app_t *a, screen_t *s, input_parser_t *in, const char *line,
                bool *quit) {
   while (*line == ' ') line++;
+  FOCUS_CHECK(a, "cmd_exec entry");
   if (*line == '{') {
     jv_t *req = jv_parse(line);
     if (!req) return jerr("malformed json");
     char *reply = cmd_json(a, s, in, req, quit);
     jv_free(req);
+    FOCUS_CHECK(a, "cmd_exec json exit");
     return reply;
   }
 
