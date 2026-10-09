@@ -8,6 +8,9 @@
 #include <sys/types.h>
 
 #include "input.h"
+/* osc7501_t: a pane carries the program status its program last reported, and
+ * both the control API and the drawing code read it. */
+#include "osc5577.h"
 /* cell_t, color_t and the ATTR_* flags live in the shader ABI, because that is
  * the one place they are a *contract* with code compiled outside this tree. */
 #include "shader_abi.h"
@@ -330,6 +333,11 @@ const char *pane_status(const pane_t *p);
  * status left behind by something that exited is a description of the past,
  * whatever it last claimed. */
 bool pane_status_busy(const pane_t *p);
+/* The OSC 7501 record the status above was composed from, or NULL when no
+ * program in this pane has reported one (or 5577 has since taken the slot:
+ * they share it, last writer wins). `app` is resolved from the record's
+ * nearest ancestor that has one, the way the protocol asks. */
+const osc7501_t *pane_program_status(const pane_t *p);
 size_t pane_buttons(const pane_t *p, const pane_button_t **out);
 void pane_click_button(pane_t *p, const char *id);
 void pane_set_osc_handler(pane_t *p, pane_osc_fn fn, void *ud);

@@ -110,6 +110,28 @@ struct pane {
    * field to it would change what every existing sender means. Orthogonal, so
    * a program can leave one line up and toggle the other. */
   bool busy;
+
+  /* OSC 7501 program status: the records this pane's program reports, and the
+   * one of them the status line above is currently showing.
+   *
+   * `status` and `busy` stay the single display slot and the single thing the
+   * control API reports, because every reader of them -- the frame, the
+   * sidebar, a script -- wants "what is this pane doing", not "which protocol
+   * said so". So 7501 composes into them, and the two sources are
+   * last-writer-wins: a 5577 `status`/`busy`/`clear` drops the records, rather
+   * than leaving `program_state` describing a record whose text is no longer
+   * on screen.
+   *
+   * Allocated on the first report. 64 records is the floor the spec allows a
+   * terminal to choose, and ~40KB is not something every pane should carry
+   * for a protocol most programs will never speak. */
+  osc7501_t *ps;
+  uint64_t *ps_seen; /* when each record was last written, for LRU eviction */
+  size_t nps;
+  uint64_t ps_clock;
+  bool ps_showing;     /* `status`/`busy` are 7501's, not 5577's */
+  osc7501_t ps_show;   /* the record they came from, with `app` resolved */
+  int64_t ps_reply_ms; /* last feature-detection answer, for its rate limit */
   pane_button_t buttons[8];
   size_t nbuttons;
   pane_osc_fn osc_cb;
@@ -170,6 +192,233 @@ static void parse_buttons(pane_t *p, const char *payload) {
   p->dirty = true;
 }
 
+/* ------------------------------------------- OSC 7501, program status ----- */
+
+#define PANE_PS_MAX 64
+
+const osc7501_t *pane_program_status(const pane_t *p) {
+  return p->ps_showing ? &p->ps_show : NULL;
+}
+
+static int64_t mono_ms(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static void ps_remove_at(pane_t *p, size_t i) {
+  p->ps[i] = p->ps[p->nps - 1];
+  p->ps_seen[i] = p->ps_seen[p->nps - 1];
+  p->nps--;
+}
+
+/* How much a record wants to be the one on screen. A root that says `working`
+ * while a child says `blocked` is two true things at once and the spec leaves
+ * the choice to us; we show the one that is waiting on a person, because that
+ * is the only one with an action attached to it. Ties go to whichever was
+ * written last. */
+static int ps_rank(ps_state_t s) {
+  switch (s) {
+  case PS_BLOCKED: return 5;
+  case PS_ERROR: return 4;
+  case PS_DONE: return 3;
+  case PS_WORKING: return 2;
+  case PS_IDLE: return 1;
+  default: return 0;
+  }
+}
+
+/* Pick the record to show, resolve its `app` from the nearest ancestor that
+ * has one, and compose the status line out of it. */
+static void ps_recompose(pane_t *p) {
+  if (!p->nps) {
+    /* Nothing left. Only clear the line if it was ours: a pane that used 5577
+     * before anything spoke 7501 keeps what it said. */
+    if (p->ps_showing) {
+      p->status[0] = 0;
+      p->busy = false;
+      p->ps_showing = false;
+      p->dirty = true;
+    }
+    return;
+  }
+
+  size_t best = 0;
+  for (size_t i = 1; i < p->nps; i++) {
+    int a = ps_rank(p->ps[i].state), b = ps_rank(p->ps[best].state);
+    if (a > b || (a == b && p->ps_seen[i] > p->ps_seen[best])) best = i;
+  }
+
+  osc7501_t show = p->ps[best];
+  if (!show.app[0]) {
+    /* "A record without app takes it from its nearest ancestor that has one":
+     * the longest id that is still a prefix of ours. */
+    size_t pick = p->nps;
+    for (size_t i = 0; i < p->nps; i++) {
+      if (!p->ps[i].app[0] || !osc7501_is_descendant(show.id, p->ps[i].id))
+        continue;
+      if (pick == p->nps || strlen(p->ps[i].id) > strlen(p->ps[pick].id))
+        pick = i;
+    }
+    if (pick != p->nps)
+      snprintf(show.app, sizeof show.app, "%s", p->ps[pick].app);
+  }
+
+  /* The status line is text, so the record has to become one. `title` names
+   * the record and `msg` says what it is doing -- a program with several of
+   * them sends both, and "US East: Pushing image" is the only reading of that
+   * pair which survives being one line. With neither, the state word is all
+   * there is to say, and saying it beats a blank row under a spinner. */
+  char line[256];
+  const char *msg = show.msg[0] ? show.msg : NULL;
+  const char *title = show.title[0] ? show.title : NULL;
+  if (title && msg)
+    snprintf(line, sizeof line, "%s: %s", title, msg);
+  else if (msg || title)
+    snprintf(line, sizeof line, "%s", msg ? msg : title);
+  else
+    snprintf(line, sizeof line, "%s", osc7501_state_name(show.state));
+
+  if (show.progress >= 0) {
+    size_t n = strlen(line);
+    if (n + 6 < sizeof line)
+      snprintf(line + n, sizeof line - n, " %d%%", show.progress);
+  }
+
+  /* `blocked` is busy: the question is what the status describes, and it is
+   * still the case until somebody answers it. `done` and `error` are not --
+   * they describe something that has stopped. */
+  bool busy = show.state == PS_WORKING || show.state == PS_BLOCKED;
+  if (strcmp(p->status, line) != 0 || p->busy != busy || !p->ps_showing)
+    p->dirty = true;
+  snprintf(p->status, sizeof p->status, "%s", line);
+  p->busy = busy;
+  p->ps_show = show;
+  p->ps_showing = true;
+}
+
+/* Remove a record and everything under it; no id removes every record. */
+static void ps_clear(pane_t *p, const char *id) {
+  for (size_t i = 0; i < p->nps;) {
+    bool hit = !*id || strcmp(p->ps[i].id, id) == 0 ||
+               osc7501_is_descendant(p->ps[i].id, id);
+    if (hit)
+      ps_remove_at(p, i);
+    else
+      i++;
+  }
+}
+
+/* The lifetime rule the protocol is built on: no heartbeat, so a `working` or
+ * `blocked` record lives until the terminal sees the program stop or a new
+ * shell prompt begin. `done` and `error` survive both -- they are the whole
+ * point of walking away from a pane -- and `idle` may go either way, so it
+ * stays: a program at rest that is still running has not stopped being at
+ * rest because it printed a prompt. */
+static void ps_drop_transient(pane_t *p) {
+  for (size_t i = 0; i < p->nps;) {
+    if (p->ps[i].state == PS_WORKING || p->ps[i].state == PS_BLOCKED)
+      ps_remove_at(p, i);
+    else
+      i++;
+  }
+  ps_recompose(p);
+}
+
+static void ps_drop_all(pane_t *p) {
+  p->nps = 0;
+  ps_recompose(p);
+}
+
+static void on_program_status(const osc7501_t *rep, void *ud) {
+  pane_t *p = ud;
+
+  if (rep->state == PS_CLEAR) {
+    if (!p->ps) return;
+    ps_clear(p, rep->id);
+    ps_recompose(p);
+    return;
+  }
+
+  if (!p->ps) {
+    p->ps = calloc(PANE_PS_MAX, sizeof *p->ps);
+    p->ps_seen = calloc(PANE_PS_MAX, sizeof *p->ps_seen);
+    if (!p->ps || !p->ps_seen) {
+      free(p->ps);
+      free(p->ps_seen);
+      p->ps = NULL;
+      p->ps_seen = NULL;
+      return;
+    }
+  }
+
+  size_t at = p->nps;
+  for (size_t i = 0; i < p->nps; i++)
+    if (strcmp(p->ps[i].id, rep->id) == 0) at = i;
+
+  if (at == p->nps) {
+    if (p->nps == PANE_PS_MAX) {
+      /* Full: the least recently written record goes, so a program that keeps
+       * reporting keeps its records and one that invents ids cannot push the
+       * live ones out. */
+      size_t old = 0;
+      for (size_t i = 1; i < p->nps; i++)
+        if (p->ps_seen[i] < p->ps_seen[old]) old = i;
+      at = old;
+    } else {
+      at = p->nps++;
+    }
+  }
+
+  /* A report replaces its record entirely: a key it does not carry is a key
+   * the record no longer has. */
+  p->ps[at] = *rep;
+  p->ps_seen[at] = ++p->ps_clock;
+  ps_recompose(p);
+}
+
+/* Feature detection. The spec's reply is byte-identical to the query, which is
+ * exactly the shape that cost us four megabytes in a second and a half when
+ * `hello` answered with `hello` (see below): a pane with echo on -- `cat`,
+ * `tee`, a shell, an ssh hop to another supporting terminal -- sends our
+ * answer straight back, and it parses as another question.
+ *
+ * So this one cannot be fixed by naming the reply differently, and is
+ * rate-limited instead. One answer per quarter second bounds the echo at ~44
+ * bytes a second, while any real program -- which asks once, at startup, and
+ * waits -- is answered immediately. */
+static void on_program_status_query(bool bel, void *ud) {
+  pane_t *p = ud;
+  int64_t now = mono_ms();
+  if (p->ps_reply_ms && now - p->ps_reply_ms < 250) return;
+  p->ps_reply_ms = now;
+  /* The terminator the program asked with: it is matching on bytes it chose,
+   * and a shell script reaches for BEL because a trailing `ESC \` inside a
+   * double-quoted string escapes the quote. */
+  const char *reply = bel ? "\033]7501;?\007" : "\033]7501;?\033\\";
+  pane_write(p, reply, strlen(reply));
+}
+
+static void on_shell_prompt(void *ud) { ps_drop_transient((pane_t *)ud); }
+
+static void on_full_reset(void *ud) {
+  pane_t *p = ud;
+  /* RIS clears 7501's records. It is left to mean nothing for 5577, whose
+   * status is cleared by `clear` and by the program exiting, and which was
+   * never tied to the terminal's own reset. */
+  if (p->ps) ps_drop_all(p);
+}
+
+static void on_osc5577(const char *verb, const char *payload, void *ud);
+
+static const osc_scan_cbs_t PANE_OSC_CBS = {
+    .verb = on_osc5577,
+    .status = on_program_status,
+    .status_query = on_program_status_query,
+    .prompt = on_shell_prompt,
+    .reset = on_full_reset,
+};
+
 static void on_osc5577(const char *verb, const char *payload, void *ud) {
   pane_t *p = ud;
 
@@ -184,6 +433,21 @@ static void on_osc5577(const char *verb, const char *payload, void *ud) {
    * it is safe because nothing answers a click. */
   size_t vlen = strlen(verb);
   if (vlen >= 6 && strcmp(verb + vlen - 6, "-reply") == 0) return;
+
+  /* 5577 and 7501 share one status slot, last writer wins -- so taking the
+   * slot takes the records with it. Dropping them rather than leaving them
+   * behind is the point: `program_state` describing a record whose text is no
+   * longer on screen is worse than no `program_state` at all. */
+  if (p->ps && (strcmp(verb, "status") == 0 || strcmp(verb, "busy") == 0 ||
+                strcmp(verb, "clear") == 0)) {
+    p->nps = 0;
+    /* The flag goes with them. 5577's `status` deliberately leaves `busy`
+     * alone -- the two are orthogonal there -- but a `busy` that came from a
+     * 7501 record we just dropped belongs to nobody, and would leave a
+     * spinner turning over somebody else's text. */
+    if (p->ps_showing) p->busy = false;
+    p->ps_showing = false;
+  }
 
   if (strcmp(verb, "status") == 0) {
     snprintf(p->status, sizeof p->status, "%s", payload);
@@ -439,6 +703,8 @@ void pane_free(pane_t *p) {
     free(p->argv);
   }
   free(p->cwd);
+  free(p->ps);
+  free(p->ps_seen);
   if (p->pty.fd >= 0) pty_close(&p->pty);
   if (p->mev) ghostty_mouse_event_free(p->mev);
   if (p->menc) ghostty_mouse_encoder_free(p->menc);
@@ -683,6 +949,11 @@ static void pane_died(pane_t *p) {
   if (!p->alive) return;
   p->alive = false;
   p->dirty = true;
+  /* The program stopped, so what it said it was *doing* stopped being true.
+   * What it said it had finished did not, which is why a `done` record (and
+   * the line composed from it) outlives the thing that reported it -- the one
+   * case where a status left behind by a dead program is not a lie. */
+  if (p->ps) ps_drop_transient(p);
 
   for (int i = 0; p->pty.pid > 0 && i < 5; i++) {
     int st = 0;
@@ -716,6 +987,9 @@ bool pane_restart(pane_t *p) {
   p->status[0] = 0;
   p->busy = false;
   p->nbuttons = 0;
+  p->nps = 0;
+  p->ps_showing = false;
+  p->ps_reply_ms = 0;
   osc_scan_reset(&p->scan);
   p->exit_known = false;
   p->exit_signaled = false;
@@ -757,7 +1031,7 @@ ssize_t pane_pump(pane_t *p) {
     if (n > 0) {
       /* The scanner sees the same bytes the terminal does. lib-vt discards an
        * OSC it does not know, so nothing is drawn and nothing is buffered. */
-      osc_scan_feed(&p->scan, buf, (size_t)n, on_osc5577, p);
+      osc_scan_feed(&p->scan, buf, (size_t)n, &PANE_OSC_CBS, p);
       ghostty_terminal_vt_write(p->term, buf, (size_t)n);
       p->dirty = true;
       total += n;

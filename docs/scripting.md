@@ -183,6 +183,70 @@ it is sent (`cat`, a shell with echo on, a REPL waiting for a line) would
 otherwise be answered into a loop, which is exactly what `hello` used to do:
 4 MB of hellos in a second and a half.
 
+## ...or say what it is doing in somebody else's protocol
+
+OSC 5577 only works for programs that know slosh exists. **OSC 7501, the
+[program status protocol](https://www.superlogical.com/rex/docs/build/program-status),
+is the same idea written down for everybody** — by the author of ghostty, and
+implemented by it and by Rex — so a program that already speaks it needs to know
+nothing about us:
+
+```bash
+status() {
+  printf '\033]7501;state=%s:msg=%s\033\\' "$1" "$(printf '%s' "$2" | base64 | tr -d '\n')"
+}
+status working "Syncing photos"
+rsync -a ~/Photos backup:/photos && status done "Photos synced" || status error "rsync failed"
+```
+
+The body is `key=value` pairs separated by `:`. `state` is the only required
+key, and is one of `idle`, `working`, `done`, `blocked`, `error`, or `clear` to
+remove the record. The rest: `msg` and `title` (base64 UTF-8), `app` (a stable
+name like `cargo`), `progress` (0–100), `kind` (`permission`, `question` or
+`auth`, with `blocked`), and `id` to report more than one thing at a time.
+
+It lands in the same place 5577's `status` does — the pane's frame, a row in the
+sidebar, `status` and `busy` in `panes` — because every reader of a pane wants
+"what is this doing", not "which protocol said so". What the structure buys on
+top of that is reported alongside: `program_state`, `program_kind`,
+`program_app` and `progress`.
+
+```bash
+$ slosh cmd '{"cmd":"panes"}' | jq -c '.panes[] | select(.program_state == "blocked")'
+{"id":4,...,"status":"EU West: Approve deploy to production?","busy":true,
+ "program_state":"blocked","program_kind":"permission","program_app":"deploy","progress":-1}
+```
+
+The two protocols share that one slot, **last writer wins**: a 5577
+`status`/`busy`/`clear` drops the 7501 records, because a `program_state`
+describing text that is no longer on screen is worse than none. Neither
+protocol replaces the other — 7501 is deliberately one-way (a program reports,
+the terminal decides what to show), so `buttons`, `click` and `shader` have
+nowhere to live in it; and 5577 has no idea what `done` or `blocked` mean.
+
+**A program with several things going at once** gives each an `id`, which may be
+a path: `build/test` is a child of `build`. Clearing a record clears everything
+under it, a record with no `app` inherits one from its nearest ancestor that has
+one, and when several records are true at the same time the pane shows the one
+nearest to needing a person: `blocked`, then `error`, `done`, `working`, `idle`,
+ties going to whichever was written last. So a deploy that is `working` at the
+root while `eu-west` waits for approval shows the approval.
+
+**Records die without anybody saying so**, because there is no heartbeat in this
+protocol and a status nobody retracted is the failure mode it exists to fix. A
+`working` or `blocked` record is dropped when the program exits or a new shell
+prompt begins (`OSC 133 ; A`); `done` and `error` survive both, which is how a
+result is still there when you come back to the pane; `idle` stays until it is
+replaced; and a full reset (`ESC c`) removes all of them.
+
+To find out whether any of this is listened to, ask: `printf
+'\033]7501;?\033\\'` is answered with the same bytes, `\033]7501;?\033\\`, and
+by nothing at all in a terminal that does not implement it. That reply *is* a
+request — the one shape 5577 forbids — so it is rate-limited to one answer per
+250 ms per pane: a program that asks once is answered at once, and a pane that
+echoes our answer back into our own scanner stops there instead of trading
+megabytes with us.
+
 ## Driving it from an agent
 
 Everything above is what an agent needs, and none of it says which parts matter.

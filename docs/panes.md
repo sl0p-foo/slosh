@@ -105,6 +105,7 @@ as one figure, the same way a divider running into the ring does. Set
 
 **Under each tab, the sidebar says what the panes inside are up to.** A pane
 that announced a status over [OSC 5577](scripting.md#a-pane-can-draw-its-own-chrome)
+or [OSC 7501](scripting.md#or-say-what-it-is-doing-in-somebody-elses-protocol)
 puts that line under its tab — visible from every other tab, which is the
 point — and a pane that died shows how instead (`exited: status 3`). At most
 `tab_bar_status` rows per tab (3 by default, 0 turns it off); more than that
@@ -126,7 +127,9 @@ after it. One frame
 in `busy_mark` is a static mark and costs nothing, several make it turn, and the
 session only keeps a frame clock while such a row is actually on screen. The
 flag dies with the program: a status left behind by something that exited
-describes the past.
+describes the past. A program reporting over OSC 7501 gets the same spinner for
+`working` and for `blocked` — a question waiting on you is still happening — and
+none for `done` or `error`, which are not.
 
 **`tab_bar_padding` is the air inside the strip**, between its frame and the
 list: 1, 2 or 4 values in CSS order, the shape [`padding`](config.md) takes for

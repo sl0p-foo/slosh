@@ -2210,6 +2210,21 @@ static void panes_cb(node_t *n, void *ud) {
   const char *st = pane_status(n->pane);
   json_str(j, "status", st ? st : "", st ? strlen(st) : 0);
   json_bool(j, "busy", pane_status_busy(n->pane));
+  /* ...and, when the program said it over OSC 7501 rather than 5577, the
+   * structure behind that line: which of the five states it is in, what it is
+   * waiting for, how far along, and what the program calls itself. `status`
+   * and `busy` stay the answer to "what is this pane doing" either way, so a
+   * script that only knows those keeps working against a program that has
+   * since switched protocols. */
+  const osc7501_t *ps = pane_program_status(n->pane);
+  json_str(j, "program_state", ps ? osc7501_state_name(ps->state) : "",
+           ps ? strlen(osc7501_state_name(ps->state)) : 0);
+  json_str(j, "program_kind", ps ? osc7501_kind_name(ps->kind) : "",
+           ps ? strlen(osc7501_kind_name(ps->kind)) : 0);
+  json_str(j, "program_app", ps ? ps->app : "", ps ? strlen(ps->app) : 0);
+  /* -1 for "not reported", which is also what the protocol means by an absent
+   * progress: unknown, not zero. A bar drawn at 0% says something false. */
+  json_int(j, "progress", ps ? ps->progress : -1);
   json_obj_close(j);
 }
 

@@ -306,11 +306,42 @@ click arrives **on your stdin** as:
 which is how you ask a question in place instead of printing a prompt and hoping
 somebody is looking. Button ids are `[A-Za-z0-9_-]`, 1 to 32 characters.
 
-Two rules:
+**If you already speak OSC 7501, use that instead.** It is the
+[program status protocol](https://www.superlogical.com/rex/docs/build/program-status),
+implemented by other terminals too, so the same reporting works when you are not
+running in slosh:
+
+```bash
+b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
+printf '\e]7501;state=working:app=claude-code:msg=%s\e\\' "$(b64 'running the test suite')"
+printf '\e]7501;state=blocked:kind=question:msg=%s\e\\' "$(b64 'Which branch should I target?')"
+printf '\e]7501;state=done:msg=%s\e\\'   "$(b64 '14 tests, all green')"
+printf '\e]7501;state=clear\e\\'
+```
+
+`state` is required: `idle`, `working`, `done`, `blocked`, `error`, or `clear`.
+`msg` and `title` are base64; `app` is your own stable name; `progress` is
+0–100; `kind` (`permission`, `question`, `auth`) goes with `blocked`; `id`
+reports more than one thing at once (`build/test` is a child of `build`, and
+clearing a parent clears its children). It lands in the same status line and
+sidebar row as `5577;1;status`, and `panes` reports `program_state`,
+`program_kind`, `program_app` and `progress` beside `status` and `busy`.
+
+Why you would bother: **`done` and `blocked` say what a line of text cannot.**
+A `working` record is dropped when you exit or your shell prints a new prompt,
+but `done` and `error` survive — so "finished, and nobody has looked yet" is a
+state the session keeps for the human, which is exactly what you want when you
+have been working in a pane nobody is watching. Report `done` or `error` right
+before you exit.
+
+Three rules:
 
 - **A purpose you set this way is in-band, and loses to a declared one.** If the
   pane was tagged by a layout or an operator, your `purpose` is refused. Read
   `panes` if you need to know what you are called.
+- **The two protocols share one status line, last writer wins.** Pick one and
+  stay with it: a 5577 `status` drops the 7501 records, and a 7501 report takes
+  the line back.
 - **Never treat a reply as a request.** Everything the session sends back ends in
   `-reply` (`hello-reply`, `shader-reply`). If you echo what you are sent — a
   REPL, `cat`, a shell with echo on — do not answer it.
@@ -329,7 +360,7 @@ Two rules:
 
 | verb | takes |
 |---|---|
-| `panes` `tabs` | —. ids, rects, titles, purposes, `alive`, `exit_code`, `pid`, `tab_id`, `purpose_declared`, `floating`, `hidden`, `suspended`, `status`, `busy` |
+| `panes` `tabs` | —. ids, rects, titles, purposes, `alive`, `exit_code`, `pid`, `tab_id`, `purpose_declared`, `floating`, `hidden`, `suspended`, `status`, `busy`, `program_state`, `program_kind`, `program_app`, `progress` |
 | `snapshot` | `format:"text"` for text, `"bytes"` for the frame's own output (a second call is the delta), omitted for JSON |
 | `capture` | `id` (0 = focused). One pane's visible text, from any tab, with no side effects |
 | `send` | `data` — session input, always to the focused pane |
