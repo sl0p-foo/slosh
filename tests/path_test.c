@@ -61,26 +61,23 @@ int main(void) {
   eq("the directory of a nested path", path_dir("/a/b/c.kdl", buf, sizeof buf),
      "/a/b");
   eq("the name of a nested path", path_base("/a/b/c.kdl"), "c.kdl");
-  eq("a bare name is in the current directory", path_dir("c.kdl", buf,
-                                                         sizeof buf),
-     ".");
+  eq("a bare name is in the current directory",
+     path_dir("c.kdl", buf, sizeof buf), ".");
   eq("and is its own name", path_base("c.kdl"), "c.kdl");
   eq("a path at the root", path_dir("/c.kdl", buf, sizeof buf), "/");
   eq("its name", path_base("/c.kdl"), "c.kdl");
 
 #ifdef _WIN32
-  eq("a backslash separates", path_dir("C:\\Users\\you\\config.kdl", buf,
-                                       sizeof buf),
-     "C:\\Users\\you");
+  eq("a backslash separates",
+     path_dir("C:\\Users\\you\\config.kdl", buf, sizeof buf), "C:\\Users\\you");
   eq("and names", path_base("C:\\Users\\you\\config.kdl"), "config.kdl");
   /* The mixture is not hypothetical: slosh joins with '/' and $HOME arrives
    * with '\', so the default config path is spelled both ways at once. */
   eq("the last separator wins in a mixed path",
      path_dir("C:\\Users\\you/.config/slosh/config.kdl", buf, sizeof buf),
      "C:\\Users\\you/.config/slosh");
-  eq("and the other order", path_dir("C:/Users/you\\config.kdl", buf,
-                                     sizeof buf),
-     "C:/Users/you");
+  eq("and the other order",
+     path_dir("C:/Users/you\\config.kdl", buf, sizeof buf), "C:/Users/you");
   /* `C:` alone is the current directory on drive C, which is somewhere else. */
   eq("a file at a drive root keeps the separator",
      path_dir("C:\\config.kdl", buf, sizeof buf), "C:\\");
@@ -98,7 +95,8 @@ int main(void) {
 
   /* ---- resolving against a base ----------------------------------------- */
   eq("a relative path joins the base",
-     path_resolve("themes/t.kdl", "/cfg", buf, sizeof buf), "/cfg/themes/t.kdl");
+     path_resolve("themes/t.kdl", "/cfg", buf, sizeof buf),
+     "/cfg/themes/t.kdl");
   eq("an absolute path ignores the base",
      path_resolve("/etc/t.kdl", "/cfg", buf, sizeof buf), "/etc/t.kdl");
   eq("no base leaves it alone",

@@ -84,7 +84,11 @@ def test_cell_mode_is_unchanged():
         s.settle(60)
         out = s.snapshot().pane_text(p)
         got = clicked(out)
-        check("a plain SGR pane still gets cell coordinates", got == (want_x, want_y), repr(got))
+        check(
+            "a plain SGR pane still gets cell coordinates",
+            got == (want_x, want_y),
+            repr(got),
+        )
 
 
 if __name__ == "__main__":
