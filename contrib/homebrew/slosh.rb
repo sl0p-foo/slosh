@@ -26,7 +26,14 @@ class Slosh < Formula
   # zig is the whole toolchain: it compiles the C, builds the vendored
   # libghostty-vt, and links it statically. Nothing is needed at runtime, which
   # is why there is no `depends_on` without `=> :build`.
-  depends_on "zig" => :build
+  #
+  # Pinned to an exact minor, not plain "zig": the vendored libghostty-vt
+  # rejects any mismatched major/minor outright (see src/build/zig.zig's
+  # requireZig), so when homebrew-core moved "zig" to 0.17.0 every install
+  # broke with "Your Zig version v0.17.0 does not meet the required build
+  # version of v0.16.0". The pin has to be bumped in lockstep with
+  # vendor/libghostty-vt.vendor.json's built_with_zig whenever we re-vendor.
+  depends_on "zig@0.16" => :build
 
   def install
     # zig caches in ~/.cache/zig and ~/.zig-cache by default. Under brew that is
@@ -35,7 +42,10 @@ class Slosh < Formula
     ENV["ZIG_GLOBAL_CACHE_DIR"] = buildpath/".zig-global-cache"
     ENV["ZIG_LOCAL_CACHE_DIR"] = buildpath/".zig-local-cache"
 
-    args = ["ZIG=#{formula_opt_bin("zig")}/zig"]
+    # The pinned keg is keg-only, so it is deliberately absent from PATH and
+    # from /opt/homebrew/opt/zig. Name it explicitly or the build picks up
+    # whatever "zig" happens to be linked.
+    args = ["ZIG=#{formula_opt_bin("zig@0.16")}/zig"]
     # In a snapshot tarball there is no .git, so the Makefile's `git describe`
     # would bake in "unknown" and `slosh --version` could not tell you which
     # build you are looking at. Hand it the commit the tarball came from.
@@ -76,7 +86,12 @@ class Slosh < Formula
 
   test do
     # The binary knows its own version, and it is the version brew installed.
-    assert_match "slosh 0.1.0", shell_output("#{bin}/slosh --version")
+    # Derived from `version`, never hardcoded: a literal goes stale at the next
+    # release and fails a build that is otherwise perfectly good.
+    out = shell_output("#{bin}/slosh --version")
+    assert_match(/^slosh \S+/, out)
+    # A HEAD build reports `git describe`, which is not the formula version.
+    assert_match "slosh #{version}", out unless build.head?
 
     # The configuration we ship must parse with the binary we ship.
     assert_match "ok", shell_output("#{bin}/slosh --check #{share}/slosh/config.kdl")
