@@ -1503,11 +1503,53 @@ bool app_focus_pane(app_t *a, uint32_t id) {
 }
 
 bool app_split_pane(app_t *a, uint32_t id, bool rows) {
-  if (id && !app_focus_pane(a, id)) return false;
+  split_pane_t o = {.id = id, .rows = rows, .focus = true};
+  return app_split_pane_ex(a, &o);
+}
+
+bool app_split_pane_ex(app_t *a, split_pane_t *o) {
+  if (!o) return false;
+  o->out_id = 0;
+  if (!a->ntabs) return false;
+  node_t *leaf = o->id ? pane_by_id(a, o->id) : cur(a)->focus;
+  if (!leaf || leaf->kind != NODE_LEAF) return false;
   /* Refused, not quietly ignored: a script declaring it wants a pane beside
    * a float would otherwise get an ok and no pane. */
-  if (cur(a)->focus && cur(a)->focus->floating) return false;
-  split_focus(a, rows ? SPLIT_ROWS : SPLIT_COLS);
+  if (leaf->floating) return false;
+  /* The pane's tab, not the tab on screen. The whole point of the verb is that
+   * a caller splitting *itself* is usually not the one being looked at. */
+  size_t ti = tab_of(a, leaf);
+  if (ti == (size_t)-1) return false;
+  tab_t *t = &a->tabs[ti];
+
+  /* A new pane opens where the pane it came out of *is* (see split_node_with),
+   * unless the caller named somewhere else. */
+  char cwdbuf[4096];
+  const char *cwd =
+      o->cwd && *o->cwd ? o->cwd : live_cwd(leaf->pane, cwdbuf, sizeof cwdbuf);
+  bool ran = o->command && *o->command;
+  /* The shell spelling a layout's `command=` uses, so "a pane running this"
+   * means the same thing however the pane was asked for. */
+  const char *argv[4] = {SLOSH_SHELL_DEFAULT, SLOSH_SHELL_CFLAG, o->command,
+                         NULL};
+  node_t *fresh = ran ? leaf_new_ex(a, argv, cwd, false, o->command)
+                      : leaf_new_ex(a, default_argv(a), cwd, false, "");
+  if (!fresh) return false;
+
+  place_beside(a, t, leaf, fresh, o->rows ? SPLIT_ROWS : SPLIT_COLS, false);
+  /* Declared, so the pane cannot relabel itself out from under the caller
+   * holding it as a handle. The pane is new, so there is nothing to refuse. */
+  if (o->purpose && *o->purpose)
+    app_set_pane_purpose(a, fresh->id, o->purpose, true);
+  if (o->focus) {
+    a->cur = ti;
+    t->focus = fresh;
+  }
+  /* A pane's size comes from a layout pass, and `focus:false` means nobody is
+   * going to look at this tab and give it one -- the same reason apply-layout
+   * lays out the tabs it built. Without it the pane runs at 1x1. */
+  layout_tab(a, ti);
+  o->out_id = fresh->id;
   return true;
 }
 

@@ -202,13 +202,28 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     app_set_cell_px(a, cw, ch);
     return jok_int(NULL, 0);
   }
+  /* `command` `cwd` `purpose` `focus` are the layout file's vocabulary on the
+   * verb that splits: "a pane running this, beside that one, without moving
+   * anybody's view" in one call. It used to take two -- apply-layout a tab of
+   * its own, then move-pane it in -- which left a tab in the strip between
+   * them and a stranded pane whenever the second half did not happen.
+   *
+   * The pane lands in the *split pane's* tab, so `id` is the whole address;
+   * answering `id` from `out_id` rather than from focus is what makes
+   * `focus:false` usable, since there is then nothing to ask focus about. */
   if (strcmp(cmd, "split") == 0) {
-    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
-    bool rows = strcmp(jv_gets(req, "dir", "cols"), "rows") == 0;
-    if (!app_split_pane(a, id, rows))
-      return jerr(app_pane_floating(a, id) ? "cannot split a floating pane"
-                                           : "no such pane");
-    return jok_int("id", app_focused_pane_id(a));
+    split_pane_t o = {
+        .id = (uint32_t)jv_geti(req, "id", 0),
+        .rows = strcmp(jv_gets(req, "dir", "cols"), "rows") == 0,
+        .command = jv_gets(req, "command", NULL),
+        .cwd = jv_gets(req, "cwd", NULL),
+        .purpose = jv_gets(req, "purpose", NULL),
+        .focus = jv_getb(req, "focus", true),
+    };
+    if (!app_split_pane_ex(a, &o))
+      return jerr(app_pane_floating(a, o.id) ? "cannot split a floating pane"
+                                             : "no such pane");
+    return jok_int("id", (long long)o.out_id);
   }
   if (strcmp(cmd, "focus") == 0) {
     if (!app_focus_pane(a, (uint32_t)jv_geti(req, "id", 0)))

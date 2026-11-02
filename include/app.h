@@ -322,6 +322,36 @@ bool app_equalize_splits(app_t *a);
 /* Address panes by id (the control API), not "the focused one". */
 bool app_focus_pane(app_t *a, uint32_t id);
 bool app_split_pane(app_t *a, uint32_t id, bool rows);
+
+/* A split that says what the new pane is *for*: the layout file's `command=`,
+ * `cwd=` and `purpose=` on the one verb that makes a pane beside an existing
+ * one, and `focus:false` so making it does not pull anybody's view.
+ *
+ * Why it exists: a caller wanting "a pane running this, beside me, in my tab"
+ * could only build it in a tab of its own (`apply-layout` knows no other
+ * destination) and move it in afterwards. Two calls, a tab flickering in the
+ * strip between them, and a pane stranded in that tab whenever the second one
+ * was skipped or missed its id. The destination was never the hard part --
+ * `place_beside` has always taken the tab -- so this says it instead.
+ *
+ * `o->id` is the pane to split, 0 the focused one; the new pane lands in *that
+ * pane's* tab, which need not be the one on screen. `command` NULL or empty is
+ * a shell, as every other way of making a pane means it. `cwd` NULL is the
+ * split pane's own working directory. A `purpose` here is declared (D8), like
+ * a layout's: it is the caller's handle on the pane, and a program in it must
+ * not be able to take it. `o->out_id` is the new pane, answered whether or not
+ * it was focused -- which is the id the caller needs precisely when it did not
+ * take focus and so cannot ask what is focused. */
+typedef struct {
+  uint32_t id;
+  bool rows;
+  const char *command;
+  const char *cwd;
+  const char *purpose;
+  bool focus;
+  uint32_t out_id;
+} split_pane_t;
+bool app_split_pane_ex(app_t *a, split_pane_t *o);
 bool app_close_pane(app_t *a, uint32_t id);
 /* Run a dead (or not-yet-started) pane's command again, in the same pane and
  * on top of the same scrollback. 0 means the focused one. */
