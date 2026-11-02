@@ -27,7 +27,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `send` | bytes as if typed, decoded like input (`"data":"\\x01\\\\"`) |
 | `raw` | bytes straight into a pane's pty: `id` (0 = focused). Naming the pane is the point — focusing one first moves the view of whoever is watching |
 | `resize` | `cols` `rows`, and optionally `cell_w` `cell_h` |
-| `split` | `dir:"cols"\|"rows"`, `id` for which pane to split |
+| `split` | `dir:"cols"\|"rows"`, `id` for which pane to split — and, to make a pane that is *for* something: `command` to run instead of a shell, `cwd` instead of that pane's own directory, `purpose` (declared, so the pane cannot relabel itself), `focus:false` to build it without pulling the view. The new pane lands in the split pane's tab, whether or not that tab is on screen, and the reply is its `id` either way |
 | `focus` | `id` |
 | `close` `rerun` | `id`, or 0 for the focused pane |
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1`. The way back from a pane that painted itself unreadable |
@@ -69,21 +69,37 @@ whatever tab the human had wandered into, and in a session with several such
 tools running it was reliably somebody else's. `focused` answers "what is the
 human doing"; `$SLOSH_PANE` answers "who am I".
 
-So background work is three calls, none of which move anybody's view:
+So background work beside yourself is one call, and it moves nobody's view:
+
+```bash
+# a pane that was *given* a command, in your own tab, without going to it
+id=$($S "{\"cmd\":\"split\",\"id\":$SLOSH_PANE,\"dir\":\"rows\",\"command\":\"make -j8\",\"purpose\":\"task:build\",\"focus\":false}" | jq .id)
+
+$S "{\"cmd\":\"capture\",\"id\":$id}"   # read it, from wherever you are
+```
+
+**`split` is the verb for one pane beside a pane you can name.** `$SLOSH_PANE`
+is the whole address: the new pane lands in *that* pane's tab, so it needs no
+tab argument and does not care which tab is on screen. `focus:false` is what
+keeps the view where it is, and the reply carries the new `id` — which is the
+id you need precisely when you did not take focus, and so have no focused pane
+to ask about.
+
+For **more than one pane**, or panes in a tab of their own, `apply-layout`
+still builds whole tabs, and `move-pane` still brings one in afterwards:
 
 ```bash
 my_tab=$($S '{"cmd":"panes"}' | jq --argjson me $SLOSH_PANE '.panes[]|select(.id==$me)|.tab_id')
-
-# 1. build a pane that was *given* a command, without going to it
 $S '{"cmd":"apply-layout","focus":false,"kdl":"layout { tab name=\"work\" { pane purpose=\"task:build\" command=\"make -j8\" } }"}'
 id=$($S '{"cmd":"panes"}' | jq '.panes[]|select(.purpose=="task:build")|.id')
-
-# 2. move it in beside yourself, still without taking focus
 $S "{\"cmd\":\"move-pane\",\"id\":$id,\"tab\":$my_tab,\"beside\":$SLOSH_PANE,\"focus\":false}"
-
-# 3. read it wherever it is
-$S "{\"cmd\":\"capture\",\"id\":$id}"
 ```
+
+Note that a layout's panes are **not** numbered in sequence — a split node takes
+an id too — so find the pane by the `purpose` the layout declared rather than
+guessing. A `move-pane` at a guessed id answers `cannot move it there` and
+leaves the pane in the tab it was built in, which is the failure `split` exists
+to avoid.
 
 If you cannot read the environment — a scrubbed env, a helper with no
 controlling tty, a process several forks down — `panes` reports each pane's
