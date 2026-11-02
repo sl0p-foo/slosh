@@ -117,24 +117,40 @@ never is.
 This is the pattern to reach for. Do **not** type a command into somebody's shell
 and then screen-scrape for it.
 
-Make a pane that *was given a command*, and tag it. `focus:false` builds it
-without dragging the view to it — always pass it for background work:
+Make a pane that *was given a command*, beside yourself, and tag it. `split`
+takes all of it in one call. `focus:false` builds it without dragging the view
+to it — always pass it for background work:
+
+```bash
+id=$($S "{\"cmd\":\"split\",\"id\":$SLOSH_PANE,\"dir\":\"rows\",\"command\":\"make -j8\",\"purpose\":\"task:build\",\"focus\":false}" | jq .id)
+```
+
+**`$SLOSH_PANE` is the whole address.** The new pane lands in *your* pane's tab,
+so there is no tab argument to get wrong and it does not matter which tab is on
+screen. `command` runs instead of a shell, `cwd` overrides your pane's own
+directory, `purpose` is declared (a program in the pane cannot relabel it), and
+the reply is the new pane's `id` — which is the id you need precisely when you
+passed `focus:false` and so have no focused pane to ask about. Panes built this
+way are sized properly even in a tab nobody has looked at, so a full-screen TUI
+in one renders correctly.
+
+**Do not reach for `apply-layout` to run one command.** It only ever appends
+*tabs* — a bare `pane` in a layout is refused with `layout declares no tabs` —
+so it is the wrong verb for "a pane beside me", and using it that way is how
+work ends up in a tab of its own. It is the right verb for building **several**
+panes at once, or a tab deliberately separate; then `move-pane` brings one in:
 
 ```bash
 $S '{"cmd":"apply-layout","focus":false,"kdl":"layout { tab name=\"build\" { pane purpose=\"task:build\" command=\"make -j8\" } }"}'
-```
-
-To put it beside *you* rather than in a tab of its own, move it in by id — again
-without taking focus:
-
-```bash
 id=$($S '{"cmd":"panes"}' | jq '.panes[]|select(.purpose=="task:build")|.id')
 $S "{\"cmd\":\"move-pane\",\"id\":$id,\"tab\":$my_tab,\"beside\":$SLOSH_PANE,\"focus\":false}"
 ```
 
-The pane keeps running across the move: same pty, same scrollback. Panes built
-this way are sized properly even in a tab nobody has looked at, so a full-screen
-TUI in one renders correctly.
+The pane keeps running across the move: same pty, same scrollback. **Find it by
+its `purpose`, never by guessing its id** — a layout's panes are not numbered in
+sequence, because a split node takes an id too. `move-pane` at a guessed id
+answers `cannot move it there (is `beside` in that tab?)` and leaves the pane
+stranded in the tab it was built in.
 
 Then poll `panes`, matching on your purpose, until it is no longer alive:
 
@@ -365,7 +381,7 @@ Three rules:
 | `capture` | `id` (0 = focused). One pane's visible text, from any tab, with no side effects |
 | `send` | `data` — session input, always to the focused pane |
 | `raw` | `data`, `id` (0 = focused) — straight into that pane's pty |
-| `split` | `dir:"cols"\|"rows"`, `id` |
+| `split` | `dir:"cols"\|"rows"`, `id` of the pane to split — plus `command` (instead of a shell), `cwd`, `purpose` (declared), `focus:false`. Lands in that pane's tab; answers the new pane's `id` |
 | `focus` `close` `rerun` `clear-shaders` | `id`, or `0` for the focused pane |
 | `new-tab` `select-tab` `close-tab` `move-tab` | `id` or `index` |
 | `set-name` | `target:"tab"` (the default) or `"pane"`, `id`, `name`. A pane's name beats the title the program sets, which is how you overrule something that keeps announcing itself; `""` hands the label back |
