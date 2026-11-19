@@ -365,6 +365,22 @@ bool app_rotate_layout(app_t *a);
 /* Open the config file in $EDITOR, in a pane of its own, so the edit/save/
  * watch loop happens without leaving the session. The pane is ephemeral. */
 bool app_edit_config(app_t *a);
+
+/* Open a file in the editor, in a pane of its own (docs/panes.md#opening-a-
+ * path). `from` is the pane the path was seen in, 0 for the focused one: a
+ * relative path is resolved against where its job and its shell are (and
+ * their git root), and the editor lands in its tab. `path` may carry its own
+ * `:line:col` when `line` is 0. Refused -- false, nothing opened -- when no
+ * such file exists. The pane is ephemeral, like edit-config's. */
+typedef struct {
+  uint32_t from;
+  const char *path;
+  long line, col;
+  bool focus;
+  uint32_t out_id;     /* the editor's pane */
+  char resolved[4096]; /* the file it opened */
+} open_path_t;
+bool app_open_path(app_t *a, open_path_t *o);
 uint32_t app_focused_pane_id(app_t *a);
 uint32_t app_current_tab_id(app_t *a);
 

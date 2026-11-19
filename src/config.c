@@ -287,6 +287,36 @@ static bool parse_color(const char *text, color_t *out) {
  * loader rather than from each call site: a complaint that cannot say where it
  * happened is a complaint you have to go looking for.
  */
+/* A modifier set spelled out, for a mouse gesture rather than a key chord:
+ * `ctrl`, `alt+shift`, `off`. -1 for anything else. */
+static int mods_parse(const char *s) {
+  if (!strcmp(s, "off") || !strcmp(s, "none") || !*s) return 0;
+  int m = 0;
+  while (*s) {
+    const char *e = strchr(s, '+');
+    size_t n = e ? (size_t)(e - s) : strlen(s);
+    if (n == 4 && !strncmp(s, "ctrl", 4))
+      m |= MOD_CTRL;
+    else if (n == 3 && !strncmp(s, "alt", 3))
+      m |= MOD_ALT;
+    else if (n == 5 && !strncmp(s, "shift", 5))
+      m |= MOD_SHIFT;
+    else
+      return -1;
+    s += n;
+    if (*s == '+') s++;
+  }
+  return m;
+}
+
+static void mods_name(uint16_t m, char *out, size_t cap) {
+  snprintf(out, cap, "%s%s%s%s%s", m & MOD_CTRL ? "ctrl" : "",
+           (m & MOD_CTRL) && (m & MOD_ALT) ? "+" : "", m & MOD_ALT ? "alt" : "",
+           (m & (MOD_CTRL | MOD_ALT)) && (m & MOD_SHIFT) ? "+" : "",
+           m & MOD_SHIFT ? "shift" : "");
+  if (!m) snprintf(out, cap, "off");
+}
+
 static void complain(config_t *c, char *err, size_t errcap, int line,
                      const char *fmt, ...) {
   char text[192];
@@ -978,6 +1008,12 @@ void config_defaults(config_t *c) {
    * distance past the edge scales the step, so the hand can hurry it. */
   c->select_scroll_ms = 50;
   c->double_click_ms = 400;
+  /* ctrl: the modifier every outer terminal hands through while a program has
+   * the mouse. Shift is the one they keep for themselves, and cmd cannot be
+   * reported at all -- the mouse protocol has no bit for it. */
+  c->open_mods = MOD_CTRL;
+  c->open_in = OPEN_IN_SPLIT;
+  c->open_hover = OPEN_HOVER_UNDERLINE | OPEN_HOVER_STATUS;
   /* Quotes, brackets, and the punctuation that ends a clause or a list.
    *
    * Deliberately *not* `/ . - _ : = @ # % ? & + ~ $`: a path, a dotted name, a
@@ -1334,6 +1370,7 @@ void config_free(config_t *c) {
   free(c->binds);
   free(c->shell);
   free(c->editor);
+  free(c->open_command);
   free(c->theme_dir);
   free(c->theme_name);
   free(c->project_layout);
@@ -1893,6 +1930,29 @@ char *config_render(const config_t *c) {
     cb_qstr(&b, "editor", c->editor, NULL);
   else
     cb_add(&b, "// editor \"nvim\"        // unset: $EDITOR, then vi\n");
+  {
+    char mods[40] = "";
+    mods_name(c->open_mods, mods, sizeof mods);
+    cb_add(&b,
+           "open_click \"%s\"      // the modifier a click opens a path with\n",
+           mods);
+  }
+  cb_add(&b, "open_in \"%s\"        // where it opens: split, float, tab\n",
+         c->open_in == OPEN_IN_FLOAT ? "float"
+         : c->open_in == OPEN_IN_TAB ? "tab"
+                                     : "split");
+  cb_add(&b,
+         "open_hover \"%s\"      // holding it over a path: underline, "
+         "status, both, off\n",
+         c->open_hover == (OPEN_HOVER_UNDERLINE | OPEN_HOVER_STATUS) ? "both"
+         : c->open_hover == OPEN_HOVER_UNDERLINE ? "underline"
+         : c->open_hover == OPEN_HOVER_STATUS    ? "status"
+                                                 : "off");
+  if (c->open_command)
+    cb_qstr(&b, "open_command", c->open_command, NULL);
+  else
+    cb_add(&b, "// open_command \"nvim +{line} {path}\"  // unset: editor, "
+               "told the line\n");
   if (c->nproject_roots) {
     cb_add(&b, "project_roots");
     for (size_t i = 0; i < c->nproject_roots; i++) {
@@ -2245,6 +2305,10 @@ static const char *const KNOWN_TOP[] = {
     "double_click_ms",
     "word_separators",
     "editor",
+    "open_click",
+    "open_command",
+    "open_hover",
+    "open_in",
     "float_shadow",
     "focus_follows_mouse",
     "gap",
@@ -2857,6 +2921,46 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   if (ed) {
     free(c->editor);
     c->editor = strdup(ed);
+  }
+  const char *oc = kdl_arg(kdl_child(root, "open_command"), 0, NULL);
+  if (oc) {
+    free(c->open_command);
+    c->open_command = *oc ? strdup(oc) : NULL;
+  }
+  const char *ok_ = kdl_arg(kdl_child(root, "open_click"), 0, NULL);
+  if (ok_) {
+    int m = mods_parse(ok_);
+    if (m < 0)
+      complain(c, err, errcap, kdl_child(root, "open_click")->line,
+               "open_click: %s (want ctrl, alt, ctrl+alt... or off)", ok_);
+    else
+      c->open_mods = (uint16_t)m;
+  }
+  const char *oh = kdl_arg(kdl_child(root, "open_hover"), 0, NULL);
+  if (oh) {
+    if (!strcmp(oh, "both"))
+      c->open_hover = OPEN_HOVER_UNDERLINE | OPEN_HOVER_STATUS;
+    else if (!strcmp(oh, "underline"))
+      c->open_hover = OPEN_HOVER_UNDERLINE;
+    else if (!strcmp(oh, "status"))
+      c->open_hover = OPEN_HOVER_STATUS;
+    else if (!strcmp(oh, "off") || !strcmp(oh, "none"))
+      c->open_hover = 0;
+    else
+      complain(c, err, errcap, kdl_child(root, "open_hover")->line,
+               "open_hover: %s (want both, underline, status or off)", oh);
+  }
+  const char *oi = kdl_arg(kdl_child(root, "open_in"), 0, NULL);
+  if (oi) {
+    if (!strcmp(oi, "split"))
+      c->open_in = OPEN_IN_SPLIT;
+    else if (!strcmp(oi, "float"))
+      c->open_in = OPEN_IN_FLOAT;
+    else if (!strcmp(oi, "tab"))
+      c->open_in = OPEN_IN_TAB;
+    else
+      complain(c, err, errcap, kdl_child(root, "open_in")->line,
+               "open_in: %s (want split, float or tab)", oi);
   }
 
   /* Where projects live. Several roots because people have `~/dev` and `~/work`,

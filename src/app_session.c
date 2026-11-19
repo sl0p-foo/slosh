@@ -793,34 +793,37 @@ static void sb_quoted(strbuf_t *b, const char *key, const char *val) {
   sb_add(b, "\"");
 }
 
-/* Where the program in the pane is *now*, which after any amount of `cd` is
- * not where it was started. The kernel knows; nothing else does. */
-const char *live_cwd(const pane_t *p, char *buf, size_t cap) {
-  pid_t pid = pane_pid(p);
+/* Where a process is *now*, which after any amount of `cd` is not where it
+ * was started. The kernel knows; nothing else does. NULL when it will not say
+ * (gone, not ours, or a platform with neither /proc nor libproc). */
+const char *pid_cwd(pid_t pid, char *buf, size_t cap) {
+  if (pid <= 0) return NULL;
 #ifdef __APPLE__
   /* Darwin has no /proc, and the kernel still knows: libproc answers the same
    * question from libc, no entitlement and no privilege needed for a process
    * we started ourselves. */
-  if (pid > 0) {
-    struct proc_vnodepathinfo vpi;
-    if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof vpi) ==
-        (int)sizeof vpi) {
-      snprintf(buf, cap, "%s", vpi.pvi_cdir.vip_path);
-      return buf;
-    }
+  struct proc_vnodepathinfo vpi;
+  if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof vpi) ==
+      (int)sizeof vpi) {
+    snprintf(buf, cap, "%s", vpi.pvi_cdir.vip_path);
+    return buf;
   }
 #endif
-  if (pid > 0) {
-    char link[64];
-    snprintf(link, sizeof link, "/proc/%d/cwd", (int)pid);
-    ssize_t n = readlink(link, buf, cap - 1);
-    if (n > 0) {
-      buf[n] = 0;
-      return buf;
-    }
+  char link[64];
+  snprintf(link, sizeof link, "/proc/%d/cwd", (int)pid);
+  ssize_t n = readlink(link, buf, cap - 1);
+  if (n > 0) {
+    buf[n] = 0;
+    return buf;
   }
-  return pane_start_cwd(
-      p); /* not running, or no kernel answer: what it was given */
+  return NULL;
+}
+
+/* Where the program in the pane is *now*: its shell's cwd, else what it was
+ * given (not running, or no kernel answer). */
+const char *live_cwd(const pane_t *p, char *buf, size_t cap) {
+  const char *now = pid_cwd(pane_pid(p), buf, cap);
+  return now ? now : pane_start_cwd(p);
 }
 
 /* The name the pane was given, when that is another spelling of where it is.

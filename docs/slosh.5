@@ -342,6 +342,49 @@ and what edits the configuration (unset:
 .BR $EDITOR ,
 then vi).
 .TP
+.BI open_click\  mods
+The modifier a left click takes to open the path under it in the
+editor:
+.B ctrl
+(the default),
+.BR alt ,
+.BR ctrl+alt ,
+and so on, or
+.BR off .
+Over a program tracking the mouse it also takes shift.
+Only a path that exists is opened; anything else stays an ordinary click.
+.TP
+.BI open_hover\  word
+What holding that modifier over an openable path shows:
+.B both
+(the default: the path underlined, and its resolved name in the status
+line),
+.BR underline ,
+.BR status ,
+or
+.BR off .
+.TP
+.BI open_in\  word
+Where the editor's pane goes:
+.B split
+(the default; a float when there is no room),
+.BR float ,
+or
+.BR tab .
+.TP
+.BI open_command\  template
+The command that opens a path, with
+.B {path}
+and
+.B {dir}
+shell-quoted and
+.B {line}
+and
+.B {col}
+as numbers; unset runs
+.B editor
+with the line in its own spelling.
+.TP
 .BI in_band_shaders\  bool
 Whether a program may set shader chains on its own pane over OSC 5577.
 Off by default; clearing a chain is always allowed, because the way out

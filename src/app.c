@@ -511,6 +511,89 @@ static const char *hint_for(app_t *a, const char *action) {
   return NULL; /* a pane's own content, and anything not worth a word */
 }
 
+/* `open <path>:<line>:<col>` in at most `maxw` columns: the home directory
+ * as `~`, and when that is still too long, the middle elided -- a path's last
+ * component is the part that says which file, and its first few say which
+ * tree, so both ends are kept and the directories between them go. Counted
+ * in code points, which is columns for every path anybody types. */
+static bool open_hover_text(const open_hover_t *h, uint16_t maxw, char *out,
+                            size_t cap) {
+  char path[4096 + 48];
+  const char *home = getenv("HOME");
+  size_t hl = home ? strlen(home) : 0;
+  const char *p = h->path;
+  if (hl > 1 && strncmp(p, home, hl) == 0 && (p[hl] == '/' || !p[hl]))
+    snprintf(path, sizeof path, "~%s", p + hl);
+  else
+    snprintf(path, sizeof path, "%s", p);
+  size_t pl = strlen(path);
+  if (h->line > 0 && h->col > 0)
+    snprintf(path + pl, sizeof path - pl, ":%ld:%ld", h->line, h->col);
+  else if (h->line > 0)
+    snprintf(path + pl, sizeof path - pl, ":%ld", h->line);
+
+  static const char lead[] = "open ";
+  if (maxw <= sizeof lead) return false;
+  size_t room = maxw - (sizeof lead - 1);
+
+  /* Code point starts, so the cut never lands inside a UTF-8 sequence. */
+  size_t starts[sizeof path];
+  size_t n = 0;
+  for (size_t i = 0; path[i]; i++)
+    if (((unsigned char)path[i] & 0xC0) != 0x80) starts[n++] = i;
+
+  if (n <= room) {
+    snprintf(out, cap, "%s%s", lead, path);
+    return true;
+  }
+  if (room < 8) return false; /* no head or tail worth showing */
+  size_t keep = room - 1;     /* one for the ellipsis */
+  size_t head = keep / 3, tail = keep - head;
+  size_t head_end = starts[head];
+  size_t tail_start = starts[n - tail];
+  snprintf(out, cap, "%s%.*s\u2026%s", lead, (int)head_end, path,
+           path + tail_start);
+  return true;
+}
+
+/* Append `sep` then `text` to a buffer, and keep `*n` honest.
+ *
+ * snprintf returns what it *would* have written, which is not where the next
+ * piece goes. Adding those returns up (what the status line used to do) walks
+ * `n` past the end of the buffer as soon as the pieces together overflow it --
+ * and the next call is then `snprintf(buf + n, cap - n, ...)` with a pointer
+ * past the end and a size that has wrapped to near SIZE_MAX, which is a write
+ * anywhere. A session name, a tab name and a program's title reach that on a
+ * wide terminal, and a title is whatever a program says it is.
+ *
+ * So `*n` only ever moves by what was actually stored. */
+static void status_cat(char *buf, size_t cap, size_t *n, const char *sep,
+                       const char *text) {
+  if (*n + 1 >= cap) return;
+  int w = snprintf(buf + *n, cap - *n, "%s%s", sep, text);
+  if (w <= 0) return;
+  size_t room = cap - *n - 1;
+  *n += (size_t)w < room ? (size_t)w : room;
+
+  /* snprintf stops at a byte, and a byte can be the middle of a character:
+   * a truncated title ended in half a sequence, which the screen drew as a
+   * replacement glyph and the snapshot could not even encode. Drop the
+   * fragment -- a character that did not fit did not fit. */
+  while (*n) {
+    size_t start = *n - 1;
+    while (start && (buf[start] & 0xc0) == 0x80) start--;
+    unsigned char c = (unsigned char)buf[start];
+    size_t need = c < 0x80             ? 1
+                  : (c & 0xe0) == 0xc0 ? 2
+                  : (c & 0xf0) == 0xe0 ? 3
+                  : (c & 0xf8) == 0xf0 ? 4
+                                       : 1;
+    if (start + need <= *n) return; /* the last character is whole */
+    buf[start] = 0;
+    *n = start;
+  }
+}
+
 /* The line along the bottom: what you are looking at, rather than what you
  * could switch to. The strip along the top already answers "which tab" and
  * "how many panes"; repeating that here would spend a row saying it twice.
@@ -672,29 +755,44 @@ void draw_status_line(app_t *a, screen_t *s) {
     }
   }
 
-  char line[256];
+  /* Initialised, because every read below has to be safe even when nothing is
+   * appended: a session with no name, an unnamed tab and a program that has
+   * not set a title leaves this empty, and an empty buffer that is merely
+   * *unwritten* is 256 bytes of whatever the last call left on the stack. */
+  char line[256] = "";
   size_t n = 0;
-  if (a->session[0])
-    n += (size_t)snprintf(line + n, sizeof line - n, "%s", a->session);
+  if (a->session[0]) status_cat(line, sizeof line, &n, "", a->session);
   if (a->ntabs) {
     const tab_t *t = &a->tabs[a->cur];
     const char *tn = t->name[0] ? t->name : (t->purpose[0] ? t->purpose : NULL);
-    if (tn)
-      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s",
-                            n ? " \u00b7 " : "", tn);
+    if (tn) status_cat(line, sizeof line, &n, n ? " \u00b7 " : "", tn);
   }
   if (f) {
     const char *pt = pane_title(f->pane);
     const char *pp = f->purpose[0] ? f->purpose : NULL;
     if (pp)
-      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s",
-                            n ? " \u00b7 " : "", pp);
+      status_cat(line, sizeof line, &n, n ? " \u00b7 " : "", pp);
     else if (pt && *pt)
-      n += (size_t)snprintf(line + n, sizeof line - n, "%s%s",
-                            n ? " \u00b7 " : "", pt);
+      status_cat(line, sizeof line, &n, n ? " \u00b7 " : "", pt);
   }
-  if (n > (size_t)(right - x)) line[right - x] = 0;
-  if (n) screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
+  /* Cut to the room there is, in *columns*: `right - x` is a width and `line`
+   * is a buffer, and the byte-index truncation this replaces used one as an
+   * index into the other -- `line[right - x] = 0` on a terminal wider than the
+   * buffer wrote a NUL past the end of a 256-byte stack array. One byte of
+   * stack corruption, so it crashed the server occasionally rather than
+   * reliably, and the pane children holding its socket then turned the crash
+   * into a session nobody could attach to (server.c, set_cloexec).
+   *
+   * Whole UTF-8 sequences, the same cut the tab strip and the status rows use
+   * (app_draw.c): a title with a multi-byte character in it was previously cut
+   * mid-sequence, which the screen then drew as a replacement glyph. */
+  while (line[0] && cells(line) > (uint16_t)(right - x)) {
+    size_t len = strlen(line);
+    do len--;
+    while (len && (line[len] & 0xc0) == 0x80);
+    line[len] = 0;
+  }
+  if (n && line[0]) screen_text(s, x, y, line, STATUS_C, NO_COLOR, 0);
 
   /* What goes between the two ends: the hint for whatever the pointer is on,
    * and when there is none, which slosh this is. The hint wins because it is
@@ -714,7 +812,23 @@ void draw_status_line(app_t *a, screen_t *s) {
    * middle is the part that can afford to disappear. */
   const char *middle = NULL;
   color_t middle_fg = HINT_C;
-  if (CFG.hints && a->painted && a->ptr_valid)
+  char opening[512];
+  /* The path a click would open, while the modifier is held over one: ahead
+   * of the hints, because it answers the question the hand is asking right
+   * now, and sized to the room the centred slot actually has, because a
+   * path is the one middle that is routinely too long for it. */
+  if ((CFG.open_hover & OPEN_HOVER_STATUS) && a->hover_path.on &&
+      pane_by_id(a, a->hover_path.pane)) {
+    int centre = (int)s->cols / 2;
+    int left_end = (int)x + (int)cells(line) + 1;
+    int half = centre - left_end;
+    if ((int)right_used - 1 - centre < half)
+      half = (int)right_used - 1 - centre;
+    if (half > 6 && open_hover_text(&a->hover_path, (uint16_t)(2 * half),
+                                    opening, sizeof opening))
+      middle = opening;
+  }
+  if (!middle && CFG.hints && a->painted && a->ptr_valid)
     middle = hint_for(a, hit_test(&s->hits, a->ptr_x, a->ptr_y));
   if (!middle && CFG.version_banner) {
     /* Quieter than a hint: this is ambient, and a hint is an answer to
@@ -1468,6 +1582,19 @@ static void do_action(app_t *a, const char *action, const input_event_t *ev) {
      * A program that wants the mouse keeps it; shift is the usual escape
      * hatch for selecting over one of those, and it is what people already
      * press out of habit. */
+    /* ctrl+click (open_click) opens the path under the pointer in the
+     * editor. Over a program that tracks the mouse it takes shift as well --
+     * the same "this one is for slosh" a selection there takes -- because a
+     * modified click can mean something to that program. And it only ever
+     * takes the click when there is a file there: anything else falls
+     * through to be the click it would have been. */
+    if (ev->maction == MOUSE_PRESS && ev->button == MBTN_LEFT &&
+        app_open_mods_match(n, ev->mods) &&
+        app_open_at(a, n, local.mx, local.my)) {
+      a->swallow_release = true;
+      return;
+    }
+
     bool select_press = ev->maction == MOUSE_PRESS && ev->button == MBTN_LEFT &&
                         (!pane_wants_mouse(n->pane) || (ev->mods & MOD_SHIFT));
     if (select_press) {
@@ -1901,6 +2028,7 @@ void app_event(app_t *a, const input_event_t *ev) {
        * the list was filled by the pass that painted what the user clicked. */
     if (!a->painted) break;
     const char *action = hit_test(&a->painted->hits, ev->mx, ev->my);
+    app_hover_path_update(a, ev, action);
 
     /* Clicking away keeps the name, the way leaving a field commits it.
        * Clicking the thing's own label again does not, so a stray second
@@ -1930,6 +2058,11 @@ void app_event(app_t *a, const input_event_t *ev) {
     a->ptr_x = ev->mx;
     a->ptr_y = ev->my;
     a->ptr_valid = true;
+
+    if (a->swallow_release && ev->maction != MOUSE_MOTION) {
+      a->swallow_release = false;
+      if (ev->maction == MOUSE_RELEASE) break;
+    }
 
     if (a->drag.kind != DRAG_NONE) {
       if (ev->maction == MOUSE_MOTION) {

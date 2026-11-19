@@ -236,6 +236,12 @@ const char *pane_start_cwd(const pane_t *p);
  * into with nothing to write down. Shell-quoted, because `command=` is run
  * through `/bin/sh -c`. */
 const char *pane_foreground(const pane_t *p, char *buf, size_t cap);
+/* The pid of that foreground job, or 0 when it is the pane's own shell (or
+ * there is no pty). For asking where the job *is* (its cwd), which is where
+ * the relative paths it prints are relative to. */
+pid_t pane_foreground_pid(const pane_t *p);
+/* The pane's terminal width, in cells. */
+uint16_t pane_cols(const pane_t *p);
 /* How much history the pane keeps: a line count, and a byte ceiling that stops
  * one wide, heavily styled pane from spending the machine to honour it. 0 lines
  * is no scrollback; 0 bytes is no ceiling. Both are estimates -- lib-vt prunes a
@@ -387,6 +393,21 @@ bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps);
 void pane_select_done(pane_t *p);
 bool pane_selecting(const pane_t *p);
 char *pane_selection_text(pane_t *p);
+/* The logical line under a viewport cell as UTF-8 -- the rows soft-wrapped
+ * into it joined back up, so a path the pane width broke in two is one path
+ * again -- with `*at` the byte offset of the cell pointed at. Blank cells are
+ * spaces. False when there is no such cell. */
+bool pane_line_at(pane_t *p, uint16_t x, uint16_t y, char *out, size_t cap,
+                  size_t *len, size_t *at);
+/* The same, and where every cell of it went: the line spans viewport rows
+ * `*top` .. `*top + *nrows - 1`, and `offs[(row - *top) * cols + col]` is the
+ * byte offset of that cell's text (a wide glyph's tail shares its head's).
+ * `offs` holds `noffs` entries; rows past it are not mapped. */
+bool pane_line_map(pane_t *p, uint16_t x, uint16_t y, char *out, size_t cap,
+                   size_t *len, size_t *at, uint32_t *offs, size_t noffs,
+                   uint16_t *top, uint16_t *nrows);
+/* The OSC 8 hyperlink on a viewport cell, NUL-terminated; 0 when none. */
+size_t pane_link_at(pane_t *p, uint16_t x, uint16_t y, char *out, size_t cap);
 /* The pane's whole viewport as plain text, for a pane in any tab and with no
  * side effects: no focus change, no tab change, and the human's selection left
  * alone. Caller frees. NULL when there is nothing to read. */

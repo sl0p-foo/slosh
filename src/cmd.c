@@ -253,6 +253,31 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     if (!ok) return jerr("cannot float that");
     return jok_int("floating", app_pane_floating(a, id) ? 1 : 0);
   }
+  /* What a ctrl+click on a path does, by name: the editor in a pane beside
+   * pane `id`, relative paths resolved where that pane's job and shell are.
+   * `path` may carry its own `:line:col`. Refused when there is no such file,
+   * so a script learns that rather than getting an editor on an empty buffer. */
+  if (strcmp(cmd, "open") == 0) {
+    open_path_t o = {
+        .from = (uint32_t)jv_geti(req, "id", 0),
+        .path = jv_gets(req, "path", NULL),
+        .line = jv_geti(req, "line", 0),
+        .col = jv_geti(req, "col", 0),
+        .focus = jv_getb(req, "focus", true),
+    };
+    if (!o.path || !*o.path) return jerr("open: want a path");
+    if (!app_open_path(a, &o)) return jerr("no such file");
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_int(&j, "id", o.out_id);
+    json_str(&j, "path", o.resolved, strlen(o.resolved));
+    json_int(&j, "line", o.line);
+    json_int(&j, "col", o.col);
+    json_obj_close(&j);
+    return j.buf;
+  }
   if (strcmp(cmd, "edit-config") == 0) {
     return app_edit_config(a) ? jok_int("id", app_focused_pane_id(a))
                               : jerr("no room for another pane");

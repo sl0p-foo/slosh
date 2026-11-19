@@ -17,6 +17,7 @@
 #include "version.h"
 #include "graphics.h"
 #include "kdl.h"
+#include "openpath.h"
 #include "app_internal.h"
 
 /* ---- layout: a pure function of the tree and the rect ------------------- */
@@ -1838,6 +1839,295 @@ bool app_edit_config(app_t *a) {
   if (!fresh) return false;
   pane_set_ephemeral(fresh->pane, true);
   return true;
+}
+
+/* ---- opening a path ------------------------------------------------------ *
+ *
+ * The text half -- where a path starts, what `:12:5` means, how each editor is
+ * told the line -- is src/openpath.c, which knows nothing about panes. This is
+ * the half that does: which directories a relative path could have meant, and
+ * where the editor's pane goes. */
+
+/* Where a relative path printed in this pane could be relative to, best guess
+ * first: the job running in it now (a `make` in a subdirectory prints paths
+ * from there), the shell, where the pane was started, and the git root above
+ * each -- `git diff` and `make -C` print from the root. */
+typedef struct {
+  char buf[6][4096];
+  const char *dirs[6];
+  size_t n;
+} open_dirs_t;
+
+static void dirs_add(open_dirs_t *d, const char *dir) {
+  if (!dir || !*dir || d->n >= 6) return;
+  for (size_t i = 0; i < d->n; i++)
+    if (strcmp(d->dirs[i], dir) == 0) return;
+  snprintf(d->buf[d->n], sizeof d->buf[d->n], "%s", dir);
+  d->dirs[d->n] = d->buf[d->n];
+  d->n++;
+}
+
+static void open_dirs(const pane_t *p, open_dirs_t *d) {
+  d->n = 0;
+  char tmp[4096], root[4096];
+  const char *fg = pid_cwd(pane_foreground_pid(p), tmp, sizeof tmp);
+  dirs_add(d, fg);
+  const char *sh = pid_cwd(pane_pid(p), tmp, sizeof tmp);
+  dirs_add(d, sh);
+  dirs_add(d, pane_start_cwd(p));
+  size_t here = d->n;
+  for (size_t i = 0; i < here; i++)
+    if (openpath_git_root(d->dirs[i], root, sizeof root)) dirs_add(d, root);
+}
+
+/* Put a new pane running `argv` where `open_in` says, relative to `leaf`.
+ * A split that will not fit -- or a source pane that floats, which has no
+ * side to split -- becomes a float rather than a refusal: you asked to see
+ * the file, and "no room" is the one answer that does not show it. */
+static node_t *open_place(app_t *a, node_t *leaf, const char *const argv[],
+                          const char *cwd, const char *label, const char *name,
+                          bool focus) {
+  size_t ti = tab_of(a, leaf);
+  if (ti == (size_t)-1) return NULL;
+
+  node_t *fresh = leaf_new_ex(a, argv, cwd, false, label);
+  if (!fresh) return NULL;
+
+  if (CFG.open_in == OPEN_IN_TAB) {
+    tab_t *t = tab_add(a, name);
+    t->root = fresh;
+    t->focus = fresh;
+    if (focus) a->cur = a->ntabs - 1;
+    layout_tab(a, a->ntabs - 1);
+    layout(a);
+    return fresh;
+  }
+
+  tab_t *t = &a->tabs[ti];
+  bool floated = CFG.open_in == OPEN_IN_FLOAT || leaf->floating;
+  if (!floated) {
+    split_dir_t d = preferred_dir(leaf);
+    if (!split_fits(leaf, d)) d = d == SPLIT_COLS ? SPLIT_ROWS : SPLIT_COLS;
+    if (split_fits(leaf, d))
+      place_beside(a, t, leaf, fresh, d, false);
+    else
+      floated = true;
+  }
+  if (floated) {
+    place_beside(a, t, leaf, fresh, preferred_dir(leaf), false);
+    fresh->floating = true;
+    fresh->raised = ++a->raise_seq;
+  }
+  if (focus) {
+    a->cur = ti;
+    t->focus = fresh;
+  }
+  layout_tab(a, ti);
+  layout(a);
+  return fresh;
+}
+
+bool app_open_path(app_t *a, open_path_t *o) {
+  if (!o) return false;
+  o->out_id = 0;
+  o->resolved[0] = 0;
+  if (!a->ntabs || !o->path || !*o->path) return false;
+  node_t *leaf = o->from ? pane_by_id(a, o->from) : cur(a)->focus;
+  if (!leaf || leaf->kind != NODE_LEAF) return false;
+
+  open_dirs_t dirs;
+  open_dirs(leaf->pane, &dirs);
+
+  long line = o->line, col = o->col;
+  if (!openpath_resolve(o->path, dirs.dirs, dirs.n, o->resolved,
+                        sizeof o->resolved)) {
+    /* `src/app.c:1450` as one string: the way a person (or an agent) quotes
+     * a location, so the verb takes it as well as the parts. */
+    openpath_ref_t ref;
+    if (!openpath_scan(o->path, strlen(o->path), 0, &ref) ||
+        !openpath_resolve(ref.path, dirs.dirs, dirs.n, o->resolved,
+                          sizeof o->resolved))
+      return false;
+    if (!line) {
+      line = ref.line;
+      col = ref.col;
+    }
+  }
+  o->line = line;
+  o->col = col;
+
+  const char *editor =
+      CFG.editor && *CFG.editor ? CFG.editor : getenv("EDITOR");
+  char cmd[OPENPATH_MAX * 2 + 256];
+  if (!openpath_command(CFG.open_command, editor, o->resolved, line, col, cmd,
+                        sizeof cmd))
+    return false;
+
+  /* The editor starts where the file is: `:e other.c` in it means the file
+   * beside this one, not one beside wherever the click happened. */
+  char cwd[4096];
+  struct stat st;
+  snprintf(cwd, sizeof cwd, "%s", o->resolved);
+  if (stat(cwd, &st) != 0 || !S_ISDIR(st.st_mode)) {
+    char *slash = strrchr(cwd, '/');
+    if (slash && slash != cwd)
+      *slash = 0;
+    else if (slash)
+      slash[1] = 0;
+    else
+      live_cwd(leaf->pane, cwd, sizeof cwd);
+  }
+
+  const char *argv[] = {SLOSH_SHELL_DEFAULT, SLOSH_SHELL_CFLAG, cmd, NULL};
+  const char *slash = strrchr(o->resolved, '/');
+  node_t *fresh =
+      open_place(a, leaf, argv, cwd, cmd,
+                 slash && slash[1] ? slash + 1 : o->resolved, o->focus);
+  if (!fresh) return false;
+  pane_set_ephemeral(fresh->pane, true);
+  o->out_id = fresh->id;
+  return true;
+}
+
+/* What is openable at a pane-local cell. An OSC 8 `file://` link wins -- the
+ * program said exactly what it meant -- and any other link is left alone;
+ * then the text. Resolved here, not at the click, so a hover can only ever
+ * advertise what a click would actually open.
+ *
+ * The cells it covers come along for the underline: for a link, the run of
+ * cells on that row carrying the same URI; for text, every cell whose bytes
+ * fall inside what the scanner matched, across the rows a wrap spread it
+ * over. */
+bool app_path_at(app_t *a, node_t *n, uint16_t x, uint16_t y,
+                 open_hover_t *out) {
+  memset(out, 0, sizeof *out);
+  if (!n || n->kind != NODE_LEAF || !n->pane) return false;
+  pane_t *p = n->pane;
+  open_dirs_t dirs;
+
+  char uri[OPENPATH_MAX];
+  openpath_ref_t ref;
+  if (pane_link_at(p, x, y, uri, sizeof uri)) {
+    char host[256] = "";
+#ifndef _WIN32
+    if (gethostname(host, sizeof host) != 0) host[0] = 0;
+    host[sizeof host - 1] = 0;
+#endif
+    if (!openpath_from_uri(uri, strlen(uri), host, &ref)) return false;
+    open_dirs(p, &dirs);
+    if (!openpath_resolve(ref.path, dirs.dirs, dirs.n, out->path,
+                          sizeof out->path))
+      return false;
+    char other[OPENPATH_MAX];
+    uint16_t x0 = x, x1 = x, w = pane_cols(p);
+    while (x0 > 0 &&
+           pane_link_at(p, (uint16_t)(x0 - 1), y, other, sizeof other) &&
+           strcmp(other, uri) == 0)
+      x0--;
+    while (x1 + 1 < w &&
+           pane_link_at(p, (uint16_t)(x1 + 1), y, other, sizeof other) &&
+           strcmp(other, uri) == 0)
+      x1++;
+    out->runs[0].row = y;
+    out->runs[0].x0 = x0;
+    out->runs[0].x1 = x1;
+    out->nruns = 1;
+  } else {
+    uint16_t cols = pane_cols(p);
+    size_t noffs = (size_t)cols * OPEN_HOVER_RUNS;
+    uint32_t *offs = noffs ? calloc(noffs, sizeof *offs) : NULL;
+    char text[OPENPATH_MAX * 2];
+    size_t len = 0, at = 0;
+    uint16_t top = 0, nrows = 0;
+    bool ok = offs &&
+              pane_line_map(p, x, y, text, sizeof text, &len, &at, offs, noffs,
+                            &top, &nrows) &&
+              openpath_scan(text, len, at, &ref);
+    if (ok) {
+      open_dirs(p, &dirs);
+      ok = openpath_resolve(ref.path, dirs.dirs, dirs.n, out->path,
+                            sizeof out->path);
+    }
+    if (ok) {
+      /* Cells are in text order, so a run is a stretch of consecutive
+       * cells inside the span; one per row is all a wrap can make. */
+      for (uint16_t r = 0; r < nrows && r < OPEN_HOVER_RUNS; r++) {
+        int x0 = -1, x1 = -1;
+        for (uint16_t c = 0; c < cols; c++) {
+          uint32_t o = offs[(size_t)r * cols + c];
+          if (o >= ref.start && o < ref.end) {
+            if (x0 < 0) x0 = c;
+            x1 = c;
+          }
+        }
+        if (x0 >= 0 && out->nruns < OPEN_HOVER_RUNS) {
+          out->runs[out->nruns].row = (uint16_t)(top + r);
+          out->runs[out->nruns].x0 = (uint16_t)x0;
+          out->runs[out->nruns].x1 = (uint16_t)x1;
+          out->nruns++;
+        }
+      }
+    }
+    free(offs);
+    if (!ok) return false;
+  }
+  (void)a;
+  out->on = true;
+  out->pane = n->id;
+  out->mx = x;
+  out->my = y;
+  out->line = ref.line;
+  out->col = ref.col;
+  return true;
+}
+
+/* A click at a pane-local cell, asking to open what is under it. False when
+ * there is nothing there that exists on this machine, and the click is the
+ * caller's to use as an ordinary click. */
+bool app_open_at(app_t *a, node_t *n, uint16_t x, uint16_t y) {
+  open_hover_t h;
+  if (!app_path_at(a, n, x, y, &h)) return false;
+  open_path_t o = {.from = n->id, .focus = true};
+  o.path = h.path;
+  o.line = h.line;
+  o.col = h.col;
+  a->hover_path.on = false; /* what it pointed at is open now */
+  return app_open_path(a, &o);
+}
+
+/* The modifier set a left click needs to open a path in this pane. */
+static uint16_t open_mods_for(const node_t *n) {
+  uint16_t m = CFG.open_mods;
+  if (m && n && n->pane && pane_wants_mouse(n->pane)) m |= MOD_SHIFT;
+  return m;
+}
+
+bool app_open_mods_match(const node_t *n, uint16_t mods) {
+  uint16_t want = open_mods_for(n);
+  return want && (mods & (MOD_SHIFT | MOD_CTRL | MOD_ALT)) == want;
+}
+
+void app_hover_path_update(app_t *a, const input_event_t *ev,
+                           const char *action) {
+  open_hover_t *h = &a->hover_path;
+  if (!CFG.open_hover || !CFG.open_mods) {
+    h->on = false;
+    return;
+  }
+  node_t *n = NULL;
+  if (action && strncmp(action, "pane:", 5) == 0)
+    n = pane_by_id(a, (uint32_t)strtoul(action + 5, NULL, 10));
+  /* Motion only: a press is about to do something (open it, or start a
+   * selection), and a release or a wheel is not a pointer arriving. */
+  if (!n || ev->maction != MOUSE_MOTION || !app_open_mods_match(n, ev->mods) ||
+      ev->mx < n->content.x || ev->my < n->content.y) {
+    if (ev->maction == MOUSE_MOTION || ev->maction == MOUSE_PRESS)
+      h->on = false;
+    return;
+  }
+  uint16_t x = (uint16_t)(ev->mx - n->content.x);
+  uint16_t y = (uint16_t)(ev->my - n->content.y);
+  app_path_at(a, n, x, y, h);
 }
 
 bool app_rerun_pane(app_t *a, uint32_t id) {

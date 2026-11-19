@@ -133,6 +133,23 @@ typedef struct {
   bool purpose_locked;
 } tab_t;
 
+/* An openable path under the pointer while the open modifier is held: what
+ * a click there would open, and where it is drawn so it can be underlined.
+ * Rows are pane-local viewport rows; a path the width wrapped has a run per
+ * row. */
+#define OPEN_HOVER_RUNS 8
+typedef struct {
+  bool on;
+  uint32_t pane;
+  uint16_t mx, my; /* the pane-local cell it was worked out for */
+  char path[4096];
+  long line, col;
+  size_t nruns;
+  struct {
+    uint16_t row, x0, x1;
+  } runs[OPEN_HOVER_RUNS];
+} open_hover_t;
+
 struct app {
   tab_t *tabs;
   size_t ntabs, tabcap, cur;
@@ -317,6 +334,11 @@ struct app {
    * clicking two different words quickly selects the second one rather than
    * everything between them. */
   int64_t cell_click_ms;
+  /* A press that opened a path took the click; its release is not news to
+   * anyone -- least of all the editor that may now be under the pointer. */
+  bool swallow_release;
+  /* What holding the open modifier over a path is pointing at (open_hover). */
+  open_hover_t hover_path;
   uint32_t cell_click_id;
   uint16_t cell_click_x, cell_click_y;
   int name_click_kind;
@@ -534,6 +556,21 @@ void app_overlay(app_t *a, rect_t r);
 void drop_pane_on_strip(app_t *a);
 void focus_next(app_t *a);
 const char *live_cwd(const pane_t *p, char *buf, size_t cap);
+const char *pid_cwd(pid_t pid, char *buf, size_t cap);
+/* Open the path under a pane-local cell (app_open_path); false when there is
+ * none, and the click is an ordinary click. */
+bool app_open_at(app_t *a, node_t *n, uint16_t x, uint16_t y);
+/* What app_open_at would open at that cell, resolved, and the cells it covers;
+ * false (and `out->on` false) when nothing. Opens nothing. */
+bool app_path_at(app_t *a, node_t *n, uint16_t x, uint16_t y,
+                 open_hover_t *out);
+/* Keep `hover_path` in step with a mouse event: worked out while the open
+ * modifier is held over a pane's content, dropped otherwise. */
+/* Does this modifier set open a path in this pane? (open_click, plus shift
+ * over a program tracking the mouse.) */
+bool app_open_mods_match(const node_t *n, uint16_t mods);
+void app_hover_path_update(app_t *a, const input_event_t *ev,
+                           const char *action);
 void move_tab(app_t *a, size_t from, size_t to);
 bool picker_key(app_t *a, const input_event_t *ev);
 bool push_pane_a_tab(app_t *a, bool forward);

@@ -166,6 +166,9 @@ enum {
  * where the binary is, and the prefix this build was compiled with. */
 #define THEME_DIRS_MAX 4
 
+/* `open_hover`: what holding the open modifier over a path shows. */
+enum { OPEN_HOVER_UNDERLINE = 1 << 0, OPEN_HOVER_STATUS = 1 << 1 };
+
 typedef struct {
   /* geometry */
   uint16_t gap, gap_aspect;
@@ -626,6 +629,19 @@ typedef struct {
   char *shell;
   /* What `edit-config` opens the file with; NULL means $EDITOR, then vi. */
   char *editor;
+
+  /* Clicking a path open (docs/panes.md#opening-a-path). `open_mods` is the
+   * modifier a left click needs to mean "open this" -- MOD_CTRL by default,
+   * 0 for never; a pane whose program tracks the mouse also needs shift, the
+   * usual "this is for slosh" escape. `open_command` is a template
+   * (`{path}` `{line}` `{col}` `{dir}`); NULL means `editor`, told the line
+   * in whatever way it understands. `open_in` is where its pane goes. */
+  uint16_t open_mods;
+  char *open_command;
+  enum { OPEN_IN_SPLIT, OPEN_IN_FLOAT, OPEN_IN_TAB } open_in;
+  /* What holding the modifier over an openable path shows: the path
+   * underlined, its name in the status line's middle, both, or neither. */
+  uint8_t open_hover; /* OPEN_HOVER_* */
 
   /* Where projects live: `project_roots "~/dev" "~/work" depth=2`. A project is
    * a subdirectory of one of these with a `slosh.layout` in it -- or a

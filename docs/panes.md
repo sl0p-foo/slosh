@@ -248,6 +248,66 @@ matched this way through any multiplexer, because the screen is repainted row
 by row and the terminal sees two hard lines. That is exactly what OSC 8
 links, which pass through whole, are for.
 
+## Opening a path
+
+**ctrl+click a path to open it in your editor**, in a pane beside the one it
+was printed in: a compiler error, a `grep -n` hit, a traceback, a `git diff`
+header, an `ls`. The line and column come with it when the text carries them
+-- `src/app.c:1450:12`, `a.c(12,5)`, `File "x.py", line 42` -- and reach the
+editor in its own spelling: `+12` for the vi family and nano, `path:12:5` for
+helix, `--goto` for VS Code.
+
+It only takes the click when **there is a file there**. A relative path is
+looked for where the pane's running job is, then its shell, then where the
+pane was started, then the git root above each (diffs and `make -C` print from
+the root, and `a/` `b/` diff prefixes are dropped). A word that merely looks
+like a path -- or a path printed by a machine you are ssh'd into -- is not a
+file here, and the click stays an ordinary click. A path the pane's width
+wrapped onto two rows is still one path.
+
+An **OSC 8 `file://` link** (`ls --hyperlink`, `rg --hyperlink-format`) is
+taken at its word: the link's file, not the text it is drawn as. A link naming
+another host is that host's file, and is left alone.
+
+Over a program that has the mouse (vim, lazygit, htop) a plain ctrl+click is
+the program's; **shift+ctrl+click** is slosh's -- the same shift that selects
+over such a program.
+
+**Hold ctrl and move over a path** to see whether a click would open it:
+the path is underlined, `:line:col` and all, and the status line's middle
+says which file it resolved to (`open ~/dev/api/src/app.c:12`), shortened in
+the middle when it is long. Nothing is shown over a word that is no file, so
+no underline means the click would be an ordinary click. The terminal reports
+modifiers only with a mouse event, so the indicator comes when the pointer
+moves with ctrl held and goes on the next move without it (or any key).
+
+The editor's pane goes when the editor quits, like `C-a e`'s. The settings:
+
+```kdl
+open_click "ctrl"          // the modifier: ctrl, alt, ctrl+alt..., or "off"
+open_hover "both"          // holding it over a path: underline, status, both, off
+open_in "split"            // split (a float when there is no room), float, tab
+open_command "nvim +{line} {path}"   // unset: `editor`, then $EDITOR, then vi
+```
+
+**ctrl, because it is the modifier that arrives.** Outer terminals keep shift
+for their own selection while a program has the mouse, and cmd cannot reach
+slosh at all: the terminal mouse protocol has no bit for it. On macOS, where
+some terminals turn ctrl+click into a right click, `open_click "alt"` is the
+fallback.
+
+`open_command` is for anything an editor name cannot say. `{path}` and
+`{dir}` are shell-quoted, `{line}` and `{col}` are numbers (1 when the text
+gave none), and a template without `{path}` has it appended. Sending the file
+to an editor you already have open, instead of starting another:
+
+```kdl
+open_command "nvim --server ~/.cache/nvim.sock --remote-send '<C-\\><C-n>:e {path}<CR>{line}G'"
+```
+
+Scripts and agents do the same thing with the [`open` verb](scripting.md):
+`{"cmd":"open","path":"src/app.c:1450","id":N}`.
+
 ## Finding a pane
 
 Tabs stop being navigation somewhere around six projects. `C-a s` opens a picker

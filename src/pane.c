@@ -752,6 +752,17 @@ void pane_render_cache_drop(pane_t *p) {
 
 int pane_fd(const pane_t *p) { return p->pty.fd; }
 pid_t pane_pid(const pane_t *p) { return p->pty.pid; }
+uint16_t pane_cols(const pane_t *p) { return p ? p->cols : 0; }
+
+pid_t pane_foreground_pid(const pane_t *p) {
+  if (!p || p->pty.fd < 0 || p->pty.pid <= 0) return 0;
+#ifdef _WIN32
+  pid_t fg = sl_proc_foreground(p->pty.pid);
+#else
+  pid_t fg = tcgetpgrp(p->pty.fd);
+#endif
+  return fg > 0 && fg != p->pty.pid ? fg : 0;
+}
 const char *pane_start_cwd(const pane_t *p) { return p->cwd; }
 
 /* What this pane's terminal is *running*, as a command line, or NULL.
@@ -1502,6 +1513,129 @@ bool pane_select_word(pane_t *p, uint16_t x, uint16_t y, const char *seps) {
   ghostty_terminal_set(p->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
   p->dirty = true;
   return true;
+}
+
+/* ---- reading a cell's line ---------------------------------------------- *
+ *
+ * Grid references rather than the render state's iterators: those only walk
+ * forward from the top, and the question here is about one row and the rows
+ * soft-wrapped into it, both directions. A click costs a few hundred lookups,
+ * once. */
+
+static bool row_wraps(pane_t *p, uint16_t y) {
+  GhosttyGridRef ref;
+  GhosttyRow row;
+  bool wrap = false;
+  if (!grid_ref_at(p, 0, y, &ref) ||
+      ghostty_grid_ref_row(&ref, &row) != GHOSTTY_SUCCESS ||
+      ghostty_row_get(row, GHOSTTY_ROW_DATA_WRAP, &wrap) != GHOSTTY_SUCCESS)
+    return false;
+  return wrap;
+}
+
+static size_t utf8_put(uint32_t cp, char *o) {
+  if (cp < 0x80) {
+    o[0] = (char)cp;
+    return 1;
+  }
+  if (cp < 0x800) {
+    o[0] = (char)(0xC0 | (cp >> 6));
+    o[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  }
+  if (cp < 0x10000) {
+    o[0] = (char)(0xE0 | (cp >> 12));
+    o[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    o[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  }
+  o[0] = (char)(0xF0 | (cp >> 18));
+  o[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+  o[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+  o[3] = (char)(0x80 | (cp & 0x3F));
+  return 4;
+}
+
+bool pane_line_at(pane_t *p, uint16_t x, uint16_t y, char *out, size_t cap,
+                  size_t *len, size_t *at) {
+  uint16_t top, nrows;
+  return pane_line_map(p, x, y, out, cap, len, at, NULL, 0, &top, &nrows);
+}
+
+bool pane_line_map(pane_t *p, uint16_t x, uint16_t y, char *out, size_t cap,
+                   size_t *len, size_t *at, uint32_t *offs, size_t noffs,
+                   uint16_t *top_out, uint16_t *nrows_out) {
+  if (!p || !p->term || !out || cap < 8 || x >= p->cols || y >= p->rows_n)
+    return false;
+  /* Up to the row this line starts on, down to the row it ends on. Viewport
+   * only: a line that began above the screen starts, for this purpose, at
+   * the top of it -- you cannot have clicked what you cannot see. */
+  uint16_t top = y, bot = y;
+  while (top > 0 && row_wraps(p, (uint16_t)(top - 1))) top--;
+  while (bot + 1 < p->rows_n && row_wraps(p, bot)) bot++;
+  *top_out = top;
+  *nrows_out = (uint16_t)(bot - top + 1);
+
+  size_t n = 0;
+  bool found = false;
+  for (uint16_t r = top; r <= bot; r++) {
+    for (uint16_t c = 0; c < p->cols; c++) {
+      if (r == y && c == x) {
+        *at = n;
+        found = true;
+      }
+      size_t k = (size_t)(r - top) * p->cols + c;
+      if (offs && k < noffs) offs[k] = (uint32_t)n;
+      GhosttyGridRef ref;
+      if (!grid_ref_at(p, c, r, &ref)) continue;
+      GhosttyCell cell = {0};
+      GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+      if (ghostty_grid_ref_cell(&ref, &cell) == GHOSTTY_SUCCESS)
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+      /* The tail of a wide glyph has no text of its own; a click on it is a
+       * click on the glyph, which is the byte offset already recorded. The
+       * head spacer is the gap a wide glyph left at a row's end. */
+      if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL ||
+          wide == GHOSTTY_CELL_WIDE_SPACER_HEAD) {
+        /* The glyph before it ended at n; its first byte is where the
+         * previous cell's mapping says. */
+        size_t prev = (size_t)(r - top) * p->cols + c;
+        uint32_t head = offs && prev && prev - 1 < noffs ? offs[prev - 1] : 0;
+        if (offs && prev < noffs) offs[prev] = head;
+        if (r == y && c == x && n) *at = offs ? head : n - 1;
+        continue;
+      }
+      uint32_t cps[16];
+      size_t ncp = 0;
+      if (ghostty_grid_ref_graphemes(&ref, cps, 16, &ncp) != GHOSTTY_SUCCESS)
+        ncp = 0;
+      if (!ncp) {
+        cps[0] = ' ';
+        ncp = 1;
+      }
+      for (size_t i = 0; i < ncp; i++) {
+        if (n + 5 >= cap) goto full;
+        n += utf8_put(cps[i], out + n);
+      }
+    }
+  }
+full:
+  out[n] = 0;
+  *len = n;
+  return found && *at < n;
+}
+
+size_t pane_link_at(pane_t *p, uint16_t x, uint16_t y, char *out, size_t cap) {
+  if (!p || !p->term || !out || !cap || x >= p->cols || y >= p->rows_n)
+    return 0;
+  GhosttyGridRef ref;
+  if (!grid_ref_at(p, x, y, &ref)) return 0;
+  size_t len = 0;
+  if (ghostty_grid_ref_hyperlink_uri(&ref, (uint8_t *)out, cap - 1, &len) !=
+      GHOSTTY_SUCCESS)
+    return 0;
+  out[len] = 0;
+  return len;
 }
 
 /* The selected text, or NULL. Caller frees. */

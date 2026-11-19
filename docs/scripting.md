@@ -48,6 +48,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `reload` | re-read the config; answers `{"ok":true,"warning":...}` if it had a complaint |
 | `splash` | replay the attach greeting; `fx` and `motion` pick the colour effect and the assembly by index, for a deterministic one |
 | `edit-config` | open the config in a pane |
+| `open` | what a ctrl+click on a path does: `path` (which may carry its own `:line:col`), `line`, `col`, `id` of the pane it was seen in (0 for the focused one; relative paths resolve where its job and shell are, and the editor lands in its tab), `focus:false`. Answers the editor pane's `id`, the resolved `path`, `line` and `col`; `no such file` when nothing is there. See [opening a path](panes.md#opening-a-path) |
 | `theme` | without `name`, what is installed and what is worn (`theme` `themes` `dirs`); with one, switch now, and `save:true` writes the `theme_name` line into the config. See [themes](config.md#themes) |
 | `alive` | is it running, and how many panes and tabs |
 | `quit` | end the session |

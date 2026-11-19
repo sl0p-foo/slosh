@@ -282,6 +282,24 @@ static void draw_search_marks(app_t *a, screen_t *s, node_t *n) {
   }
 }
 
+/* Underline the path a ctrl+click here would open (open_hover). Only the
+ * underline is added: the text keeps its own colours, so it reads as "this is
+ * a link" rather than as a highlight that means something else. */
+static void draw_hover_path(app_t *a, screen_t *s, node_t *n) {
+  const open_hover_t *h = &a->hover_path;
+  if (!h->on || h->pane != n->id || !(CFG.open_hover & OPEN_HOVER_UNDERLINE))
+    return;
+  for (size_t i = 0; i < h->nruns; i++) {
+    if (h->runs[i].row >= n->content.h) continue;
+    uint16_t y = (uint16_t)(n->content.y + h->runs[i].row);
+    for (uint16_t x = h->runs[i].x0; x <= h->runs[i].x1 && x < n->content.w;
+         x++) {
+      cell_t *c = screen_at(s, (uint16_t)(n->content.x + x), y);
+      if (c) c->attrs |= ATTR_UNDERLINE;
+    }
+  }
+}
+
 static void draw_pane_status(app_t *a, screen_t *s, node_t *leaf, color_t fg,
                              bool focused) {
   if (draw_search_bar(a, s, leaf)) return;
@@ -1074,18 +1092,34 @@ static void draw_frame(app_t *a, screen_t *s, node_t *leaf) {
         memmove(buf, buf + off, (size_t)len - off + 1);
         len = (int)((size_t)len - off);
       } else {
-        len = (int)avail;
-        buf[len] = 0;
+        /* Columns and whole characters, like the scroll above: `avail` is a
+         * width and `buf` is bytes, so cutting one at the other put a NUL
+         * inside a UTF-8 sequence. Any title not written in Latin came out
+         * ending in a replacement glyph -- and cut to a third of the room it
+         * had, since three bytes of it were being counted as three columns. */
+        while (buf[0] && cells(buf) > avail) {
+          size_t l = strlen(buf);
+          do l--;
+          while (l && (buf[l] & 0xc0) == 0x80);
+          buf[l] = 0;
+        }
+        len = (int)strlen(buf);
       }
     }
     /* The inset is an edge offset, so it applies to whichever edge the title
      * is anchored to and means nothing in the middle. */
     uint16_t inset = CFG.title_inset < avail ? CFG.title_inset : 0;
+    /* Placed by what it will *occupy*, which is columns: aligning by the byte
+     * count pushed a wide-character title off its edge, and `avail - len`
+     * with len counted in bytes went negative -- on an unsigned column, the
+     * far side of the screen. */
+    uint16_t tw = cells(buf);
+    if (tw > avail) tw = avail;
     uint16_t tx = (uint16_t)(r.x + 1 + inset);
     if (CFG.title_align == ALIGN_CENTER)
-      tx = (uint16_t)(r.x + 1 + (avail - len) / 2);
+      tx = (uint16_t)(r.x + 1 + (avail - tw) / 2);
     else if (CFG.title_align == ALIGN_RIGHT)
-      tx = (uint16_t)(r.x + 1 + avail - len - inset);
+      tx = (uint16_t)(r.x + 1 + avail - tw - inset);
     /* An editor announces itself: the name sits in the button colours while it
      * is being typed, so a half-finished rename can never be mistaken for what
      * the pane is actually called. */
@@ -1272,8 +1306,17 @@ static void draw_collapsed(app_t *a, screen_t *s, node_t *n) {
 
   uint16_t tx = (uint16_t)(r.x + 1 + CFG.title_inset);
   if (tx < x1) {
-    size_t room = (size_t)(x1 - tx); /* never over the closing corner */
-    if (strlen(line) > room) line[room] = 0;
+    uint16_t room = (uint16_t)(x1 - tx); /* never over the closing corner */
+    /* Columns and whole characters, not bytes: `room` is a width, and cutting
+     * a byte array at it put the NUL inside a UTF-8 sequence -- a title in any
+     * non-Latin script came out ending in a replacement glyph, and was cut to
+     * a third of the room it had. The same cut the tab strip uses. */
+    while (line[0] && cells(line) > room) {
+      size_t len = strlen(line);
+      do len--;
+      while (len && (line[len] & 0xc0) == 0x80);
+      line[len] = 0;
+    }
     screen_text(s, tx, r.y, line, label, NO_COLOR, hot ? ATTR_BOLD : 0);
   }
 
@@ -1743,6 +1786,7 @@ static void draw_cb(node_t *n, void *ud) {
    * on-screen match in `search`; the one the bar is on in `search_cur`, which
    * is what tells "this one" from "all of them". */
   draw_search_marks(d->a, d->s, n);
+  draw_hover_path(d->a, d->s, n);
   /* A compact pane's chrome is the ring of shared line it sits inside — one
    * cell out on every side — rather than the rect's own edge; the state
    * passes (a bell's flash, a theme's chrome chain) land there instead. The

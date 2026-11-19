@@ -397,6 +397,7 @@ Three rules:
 | `splash` | `fx` `motion` — replay the attach greeting |
 | `notify` | `text` — a line in the session's status area |
 | `reload` `edit-config` | — |
+| `open` | `path` (may carry `:line:col`), `line`, `col`, `id` of the pane it came from (pass `$SLOSH_PANE`: relative paths resolve where *your* job and shell are, and the editor lands in your tab), `focus:false`. Opens it in the user's editor; answers `id` `path` `line` `col`, or `no such file` |
 | `alive` `deadline` `clipboard` `graphics` | — |
 | `quit` | — |
 
