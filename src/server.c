@@ -213,8 +213,31 @@ static void request_paint(server_t *s, bool immediate) {
   if (immediate || !s->next_frame) s->next_frame = now_ms();
 }
 
+/* Close-on-exec, on every descriptor this process will still be holding when
+ * it forks a pane.
+ *
+ * A pane's child closes its own pty pair and then execs, so anything else the
+ * server has open is inherited by whatever runs in that pane -- and the fds
+ * the server holds are the listening socket, every attached client's socket
+ * and every *other* pane's pty master. The listener is the one that bites:
+ * the shells, agents and containers started in panes outlive the server, so a
+ * server that dies leaves them holding its socket open. The kernel then keeps
+ * the address in LISTEN with nobody accepting, and the next `slosh` blocks in
+ * connect() forever rather than finding nothing home and starting a session:
+ * a black screen with no error and no way out but finding the socket by hand.
+ *
+ * fcntl rather than SOCK_CLOEXEC/accept4 because this has to build on macOS
+ * too, and the server is single-threaded and forks only from its own loop, so
+ * there is no window between the two calls for a fork to land in. */
+static int set_cloexec(int fd) {
+  if (fd < 0) return fd;
+  int fl = fcntl(fd, F_GETFD, 0);
+  if (fl >= 0) fcntl(fd, F_SETFD, fl | FD_CLOEXEC);
+  return fd;
+}
+
 static int listen_socket(const char *path) {
-  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  int fd = set_cloexec(socket(AF_UNIX, SOCK_STREAM, 0));
   if (fd < 0) return -1;
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
   snprintf(addr.sun_path, sizeof addr.sun_path, "%s", path);
@@ -892,7 +915,7 @@ int server_run(const char *name, const char *const argv[], uint16_t cols,
     if (r < 0 && errno != EINTR) break;
 
     if (pfds[0].revents & POLLIN) {
-      int c = accept(lfd, NULL, NULL);
+      int c = set_cloexec(accept(lfd, NULL, NULL));
       if (c >= 0) {
         if (s.nconns == MAX_CONNS) {
           close(c);
@@ -1213,7 +1236,7 @@ int server_spawn(const char *name, const char *const argv[], uint16_t cols,
 
   /* Wait for the socket to accept, rather than sleeping and hoping. */
   for (int i = 0; i < 400; i++) {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = set_cloexec(socket(AF_UNIX, SOCK_STREAM, 0));
     struct sockaddr_un addr = {.sun_family = AF_UNIX};
     snprintf(addr.sun_path, sizeof addr.sun_path, "%s", path);
     if (connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0) return fd;
@@ -1224,16 +1247,115 @@ int server_spawn(const char *name, const char *const argv[], uint16_t cols,
   return -1;
 }
 
+/* How long a session gets to answer before we call it wedged. A live server
+ * accepts from its own poll loop, so the real answer is sub-millisecond even
+ * under load; this is the ceiling for a machine that is paging, not a budget
+ * anybody should ever spend. */
+#define CONNECT_MS 5000
+
 int server_connect(const char *name) {
   char path[512];
   if (session_socket_path(name, path, sizeof path) != 0) return -1;
-  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  int fd = set_cloexec(socket(AF_UNIX, SOCK_STREAM, 0));
   if (fd < 0) return -1;
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
   snprintf(addr.sun_path, sizeof addr.sun_path, "%s", path);
-  if (connect(fd, (struct sockaddr *)&addr, sizeof addr) != 0) {
+
+  /* Timed, because a blocking connect() to a unix socket nobody is accepting
+   * on does not fail -- it waits, with the terminal already switched to the
+   * alternate screen, which is a black screen and no message. That state is
+   * reachable without anything being wrong with *this* process: a server that
+   * died while its panes' children still held the inherited listening socket
+   * left the address in LISTEN with no one behind it (see set_cloexec), and
+   * every later attach hung on it.
+   *
+   * The fix for the leak is above; this is the belt. A session that cannot
+   * answer in five seconds is reported rather than waited for, and it is
+   * reported as *itself* (ETIMEDOUT) rather than as "nobody home", so the
+   * caller does not respond by starting a second server over the top of a
+   * session that may still be alive. */
+  int fl = fcntl(fd, F_GETFL, 0);
+  if (fl >= 0) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+  int rc = connect(fd, (struct sockaddr *)&addr, sizeof addr);
+  if (rc != 0 && errno == EINPROGRESS) {
+    struct pollfd pfd = {.fd = fd, .events = POLLOUT};
+    int pr = poll(&pfd, 1, CONNECT_MS);
+    if (pr == 0) {
+      close(fd);
+      errno = ETIMEDOUT;
+      return -1;
+    }
+    if (pr < 0) {
+      int e = errno;
+      close(fd);
+      errno = e;
+      return -1;
+    }
+    int soerr = 0;
+    socklen_t len = sizeof soerr;
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &len) != 0) soerr = EINVAL;
+    rc = soerr ? -1 : 0;
+    errno = soerr;
+  }
+  if (rc != 0) {
+    int e = errno;
     close(fd);
+    errno = e;
     return -1;
   }
+  /* Back to how it was found: the client's own loop decides what it wants, and
+   * inheriting a flag from how we happened to dial is not that. */
+  if (fl >= 0) fcntl(fd, F_SETFL, fl);
+
+  /* Connecting is not the same as being answered, and only one of those is
+   * what a caller means by "is this session there".
+   *
+   * A listening socket with nothing behind it accepts the first few connects
+   * outright -- the kernel queues them against the backlog -- so connect()
+   * succeeding proves only that the address exists. The client then sent its
+   * HELLO into the queue and waited for a frame that was never coming: the
+   * black screen, again, one layer further in.
+   *
+   * So the session is asked something, and has to answer. A control command
+   * rather than a HELLO because a connection that has not said HELLO is not a
+   * client (see MAX_CONNS above) -- a probe must never displace the display
+   * that is already attached, which is the exact bug the fork this replaces
+   * shipped. The reply is consumed whole, so the caller gets the stream at a
+   * frame boundary, as if it had just connected. */
+  static const char probe[] = "{\"cmd\":\"alive\"}";
+  if (msg_send(fd, MSG_CMD, probe, sizeof probe - 1) != 0) {
+    close(fd);
+    errno = ECONNRESET;
+    return -1;
+  }
+  msg_reader_t reader;
+  msg_reader_init(&reader);
+  int64_t due = now_ms() + CONNECT_MS;
+  for (;;) {
+    int left = (int)(due - now_ms());
+    struct pollfd pfd = {.fd = fd, .events = POLLIN};
+    int pr = poll(&pfd, 1, left > 0 ? left : 0);
+    if (pr <= 0) { /* nothing said in time, or the poll itself failed */
+      msg_reader_free(&reader);
+      close(fd);
+      errno = pr == 0 ? ETIMEDOUT : errno;
+      return -1;
+    }
+    uint8_t buf[4096];
+    ssize_t got = read(fd, buf, sizeof buf);
+    if (got <= 0) { /* it hung up: a socket file outliving its server */
+      msg_reader_free(&reader);
+      close(fd);
+      errno = ECONNREFUSED;
+      return -1;
+    }
+    msg_reader_feed(&reader, buf, (size_t)got);
+    msg_t m;
+    bool answered = false;
+    while (msg_reader_next(&reader, &m))
+      if (m.type == MSG_REPLY) answered = true;
+    if (answered) break;
+  }
+  msg_reader_free(&reader);
   return fd;
 }

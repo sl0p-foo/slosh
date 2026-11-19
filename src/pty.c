@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/syscall.h> /* SYS_close_range: one syscall instead of a loop */
 #include <sys/wait.h>
 #include <time.h>
 #include <termios.h>
@@ -220,6 +221,39 @@ int pty_spawn(pty_t *p, const char *const argv[], uint16_t cols, uint16_t rows,
       unsetenv("SLOSH_PANE");
     }
     unsetenv("ZELLIJ");
+
+    /* Everything else the session had open, gone before the exec.
+     *
+     * A pane's program should hold its own terminal and nothing else. What it
+     * used to hold as well was the session's listening socket, every attached
+     * client's socket and every other pane's pty master -- all of them
+     * inherited, none of them its business. The programs started in panes
+     * outlive the server that started them, so a server that died left its
+     * socket held open by somebody's shell: a listening address with nobody
+     * behind it, and no session anyone could attach to (server.c,
+     * set_cloexec).
+     *
+     * Those fds are close-on-exec now, so in the common case this closes
+     * nothing. It stays because the guarantee belongs at the one door every
+     * pane goes through, rather than depending on nobody ever opening an fd in
+     * the server again without thinking about it.
+     *
+     * Last, after the chdir, because the parent reads /proc/<pid>/cwd to
+     * answer "where is this pane" and asks as soon as the pane exists: work
+     * done ahead of the chdir is a window where the honest answer is the
+     * server's own directory. close_range() where the kernel has it, since the
+     * fallback is a close() per descriptor and a thousand syscalls is exactly
+     * the kind of window being described. No opendir("/proc/self/fd") either:
+     * between fork and exec the safe tools are the ones that cannot
+     * allocate. */
+#if defined(__linux__) && defined(SYS_close_range)
+    if (syscall(SYS_close_range, (unsigned)STDERR_FILENO + 1, ~0U, 0) != 0)
+#endif
+    {
+      int maxfd = (int)sysconf(_SC_OPEN_MAX);
+      if (maxfd < 0 || maxfd > 4096) maxfd = 4096;
+      for (int fd = STDERR_FILENO + 1; fd < maxfd; fd++) close(fd);
+    }
 
     signal(SIGPIPE, SIG_DFL);
     execvp(argv[0], (char *const *)argv);

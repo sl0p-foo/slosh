@@ -11,6 +11,7 @@
 #define _GNU_SOURCE
 #include "slosh.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -304,6 +305,23 @@ int main(int argc, char **argv) {
 
   /* attach, creating the session if nobody is home */
   int fd = server_connect(name);
+  /* A socket that is listening and not answering is not "nobody home", and
+   * starting a second server over it would unlink the address a live session
+   * might still be using. Say what is wrong and name the file, because the
+   * alternative -- what this used to do -- was to wait on it with the screen
+   * already cleared, forever, saying nothing. */
+  if (fd < 0 && errno == ETIMEDOUT) {
+    char sock[512];
+    if (session_socket_path(name, sock, sizeof sock) != 0) sock[0] = 0;
+    fprintf(stderr,
+            "slosh: session %s is not answering\n"
+            "  its socket is listening but nothing is accepting: the server\n"
+            "  may have died while a pane's program still held the socket.\n"
+            "  check for a live server (pgrep -a slosh), then remove it:\n"
+            "    rm %s\n",
+            name, sock[0] ? sock : "<the session socket>");
+    return 1;
+  }
   if (fd < 0) fd = server_spawn(name, cmd_argv, cols, rows, layout, watch);
   if (fd < 0) {
     fprintf(stderr, "slosh: cannot start session %s\n", name);
