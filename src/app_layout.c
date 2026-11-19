@@ -929,7 +929,21 @@ static void tab_remove(app_t *a, size_t ti) {
    * emptied app has an empty tab under the cursor, not the ghost of the one
    * that went. */
   memset(&a->tabs[a->ntabs], 0, sizeof *a->tabs);
-  if (a->cur >= a->ntabs && a->ntabs) a->cur = a->ntabs - 1;
+  /* `cur` is a position, not an identity -- the same thing move_tab has to
+   * recompute, for the same reason. A tab removed *before* the cursor slides
+   * every later tab down one, so carrying the index across leaves the view
+   * (and therefore the focus, and therefore the keyboard) in whichever tab
+   * took that slot. A pane's program exiting is enough to trigger it, so the
+   * tab you are typing into could change because something ended somewhere
+   * you were not looking.
+   *
+   * Removing the cursor's own tab keeps the index deliberately: the tab that
+   * slid into it is the next one along, which is where closing a tab should
+   * leave you. The clamp is then only for the last tab in the strip. */
+  if (ti < a->cur)
+    a->cur--;
+  else if (a->cur >= a->ntabs && a->ntabs)
+    a->cur = a->ntabs - 1;
 }
 
 void close_leaf(app_t *a, node_t *leaf) {

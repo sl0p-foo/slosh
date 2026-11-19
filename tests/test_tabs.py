@@ -597,6 +597,40 @@ def test_move_tab_over_the_api_keeps_you_where_you_are():
         )
 
 
+def test_a_tab_closing_elsewhere_leaves_the_view_alone():
+    """A tab removed *before* the cursor shifts every later tab down one, and
+    `cur` is a position rather than an identity -- so carrying the index across
+    the removal moved the view, and the keyboard with it, to whichever tab took
+    that slot. A pane's program exiting is enough to trigger it: the tab you
+    are typing into must not change because something ended in a tab you were
+    not looking at."""
+    with Session(SH, cols=80, rows=12) as s:
+        s.settle()
+        ids = named_tabs(s, "a", "b", "c")
+        s.api("select-tab", id=ids[2])  # sit in "b", with "a" to its left
+        check("sitting in b", active(s) == "b", active(s))
+        was = s.focused()["id"]
+
+        first = [p for p in s.panes() if p["tab_id"] == ids[1]][0]
+        s.api("close", id=first["id"])  # "a"'s only pane: the tab goes with it
+        s.settle()
+
+        check("the tab is gone", order(s) == ["", "b", "c"], str(order(s)))
+        check("the view stayed where it was", active(s) == "b", active(s))
+        check(
+            "and so did the focus",
+            s.focused()["id"] == was,
+            f"{s.focused()['id']} != {was}",
+        )
+
+        # The cursor's own tab is the other case: closing it leaves you in the
+        # tab that slid into its place, which is the next one along.
+        mine = [p for p in s.panes() if p["tab_id"] == ids[2]][0]
+        s.api("close", id=mine["id"])
+        s.settle()
+        check("closing your own tab moves you along", active(s) == "c", active(s))
+
+
 def test_double_clicking_a_tab_renames_it():
     """The same gesture as a pane's title, on the other thing that has a name.
 
@@ -716,6 +750,7 @@ if __name__ == "__main__":
     test_double_clicking_a_tab_renames_it()
     test_escape_abandons_and_clicking_away_keeps()
     test_a_tab_and_a_pane_with_the_same_id_are_not_the_same_thing()
+    test_a_tab_closing_elsewhere_leaves_the_view_alone()
     test_dragging_a_tab_reorders_the_strip()
     test_dragging_past_the_last_tab_puts_it_last()
     test_dragging_off_the_strip_moves_nothing()
