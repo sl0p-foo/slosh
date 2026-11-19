@@ -905,7 +905,7 @@ splash_ms 900
 // scroll-up scroll-down scroll-page-up scroll-page-down scroll-top
 // scroll-bottom search zoom minimize float new-float float-grow float-shrink rerun
 // set-purpose rename-pane rename-tab new-tab next-tab prev-tab
-// select-tab-1..9 finder palette help detach quit
+// select-tab-1..9 finder gallery palette help detach quit
 // literal-prefix none
 
 // What C-a e opens this file with. Empty means $EDITOR, and then vi -- the
@@ -1005,6 +1005,8 @@ keys {
     bind "3" "select-tab-3"
 
     bind "s" "finder"
+    // Live previews of the active pane from each tab, in equal-sized tiles.
+    bind "g" "gallery"
 
     // Every action by name, including the ones nothing is bound to -- which
     // is the whole point of it, since an unbound action has no other way in.

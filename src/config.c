@@ -59,6 +59,7 @@ static const struct {
     {"close-tab", ACT_CLOSE_TAB},
     {"prev-tab", ACT_PREV_TAB},
     {"finder", ACT_FINDER},
+    {"gallery", ACT_GALLERY},
     {"palette", ACT_PALETTE},
     {"workspaces", ACT_WORKSPACES},
     {"save-workspace", ACT_SAVE_WORKSPACE},
@@ -1344,6 +1345,7 @@ void config_defaults(config_t *c) {
   bind_add(c, GHOSTTY_KEY_W, 0, ACT_WORKSPACES, false);
   bind_add(c, GHOSTTY_KEY_W, MOD_SHIFT, ACT_SAVE_WORKSPACE, false);
   bind_add(c, GHOSTTY_KEY_S, 0, ACT_FINDER, false);
+  bind_add(c, GHOSTTY_KEY_G, 0, ACT_GALLERY, false);
   /* `t` for themes, which nothing else wanted: tabs cycle on tab, and the
    * only other verb with a claim on the letter (`new-tab`) has had `c` since
    * the first day. */
@@ -1416,6 +1418,7 @@ static const struct {
     {ACT_FOCUS_DOWN, "focus", "go down"},
     {ACT_FOCUS_NEXT, "focus", "the next pane"},
     {ACT_FINDER, "focus", "find a pane by name"},
+    {ACT_GALLERY, "tabs", "gallery of active panes"},
 
     {ACT_RESIZE_LEFT, "size", "move the boundary left"},
     {ACT_RESIZE_RIGHT, "size", "move the boundary right"},

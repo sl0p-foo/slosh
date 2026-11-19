@@ -1705,6 +1705,7 @@ bool run_action(app_t *a, action_t act) {
     split_focus_ui(a, SPLIT_ROWS);
     return true;
   case ACT_ZOOM: app_toggle_zoom(a, 0); return true;
+  case ACT_GALLERY: app_toggle_gallery(a); return true;
   case ACT_MINIMIZE:
     if (!app_minimize(a, 0)) app_toast(a, "nothing else to show");
     return true;
@@ -1933,6 +1934,58 @@ void app_event(app_t *a, const input_event_t *ev) {
     a->splash_until = 0;
 
   if (!a->ntabs || !cur(a)->focus) return;
+
+  /* The gallery is a navigation mode, not another place to send keyboard or
+   * mouse input to a program. Its selection is a tab id, never a reassignment
+   * of any tab's focus. Escape leaves the view exactly where it was; Enter or
+   * clicking a tile enters that tab. */
+  if (a->gallery) {
+    size_t at = a->cur;
+    for (size_t i = 0; i < a->ntabs; i++)
+      if (a->tabs[i].id == a->gallery_tab) {
+        at = i;
+        break;
+      }
+    if (ev->kind == EV_KEY && ev->action != KEY_RELEASE) {
+      int step = 0;
+      switch (ev->key) {
+      case GHOSTTY_KEY_ESCAPE:
+      case GHOSTTY_KEY_G: app_toggle_gallery(a); return;
+      case GHOSTTY_KEY_ENTER: {
+        uint32_t tab = a->tabs[at].id;
+        app_toggle_gallery(a);
+        app_select_tab_id(a, tab);
+      }
+        return;
+      case GHOSTTY_KEY_ARROW_LEFT:
+      case GHOSTTY_KEY_H: step = -1; break;
+      case GHOSTTY_KEY_ARROW_RIGHT:
+      case GHOSTTY_KEY_L:
+      case GHOSTTY_KEY_TAB: step = 1; break;
+      case GHOSTTY_KEY_ARROW_UP:
+      case GHOSTTY_KEY_K: step = -(int)gallery_columns(a); break;
+      case GHOSTTY_KEY_ARROW_DOWN:
+      case GHOSTTY_KEY_J: step = (int)gallery_columns(a); break;
+      default: return;
+      }
+      long next = (long)at + step;
+      if (next >= 0 && (size_t)next < a->ntabs)
+        a->gallery_tab = a->tabs[next].id;
+    } else if (ev->kind == EV_MOUSE && ev->maction == MOUSE_PRESS &&
+               a->painted) {
+      const char *hit = hit_test(&a->painted->hits, ev->mx, ev->my);
+      if (hit && strncmp(hit, "gallery:", 8) == 0) {
+        uint32_t tab = (uint32_t)strtoul(hit + 8, NULL, 10);
+        app_toggle_gallery(a);
+        app_select_tab_id(a, tab);
+      }
+    }
+    return;
+  }
+
+  /* Typing means the hand left the mouse; whatever the hover was pointing at
+   * may not be under it any more by the time it comes back. */
+  if (ev->kind == EV_KEY) a->hover_path.on = false;
 
   /* A rename whose subject went away must not keep the keyboard. */
   if (a->renaming == RENAME_PANE && !pane_by_id(a, a->rename_id))

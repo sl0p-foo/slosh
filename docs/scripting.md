@@ -32,6 +32,7 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `close` `rerun` | `id`, or 0 for the focused pane |
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1`. The way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` | tabs, by `id` or `index` |
+| `gallery` | toggle a live, paginated grid of the focused pane in each tab; answers `shown`. Does not change the active tab or any tab's focus until a tile is entered |
 | `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`, `beside` a pane in that tab to land next to (default: whatever it has focused), `focus:false` to leave focus — and the view — where it is. The pane keeps running: same pty, same scrollback |
 | `float` | bare: toggle a pane [floating](panes.md#floating-a-pane) (`id`, or 0 for the focused one). With any of `x` `y` `w` `h` it *places*: floats first when tiled, re-places when floating, never un-floats; omitted fields keep their value |
 | `new-float` | a fresh floating shell over the current tab, centred, in the focused pane's directory; answers `id` |

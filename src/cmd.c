@@ -330,6 +330,16 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     if (purpose) app_set_tab_purpose(a, id, purpose, true);
     return jok_int("id", id);
   }
+  if (strcmp(cmd, "gallery") == 0) {
+    bool shown = app_toggle_gallery(a);
+    json_t j;
+    json_init(&j);
+    json_obj_open(&j, NULL);
+    json_bool(&j, "ok", true);
+    json_bool(&j, "shown", shown);
+    json_obj_close(&j);
+    return j.buf;
+  }
   if (strcmp(cmd, "select-tab") == 0) {
     long id = jv_geti(req, "id", 0);
     bool ok = id ? app_select_tab_id(a, (uint32_t)id)

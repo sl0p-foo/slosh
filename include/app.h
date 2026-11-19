@@ -143,6 +143,9 @@ uint32_t app_new_tab(app_t *a, const char *name);
 bool app_select_tab(app_t *a, size_t index);
 bool app_select_tab_id(app_t *a, uint32_t id);
 void app_cycle_tab(app_t *a, int delta);
+/* Toggle the live cross-tab gallery. Selecting a tile enters its tab; Escape
+ * restores the original view without changing any tab's focused pane. */
+bool app_toggle_gallery(app_t *a);
 size_t app_tab_count(const app_t *a);
 bool app_close_tab(app_t *a, uint32_t id);
 bool app_set_tab_name(app_t *a, uint32_t id, const char *name);

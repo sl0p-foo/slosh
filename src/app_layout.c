@@ -509,6 +509,55 @@ static rect_t tab_area(app_t *a) {
  * second opinion about where the layout put everything. */
 rect_t app_tab_area(app_t *a) { return tab_area(a); }
 
+/* A grid whose cells have equal shares of both axes, independent of the
+ * split weights in each tab. Cap the visible rows/columns rather than making
+ * every pane illegibly small when many tabs are open. */
+size_t gallery_columns(app_t *a) {
+  rect_t r = tab_area(a);
+  size_t cols = 1, max = r.w / 18;
+  if (!max) max = 1;
+  while (cols < a->ntabs && cols < max &&
+         (cols + 1) * (cols + 1) * 2 * (size_t)r.h <= a->ntabs * (size_t)r.w)
+    cols++;
+  return cols;
+}
+
+size_t gallery_capacity(app_t *a) {
+  rect_t r = tab_area(a);
+  size_t rows = r.h / 6;
+  if (!rows) rows = 1;
+  return gallery_columns(a) * rows;
+}
+
+rect_t gallery_rect(app_t *a, size_t slot) {
+  rect_t r = tab_area(a);
+  size_t cols = gallery_columns(a), cap = gallery_capacity(a);
+  size_t rows = (a->ntabs < cap ? a->ntabs : cap) / cols;
+  if ((a->ntabs < cap ? a->ntabs : cap) % cols) rows++;
+  if (!rows) rows = 1;
+  size_t col = slot % cols, row = slot / cols;
+  uint16_t x0 = (uint16_t)(r.x + col * r.w / cols);
+  uint16_t x1 = (uint16_t)(r.x + (col + 1) * r.w / cols);
+  uint16_t y0 = (uint16_t)(r.y + row * r.h / rows);
+  uint16_t y1 = (uint16_t)(r.y + (row + 1) * r.h / rows);
+  return (rect_t){x0, y0, (uint16_t)(x1 - x0), (uint16_t)(y1 - y0)};
+}
+
+bool app_toggle_gallery(app_t *a) {
+  if (!a->ntabs) return false;
+  if (a->gallery) {
+    a->gallery = false;
+    /* All gallery panes were temporarily resized, including those in tabs
+     * nobody visited. Restore their real pty sizes before the next frame. */
+    for (size_t i = 0; i < a->ntabs; i++) layout_tab(a, i);
+  } else {
+    a->gallery = true;
+    a->gallery_tab = cur(a)->id;
+    a->prefix = false;
+  }
+  return a->gallery;
+}
+
 /* Lay out a tab that is not the one on screen.
  *
  * `layout` is written around `cur(a)` -- zoom, focus, the minimised strip and

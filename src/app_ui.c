@@ -1226,9 +1226,21 @@ void app_compose(app_t *a, screen_t *s) {
    * terminal anyway. Dropping it here, rather than on the tab switch, catches
    * every route a tab can leave the screen by; for a pane already dropped it
    * is a pointer test. */
-  for (size_t i = 0; i < a->ntabs; i++)
-    if (i != a->cur && a->tabs[i].root)
-      walk(a->tabs[i].root, drop_render_cb, NULL);
+  if (!a->gallery)
+    for (size_t i = 0; i < a->ntabs; i++)
+      if (i != a->cur && a->tabs[i].root)
+        walk(a->tabs[i].root, drop_render_cb, NULL);
+
+  if (a->gallery) {
+    if (CFG.status_bar) {
+      if (app_tab_bar_side(a) == TAB_BAR_TOP)
+        draw_tab_strip(a, s);
+      else
+        draw_tab_sidebar(a, s);
+    }
+    draw_gallery(a, s);
+    return;
+  }
 
   /* Looking at a pane is the acknowledgement, and it happens before anything
    * is drawn rather than while the pane itself is: the tab strip is painted

@@ -269,6 +269,12 @@ struct app {
    * is dismissed, it never navigates, so anything you press puts it away. */
   bool help;
 
+  /* A temporary, paginated view of the focused pane from each tab. The tab
+   * id is a stable selection even if a background tab closes. The layout and
+   * each tab's own focus are untouched by navigating the gallery. */
+  bool gallery;
+  uint32_t gallery_tab;
+
   /* The modal picker: a query, a filtered list, one selection. Two things
    * wear it -- the pane finder (tabs stop being navigation past about six)
    * and the command palette -- and they are one machine with a subject
@@ -596,6 +602,10 @@ void byid_cb(node_t *n, void *ud);
 void find_corners(app_t *a);
 void ensure_config(void);
 void draw_toasts(app_t *a, screen_t *s);
+void draw_gallery(app_t *a, screen_t *s);
+size_t gallery_columns(app_t *a);
+size_t gallery_capacity(app_t *a);
+rect_t gallery_rect(app_t *a, size_t slot);
 void draw_tab_strip(app_t *a, screen_t *s);
 void draw_tab_sidebar(app_t *a, screen_t *s);
 void draw_status_line(app_t *a, screen_t *s);

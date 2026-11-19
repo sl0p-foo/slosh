@@ -39,6 +39,7 @@ it one.
 | `focus-down`  | `j`, `↓` | move focus down     |
 | `focus-next`  | `o`      | the next pane       |
 | `finder`      | `s`      | find a pane by name |
+| `gallery`     | `g`      | show the focused pane from each tab in an equal-sized grid; arrows/Tab to choose, Enter/click to enter, Esc to leave |
 
 ## Size
 

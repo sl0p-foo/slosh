@@ -2954,6 +2954,81 @@ void draw_floats(app_t *a, screen_t *s) {
   }
 }
 
+/* One live pane from each tab, not a new tab or copies of their PTYs. The
+ * gallery borrows only geometry: each tab keeps its focused node and the
+ * session keeps its current tab until the user explicitly enters a tile. */
+void draw_gallery(app_t *a, screen_t *s) {
+  size_t selected = a->cur;
+  for (size_t i = 0; i < a->ntabs; i++)
+    if (a->tabs[i].id == a->gallery_tab) {
+      selected = i;
+      break;
+    }
+  a->gallery_tab = a->tabs[selected].id; /* selected tab may have closed */
+  size_t cap = gallery_capacity(a);
+  size_t start = selected / cap * cap;
+  bool cursor = false;
+  uint16_t cursor_x = 0, cursor_y = 0;
+  for (size_t i = start; i < a->ntabs && i - start < cap; i++) {
+    tab_t *tab = &a->tabs[i];
+    node_t *n = tab->focus;
+    if (!n || !n->pane) continue;
+    rect_t r = gallery_rect(a, i - start);
+    if (!r.w || !r.h) continue;
+    bool selected_tile = i == selected;
+    color_t fg = selected_tile ? FRAME_FOCUS : FRAME_IDLE;
+    n->rect = r;
+    uint16_t border = r.w >= 3 && r.h >= 3 ? 1 : 0;
+    n->content =
+        (rect_t){(uint16_t)(r.x + border), (uint16_t)(r.y + border),
+                 (uint16_t)(r.w - 2 * border), (uint16_t)(r.h - 2 * border)};
+    pane_resize(n->pane, n->content.w, n->content.h);
+    if (border) {
+      for (uint16_t x = r.x; x < r.x + r.w; x++) {
+        screen_text(s, x, r.y,
+                    x == r.x             ? "┌"
+                    : x == r.x + r.w - 1 ? "┐"
+                                         : "─",
+                    fg, NO_COLOR, 0);
+        screen_text(s, x, (uint16_t)(r.y + r.h - 1),
+                    x == r.x             ? "└"
+                    : x == r.x + r.w - 1 ? "┘"
+                                         : "─",
+                    fg, NO_COLOR, 0);
+      }
+      for (uint16_t y = (uint16_t)(r.y + 1); y < r.y + r.h - 1; y++) {
+        screen_text(s, r.x, y, "│", fg, NO_COLOR, 0);
+        screen_text(s, (uint16_t)(r.x + r.w - 1), y, "│", fg, NO_COLOR, 0);
+      }
+      char title[128];
+      const char *name = tab->name[0] ? tab->name : pane_title(n->pane);
+      snprintf(title, sizeof title, " %zu: %s ", i + 1, name ? name : "");
+      /* Widths are cells, not UTF-8 bytes; never cut a multibyte glyph. */
+      while (title[0] && cells(title) > r.w - 2) {
+        size_t end = strlen(title);
+        do end--;
+        while (end && ((unsigned char)title[end] & 0xc0) == 0x80);
+        title[end] = 0;
+      }
+      screen_text(s, (uint16_t)(r.x + 1), r.y, title, fg, NO_COLOR,
+                  selected_tile ? ATTR_BOLD : 0);
+    }
+    pane_compose(n->pane, s, n->content.x, n->content.y, selected_tile);
+    if (selected_tile) {
+      cursor = s->cursor_visible;
+      cursor_x = s->cursor_x;
+      cursor_y = s->cursor_y;
+    }
+    char action[48];
+    snprintf(action, sizeof action, "gallery:%u", tab->id);
+    hit_add(&s->hits, r.x, r.y, r.w, r.h, action);
+  }
+  s->cursor_visible = cursor;
+  s->cursor_x = cursor_x;
+  s->cursor_y = cursor_y;
+  draw_status_line(a, s);
+}
+
 /* ---- kitty graphics ------------------------------------------------------ */
 
 struct gfx_ctx {
@@ -3306,7 +3381,26 @@ const char *app_graphics_view(app_t *a, graphics_t *state, uint16_t x,
                               uint16_t y, uint16_t cols, uint16_t rows,
                               size_t *len) {
   gfx_begin(state);
-  if (a->ntabs && cur(a)->root) {
+  if (a->gallery) {
+    /* The gallery composes a different pane per tab. Its images use the
+     * same pane-local crop and viewport conversion as a normal tiled pane. */
+    size_t selected = a->cur;
+    for (size_t i = 0; i < a->ntabs; i++)
+      if (a->tabs[i].id == a->gallery_tab) {
+        selected = i;
+        break;
+      }
+    size_t cap = gallery_capacity(a), start = selected / cap * cap;
+    for (size_t i = start; i < a->ntabs && i - start < cap; i++) {
+      node_t *n = a->tabs[i].focus;
+      if (!n || !n->pane) continue;
+      struct gfx_ctx ctx = {.a = a,
+                            .out = state,
+                            .leaf = n,
+                            .viewport = (rect_t){x, y, cols, rows}};
+      pane_graphics(n->pane, gfx_from_pane, &ctx);
+    }
+  } else if (a->ntabs && cur(a)->root) {
     struct gfx_walk w = {
         .a = a, .out = state, .viewport = (rect_t){x, y, cols, rows}};
     node_t *fl[64];
