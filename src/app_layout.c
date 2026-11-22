@@ -355,6 +355,13 @@ uint16_t app_tab_bar_cols(const app_t *a) {
   if (w > TAB_BAR_MAX) w = TAB_BAR_MAX;
   if (!a) return w;
 
+  /* tab_bar_collapse: the cutoff, said outright. No narrowing and no third
+   * of the screen -- the sidebar is the width you asked for until fewer
+   * than N columns would be left beside it, then it is the top row. One
+   * number you can predict beats an arithmetic you have to reproduce. */
+  if (CFG.tab_bar_collapse)
+    return (unsigned)a->cols >= (unsigned)w + CFG.tab_bar_collapse ? w : 0;
+
   uint16_t spare = a->cols > (uint16_t)(CFG.min_pane_cols + 4)
                        ? (uint16_t)(a->cols - CFG.min_pane_cols - 4)
                        : 0;

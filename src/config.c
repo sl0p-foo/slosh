@@ -1038,6 +1038,7 @@ void config_defaults(config_t *c) {
    * than a reservation -- app_tab_bar_cols narrows it to fit a smaller
    * screen, so this is the width you get when there is room for it. */
   c->tab_bar_width = 18;
+  c->tab_bar_collapse = 0; /* automatic */
   /* None by default: tab_bar_chrome's top line is the separation the air was
    * standing in for, and a blank row inside the frame on top of it reads as
    * a gap nobody asked for. Still there for a bare sidebar, or for anyone
@@ -1815,6 +1816,10 @@ char *config_render(const config_t *c) {
          c->tab_bar_index == TAB_INDEX_RIGHT ? "right" : "prefix");
   cb_add(&b, "tab_bar_width %u      // columns a sidebar takes, at most\n",
          c->tab_bar_width);
+  cb_add(&b,
+         "tab_bar_collapse %u    // top row when fewer columns are left beside "
+         "it, 0 = auto\n",
+         c->tab_bar_collapse);
   if (c->tab_pad_top == c->tab_pad_right &&
       c->tab_pad_top == c->tab_pad_bottom && c->tab_pad_top == c->tab_pad_left)
     cb_add(&b, "tab_bar_padding %u    // air inside a sidebar, in cells\n",
@@ -2347,6 +2352,7 @@ static const char *const KNOWN_TOP[] = {
     "status_line",
     "status_pad",
     "tab_bar_chrome",
+    "tab_bar_collapse",
     "tab_bar_pad",
     "tab_bar_padding",
     "tab_bar_index",
@@ -2762,6 +2768,8 @@ static bool load_into(config_t *c, const char *path, int depth, char *err,
   }
   c->tab_bar_width = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_width"), 0,
                                            c->tab_bar_width);
+  c->tab_bar_collapse = (uint16_t)kdl_arg_int(
+      kdl_child(root, "tab_bar_collapse"), 0, c->tab_bar_collapse);
   c->tab_gap = (uint16_t)kdl_arg_int(kdl_child(root, "tab_gap"), 0, c->tab_gap);
   c->tab_bar_status = (uint16_t)kdl_arg_int(kdl_child(root, "tab_bar_status"),
                                             0, c->tab_bar_status);

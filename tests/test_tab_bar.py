@@ -1406,6 +1406,45 @@ def test_growing_back_restores_the_sidebar():
         check("and the panes give the columns back", p["x"] >= W, str(p["x"]))
 
 
+def test_tab_bar_collapse_is_the_cutoff_said_outright():
+    """One number instead of an arithmetic: the sidebar is tab_bar_width wide
+    while at least N columns are left beside it, and the top row the moment
+    there are fewer -- no narrowing first, no third-of-the-screen rule."""
+    cut = _cfg(f'tab_bar_side "left"\ntab_bar_width {W}\ntab_bar_collapse 60\n')
+    with Session(SH, cols=W + 60, rows=20, config=cut) as s:
+        s.settle(30)
+        check(
+            "exactly N left: the sidebar keeps its edge",
+            s.snapshot().hit_at(CX, Y0) == "tab:1",
+            str(s.snapshot().hit_at(CX, Y0)),
+        )
+        check("...at the full width", s.pane(0)["x"] - 2 == W, str(s.pane(0)["x"]))
+        s.resize(W + 59, 20)
+        s.until(lambda snap: snap.hit_at(5, 1) == "tab:1")
+        check(
+            "one fewer: the top row",
+            s.snapshot().hit_at(5, 1) == "tab:1",
+            str(s.snapshot().hit_at(5, 1)),
+        )
+        check("and the panes get the columns", s.pane(0)["x"] < W, str(s.pane(0)["x"]))
+        # 50 columns: the automatic rule would narrow and keep the edge here
+        # (test_a_small_screen_narrows_the_sidebar_first); the knob does not.
+        s.resize(50, 20)
+        s.settle(30)
+        check(
+            "no narrowing in between",
+            s.snapshot().hit_at(5, 1) == "tab:1",
+            str(s.snapshot().hit_at(5, 1)),
+        )
+        s.resize(W + 60, 20)
+        s.until(lambda snap: snap.hit_at(CX, Y0) == "tab:1")
+        check(
+            "and back again",
+            s.pane(0)["x"] - 2 == W,
+            str(s.pane(0)["x"]),
+        )
+
+
 if __name__ == "__main__":
     test_left_sidebar_reserves_columns()
     test_sidebar_rows_click_like_the_strip()
@@ -1466,4 +1505,5 @@ if __name__ == "__main__":
     test_a_strip_that_could_not_hold_them_either_changes_nothing()
     test_narrow_terminal_falls_back_to_top()
     test_growing_back_restores_the_sidebar()
+    test_tab_bar_collapse_is_the_cutoff_said_outright()
     sys.exit(report())

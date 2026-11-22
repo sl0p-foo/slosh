@@ -55,6 +55,7 @@ The strip of tabs sits along the top by default. It does not have to:
 ```kdl
 tab_bar_side "left"   // or "right"; "top" is the default
 tab_bar_width 18      // columns the sidebar takes, at most
+tab_bar_collapse 0    // top row when fewer columns are left beside it; 0 = auto
 tab_bar_index "right" // the tab number at the far end; "prefix" is 1:name
 tab_bar_padding 0 1 0 2 // air inside it, in cells: top right bottom left
 tab_bar_pad 0         // ...or just the top of that, the older name
@@ -86,7 +87,14 @@ held to a third of the screen, so 18 columns is a margin beside a 90-column
 terminal and narrows to 16 beside a 50-column one, with the panes keeping the
 rest and never dropping below the width they collapse at. Only when even a
 legible sidebar (14 columns, or whatever narrower width you asked for) will not
-fit does the strip go back to the top row.
+fit does the strip go back to the top row. With the defaults that is a
+42-column terminal.
+
+If you would rather pick the line yourself, `tab_bar_collapse 60` says it
+outright: the sidebar stays exactly `tab_bar_width` wide while at least 60
+columns are left beside it, and goes to the top row the moment there are
+fewer. No narrowing, no third-of-the-screen rule — one number. 0 (the default)
+is the automatic behaviour above.
 
 Height counts too: a sidebar spends a
 row per tab, so a wide but short terminal runs out of list before it runs out

@@ -141,6 +141,15 @@ narrow to read a name in, or when the terminal is too short to give every tab
 a row (unless the top strip could not seat them either, where nothing is
 gained by moving them). Re-derived per frame, so a resize moves the bar.
 .TP
+.BI tab_bar_collapse\  n
+The sidebar's cutoff, as one number: the strip goes to \fBtop\fR whenever
+fewer than \fIn\fR columns would be left beside a sidebar of
+\fBtab_bar_width\fR, and the sidebar is exactly that width otherwise \(em it
+does not narrow first.
+\fB0\fR (the default) is the automatic behaviour under
+\fBtab_bar_width\fR.
+The too-short fallback still applies either way.
+.TP
 .BI tab_bar_padding\  n\ ...
 Air inside a sidebar, between its frame and the list, per side and in
 cells: 1, 2 or 4 values in CSS order, like

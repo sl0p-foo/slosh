@@ -373,6 +373,13 @@ typedef struct {
    * untouched and keeps the full width either way. */
   int tab_bar_side;       /* TAB_BAR_* */
   uint16_t tab_bar_width; /* columns a sidebar takes; ignored for top */
+  /* The one-number answer to "when does the sidebar give up its edge": the
+   * top row as soon as fewer than this many columns would be left beside a
+   * sidebar of tab_bar_width. 0 is automatic -- narrow first, then fall back
+   * on min_pane and a third of the screen (app_tab_bar_cols). Set, it takes
+   * over the width question entirely: the sidebar is tab_bar_width or it is
+   * on top, nothing in between, so the cutoff is exactly where you put it. */
+  uint16_t tab_bar_collapse;
   /* Where a tab's number goes (TAB_INDEX_*). A sidebar row is wider than the
    * name on it, and `1:api` spends the start of every row on a number nobody
    * reads until they want to press it -- against the right edge the names all
