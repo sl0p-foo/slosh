@@ -4,11 +4,13 @@ description: >-
   House rules and API for driving a slosh terminal multiplexer: spawn
   long-running work as a visible pane IN YOUR OWN TAB (never the human's), read
   a pane's screen, type into a pane, arrange panes and tabs, find a pane by
-  purpose, open a project workspace, and report progress or ask a question from
-  inside a pane. Use whenever `SLOSH` is set in the environment, and ALWAYS
-  before spawning a pane, splitting, applying a layout, moving a pane, or
-  reading/typing into one — getting "which pane am I" from focus is the classic
-  way to erupt in the middle of somebody else's work.
+  purpose, open a project workspace, report progress or ask a question from
+  inside a pane, and CLOSE THE PANES YOU MADE once their output is read. Use
+  whenever `SLOSH` is set in the environment, and ALWAYS before spawning a pane,
+  splitting, applying a layout, moving a pane, reading/typing into one, or
+  finishing a task that spawned panes — getting "which pane am I" from focus is
+  the classic way to erupt in the middle of somebody else's work, and leaving
+  dead panes behind makes the human clean up after you.
 ---
 
 # Driving slosh
@@ -122,8 +124,17 @@ takes all of it in one call. `focus:false` builds it without dragging the view
 to it — always pass it for background work:
 
 ```bash
-id=$($S "{\"cmd\":\"split\",\"id\":$SLOSH_PANE,\"dir\":\"rows\",\"command\":\"make -j8\",\"purpose\":\"task:build\",\"focus\":false}" | jq .id)
+P="task:k3f9.build"
+id=$($S "{\"cmd\":\"split\",\"id\":$SLOSH_PANE,\"dir\":\"rows\",\"command\":\"make -j8\",\"purpose\":\"$P\",\"focus\":false}" | jq .id)
 ```
+
+**Namespace the purpose so you can sweep it later**: `task:<yours>.<what>`, where
+`<yours>` is a short tag you invent once for this piece of work and reuse
+(`k3f9` above). That is what lets the cleanup in Rule 2 find *your* panes and
+nobody else's. Do not build the tag out of `$$` or `$PPID` — each command you
+run is a fresh shell, so the value you spawned with is gone by the time you come
+back to clean up. Pick a literal and keep it. Keep the returned `id` too; it is
+what you close with.
 
 **`$SLOSH_PANE` is the whole address.** The new pane lands in *your* pane's tab,
 so there is no tab argument to get wrong and it does not matter which tab is on
@@ -157,7 +168,7 @@ Then poll `panes`, matching on your purpose, until it is no longer alive:
 ```bash
 while :; do
   read -r alive code <<<"$($S '{"cmd":"panes"}' \
-    | jq -r '.panes[] | select(.purpose=="task:build") | "\(.alive) \(.exit_code)"')"
+    | jq -r --arg p "$P" '.panes[] | select(.purpose==$p) | "\(.alive) \(.exit_code)"')"
   [ "$alive" = "false" ] && break
   sleep 1
 done
@@ -168,12 +179,81 @@ echo "exit status: $code"
 (`exit_signal` is set instead when it was killed). The pane keeps everything it
 printed, so read the output whenever you like — see below. A command pane also
 offers `{"cmd":"rerun","id":N}`, which runs the same command again in the same
-pane, keeping the previous run above it.
+pane, keeping the previous run above it — which is the cheap way to iterate
+without breeding one pane per attempt.
+
+And when you have read it: **close it.** That is the next rule, and it is not
+optional.
 
 **There is no wait primitive over the socket.** `settle` exists only in the
 headless driver. `deadline` reports when the *display* wants its next frame and
 says nothing about program output — do not use it to wait for work. Poll, with a
 sleep you would be happy to explain.
+
+## Rule 2: close the panes you made, in the same task that made them
+
+A pane outliving its command is the feature — and the whole cost of the feature.
+**Nothing reaps them.** A finished `make` pane looks much like a running one to
+somebody glancing at the tab, it keeps its share of the split forever, and after
+a dozen short-lived commands the session is a mosaic of dead work that the human
+now has to close by hand, one at a time, guessing which ones are still wanted.
+That cleanup is yours to do, not theirs.
+
+So spawn → read → close is one unit of work, not two:
+
+```bash
+$S "{\"cmd\":\"capture\",\"id\":$id}"   # read it
+$S "{\"cmd\":\"close\",\"id\":$id}"     # then put it away
+```
+
+Write the close so it still runs when the middle fails — an early exit, a failed
+assertion or an exception between the split and the close is exactly how panes
+accumulate:
+
+```bash
+cleanup() { [ -n "$id" ] && $S "{\"cmd\":\"close\",\"id\":$id}" >/dev/null; }
+trap cleanup EXIT
+```
+
+What to do, by what the pane was for:
+
+- **A short-lived command spawned just to see its output** — close it the moment
+  you have captured what you needed. This is the common case, and it should
+  leave no trace at all.
+- **Several panes for one task** — sweep them by their shared purpose prefix when
+  the task ends:
+
+  ```bash
+  for p in $($S '{"cmd":"panes"}' | jq -r --arg pre "task:k3f9." \
+      '.panes[]|select(.purpose|startswith($pre))|.id'); do
+    $S "{\"cmd\":\"close\",\"id\":$p}"
+  done
+  ```
+
+  This works from any later command, in any shell, which is the point of a
+  literal tag: the panes are addressable by name long after the ids and the
+  shell that made them are gone.
+
+- **A tab you created for the work** — `close-tab` it. Closing its last pane
+  removes it anyway, so never leave an empty one behind.
+- **Something the human asked to watch** (a dev server, a log tail, a build they
+  want on screen) — leave it, and say so in your final message, with its
+  purpose, so they know it is deliberate. Kept on purpose is fine; forgotten is
+  not.
+- **Output you want to keep** — don't keep the pane for that. Redirect to a file
+  and close the pane: scrollback is not in `capture` anyway, so the pane is the
+  worse record of the two.
+
+Before you report a task finished, look for what you left behind:
+
+```bash
+$S '{"cmd":"panes"}' | jq '.panes[]|select(.alive==false)|{id,purpose,title,exit_code}'
+```
+
+Close the dead ones that are yours. **Leave panes you did not create alone**,
+even dead ones — a finished run somebody else has not read yet is not litter,
+and `close` does not ask twice. When you are unsure whether a pane is yours, its
+`purpose` or its `pid`'s ancestry answers that; `focused` never does (Rule 1).
 
 ## Reading a pane
 
@@ -364,10 +444,12 @@ Three rules:
 
 ## Leave the session as you found it
 
-- Close what you made: `{"cmd":"close","id":N}` for a pane,
+- Close what you made, as Rule 2 says: `{"cmd":"close","id":N}` for a pane,
   `{"cmd":"close-tab","id":N}` for a tab, and
   `{"cmd":"close-workspace","name":"api"}` for a workspace. (`close-pane` is the
-  *keybinding* action name, not a socket verb.)
+  *keybinding* action name, not a socket verb.) The count of panes in the session
+  when you hand back should be the count you started with, plus only the ones
+  somebody asked to keep.
 - Do not `{"cmd":"quit"}` a session you did not start. It ends every pane in it,
   including the user's.
 - A session you started for your own work is yours to quit: `slosh -s mine cmd quit`.
