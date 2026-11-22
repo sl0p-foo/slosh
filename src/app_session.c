@@ -257,7 +257,12 @@ void app_layout_keep_view(app_t *a) { a->layout_keep_view = true; }
 bool app_apply_layout_text_at(app_t *a, const char *text, bool replace,
                               const char *base, char *err, size_t errcap) {
   kdl_node_t *root = kdl_parse(text, err, errcap);
-  if (!root) return false;
+  if (!root) {
+    /* `focus:false` is armed before parsing; a failed parse must not pass
+     * that request's keep-view intent to the next, unrelated layout. */
+    a->layout_keep_view = false;
+    return false;
+  }
   bool ok = app_apply_layout(a, root, replace, base, err, errcap);
   kdl_free(root);
   return ok;
@@ -278,7 +283,10 @@ bool app_apply_layout_file(app_t *a, const char *path, bool replace, char *err,
   char pathbuf[1024], dirbuf[1024];
   const char *file = path_expand(path, pathbuf, sizeof pathbuf);
   kdl_node_t *root = kdl_parse_file(file, err, errcap);
-  if (!root) return false;
+  if (!root) {
+    a->layout_keep_view = false;
+    return false;
+  }
   bool ok = app_apply_layout(
       a, root, replace, path_dir(file, dirbuf, sizeof dirbuf), err, errcap);
   kdl_free(root);

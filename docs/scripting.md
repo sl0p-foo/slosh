@@ -29,12 +29,12 @@ Panes and tabs are addressed by **id**, so a background tab is scriptable.
 | `resize` | `cols` `rows`, and optionally `cell_w` `cell_h` |
 | `split` | `dir:"cols"\|"rows"`, `id` for which pane to split — and, to make a pane that is *for* something: `command` to run instead of a shell, `cwd` instead of that pane's own directory, `purpose` (declared, so the pane cannot relabel itself), `focus:false` to build it without pulling the view. The new pane lands in the split pane's tab, whether or not that tab is on screen, and the reply is its `id` either way |
 | `focus` | `id` |
-| `close` `rerun` | `id`, or 0 for the focused pane |
+| `close` `rerun` | `id`, or 0 for the focused pane. Rerunning by id in another tab keeps the active tab and answers the pane's id |
 | `clear-shaders` | `id`, or 0 for the focused pane; answers `cleared:0\|1`. The way back from a pane that painted itself unreadable |
 | `new-tab` `select-tab` `close-tab` `move-tab` | tabs, by `id` or `index` |
 | `gallery` | toggle a live, paginated grid of the focused pane in each tab; answers `shown`. Does not change the active tab or any tab's focus until a tile is entered |
 | `move-pane` | `id` of the pane, `tab` id to move it into (`0` for a tab of its own, with an optional `name`), `dir:"cols"\|"rows"`, `beside` a pane in that tab to land next to (default: whatever it has focused), `focus:false` to leave focus — and the view — where it is. The pane keeps running: same pty, same scrollback |
-| `float` | bare: toggle a pane [floating](panes.md#floating-a-pane) (`id`, or 0 for the focused one). With any of `x` `y` `w` `h` it *places*: floats first when tiled, re-places when floating, never un-floats; omitted fields keep their value |
+| `float` | bare: toggle a pane [floating](panes.md#floating-a-pane) (`id`, or 0 for the focused one). With any of `x` `y` `w` `h` it *places*: floats first when tiled, re-places when floating, never un-floats; omitted fields keep their value. An id in another tab does not switch the active tab |
 | `new-float` | a fresh floating shell over the current tab, centred, in the focused pane's directory; answers `id` |
 | `set-name` | `target:"tab"` (the default, because that is what this verb has always meant) or `"pane"`, `id`, `name`. A pane accepts 0 for the focused one. A pane's name wins over the title the program sets, so this is how a program that keeps announcing something stale gets overruled; an empty `name` clears it and hands the label back. Refusals say `no such pane` or `no such tab`, so a mistyped target is visible in the reply |
 | `set-purpose` | `target:"pane"\|"tab"`, `id` (or 0 for the focused pane, and the tab you are in), `purpose`. An empty `purpose` clears the slot *and* unlocks it, handing the label back to the program |

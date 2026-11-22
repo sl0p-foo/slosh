@@ -1290,14 +1290,13 @@ bool app_minimize(app_t *a, uint32_t id) {
   if (!next) return false;
 
   n->minimized = true;
-  a->cur = ti;
   /* A zoom naming this pane must end with it: left standing, the layout would
    * solo a pane the strip now holds — filling the tab and put away at once. */
   if (a->tabs[ti].zoom == n->id) a->tabs[ti].zoom = 0;
   /* Focus has to leave, or the rule that a focused pane is never minimised
    * would undo this on the next frame. */
   if (a->tabs[ti].focus == n) a->tabs[ti].focus = next;
-  layout(a);
+  layout_tab(a, ti); /* an explicit id in another tab must not select it */
   return true;
 }
 
@@ -1306,13 +1305,11 @@ bool app_toggle_zoom(app_t *a, uint32_t id) {
   if (!n) return false;
   size_t ti = tab_of(a, n);
   if (ti == (size_t)-1) return false;
-  a->cur = ti;
-  /* Zooming focuses what it zoomed: the pane filling the tab is the only one
-   * you could be typing into, and leaving focus elsewhere would mean keys
-   * going somewhere invisible. */
+  /* Zooming focuses the pane *within its own tab*. It need not pull the
+   * current view to a background tab when addressed by id. */
   a->tabs[ti].zoom = a->tabs[ti].zoom == n->id ? 0 : n->id;
   a->tabs[ti].focus = n;
-  layout(a);
+  layout_tab(a, ti);
   return true;
 }
 
@@ -1366,11 +1363,11 @@ bool app_toggle_float(app_t *a, uint32_t id) {
     /* w == 0 (a pane too small to measure): float_clamp's own centred
      * default answers the same question at two thirds of the area. */
   }
-  /* Either way you are now looking at it, and it holds the keyboard: the
-   * pane that just changed planes is the one the verb was about. */
-  a->cur = ti;
+  /* In the viewed tab it takes focus; in a background tab it only updates
+   * that tab's focus. A control command naming another pane is not a request
+   * to move the human's view there. */
   a->tabs[ti].focus = n;
-  layout(a);
+  layout_tab(a, ti);
   return true;
 }
 
@@ -1403,7 +1400,7 @@ bool app_float_place(app_t *a, uint32_t id, long x, long y, long w, long h) {
   if (x >= 0) want.x = (uint16_t)x;
   if (y >= 0) want.y = (uint16_t)y;
   n->float_rect = want;
-  layout(a);
+  layout_tab(a, tab_of(a, n));
   return true;
 }
 
@@ -2182,6 +2179,8 @@ void app_hover_path_update(app_t *a, const input_event_t *ev,
 bool app_rerun_pane(app_t *a, uint32_t id) {
   node_t *n = id ? pane_by_id(a, id) : (a->ntabs ? cur(a)->focus : NULL);
   if (!n) return false;
+  size_t ti = tab_of(a, n);
+  if (ti == (size_t)-1) return false;
   bool ok =
       pane_suspended(n->pane) ? pane_start(n->pane) : pane_restart(n->pane);
   if (!ok) {
@@ -2189,8 +2188,12 @@ bool app_rerun_pane(app_t *a, uint32_t id) {
     return false;
   }
   /* The new pty is born at the pane's current size: a dead pane is still laid
-   * out and still resized, pane_resize() just had no pty to tell. */
-  cur(a)->focus = n;
+   * out and still resized, pane_resize() just had no pty to tell. Focus belongs
+   * to the pane's tab, not whichever tab happens to be on screen: pointing the
+   * current tab's focus at a background pane sent keys there and showed its
+   * title beside the *current* tab's name. It could even dangle if that pane
+   * then closed. */
+  a->tabs[ti].focus = n;
   return true;
 }
 

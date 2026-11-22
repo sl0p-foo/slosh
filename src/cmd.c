@@ -283,9 +283,12 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
                               : jerr("no room for another pane");
   }
   if (strcmp(cmd, "rerun") == 0) {
-    if (!app_rerun_pane(a, (uint32_t)jv_geti(req, "id", 0)))
-      return jerr("cannot run it again");
-    return jok_int("id", app_focused_pane_id(a));
+    uint32_t id = (uint32_t)jv_geti(req, "id", 0);
+    if (!id) id = app_focused_pane_id(a);
+    if (!app_rerun_pane(a, id)) return jerr("cannot run it again");
+    /* A background rerun does not take keyboard focus. Answer with the pane
+     * that was run, not the unrelated pane still focused on screen. */
+    return jok_int("id", id);
   }
   if (strcmp(cmd, "close") == 0) {
     if (!app_close_pane(a, (uint32_t)jv_geti(req, "id", 0)))
@@ -410,6 +413,7 @@ static char *cmd_json(app_t *a, screen_t *s, input_parser_t *in,
     const char *path = jv_gets(req, "path", NULL);
     const char *text = jv_gets(req, "kdl", NULL);
     bool replace = jv_getb(req, "replace", false);
+    if (!text && !path) return jerr("need a path or kdl");
     /* `focus:false` builds the tabs without going to them. A layout that names
      * an `active` tab still wins -- that is a statement about where to be. */
     if (!jv_getb(req, "focus", true)) app_layout_keep_view(a);
