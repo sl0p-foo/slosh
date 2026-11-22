@@ -68,7 +68,7 @@ def main():
         "a key typed at a real tty reaches the pane", "^[[1;5A" in out, repr(out[-60:])
     )
 
-    os.write(fd, b"\x01g")  # prefix + a key that is bound to nothing
+    os.write(fd, b"\x01u")  # prefix + an unbound key (g now opens gallery)
     out = drain(fd)
     check("prefix + unbound key is swallowed", out == b"", repr(out[-60:]))
 
